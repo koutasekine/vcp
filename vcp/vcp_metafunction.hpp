@@ -27,64 +27,59 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#pragma once
 
-#include <iostream>
-
-#include <omp.h>
-
-#include <kv/interval.hpp>
-#include <kv/rdouble.hpp>
-#include <kv/dd.hpp>
-#include <kv/rdd.hpp>
-#include <kv/mpfr.hpp>
-#include <kv/rmpfr.hpp>
-
-#include <vcp/imats.hpp>
-#include <vcp/pdblas.hpp>
-#include <vcp/pidblas.hpp>
-#include <vcp/matrix.hpp>
-#include <vcp/matrix_assist.hpp>
+#ifndef VCP_METAFUNCTION_HPP
+#define VCP_METAFUNCTION_HPP
 
 
-int main(void) {
-	 vcp::matrix< bool > A, B, C;
-	 //vcp::mbool A, B, C;
+namespace vcp {
+template < typename T > struct is_round_control{
+		static constexpr bool value = false;
+};
 
-	A.allfalse(1, 10);
-	A(0, 1) = true;
-	B.allfalse(1, 10);
-	B(0, 1) = true;
-	B(0, 0) = true;
+#if defined(RDOUBLE_HPP)
+template < > struct  is_round_control< double > {
+	static constexpr bool value = true;
+};
+#endif
 
-	std::cout << A << std::endl;
-	std::cout << B << std::endl;
+#if defined(DD_HPP) && defined(RDD_HPP)
+template < > struct  is_round_control< kv::dd > {
+	static constexpr bool value = true;
+};
+#endif
 
-	C = A && B;
-	std::cout << C << std::endl;
+#if defined(RMPFR_HPP) && defined(MPFR_HPP)
+template < int _N > struct  is_round_control< kv::mpfr< _N > > {
+	static constexpr bool value = true;
+};
+#endif
 
-	C = !((A || B) || B);
-	std::cout << C << std::endl;
-	std::cout << !C(0, 1) << std::endl;
 
-	C.resize(5, 11);
-	std::cout << C << std::endl;
 
-	C.clear();
+template < typename T > struct is_interval {
+	static constexpr bool value = false;
+};
 
-	vcp::matrix< kv::interval< double >, vcp::pidblas > AA, BB, CC;
-	AA.rand(10);
-	BB.rand(10);
-	CC.rand(10);
-	std::cout << ((AA != BB) || (AA != CC)) << std::endl;;
+#if defined(INTERVAL_HPP)
+template < typename T > struct is_interval< kv::interval< T > > {
+	static constexpr bool value = true;
+};
+#endif
 
-	C(0, 0).flip();
-	C = AA != BB;
 
-	std::cout << all((C || (AA != BB)) && (AA == CC)) << std::endl;
-	std::cout << any((C || (AA != BB)) && (AA == CC)) << std::endl;
-	std::cout << none((C || (AA != BB)) && (AA == CC)) << std::endl;
 
-	if (none((C || (AA != BB)) && (AA == CC))) {
-		std::cout << "nya---" << std::endl;
-	}
+template < typename T, typename = void > struct is_round_interval {
+	static constexpr bool value = false;
+};
+
+#if defined(INTERVAL_HPP)
+template < typename T > struct is_round_interval< kv::interval< T >, kv::interval< typename std::enable_if< vcp::is_round_control< T >::value, T >::type > > {
+	static constexpr bool value = true;
+};
+#endif
+
+
 }
+#endif //VCP_METAFUNCTION_HPP

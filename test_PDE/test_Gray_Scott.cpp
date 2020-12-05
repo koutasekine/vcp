@@ -1,3 +1,33 @@
+// VCP Library
+// http ://verified.computation.jp
+//   
+// VCP Library is licensed under the BSD 3 - clause "New" or "Revised" License
+// Copyright(c) 2017, Kouta Sekine <k.sekine@computation.jp>
+// All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met :
+// * Redistributions of source code must retain the above copyright notice,
+//   this list of conditions and the following disclaimer.
+// * Redistributions in binary form must reproduce the above copyright notice,
+//   this list of conditions and the following disclaimer in the documentation
+//   and / or other materials provided with the distribution.
+// * Neither the name of the Kouta Sekine nor the names of its contributors
+//   may be used to endorse or promote products derived from this software
+//   without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED.IN NO EVENT SHALL KOUTA SEKINE BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+// (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+// LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
 #include <iostream>
 
 #include <kv/interval.hpp>
@@ -31,7 +61,7 @@ typedef vcp::mats< AppData > POLICY;
 typedef vcp::pidblas VPOLICY;
 
 int main(void){
-	std::cout.precision(4);
+	std::cout.precision(17);
 
 	vcp::matrix< AppData, POLICY > uh, uh1, uh2, zh;
 	vcp::Legendre_Bases_Generator< DataType, AppData, POLICY > Approximate_Generator;
@@ -139,6 +169,21 @@ int main(void){
 	std::cout << "Grafics = " << std::endl;
 	std::cout << Grafics << std::endl;
 //	vcp::save(Grafics, "Data_Gray_Scott/uh_Graf_solution3");
+
+
+// minimal and maximum value of approximate solution uh
+	std::vector< kv::interval< double > > x;
+
+	x.resize(Dimension);
+	for (int d = 0; d < Dimension; d++) {
+		x[d] = kv::interval< double >(0, 1);
+	}
+	std::vector< double > uh_min = Approximate_Generator.global_min(x, std::pow(2.0, -9));
+	std::vector< double > uh_max = Approximate_Generator.global_max(x, std::pow(2.0, -9));
+
+	for (int i = 0; i < Number_of_variables; i++) {
+		std::cout << "uh in [" << uh_min[i] << ", " << uh_max[i] << "]" << std::endl;
+	}
 
 	return 0;
 }

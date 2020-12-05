@@ -1,3 +1,32 @@
+// VCP Library
+// http ://verified.computation.jp
+//   
+// VCP Library is licensed under the BSD 3 - clause "New" or "Revised" License
+// Copyright(c) 2017, Kouta Sekine <k.sekine@computation.jp>
+// All rights reserved.
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met :
+// * Redistributions of source code must retain the above copyright notice,
+//   this list of conditions and the following disclaimer.
+// * Redistributions in binary form must reproduce the above copyright notice,
+//   this list of conditions and the following disclaimer in the documentation
+//   and / or other materials provided with the distribution.
+// * Neither the name of the Kouta Sekine nor the names of its contributors
+//   may be used to endorse or promote products derived from this software
+//   without specific prior written permission.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+// DISCLAIMED.IN NO EVENT SHALL KOUTA SEKINE BE LIABLE FOR ANY
+// DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+// (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+// LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+// ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+// (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 #pragma once
 
 #ifndef VCP_LDBASE_HPP
@@ -9,9 +38,12 @@
 
 #include <iostream>
 
-#include <kv/psa.hpp>
-#include <vcp/vcp_converter.hpp>
+#include<stack>
 #include <vector>
+
+#include <kv/psa.hpp>
+#include <vcp/vcp_psa_assist.hpp>
+#include <vcp/vcp_converter.hpp>
 #include <vcp/matrix.hpp>
 
 #include<omp.h>
@@ -25,6 +57,12 @@
 #ifdef VCP_NOMP
 #ifndef VCP_LEGENDRE_NOMP
 	#define VCP_LEGENDRE_NOMP
+#endif
+#endif
+
+#ifdef VCP_USE_DEATH_FUNC
+#ifndef VCP_LEGENDRE_USE_DEATH_FUNC
+	#define VCP_LEGENDRE_USE_DEATH_FUNC
 #endif
 #endif
 
@@ -100,15 +138,6 @@ namespace vcp {
 				phi[i] = (1 - x)*x*DNpol[i - 1] / (i*(i - 1));
 			}
 		}
-		template <typename _T> void LegendreFunc(const kv::psa< _T >& pol, const _T x, _T& y) {
-			int i;
-			int n = pol.v.size();
-
-			y = pol.v(n - 1);
-			for (i = n - 2; i >= 0; i--) {
-				y = y*x + pol.v(i);
-			}
-		}
 		template <typename _T> void LegendrePointFunc(const std::vector< kv::psa< _T > >& phi, const std::vector< _T >& Point, std::vector< std::vector< _T > >& out) {
 			int i, j;
 			int n = Point.size();
@@ -118,13 +147,13 @@ namespace vcp {
 			for (i = 0; i < m; i++) {
 				out[i].resize(n);
 				for (j = 0; j < n; j++) {
-					LegendreFunc(phi[i], Point[j], out[i][j]);
+					psa_value_Horner(phi[i], Point[j], out[i][j]);
 				}
 			}
 
 		}
-	}
 
+	}
 	namespace GaussLegendreIntegral {
 		template <typename _T> void LegendrePol(const int nn, kv::psa< _T >& outp, kv::psa< _T >& outpm1) {
 			kv::psa< _T > xp, oim1, oim2, ZZZ;
@@ -160,15 +189,6 @@ namespace vcp {
 				}
 			}
 		}
-		template <typename _T> void LegendreFunc(const kv::psa< _T >& pol, const _T x, _T& y) {
-			int i;
-			int n = pol.v.size();
-
-			y = pol.v(n - 1);
-			for (i = n - 2; i >= 0; i--) {
-				y = y*x + pol.v(i);
-			}
-		}
 		template <typename _T> void LegendreDifFunc(const kv::psa< _T >& pol, const _T x, _T& y) {
 			int i;
 			int n = pol.v.size();
@@ -189,7 +209,7 @@ namespace vcp {
 			_T res, dif;
 			y = x;
 			for (int i = 0; i < 10; i++) {
-				LegendreFunc(pol, y, res);
+				psa_value_Horner(pol, y, res);
 				LegendreDifFunc(pol, y, dif);
 				y = y - res / dif;
 			}
@@ -199,14 +219,14 @@ namespace vcp {
 			_T difmid, alpha;
 
 			y = x;
-			LegendreFunc(pol, y, res);
+			psa_value_Horner(pol, y, res);
 			LegendreDifFunc(pol, y, dif);
 			difmid = mid(dif);
 			alpha = mag(res / difmid);
 			y = y + kv::interval< _T >(-2 * alpha, 2 * alpha);
 			int i = 0;
 			while (1) {
-				LegendreFunc(pol, kv::interval< _T >(mid(y)), res);
+				psa_value_Horner(pol, kv::interval< _T >(mid(y)), res);
 				LegendreDifFunc(pol, y, dif);
 				difmid = mid(dif);
 				Ky = mid(y) - res / difmid + (1 - dif / difmid)*(y - mid(y));
@@ -257,7 +277,7 @@ namespace vcp {
 			}
 
 			for (int i = 1; i <= n; i++) {
-				LegendreFunc(psm1, Point[i - 1], res);
+				psa_value_Horner(psm1, Point[i - 1], res);
 				LegendreDifFunc(ps, Point[i - 1], dif);
 				Weight[i - 1] = 2 / (n * res * dif);
 			}
@@ -551,6 +571,84 @@ namespace vcp {
 			std::cout << "u" << kk << "^" << p << "*";
 #endif
 			(*this).disp_args(vs, args...);
+		}
+
+		template <class _TC, class _PTCM = mats< _TC >> matrix< _TC, _PTCM> func(std::vector< _TC > x) {
+			int mmax = (*this).phi.size();
+			int dim = (*this).dimension;
+			int var = (*this).variablesize;
+
+			if (x.size() != dim) {
+				std::cout << ">> ERROR : func : dimension size != vector size" << std::endl;
+				exit(1);
+			}
+
+			vcp::matrix< _T > p_phi_T;
+			vcp::matrix< _TC > p_phi_TC;
+
+			p_phi_T.zeros(mmax, dim);
+			for (int j = 0; j < dim; j++) {
+				for (int i = 0; i < mmax; i++) {
+					_T temp;
+					vcp::convert(x[j], temp);
+					psa_value((*this).phi[i], temp, p_phi_T(i, j));
+				}
+			}
+			convert(p_phi_T, p_phi_TC);
+			matrix< _TC, _PTCM> output;
+			output.zeros(1, var + dim);
+
+			for (int i = 0; i < dim; i++) {
+				output(0, i) = x[i];
+			}
+			for (int v = 0; v < var; v++) {
+				_TC tmp;
+				for (int k = 0; k < (*this).list.rowsize(); k++) {
+					tmp = uh(k, v);
+					for (int di = 0; di < dim; di++) {
+						tmp *= p_phi_TC((*this).list(k, di), di);
+					}
+					output(0, v + dim) += tmp;
+				}
+			}
+			return output;
+		}
+
+		template < class _TC > _TC func(std::vector< _TC > x, int v) {
+			int mmax = (*this).phi.size();
+			int dim = (*this).dimension;
+			int var = (*this).variablesize;
+
+			if (x.size() != dim) {
+				std::cout << ">> ERROR : func : dimension size != vector size" << std::endl;
+				exit(1);
+			}
+
+			vcp::matrix< _T > p_phi_T;
+			vcp::matrix< _TC > p_phi_TC;
+
+			p_phi_T.zeros(mmax, dim);
+			for (int j = 0; j < dim; j++) {
+				for (int i = 0; i < mmax; i++) {
+					_T temp;
+					vcp::convert(x[j], temp);
+					psa_value((*this).phi[i], temp, p_phi_T(i, j));
+				}
+			}
+			convert(p_phi_T, p_phi_TC);
+			_TC output;
+			output = _TC(0);
+
+
+			_TC tmp;
+			for (int k = 0; k < (*this).list.rowsize(); k++) {
+				tmp = uh(k, v);
+				for (int di = 0; di < dim; di++) {
+					tmp *= p_phi_TC((*this).list(k, di), di);
+				}
+				output += tmp;
+			}
+			return output;
 		}
 
 	public:
@@ -1049,6 +1147,15 @@ namespace vcp {
 		}
 
 		matrix< _TM, _PM > output_uh_for_graphics(const int Div_number = 100) {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "////////////////// Legendre_Bases_Generator :: output_uh_for_graphics()/////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+#endif	
+
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << ">> Div_number =" << Div_number << std::endl;
+#endif	
 			if ((*this).mode <= 2) {
 				std::cout << ">> ERROR : output_uh__for_graphics : This function only use the Approximation mode (Mode > 2)" << std::endl;
 				exit(1);
@@ -1090,7 +1197,7 @@ namespace vcp {
 #endif	
 			for (int i = 0; i < mmax; i++) {
 				for (int j = 0; j < Div_number + 1; j++){
-					LegendreBaseFunctions::LegendreFunc(phi[i],j*mesh_size_T,p_phi_T(i, j));
+					psa_value_Horner(phi[i],j*mesh_size_T,p_phi_T(i, j));
 				}
 			}
 
@@ -1120,6 +1227,458 @@ namespace vcp {
 
 			return Output_Data;
 		}
+
+		template <class _TC > std::vector< _TC > global_min(const std::vector< kv::interval< _TC > > x, double minimal_mesh_size = std::pow(2.0,-11)){
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "//////////////////////// Legendre_Bases_Generator :: global_min() //////////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+#endif	
+
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << ">> minimal_mesh_size = " << minimal_mesh_size << std::endl;
+#endif
+
+			int dim = (*this).dimension;
+			int var = (*this).variablesize;
+
+			if ((*this).mode <= 2) {
+				std::cout << ">> ERROR : global_min : This function can only use the approximation mode (Mode > 2) (with verification)" << std::endl;
+				exit(1);
+			}
+
+			if (x.size() != dim) {
+				std::cout << dim << " , " << x.size() << std::endl;
+				std::cout << ">> ERROR : global_min : x.size() != dim" << std::endl;
+				exit(1);
+			}
+
+			std::vector< _TC > gmin;
+			gmin.resize(var);
+			for (int i = 0; i < var; i++) {
+				gmin[i] = _TC(INFINITY);
+			}
+
+			std::stack< std::vector< kv::interval< _TC > > > list_stack;
+			std::vector< kv::interval< _TC > > local_vector;
+
+
+			matrix< int > div_list;
+			int div_list_size = std::pow(2, dim);
+			div_list.zeros(div_list_size, dim);
+			for (int i = 0; i < 2; i++) {
+				for (int d = 0; d < dim; d++) {
+					int di = dim - d;
+					for (int j = 0; j < std::pow(2, d); j++) {
+						for (int k = 0; k < std::pow(2, di - 1); k++) {
+							div_list(i*std::pow(2, di - 1) + j * std::pow(2, di) + k, d) = i;
+						}
+					}
+				}
+			}
+			int count = 0;
+			for (int v = 0; v < var; v++) {
+#ifdef VCP_LEGENDRE_DEBUG
+				std::cout << "\n-------------- Variable : " <<  v + 1 << " Start -------------------" << std::endl;
+#endif
+				local_vector.resize(dim);
+				for (int i = 0; i < dim; i++) {
+					local_vector[i] = x[i];
+				}
+				list_stack.push(local_vector);
+				count++;
+				for (int i = 0; i < dim; i++) {
+					local_vector[i] = kv::interval< _TC >(mid(local_vector[i]));
+				}
+				_TC delta = ((*this).func<  kv::interval< _TC > >(local_vector, v)).lower();
+
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+			#pragma omp parallel
+			{
+#endif
+#endif	
+				while (count > 0) {
+					std::vector< kv::interval< _TC > > local_point;
+					bool flag_empty = false;
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+				#pragma omp critical (list_stack)
+				{
+#endif
+#endif
+					if (!list_stack.empty()) {
+						local_point = list_stack.top();
+						list_stack.pop();
+					}
+					else {
+						flag_empty = true;
+					}
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+				}
+#endif
+#endif
+					if (flag_empty) {
+						continue;
+					}
+					
+					kv::interval< _TC > tmp = (*this).func<  kv::interval< _TC > >(local_point, v);
+					
+					if (delta < tmp.lower()) {
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+						#pragma omp atomic
+#endif
+#endif
+						count--;
+						continue;
+					}
+					if (width(local_point[0]) < minimal_mesh_size) {
+
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+					#pragma omp critical (gmin)
+					{
+#endif
+#endif
+						if (tmp.lower() < gmin[v]) {
+#ifdef VCP_LEGENDRE_DEBUG
+							std::cout << ">> Find candidate date of global_min : " << tmp << std::endl;
+#endif
+							gmin[v] = tmp.lower();
+						}
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+					}
+#endif
+#endif
+
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+						#pragma omp atomic
+#endif
+#endif
+						count--;
+						continue;
+					}
+
+					std::vector< kv::interval< _TC > > local_point_center = local_point;
+					for (int i = 0; i < dim; i++) {
+						local_point_center[i] = kv::interval< _TC >(mid(local_point_center[i]));
+					}
+					tmp = ((*this).func<  kv::interval< _TC > >(local_point_center, v));
+					if (tmp.lower() < delta) {
+						delta = tmp.lower();
+					}
+
+					std::vector< std::vector< kv::interval< _TC > > > div_interval_list;
+					div_interval_list.resize(2);
+					div_interval_list[0].resize(dim);
+					div_interval_list[1].resize(dim);
+					for (int d = 0; d < dim; d++) {
+						div_interval_list[0][d] = kv::interval< _TC >(local_point[d].lower(), mid(local_point[d]));
+						div_interval_list[1][d] = kv::interval< _TC >(mid(local_point[d]), local_point[d].upper());
+					}
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+				#pragma omp critical (list_stack)
+				{
+#endif
+#endif
+					for (int i = 0; i < div_list_size; i++) {
+						for (int d = 0; d < dim; d++) {
+							local_point[d] = div_interval_list[div_list(i, d)][d];
+						}
+						list_stack.push(local_point);
+					}
+					count += div_list_size - 1;
+					
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+				}
+#endif
+#endif
+				}
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+			}
+#endif
+#endif	
+
+			}
+			return gmin;
+		}
+
+		template <class _TC > std::vector< _TC > global_max(const std::vector< kv::interval< _TC > > x, double minimal_mesh_size = std::pow(2.0, -11)) {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "//////////////////////// Legendre_Bases_Generator :: global_max() //////////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+#endif	
+
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << ">> minimal_mesh_size = " << minimal_mesh_size << std::endl;
+#endif
+			
+			int dim = (*this).dimension;
+			int var = (*this).variablesize;
+
+			if ((*this).mode <= 2) {
+				std::cout << ">> ERROR : global_max : This function can only use the approximation mode (Mode > 2) (with verification)" << std::endl;
+				exit(1);
+			}
+
+			if (x.size() != dim) {
+				std::cout << dim << " , " << x.size() << std::endl;
+				std::cout << ">> ERROR : global_max : x.size() != dim" << std::endl;
+				exit(1);
+			}
+
+			std::vector< _TC > gmax;
+			gmax.resize(var);
+			for (int i = 0; i < var; i++) {
+				gmax[i] = _TC(-INFINITY);
+			}
+
+			std::stack< std::vector< kv::interval< _TC > > > list_stack;
+			std::vector< kv::interval< _TC > > local_vector;
+
+
+			matrix< int > div_list;
+			int div_list_size = std::pow(2, dim);
+			div_list.zeros(div_list_size, dim);
+			for (int i = 0; i < 2; i++) {
+				for (int d = 0; d < dim; d++) {
+					int di = dim - d;
+					for (int j = 0; j < std::pow(2, d); j++) {
+						for (int k = 0; k < std::pow(2, di - 1); k++) {
+							div_list(i*std::pow(2, di - 1) + j * std::pow(2, di) + k, d) = i;
+						}
+					}
+				}
+			}
+			int count = 0;
+			for (int v = 0; v < var; v++) {
+#ifdef VCP_LEGENDRE_DEBUG
+				std::cout << "\n-------------- Variable : " << v + 1 << " Start -------------------" << std::endl;
+#endif
+				local_vector.resize(dim);
+				for (int i = 0; i < dim; i++) {
+					local_vector[i] = x[i];
+				}
+				list_stack.push(local_vector);
+				count++;
+				for (int i = 0; i < dim; i++) {
+					local_vector[i] = kv::interval< _TC >(mid(local_vector[i]));
+				}
+				_TC delta = ((*this).func<  kv::interval< _TC > >(local_vector, v)).upper();
+
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+#pragma omp parallel
+				{
+#endif
+#endif	
+					while (count > 0) {
+						std::vector< kv::interval< _TC > > local_point;
+						bool flag_empty = false;
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+						#pragma omp critical (list_stack)
+						{
+#endif
+#endif
+							if (!list_stack.empty()) {
+								local_point = list_stack.top();
+								list_stack.pop();
+							}
+							else {
+								flag_empty = true;
+							}
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+						}
+#endif
+#endif
+						if (flag_empty) {
+							continue;
+						}
+
+						kv::interval< _TC > tmp = (*this).func<  kv::interval< _TC > >(local_point, v);
+
+						if (delta > tmp.upper()) {
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+							#pragma omp atomic
+#endif
+#endif
+							count--;
+							continue;
+					}
+						if ( width(local_point[0]) < minimal_mesh_size ) {
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+							#pragma omp critical (gmin)
+							{
+#endif
+#endif
+								if (tmp.upper() > gmax[v]) {
+#ifdef VCP_LEGENDRE_DEBUG
+									std::cout << ">> Find candidate date of global_max : " << tmp << std::endl;
+#endif
+									gmax[v] = tmp.upper();
+								}
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+							}
+#endif
+#endif
+
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+#pragma omp atomic
+#endif
+#endif
+							count--;
+							continue;
+						}
+
+						std::vector< kv::interval< _TC > > local_point_center = local_point;
+						for (int i = 0; i < dim; i++) {
+							local_point_center[i] = kv::interval< _TC >(mid(local_point_center[i]));
+						}
+						tmp = ((*this).func<  kv::interval< _TC > >(local_point_center, v));
+						if (tmp.upper() > delta) {
+							delta = tmp.upper();
+						}
+
+						std::vector< std::vector< kv::interval< _TC > > > div_interval_list;
+						div_interval_list.resize(2);
+						div_interval_list[0].resize(dim);
+						div_interval_list[1].resize(dim);
+						for (int d = 0; d < dim; d++) {
+							div_interval_list[0][d] = kv::interval< _TC >(local_point[d].lower(), mid(local_point[d]));
+							div_interval_list[1][d] = kv::interval< _TC >(mid(local_point[d]), local_point[d].upper());
+						}
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+						#pragma omp critical (list_stack)
+						{
+#endif
+#endif
+							for (int i = 0; i < div_list_size; i++) {
+								for (int d = 0; d < dim; d++) {
+									local_point[d] = div_interval_list[div_list(i, d)][d];
+								}
+								list_stack.push(local_point);
+							}
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+						}
+#endif
+#endif
+
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+						#pragma omp atomic
+#endif
+#endif
+						count += div_list_size - 1;
+				}
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+			}
+#endif
+#endif	
+
+			}
+			return gmax;
+		}
+
+#ifdef VCP_LEGENDRE_USE_DEATH_FUNC
+		template <class _TC>
+		kv::interval< _TC > min_max_slow(const int mesh_order = 5) {
+			if ((*this).mode <= 2) {
+				std::cout << ">> ERROR : make : This function only use the Approximation mode (Mode > 2)" << std::endl;
+				exit(1);
+			}
+			using std::pow;
+			double mesh_size = std::pow( 2, -mesh_order);
+			int Div_number = std::pow(2, mesh_order);
+
+			int mmax = (*this).phi.size();
+			vcp::matrix< _T > p_phi_T;
+			vcp::matrix< kv::interval< _TC > > p_phi_TM;
+
+			p_phi_T.zeros(mmax, Div_number);
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+#pragma omp parallel for
+#endif
+#endif	
+			for (int i = 0; i < mmax; i++) {
+				_T  interval_j;
+				_T tmp;
+				for (int j = 0; j < Div_number; j++) {
+					interval_j.lower() = j * mesh_size;
+					interval_j.upper() = (j + 1) * mesh_size;
+					psa_value((*this).phi[i], interval_j, p_phi_T(i, j));
+				}
+			}
+
+			std::cout << p_phi_T << std::endl;
+
+			convert(p_phi_T, p_phi_TM);
+
+			p_phi_T.clear();
+
+			int dim = (*this).dimension;
+			int Data_row_size = std::pow(Div_number, dim);
+			matrix< int > list_of_Data;
+			list_of_Data.zeros(Data_row_size, dim);
+
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+#pragma omp parallel for
+#endif
+#endif	
+			for (int d = 0; d < dim; d++) {
+				int di = dim - d;
+				for (int j = 0; j < std::pow(Div_number, d); j++) {
+					for (int i = 0; i < Div_number; i++) {
+						for (int k = 0; k < std::pow(Div_number, di - 1); k++) {
+							list_of_Data(i*std::pow(Div_number, di - 1) + j * std::pow(Div_number, di) + k, d) = i;
+						}
+					}
+				}
+			}
+
+			matrix< kv::interval< _TC > > MinMax_Data;
+			MinMax_Data.zeros(Data_row_size, (*this).variablesize + dim);
+
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+#pragma omp parallel for
+#endif
+#endif	
+			for (int i = 0; i < Data_row_size; i++) {
+				for (int di = 0; di < dim; di++) {
+					MinMax_Data(i, di) = list_of_Data(i, di)*mesh_size;
+				}
+				for (int v = 0; v < (*this).variablesize; v++) {
+					kv::interval< _TC > tmp;
+					for (int k = 0; k < (*this).list.rowsize(); k++) {
+						tmp = uh(k, v);
+						for (int di = 0; di < dim; di++) {
+							tmp *= p_phi_TM((*this).list(k, di), list_of_Data(i, di));
+						}
+						MinMax_Data(i, dim + v) += tmp;
+					}
+				}
+			}
+		}
+#endif
 
 		matrix< int > output_list() {
 			return (*this).list;

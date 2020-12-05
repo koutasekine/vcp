@@ -42,49 +42,37 @@
 #include <vcp/imats.hpp>
 #include <vcp/pdblas.hpp>
 #include <vcp/pidblas.hpp>
+
 #include <vcp/matrix.hpp>
 #include <vcp/matrix_assist.hpp>
 
-
 int main(void) {
-	 vcp::matrix< bool > A, B, C;
-	 //vcp::mbool A, B, C;
+	int n = 100;
+	vcp::matrix< double > Ad;
+	vcp::matrix< kv::dd > Add;
+	vcp::matrix< kv::mpfr< 300 > > Am300;
+	vcp::matrix< kv::mpfr< 500 > > Am500;
 
-	A.allfalse(1, 10);
-	A(0, 1) = true;
-	B.allfalse(1, 10);
-	B(0, 1) = true;
-	B(0, 0) = true;
+	vcp::matrix< kv::interval< double >, vcp::pidblas > Aid;
+	vcp::matrix< kv::interval< kv::dd >, vcp::imats< kv::dd > > Aidd;
+	vcp::matrix< kv::interval< kv::mpfr< 300 > >, vcp::imats< kv::mpfr< 300 > > > Aim300;
+	vcp::matrix< kv::interval< kv::mpfr< 500 > >, vcp::imats< kv::mpfr< 500 > > > Aim500;
 
-	std::cout << A << std::endl;
-	std::cout << B << std::endl;
+	Ad.rand(n);
+	vcp::convert(Ad, Add);
+	vcp::convert(Add, Am300);
+	std::cout << Am300(0,0) << std::endl;
+	vcp::convert(Am300, Am500);
+	vcp::convert(Am500, Ad);
+	std::cout << Ad(0, 0) << std::endl;
 
-	C = A && B;
-	std::cout << C << std::endl;
-
-	C = !((A || B) || B);
-	std::cout << C << std::endl;
-	std::cout << !C(0, 1) << std::endl;
-
-	C.resize(5, 11);
-	std::cout << C << std::endl;
-
-	C.clear();
-
-	vcp::matrix< kv::interval< double >, vcp::pidblas > AA, BB, CC;
-	AA.rand(10);
-	BB.rand(10);
-	CC.rand(10);
-	std::cout << ((AA != BB) || (AA != CC)) << std::endl;;
-
-	C(0, 0).flip();
-	C = AA != BB;
-
-	std::cout << all((C || (AA != BB)) && (AA == CC)) << std::endl;
-	std::cout << any((C || (AA != BB)) && (AA == CC)) << std::endl;
-	std::cout << none((C || (AA != BB)) && (AA == CC)) << std::endl;
-
-	if (none((C || (AA != BB)) && (AA == CC))) {
-		std::cout << "nya---" << std::endl;
-	}
+	vcp::convert(Am500, Aim300);
+	std::cout << Aim300(0, 0) << std::endl;
+	vcp::convert(Aim300, Add);
+	std::cout << Ad(0, 0) << std::endl;
+	vcp::convert(Aim300, Aidd);
+	std::cout << Aidd(0, 0) << std::endl;
+	vcp::convert(Aidd, Am500);
+	std::cout << Am500(0, 0) << std::endl;
+	return 0;
 }

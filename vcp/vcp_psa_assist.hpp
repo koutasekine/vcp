@@ -27,64 +27,50 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#pragma once
 
-#include <iostream>
+#ifndef VCP_PSA_ASSIST_HPP
+#define VCP_PSA_ASSIST_HPP
 
-#include <omp.h>
+#ifndef PSA_HPP
+#error Please include psa.hpp
+#endif
 
-#include <kv/interval.hpp>
-#include <kv/rdouble.hpp>
-#include <kv/dd.hpp>
-#include <kv/rdd.hpp>
-#include <kv/mpfr.hpp>
-#include <kv/rmpfr.hpp>
+#include<vcp/vcp_metafunction.hpp>
 
-#include <vcp/imats.hpp>
-#include <vcp/pdblas.hpp>
-#include <vcp/pidblas.hpp>
-#include <vcp/matrix.hpp>
-#include <vcp/matrix_assist.hpp>
+namespace vcp {
+	template <typename _T> void psa_value_Horner(const kv::psa< _T >& pol, const _T x, _T& y) {
+		int i;
+		int n = pol.v.size();
 
+		y = pol.v(n - 1);
+		for (i = n - 2; i >= 0; i--) {
+			y = y*x + pol.v(i);
+		}
+	}
+	template <typename _T> void poltaylor(const kv::psa < kv::interval< _T > > & phii, kv::psa< kv::interval< _T > >& phit, const kv::interval< _T >& ival) {
+		int n = phii.v.size() - 1;
+		_T imid = -mid(ival);
+		kv::interval< _T > imidi = kv::interval< _T >(imid);
 
-int main(void) {
-	 vcp::matrix< bool > A, B, C;
-	 //vcp::mbool A, B, C;
+		phit = phii;
+		for (int i = 1; i <= n; i++) {
+			for (int j = n; j >= i; j--) {
+				phit.v[j - 1] = phit.v[j - 1] - imidi*phit.v[j];
+			}
+		}
+	}
+	template <typename _T> typename std::enable_if<  vcp::is_interval< _T >::value, void >::type psa_value_Taylor(const kv::psa< _T >& pol, const _T x, _T& y) {
+		kv::psa< _T > polt;
+		poltaylor(pol, polt, x);
+		psa_value_Horner(polt, x - mid(x), y);
+	}
 
-	A.allfalse(1, 10);
-	A(0, 1) = true;
-	B.allfalse(1, 10);
-	B(0, 1) = true;
-	B(0, 0) = true;
-
-	std::cout << A << std::endl;
-	std::cout << B << std::endl;
-
-	C = A && B;
-	std::cout << C << std::endl;
-
-	C = !((A || B) || B);
-	std::cout << C << std::endl;
-	std::cout << !C(0, 1) << std::endl;
-
-	C.resize(5, 11);
-	std::cout << C << std::endl;
-
-	C.clear();
-
-	vcp::matrix< kv::interval< double >, vcp::pidblas > AA, BB, CC;
-	AA.rand(10);
-	BB.rand(10);
-	CC.rand(10);
-	std::cout << ((AA != BB) || (AA != CC)) << std::endl;;
-
-	C(0, 0).flip();
-	C = AA != BB;
-
-	std::cout << all((C || (AA != BB)) && (AA == CC)) << std::endl;
-	std::cout << any((C || (AA != BB)) && (AA == CC)) << std::endl;
-	std::cout << none((C || (AA != BB)) && (AA == CC)) << std::endl;
-
-	if (none((C || (AA != BB)) && (AA == CC))) {
-		std::cout << "nya---" << std::endl;
+	template <typename _T> typename std::enable_if<  vcp::is_interval< _T >::value, void >::type psa_value(const kv::psa< _T >& pol, const _T x, _T& y) {
+		psa_value_Taylor(pol, x, y);
+	}
+	template <typename _T> typename std::enable_if< !vcp::is_interval< _T >::value, void >::type psa_value(const kv::psa< _T >& pol, const _T x, _T& y) {
+		psa_value_Horner(pol, x, y);
 	}
 }
+#endif // VCP_PSA_ASSIST_HPP

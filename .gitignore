@@ -1,0 +1,14 @@
+test_PDE/a.out
+test_matrix/a.out
+*.out
+*.matrix_kvdd
+*.matrix_ikvdd
+*.matrix_d
+*.matrix_id
+*.matrix_int
+imats_old_before_0.0.5.hpp
+/kv
+/paper_*
+/test_kv
+/test_conference
+/dustbox
