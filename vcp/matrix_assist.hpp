@@ -36,6 +36,7 @@
 	#error Please include matrix.hpp
 #endif
 
+#include <vcp/vcp_metafunction.hpp>
 #include <vcp/matrix_conv.hpp>
 #include <vcp/imats_assist.hpp>
 #include <vcp/vcp_fio.hpp>

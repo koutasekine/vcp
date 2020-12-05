@@ -1,0 +1,6 @@
+ldbase.hpp: 残差モードを追加，Ritz射影の誤差定数の追加
+test_Emden.cpp: Ritz射影の誤差評価の使い方を追加，残差とLipschitz定数の計算を追加, Newton-Kantorovichの定理による精度保証の追加
+test_Gray_Scott.cpp: 残差とLipschitz定数の計算を追加
+pidblas.hpp: kvのhwround.hppをinclude(kvのAVX512機能利用時のため)
+imats_assist.hpp: 区間行列の強制対称化関数compsymを追加
+matrix_assist.hpp: vcp_metafunction.cppをinclude

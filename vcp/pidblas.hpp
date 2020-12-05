@@ -32,6 +32,8 @@
 #ifndef VCP_PIDBLAS_HPP
 #define VCP_PIDBLAS_HPP
 
+#include <kv/hwround.hpp>
+
 #include <vcp/pdblas.hpp>
 #include <vcp/imats.hpp>
 

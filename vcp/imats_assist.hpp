@@ -32,6 +32,8 @@
 #ifndef VCP_IMATS_ASSIST_HPP
 #define VCP_IMATS_ASSIST_HPP
 
+
+
 namespace vcp {
 #ifdef INTERVAL_HPP
 	template<typename _T, class _P1, class _P2> void mid(const vcp::matrix< kv::interval< _T >, _P1 >& A, vcp::matrix< _T, _P2 >& B) {
@@ -67,6 +69,26 @@ namespace vcp {
 		for (int i = 0; i < A.rowsize(); i++) {
 			for (int j = 0; j < A.columnsize(); j++) {
 				B(i, j) = kv::interval< _T >(A(i, j));
+			}
+		}
+	}
+	
+	template<typename _T, class _P> typename std::enable_if< vcp::is_interval< _T >::value, void >::type compsym(vcp::matrix< _T, _P >& A) {
+		if (A.columnsize() != A.rowsize()) {
+			std::cout << "compsym: error " << A.columnsize() << " != " << A.rowsize() << std::endl;
+			exit(1);
+		}
+		
+		for (int i = 0; i < A.rowsize(); i++) {
+			for (int j = i + 1; j < A.columnsize(); j++) {
+				if (overlap(A(i, j), A(j, i))) {
+					A(i, j) = intersect(A(i, j), A(j, i));
+					A(j, i) = A(i, j);
+				}
+				else {
+					std::cout << "compsym: error : not overlap" << std::endl;
+					exit(1);
+				}
 			}
 		}
 	}

@@ -42,6 +42,9 @@
 #include <vector>
 
 #include <kv/psa.hpp>
+#include <kv/gamma.hpp>
+
+#include<vcp/vcp_metafunction.hpp>
 #include <vcp/vcp_psa_assist.hpp>
 #include <vcp/vcp_converter.hpp>
 #include <vcp/matrix.hpp>
@@ -325,7 +328,7 @@ namespace vcp {
 	
 	template <typename _T, typename _TM, class _PM = mats< _TM >> class Legendre_Bases_Generator : protected interval_ld_weightpoint< _T > {
 	protected:
-		//	public:
+//	public:
 		int Order_of_Base;   // Order of Legendre Base
 		int elementsize;     // (*this).elementsize = std::pow((*this).phi.size(), (*this).dimension);
 		int variablesize;    // Number of Variables
@@ -346,6 +349,7 @@ namespace vcp {
 		matrix< _TM, _PM > uh;
 		matrix< _TM, _PM > phi_point;
 		matrix< _TM, _PM > uhphi_point;
+		matrix< _TM, _PM > DDuhphi_point;
 		matrix< _TM, _PM > weight_point;
 
 		void list_set() {
@@ -463,6 +467,7 @@ namespace vcp {
 			std::cout << ">> uh_i * phi_i size is (" << (*this).variablesize << "," << column_Pointlist << ")\n" << std::endl;
 #endif
 			(*this).uhphi_point.zeros((*this).variablesize, column_Pointlist);
+			(*this).DDuhphi_point.zeros((*this).variablesize, column_Pointlist);
 			if ((*this).mode == 2) {
 				_TM Phi_Time;
 				for (int v = 0; v < (*this).variablesize; v++) {
@@ -476,6 +481,28 @@ namespace vcp {
 						}
 					}
 				}
+
+				_TM DDPhi_Time;
+				for (int dd = 0; dd < (*this).list.columnsize(); dd++) {
+					for (int v = 0; v < (*this).variablesize; v++) {
+						for (int j = 0; j < (*this).Pointlist.rowsize(); j++) {
+							for (int i = 0; i < (*this).list.rowsize(); i++) {
+								DDPhi_Time = _TM(1);
+								for (int d = 0; d < (*this).list.columnsize(); d++) {
+									if (d == dd) {
+										DDPhi_Time *= (*this).DifDifLegendre_with_GLpoint((*this).list(i, d), (*this).Pointlist(j, d));
+									}
+									else {
+										DDPhi_Time *= (*this).Legendre_with_GLpoint((*this).list(i, d), (*this).Pointlist(j, d));
+									}
+								}
+								(*this).DDuhphi_point(v, j) += uh(i, v) * DDPhi_Time;
+							}
+						}
+					}
+				}
+
+
 			}
 			else {
 				for (int v = 0; v < (*this).variablesize; v++) {
@@ -758,6 +785,7 @@ namespace vcp {
 			LegendreBaseFunctions::psaTodpsa((*this).phi, (*this).dphi);
 			LegendreBaseFunctions::psaTodpsa((*this).dphi, (*this).ddphi);
 
+
 #ifdef VCP_LEGENDRE_DEBUG
 			std::cout << "--------------Generating :: Legendre Base <== Point of Gauss Legendre--------------" << std::endl;
 			std::cout << ">> Size of Legendre_with_GLpoint is (" << mm << "," << (*this).Point.size() << ")" << std::endl;
@@ -821,7 +849,9 @@ namespace vcp {
 			}
 
 			(*this).uh.ones((*this).elementsize, (*this).variablesize);
-			(*this).uhphi_point_set();
+		//	if ((*this).mode != 2) {
+				(*this).uhphi_point_set();
+		//	}
 		}
 		void setting_uh(const matrix< _TM, _PM >& uuh) {
 #ifdef VCP_LEGENDRE_DEBUG
@@ -840,7 +870,9 @@ namespace vcp {
 				exit(1);
 			}
 			(*this).uh = uuh;
-			(*this).uhphi_point_set();
+		//	if ((*this).mode != 2) {
+				(*this).uhphi_point_set();
+		//	}
 		}
 		void setting_uh(const matrix< _TM, _PM >& uuh, const matrix< int >& list_uh, int ind) {
 #ifdef VCP_LEGENDRE_DEBUG
@@ -868,7 +900,9 @@ namespace vcp {
 			}
 		
 			(*this).uh = uuh;
-			(*this).uhphi_point_set(list_uh, uh_order);
+			if ((*this).mode != 2) {
+				(*this).uhphi_point_set(list_uh, uh_order);
+			}
 		}
 
 		template<typename... Args> matrix< _TM, _PM > uhphiphi(const Args&... args) {
@@ -1596,89 +1630,327 @@ namespace vcp {
 			return gmax;
 		}
 
-#ifdef VCP_LEGENDRE_USE_DEATH_FUNC
-		template <class _TC>
-		kv::interval< _TC > min_max_slow(const int mesh_order = 5) {
-			if ((*this).mode <= 2) {
-				std::cout << ">> ERROR : make : This function only use the Approximation mode (Mode > 2)" << std::endl;
+		template<typename... Args> _TM integral_uh(const Args&... args) {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "///////////////// Legendre_Bases_Generator :: integral_uh(Args... )/////////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+#endif
+
+			constexpr std::size_t vari_size = sizeof...(args);
+			if ((*this).mode != 2) {
+				std::cout << ">> ERROR : integral_uh : This function only use the Residual mode (Mode = 2)" << std::endl;
+				exit(1);
+			}
+
+			if (vari_size != (*this).variablesize) {
+
+				std::cout << ">> ERROR : integral_uh : size of input arguments != variablesize ( " << vari_size << " != " << (*this).variablesize << " )" << std::endl;
+				exit(1);
+			}
+
+			matrix< _TM, _PM > uh_p_phi_point;
+			uh_p_phi_point.ones(1, (*this).Pointlist.rowsize());
+			(*this).make_uh_p(uh_p_phi_point, args...);
+
+			int vs = 0;
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << ">> Generate the value int(";
+#endif
+			(*this).disp_args(vs, args...);
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << ") dx \n" << std::endl;
+#endif
+			if (2 * (*this).p < vs) {
+				std::cout << ">> ERROR : integral_uh : 2*p < vs" << "( 2*p=" << 2 * (*this).p << ", vs=" << vs << ")" << std::endl;
+				exit(1);
+			}
+
+			_TM res = _TM(0);
+
+			for (int k = 0; k < (*this).Pointlist.rowsize(); k++) {
+				res += (*this).weight_point(0, k) * uh_p_phi_point(0, k);
+			}
+			return res;
+		}
+
+		_TM integral_LuhLuh(int select_v) {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "//////////////// Legendre_Bases_Generator :: integral_LuhLuh(Args... )//////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+#endif
+			if ((*this).mode != 2) {
+				std::cout << ">> ERROR : integral_LuhLuh : This function only use the Residual mode (Mode = 2)" << std::endl;
+				exit(1);
+			}
+
+			if ( select_v + 1 >  (*this).variablesize ) {
+				std::cout << ">> ERROR : integral_LuhLuh : select valiable size != variablesize ( " << select_v + 1 << " > " << (*this).variablesize << " )" << std::endl;
+				exit(1);
+			}
+
+			_TM res = _TM(0);
+			using std::pow;
+
+			for (int k = 0; k < (*this).Pointlist.rowsize(); k++) {
+				res += (*this).weight_point(0, k) * pow( DDuhphi_point(select_v, k), 2);
+			}
+			return res;
+		}
+
+		template<typename... Args> _TM integral_Luhuh(int select_v, const Args&... args) {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "//////////////// Legendre_Bases_Generator :: integral_Luhuh(Args... )///////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+#endif
+
+			constexpr std::size_t vari_size = sizeof...(args);
+			if ((*this).mode != 2) {
+				std::cout << ">> ERROR : integral_Luhuh : This function only use the Residual mode (Mode = 2)" << std::endl;
+				exit(1);
+			}
+
+			if (vari_size != (*this).variablesize) {
+				std::cout << ">> ERROR : integral_Luhuh : size of input arguments != variablesize ( " << vari_size << " != " << (*this).variablesize << " )" << std::endl;
+				exit(1);
+			}
+
+			if (select_v + 1 >  (*this).variablesize) {
+				std::cout << ">> ERROR : integral_Luhuh : select valiable size != variablesize ( " << select_v + 1 << " > " << (*this).variablesize << " )" << std::endl;
+				exit(1);
+			}
+
+			matrix< _TM, _PM > uh_p_phi_point;
+			uh_p_phi_point.ones(1, (*this).Pointlist.rowsize());
+			(*this).make_uh_p(uh_p_phi_point, args...);
+
+			int vs = 0;
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << ">> Generate the value int(";
+#endif
+			(*this).disp_args(vs, args...);
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << " Laplace(uh)) dx \n" << std::endl;
+#endif
+			if (2*(*this).p < vs + 1) {
+				std::cout << ">> ERROR : integral_Luhuh : 2*p < vs + 1" << "( 2*p=" << 2 * (*this).p << ", vs + 1=" << vs + 1 << ")" << std::endl;
+				exit(1);
+			}
+
+			_TM res = _TM(0);
+
+			for (int k = 0; k < (*this).Pointlist.rowsize(); k++) {
+				res += (*this).weight_point(0, k) * uh_p_phi_point(0, k) * DDuhphi_point(select_v, k);
+			}
+			return res;
+		}
+
+		template <class _TC > _TC Ritz_projection_error(const int NN = -1) {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "//////////////// Legendre_Bases_Generator :: Ritz_projection_error()////////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << ">> || Nabla( u - Rh u ) ||_L2 <= CN || Laplace u ||_L2" << std::endl;
+#endif
+			int N;
+
+			if (NN <= 0) {
+				N = (*this).Order_of_Base;
+			}
+			else {
+				N = NN;
+			}
+			using std::sqrt;
+			_TC sqrt2N_3 = sqrt(_TC(2 * N + 3));
+			_TC sqrt2N_7 = sqrt(_TC(2 * N + 7));
+			_TC sqrt2N_11 = sqrt(_TC(2 * N + 11));
+
+			_TC L1 = 1 / _TC(2 * (2 * N + 1)*(2 * N + 5)) + 1 / ((4 * (2 * N + 5))*sqrt2N_3*sqrt2N_7);
+			_TC L2 = 1 / (4 * (2 * N + 5)*sqrt2N_3*sqrt2N_7) + 1 / _TC(2 * (2 * N + 5)*(2 * N + 9)) + 1 / (4 * (2 * N + 9)*sqrt2N_7*sqrt2N_11);
+
+			using std::max;
+
+			return sqrt(_TC(max(L1.upper(), L2.upper())));
+
+		}
+
+		template <typename _TC, class _TMM > typename std::enable_if<std::is_constructible< _TC, _TMM >::value, _TC >::type weighted_Ritz_projection_error(_TMM w, const int NN = -1) {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "/////////// Legendre_Bases_Generator :: weighted_Ritz_projection_error()/////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << ">> sqrt(|| Nabla( u - Rh u ) ||_L2^2 + || u ||_L2^2 ) <= CNw || Laplace u + w u ||_L2" << std::endl;
+#endif
+
+			if (w < 0) {
+				std::cout << ">> ERROR : weighted_Ritz_projection_error : Please set weight >= 0 : weight < " << w << std::endl;
+				exit(1);
+			}
+
+			_TC CN = Ritz_projection_error< _TC >(NN);
+			using std::sqrt;
+
+			return CN*sqrt(1 + _TC(w)*pow(CN, 2));
+		}
+
+		template <class _TC > _TC Poincare_constant() {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "/////////////////// Legendre_Bases_Generator :: Poincare_constant()/////////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << ">> || u ||_L2 <= Cp || Nabla u ||_L2" << std::endl;
+#endif
+			using std::sqrt;
+			return 1/(sqrt(_TC((*this).dimension))*kv::constants< _TC >::pi());
+		}
+
+		template <typename _TC, class _TMM > typename std::enable_if<std::is_constructible< _TC, _TMM >::value, _TC >::type weighted_Poincare_constant( _TMM w ) {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "////////////// Legendre_Bases_Generator :: weighted_Poincare_constant()/////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << ">> || u ||_L2 <= Cwp sqrt( || Nabla u ||_L2^2 + sigma || u ||_L2^2 ) : weight = " << w << std::endl;
+#endif
+			if (w < 0) {
+				std::cout << ">> ERROR : weighted_Poincare_constant : Please set weight >= 0 : weight < " << w << std::endl;
 				exit(1);
 			}
 			using std::pow;
-			double mesh_size = std::pow( 2, -mesh_order);
-			int Div_number = std::pow(2, mesh_order);
+			using std::sqrt;
+			_TC lambda = (*this).dimension * pow(kv::constants< _TC >::pi(), 2) + _TC(w);
 
-			int mmax = (*this).phi.size();
-			vcp::matrix< _T > p_phi_T;
-			vcp::matrix< kv::interval< _TC > > p_phi_TM;
-
-			p_phi_T.zeros(mmax, Div_number);
-#ifdef _OPENMP
-#ifndef VCP_LEGENDRE_NOMP
-#pragma omp parallel for
+			return 1 / sqrt(lambda);
+		}
+		
+		template <typename _TC, class _TMM > typename std::enable_if<std::is_constructible< _TC, _TMM >::value &&  vcp::is_interval< _TC >::value, _TC >::type Sobolev_constant( _TMM p ) {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "/////////////////// Legendre_Bases_Generator :: Sobolev_constant()//////////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << ">> || u ||_Lp <= Csp || Nabla u ||_L2 : p = " << p << std::endl;
 #endif
-#endif	
-			for (int i = 0; i < mmax; i++) {
-				_T  interval_j;
-				_T tmp;
-				for (int j = 0; j < Div_number; j++) {
-					interval_j.lower() = j * mesh_size;
-					interval_j.upper() = (j + 1) * mesh_size;
-					psa_value((*this).phi[i], interval_j, p_phi_T(i, j));
+			using std::pow;
+
+			// p = nq/(n - q), and n = 2 => q = np/(n + p)
+			_TC n = _TC((*this).dimension);
+
+			if ((*this).dimension == 1) {
+				if (p <= 0) {
+					std::cout << ">> ERROR : Not exist a Sobolev's constant : Please set p > 0  : p <= " << p << std::endl;
+					exit(1);
+				}
+				return pow(2 / (_TC(p) + 2), 1/_TC(p));
+			}
+			else if ((*this).dimension == 2) {
+				if (p <= 2) {
+					std::cout << ">> ERROR : Not exist a Sobolev's constant : Please set p > 2 : p <= " << p << std::endl;
+					exit(1);
 				}
 			}
+			else if ((*this).dimension > 2) {
+				_TC	cc = n / (n - 1);
+				if (p <= cc.upper()) {
+					std::cout << ">> ERROR : Not exist a Sobolev's constant : Please set p > 2 : p <= " << p << std::endl;
+					exit(1);
+				}
 
-			std::cout << p_phi_T << std::endl;
-
-			convert(p_phi_T, p_phi_TM);
-
-			p_phi_T.clear();
-
-			int dim = (*this).dimension;
-			int Data_row_size = std::pow(Div_number, dim);
-			matrix< int > list_of_Data;
-			list_of_Data.zeros(Data_row_size, dim);
-
-#ifdef _OPENMP
-#ifndef VCP_LEGENDRE_NOMP
-#pragma omp parallel for
-#endif
-#endif	
-			for (int d = 0; d < dim; d++) {
-				int di = dim - d;
-				for (int j = 0; j < std::pow(Div_number, d); j++) {
-					for (int i = 0; i < Div_number; i++) {
-						for (int k = 0; k < std::pow(Div_number, di - 1); k++) {
-							list_of_Data(i*std::pow(Div_number, di - 1) + j * std::pow(Div_number, di) + k, d) = i;
-						}
-					}
+				cc = (2 * n) / (n - 2);
+				if (p > cc.lower()) {
+					std::cout << ">> ERROR : Not exist a Sobolev's constant : Please set p > 2 : p <= " << p << std::endl;
+					exit(1);
 				}
 			}
+			else {
+				std::cout << ">> ERROR : Sobolev_constant :  Dimension Error: " << (*this).dimension << std::endl;
+				exit(1);
+			}
+			_TC q = (*this).dimension*_TC(p) / ((*this).dimension + _TC(p));
+			_TC Tp = pow(kv::constants< _TC >::pi(), -0.5)*pow(n, -1 / q)*pow((q - 1) / (n - q), 1 - 1 / q) * pow((kv::gamma(1 + n / 2) * kv::gamma(n)) / (kv::gamma(n / q) * kv::gamma(1 + n - n / q)), 1 / n);
 
-			matrix< kv::interval< _TC > > MinMax_Data;
-			MinMax_Data.zeros(Data_row_size, (*this).variablesize + dim);
+			return Tp;
+		}
 
-#ifdef _OPENMP
-#ifndef VCP_LEGENDRE_NOMP
-#pragma omp parallel for
+		template <typename _TC, class _TMM, class _TMM2 > typename std::enable_if<std::is_constructible< _TC, _TMM >::value &&  vcp::is_interval< _TC >::value && std::is_constructible< _TC, _TMM2 >::value, _TC >::type weighted_Sobolev_constant(_TMM p, _TMM2 w) {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "/////////////// Legendre_Bases_Generator :: weighted_Sobolev_constant()/////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << ">> || u ||_Lp <= Csp sqrt( || Nabla u ||_L2^2 + sigma || u ||_L2^2 ) : p = " << p << ", weight = " << w << std::endl;
 #endif
-#endif	
-			for (int i = 0; i < Data_row_size; i++) {
-				for (int di = 0; di < dim; di++) {
-					MinMax_Data(i, di) = list_of_Data(i, di)*mesh_size;
+
+			if (w < 0) {
+				std::cout << ">> ERROR : weighted_Sobolev_constant : Please set weight >= 0 : weight < " << w << std::endl;
+				exit(1);
+			}
+
+			using std::pow;
+
+			_TC n = _TC((*this).dimension);
+			_TC pp = _TC(p);
+
+			if ((*this).dimension == 1) {
+				if (p <= 0) {
+					std::cout << ">> ERROR : Not exist a Sobolev's constant : Please set p > 0  : p <= " << p << std::endl;
+					exit(1);
 				}
-				for (int v = 0; v < (*this).variablesize; v++) {
-					kv::interval< _TC > tmp;
-					for (int k = 0; k < (*this).list.rowsize(); k++) {
-						tmp = uh(k, v);
-						for (int di = 0; di < dim; di++) {
-							tmp *= p_phi_TM((*this).list(k, di), list_of_Data(i, di));
-						}
-						MinMax_Data(i, dim + v) += tmp;
+				return pow(2 / (_TC(p) + 2), 1 / _TC(p));
+			}
+			else if ((*this).dimension == 2) {
+				if (p <= 2) {
+					std::cout << ">> ERROR : Not exist a Sobolev's constant : Please set p > 2 : p <= " << p << std::endl;
+					exit(1);
+				}
+				_TC pp_harf = pp / 2;
+				if (int(pp_harf.upper()) != int(pp_harf.lower())) {
+					std::cout << ">> ERROR : Not decide nu : nu.lower() = " << int(pp_harf.lower()) << ", nu.upper() = " << int(pp_harf.upper()) << std::endl;
+					exit(1);
+				}
+				int nu = pp_harf.lower();
+				_TC s;
+				if (nu == 1) {
+					s = _TC(1);
+				}
+				else {
+					s = pp_harf;
+					for (int i = 1; i <= nu - 2; i++) {
+						s *= (pp_harf - i);
 					}
+					s = pow(s, 2 / pp);
 				}
+
+				_TC lambda = (*this).dimension * pow(kv::constants< _TC >::pi(), 2);
+				return pow(_TC(0.5), 0.5 + (2 * nu - 3) / pp) * s / (pow(lambda + pp / 2 * _TC(w), 1 / pp));
+			}
+			else if ((*this).dimension > 2) {				
+				if (p <= 2) {
+					std::cout << ">> ERROR : Not calculate a weighted Sobolev's constant : Please set p > 2 : p <= " << p << std::endl;
+					exit(1);
+				}
+
+				_TC	cc = (2 * n) / (n - 2);
+				if (p > cc.lower()) {
+					std::cout << ">> ERROR : Not exist a weighted Sobolev's constant : Please set p > 2 : p <= " << p << std::endl;
+					exit(1);
+				}
+				using std::sqrt;
+				_TC lambda = (*this).dimension * pow(kv::constants< _TC >::pi(), 2);
+				
+				_TC s = n * (1/pp - 0.5 + 1 / n);
+				_TC ss = _TC(0);
+				if (s.lower() < ss.lower()) {	
+					s.lower() = ss.lower();
+				}
+
+				return pow((n - 1) / (sqrt(n) * (n - 2)), 1 - s) * pow(s / ( s * lambda + w ), s / 2);
+			}
+			else {
+				std::cout << ">> ERROR : Sobolev_constant :  Dimension Error: " << (*this).dimension << std::endl;
+				exit(1);
 			}
 		}
-#endif
+
 
 		matrix< int > output_list() {
 			return (*this).list;
