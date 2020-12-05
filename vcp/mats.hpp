@@ -403,7 +403,7 @@ namespace vcp{
 			}
 			return os;
 		}
-		friend std::ostream& operator<<(std::ostream& os, mbool& A) {
+		friend std::ostream& operator<<(std::ostream& os, const mbool& A) {
 			return A.display(os);
 		}
 		friend std::ostream& operator<<(std::ostream& os, mbool&& A) {
@@ -433,7 +433,7 @@ namespace vcp{
 
 		// A = A+B
 		void addmm(const mats< _T >& B) {
-			if (row != B.row && column != B.column) {
+			if (row != B.row || column != B.column) {
 				std::cout << "+:error " << std::endl;
 				exit(1);
 			}
@@ -496,7 +496,7 @@ namespace vcp{
 
 		// A = A-B
 		void subsmmA(const mats< _T >& B) {
-			if (row != B.row && column != B.column) {
+			if (row != B.row || column != B.column) {
 				std::cout << "-:error " << std::endl;
 				exit(1);
 			}
@@ -518,7 +518,7 @@ namespace vcp{
 		}
 		// A = B-A
 		void subsmmB(const mats< _T >& B) {
-			if (row != B.row && column != B.column) {
+			if (row != B.row || column != B.column) {
 				std::cout << "-:error " << std::endl;
 				exit(1);
 			}
@@ -875,7 +875,7 @@ namespace vcp{
 
 		// A = pow(A,B)
 		void powmmA(const mats< _T >& B) {
-			if (row != B.row && column != B.column) {
+			if (row != B.row || column != B.column) {
 				std::cout << "+:error " << std::endl;
 				exit(1);
 			}
@@ -899,7 +899,7 @@ namespace vcp{
 		}
 		// A = pow(B,A)
 		void powmmB(const mats< _T >& B) {
-			if (row != B.row && column != B.column) {
+			if (row != B.row || column != B.column) {
 				std::cout << "+:error " << std::endl;
 				exit(1);
 			}
@@ -2935,7 +2935,11 @@ namespace vcp{
 			return true;
 		}
 
-		friend std::ostream& operator<<(std::ostream& os, mats< _T >& A) {
+		friend std::ostream& operator<<(std::ostream& os, const mats< _T >& A) {
+			return A.display(os);
+		}
+
+		friend std::ostream& operator<<(std::ostream& os, mats< _T >&& A) {
 			return A.display(os);
 		}
 	};

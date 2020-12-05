@@ -27,14 +27,36 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#pragma once
 
-#ifndef VCP_LDBASE_ASSIST_HPP
-#define VCP_LDBASE_ASSIST_HPP
+#include <iostream>
+#include <cmath>
 
-#ifndef VCP_LDBASE_HPP
-#error Please include ldbase.hpp
-#endif
+#include <vcp/pdblas.hpp>
+#include <vcp/matrix.hpp>
+#include <vcp/newton.hpp>
 
+template < typename _T, typename _P >
+struct HOGE : public vcp::Newton< _T, _P > {
+    vcp::matrix< _T, _P > x;
+    
+    void setting_newton( vcp::matrix< _T, _P >& xx ) override {
+        x = xx;
+    }
+    vcp::matrix< _T, _P > f() override {
+        return pow(x, 2) - 2;
+    }
+    vcp::matrix< _T, _P > Df() override {
+        return 2*x;
+    }
+};
 
-#endif // VCP_LDBASE_HPP
+int main(void){
+    vcp::matrix< double, vcp::pdblas > x;
+    x.zeros(1);
+    x(0) = 1.4;
+
+    HOGE< double, vcp::pdblas > N;
+    std::cout << N.solve_nls(x) << std::endl;
+
+    return 0;
+}

@@ -72,5 +72,23 @@ namespace vcp {
 	template <typename _T> typename std::enable_if< !vcp::is_interval< _T >::value, void >::type psa_value(const kv::psa< _T >& pol, const _T x, _T& y) {
 		psa_value_Horner(pol, x, y);
 	}
+	template <typename _T> kv::psa< _T > psa_diff(const kv::psa< _T >& fhx){
+		int n = fhx.v.size();
+		kv::psa< _T > dfhx;
+		dfhx.v.resize(n);
+		for (int i = n - 1; i > 0; i--) {
+			dfhx.v(i - 1) = i*fhx.v(i);
+		}
+		return dfhx;
+	}
+	template <typename _T> kv::psa< _T > psa_integral(const kv::psa< _T >& fhx){
+		int n = fhx.v.size();
+		kv::psa< _T > ifhx;
+		ifhx.v.resize(n+1);
+		for (int i = 0; i < n ; i++) {
+			ifhx.v(i + 1) = fhx.v(i)/(_T(i + 1));
+		}
+		return ifhx;
+	}
 }
 #endif // VCP_PSA_ASSIST_HPP

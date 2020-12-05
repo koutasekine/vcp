@@ -132,7 +132,7 @@ namespace vcp {
 				exit(1);
 			}
 		}	
-		//C = A * IB
+		//C = B * IA
 		virtual void mul_m_im(const _P& B, vcp::imats< _T, _P >& c) const {
 			if (B.type == 'S' && ((*this).type == 'C' || (*this).type == 'R' || (*this).type == 'M')) {
 				c.row = (*this).row;
@@ -222,7 +222,7 @@ namespace vcp {
 		}
 		//IA = IA + B
 		virtual void add_im_m(const _P& B) {
-			if ((*this).row != B.row && (*this).column != B.column) {
+			if ((*this).row != B.row || (*this).column != B.column) {
 				std::cout << "+:error " << std::endl;
 				exit(1);
 			}
@@ -298,44 +298,58 @@ namespace vcp {
 			_P mx, mb, R;
 			(*this).imid(R);
 			b.imid(mb);
-			R.inv();				
+			R.inv();
 			R.mulmm(mb, mx);
+			mb.clear();
+
 			// x = A*mx
 			(*this).mul_im_m(mx, x);
 			// x = x - b, (x = A*mx - b)
 			x.subsmmA(b);
-			// x = |A*mx - b| 
+			// b = R*x, (b = R(A*mx - b)
+			x.mul_m_im(R, b);
+			// x = R(A*mx - b)
+			x = b;
+
+			// x = |R*(A*mx - b)| 
 			x.abs();
+			
 			// b = R*A
 			(*this).mul_m_im( R, b);
+			R.clear();		
+
 			_T one = _T(1);
 			// b = RA - I
 			for (int i = 0; i < (*this).row; i++) {
 				b.v[i + (*this).row*i] -= one;
 			}
+			
 			imats< _T, _P > G, T;
 			// G = || RA - I ||_inf
 			b.norminf(G);
+			G.v[0].lower() = G.v[0].upper();
 			if (G.v[0].upper() >= one) {
 				std::cout << "error : linearsolve verification is failed ||RA - I|| <= " << G.v[0].upper() << std::endl;
 				exit(1);
 			}
-			// T = || A*mx - b ||_inf
+			// T = || R*(A*mx - b) ||_inf
 			x.norminf(T);
-			// b = | A*mx - b |
+			T.v[0].lower() = T.v[0].upper();
+			// b = | RA - I |
 			b.abs();
-			// G = || A*mx - b ||_inf/(1 - || RA - I ||_inf)
+
+			// G = || R*(A*mx - b) ||_inf/(1 - || RA - I ||_inf)
 			G.v[0] = T.v[0] / (one - G.v[0]);
-			// T = || A*mx - b ||_inf/(1 - || RA - I ||_inf)*e
-			T.zeros(b.row, b.column);
-			for (int i = 0; i < b.row; i++) {
-				for (int j = 0; j < b.column; j++){
-					T.v[i + b.row*j] = G.v[0];
+			// T = || R*(A*mx - b) ||_inf/(1 - || RA - I ||_inf)*e
+			T.zeros(x.row, x.column);
+			for (int i = 0; i < x.row; i++) {
+				for (int j = 0; j < x.column; j++){
+					T.v[i + x.row*j] = G.v[0];
 				}
 			}
-			// G = |RA-I|*||Ax - b||/(1 - ||RA-I||)*e
+			// G = |RA-I|*||R*(A*mx - b)||/(1 - ||RA-I||)*e
 			b.mulmm(T, G);
-			// x = |A*mx - b| + |RA-I|*||Ax - b||/(1 - ||RA-I||)*e
+			// x = |R*(A*mx - b)| + |RA-I|*||R*(A*mx - b)||/(1 - ||RA-I||)*e
 			x.addmm(G);
 			// x = infsup(-x.upper, x.upper)
 			for (int i = 0; i < x.row; i++) {
@@ -397,90 +411,112 @@ namespace vcp {
 			for (int i = 0; i < thisrow; i++) {
 				(*this).v[i + thisrow*i] = mA.v[i + thisrow*i] + T.v[i];
 			}
-
 		}
 
+		// Shinya Miyajima: Numerical enclosure for each eigenvalue in generalized eigenvalue problem, JCAM, 236, pp.2545-2552 (2012) Theorem 3
 		void eigsymge(imats< _T, _P >& B, int itep = 1) {
 			int thisrow = (*this).row;
-			imats< _T, _P > Binv_norm;
-			{
-				imats< _T, _P > BB, DD;
-				BB = B;
-				B.eigsym();
-				B.diag(DD);
-				DD.min(Binv_norm);
-				if (Binv_norm.v[0].lower() <= 0) {
-					std::cout << "error : eigsymge verification is failed. B is not positive " << Binv_norm.v[0].lower() << std::endl;
-					exit(1);
-				}
-				B = BB;
-			}
 			
-			_P mA, V;
-			imats< _T, _P > C;
-			{
-				_P mB;
-				// mA = mid(A);
-				(*this).imid(mA);
-				B.imid(mB);
-				// mA <- eigehvalue, V <- eigenvector
-				mA.eigsymge(mB, V);
-			}
-			// C = A*V;
-			(*this).mul_im_m(V, C);
-			// (*this) = B*V;
-			B.mul_im_m(V, (*this));
-
-			// C = A*V - B*V*Lambda;
-			for (int i = 0; i < thisrow; i++) {
-				for (int j = 0; j < thisrow; j++) {
-					C.v[i + thisrow*j] -= (*this).v[i + thisrow*j] * kv::interval< _T >(mA.v[j + thisrow*j]);
-				}
-			}
-
-			imats< _T, _P > Ginf, G, Tinf, T;
-			// ||A*V - V*Lambda||_inf <= Tinf
-			C.norminf(Tinf);
-			// ||A*V - V*Lambda||_1 <= T
-			C.normone(T);
-			// T = sqrt(Tone*Tinf); ||A*V - B*V*Lambda||_2 <= sqrt(||A*V - B*V*Lambda||_1 * ||A*V - B*V*Lambda||_inf)
-			T.v[0] = sqrt(T.v[0] * Tinf.v[0]);
-			
-			// C = B*V
-			B.mul_im_m(V, (*this));
-			{
-				_P Vt;
-				V.transpose(Vt);
-				// (*this) = transpose(V)*B*V
-				(*this).mul_m_im(Vt, C);
-				(*this) = C;
-			}
+			_P app_lambda;
 			_T one = _T(1);
-			// C = transpose(V)*B*V - I, C is Transpose matrix.
-			for (int i = 0; i < (*this).row; i++) {
-				(*this).v[i + (*this).row*i] -= one;
+			imats< _T, _P > Re, Se, Rinf, Sinf;
+			{
+				imats< _T, _P > R, S;
+				_P X, Y, e;
+				imats< _T, _P > C;
+				{
+					_P mA;
+					_P mB;
+					// mA = mid(A);
+					(*this).imid(mA);
+					B.imid(mB);
+					// mA <- eigehvalue, X <- eigenvector, mB : change
+					mA.eigsymge(mB, X);
+					mA.diag(app_lambda);
+				}
+				// C = A*X;
+				(*this).mul_im_m(X, C);
+				// (*this) = B*X;
+				B.mul_im_m(X, (*this));
+				(*this).imid(Y);
+				Y.inv();
+
+				// C = A*X - B*X*Lambda;
+				for (int j = 0; j < thisrow; j++) {
+					for (int i = 0; i < thisrow; i++) {				
+						C.v[i + thisrow*j] -= (*this).v[i + thisrow*j] * kv::interval< _T >(app_lambda.v[j]);
+					}
+				}
+
+				// R = Y(AX- BX*Lambda);
+				C.mul_m_im(Y, R);
+				C.clear();
+
+				e.ones(thisrow, 1);
+				R.norminf(Rinf);
+				R.abs();
+				R.mul_im_m(e, Re);
+				R.clear();
+
+				// S = Y*B*X;
+				(*this).mul_m_im(Y, S);
+				(*this).clear();
+				Y.clear();
+
+				for (int i = 0; i < thisrow; i++) {
+					S.v[i + thisrow*i] -= one;
+				}
+				S.norminf(Sinf);
+				S.abs();
+				S.mul_im_m(e, Se);
+				S.clear();
 			}
-			// ||transpose(V)*V - I||_inf <= Ginf
-			(*this).norminf(Ginf);
-			// ||transpose(V)*V - I||_1 <= G
-			(*this).normone(G);
-			// G = sqrt(Gone*Ginf); ||transpose(V)*V - I||_2 <= sqrt(||transpose(V)*V - I||_1 * ||transpose(V)*V - I||_inf)
-			G.v[0] = sqrt(G.v[0] * Ginf.v[0]);
-			if (G.v[0].upper() >= one) {
-				std::cout << "error : eigsym verification is failed || I - X^T X|| <= " << G.v[0].upper() << std::endl;
+
+			Sinf.v[0].lower() = Sinf.v[0].upper();
+			Rinf.v[0].lower() = Rinf.v[0].upper();
+			if (Sinf.v[0].upper() >= one) {
+				std::cout << "error : eigsym verification is failed || YBX - I|| <= " << Sinf.v[0].upper() << std::endl;
 				exit(1);
 			}
 
-			G.v[0] = T.v[0] / ((one - G.v[0])*Binv_norm.v[0]);
-			T.zeros(thisrow, 1);
-			for (int i = 0; i < thisrow; i++) {
-				T.v[i].upper() = G.v[0].upper();
-				T.v[i].lower() = -T.v[i].upper();
+			// || R ||/(1 - || S ||);
+			Rinf.v[0] = Rinf.v[0]/(one - Sinf.v[0]);
+
+			// || R ||/(1 - || S ||) * s;
+			Se.mulsm(Rinf.v[0]);
+
+			// Re + || R ||/(1 - || S ||) * s
+			Re.addmm(Se);
+
+			// Re <= [app + Error];
+			for (int i = 0; i < thisrow; i++){
+				Re.v[i].lower() = -Re.v[i].upper();
+				Re.v[i] += app_lambda.v[i];
 			}
-			(*this).zeros(mA.row, mA.column);
-			for (int i = 0; i < thisrow; i++) {
-				(*this).v[i + thisrow*i] = mA.v[i + thisrow*i] + T.v[i];
+
+			//
+			for (int i = 0; i < thisrow; i++){
+				int j = 0;
+				while (true){
+					if (i != j){
+						if (overlap(Re.v[i], Re.v[j]) && ( Re.v[i].lower() != Re.v[j].lower() || Re.v[i].upper() != Re.v[j].upper()) ){
+							using std::min;
+							using std::max;
+							Re.v[i].lower() = min(Re.v[i].lower(), Re.v[j].lower());
+							Re.v[i].upper() = max(Re.v[i].upper(), Re.v[j].upper());
+							Re.v[j] = Re.v[i];
+							j = 0;
+							continue;
+						}
+					}
+					j++;
+					if (j == thisrow){
+						break;
+					}
+				}
 			}
+
+			Re.diag((*this));
 		}
 
 	};

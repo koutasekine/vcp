@@ -80,6 +80,15 @@ template < typename T > struct is_round_interval< kv::interval< T >, kv::interva
 };
 #endif
 
+template < typename T > struct is_psa {
+	static constexpr bool value = false;
+};
+
+#if defined(PSA_HPP)
+template < typename T > struct is_psa< kv::psa< T > > {
+	static constexpr bool value = true;
+};
+#endif
 
 }
 #endif //VCP_METAFUNCTION_HPP

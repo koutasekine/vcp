@@ -99,11 +99,11 @@ namespace vcp {
 				mA = B;
 				//mA = |B|
 				mA.abs();
-				// temp = |B|*rA
+				// temp = rA*|B|
 				rA.mulmm(mA, temp);
 				uC.addmm(temp);
 				kv::hwround::rounddown();
-				uC.subsmmA(temp);
+				lC.subsmmA(temp);
 			}
 			kv::hwround::roundnear();
 			c.zeros(uC.row, uC.column);
@@ -158,7 +158,7 @@ namespace vcp {
 				mA.mulmm(rA, temp);
 				uC.addmm(temp);
 				kv::hwround::rounddown();
-				uC.subsmmA(temp);
+				lC.subsmmA(temp);
 			}
 			kv::hwround::roundnear();
 			c.zeros(uC.row, uC.column);

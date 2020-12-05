@@ -38,16 +38,18 @@
 
 #include <iostream>
 
-#include<stack>
+#include <stack>
 #include <vector>
 
 #include <kv/psa.hpp>
 #include <kv/gamma.hpp>
 
-#include<vcp/vcp_metafunction.hpp>
+#include <vcp/vcp_metafunction.hpp>
 #include <vcp/vcp_psa_assist.hpp>
 #include <vcp/vcp_converter.hpp>
 #include <vcp/matrix.hpp>
+
+#include <vcp/legendre_integral.hpp>
 
 #include<omp.h>
 
@@ -73,17 +75,16 @@ namespace vcp {
 	namespace LegendreBaseFunctions {
 		template <typename _T> void psaTodpsa(const std::vector< kv::psa< _T > >& inp, std::vector< kv::psa< _T > >& outp) {
 			int n = inp.size();
-			int i, j;
 
 			outp.resize(n);
-			for (i = 0; i < n; i++) {
+			for (int i = 0; i < n; i++) {
 				outp[i].v.resize(n);
-				for (j = 0; j < n; j++) {
+				for (int j = 0; j < n; j++) {
 					outp[i].v[j] = _T(0);
 				}
 			}
-			for (i = 0; i < n; i++) {
-				for (j = 0; j < n - 1; j++) {
+			for (int i = 0; i < n; i++) {
+				for (int j = 0; j < n - 1; j++) {
 					outp[i].v[j] = (j + 1)*inp[i].v[j + 1];
 				}
 			}
@@ -142,14 +143,18 @@ namespace vcp {
 			}
 		}
 		template <typename _T> void LegendrePointFunc(const std::vector< kv::psa< _T > >& phi, const std::vector< _T >& Point, std::vector< std::vector< _T > >& out) {
-			int i, j;
-			int n = Point.size();
-			int m = phi.size();
 
-			out.resize(m);
-			for (i = 0; i < m; i++) {
-				out[i].resize(n);
-				for (j = 0; j < n; j++) {
+			out.resize(phi.size());
+			for (int i = 0; i < phi.size(); i++) {
+				out[i].resize(Point.size());
+			}
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+			#pragma omp parallel for
+#endif
+#endif
+			for (int i = 0; i < phi.size(); i++) {
+				for (int j = 0; j < Point.size(); j++) {
 					psa_value_Horner(phi[i], Point[j], out[i][j]);
 				}
 			}
@@ -157,154 +162,6 @@ namespace vcp {
 		}
 
 	}
-	namespace GaussLegendreIntegral {
-		template <typename _T> void LegendrePol(const int nn, kv::psa< _T >& outp, kv::psa< _T >& outpm1) {
-			kv::psa< _T > xp, oim1, oim2, ZZZ;
-			int i, n;
-			_T iT;
-			n = nn + 1;
-			xp.v.resize(n);
-			oim1.v.resize(n);
-			oim2.v.resize(n);
-			outp.v.resize(n);
-			outpm1.v.resize(n);
-			ZZZ.v.resize(n);
-			for (i = 0; i < n; i++) {
-				xp.v(0) = _T(0);
-				oim1.v(0) = _T(0);
-				oim2.v(0) = _T(0);
-				outp.v(0) = _T(0);
-				outpm1.v(0) = _T(0);
-				ZZZ.v(0) = _T(0);
-			}
-			xp.v(1) = _T(1);
-			oim1.v(1) = _T(1);
-			oim2.v(0) = _T(1);
-			outp = 1 / _T(2) * (3 * xp*oim1 - oim2);
-
-			for (i = 3; i < n; i++) {
-				iT = _T(i);
-				oim2 = oim1;
-				oim1 = outp;
-				outp = 1 / iT * ((2 * (iT - 1) + 1)*xp*oim1 - (iT - 1)*oim2);
-				if (i == n - 2) {
-					outpm1 = outp;
-				}
-			}
-		}
-		template <typename _T> void LegendreDifFunc(const kv::psa< _T >& pol, const _T x, _T& y) {
-			int i;
-			int n = pol.v.size();
-			y = (n - 1)*pol.v(n - 1);
-			for (i = n - 2; i>0; i--) {
-				y = y*x + i*pol.v(i);
-			}
-		}
-		template <typename _T> void psa_intvalTtoT(const kv::psa< kv::interval< _T > >& pol, kv::psa< _T >& polout) {
-			int i;
-			int n = pol.v.size();
-			polout.v.resize(n);
-			for (i = 0; i<n; i++) {
-				polout.v(i) = mid(pol.v(i));
-			}
-		}
-		template <typename _T> void AppNewton(const kv::psa< _T >& pol, const _T x, _T& y) {
-			_T res, dif;
-			y = x;
-			for (int i = 0; i < 10; i++) {
-				psa_value_Horner(pol, y, res);
-				LegendreDifFunc(pol, y, dif);
-				y = y - res / dif;
-			}
-		}
-		template <typename _T> void Krawczyk1d(const kv::psa< kv::interval< _T > >& pol, const _T x, kv::interval< _T >& y) {
-			kv::interval< _T > res, Ky, dif;
-			_T difmid, alpha;
-
-			y = x;
-			psa_value_Horner(pol, y, res);
-			LegendreDifFunc(pol, y, dif);
-			difmid = mid(dif);
-			alpha = mag(res / difmid);
-			y = y + kv::interval< _T >(-2 * alpha, 2 * alpha);
-			int i = 0;
-			while (1) {
-				psa_value_Horner(pol, kv::interval< _T >(mid(y)), res);
-				LegendreDifFunc(pol, y, dif);
-				difmid = mid(dif);
-				Ky = mid(y) - res / difmid + (1 - dif / difmid)*(y - mid(y));
-				if (i == 1) {
-					Ky = intersect(Ky, y);
-					if (rad(Ky) > 0.9*rad(y)) break;
-				}
-				else if (proper_subset(Ky, y)) {
-					i = 1;
-				}
-				else {
-					std::cout << "Ahhhhhhhhhhh" << std::endl;
-					std::cout << "y= " << y << std::endl;
-					std::cout << "Ky= " << Ky << std::endl;
-				}
-				y = Ky;
-			}
-		}
-		template <typename _T> void LPointWeight(const int n, std::vector< kv::interval< _T > >& Point, std::vector< kv::interval< _T > >& Weight) {
-			_T x, y, K1, K2;
-			_T PI = kv::constants< _T >::pi();
-			kv::interval< _T > res, dif;
-			kv::psa< _T > psapp;
-			kv::psa< kv::interval< _T > > ps, psm1;
-
-			Point.resize(n);
-			Weight.resize(n);
-
-			LegendrePol(n, ps, psm1);
-			psa_intvalTtoT(ps, psapp);
-
-			K1 = (n - 1) / (8 * n*n*_T(n));
-			K2 = _T(4 * n + 2);
-
-			//std::cout.precision(32);
-			for (int i = 1; i <= n; i++) {
-				x = (1 - K1)*cos((4 * i - 1) / K2*PI);
-				AppNewton(psapp, x, y);
-				Krawczyk1d(ps, y, Point[i - 1]);
-			}
-
-			for (int i = 0; i < n - 1; i++) {
-				for (int j = i + 1; j < n; j++) {
-					if (overlap(Point[i], Point[j])) {
-						std::cout << "Ahhhhhhhhhhhhhhh" << std::endl;
-					}
-				}
-			}
-
-			for (int i = 1; i <= n; i++) {
-				psa_value_Horner(psm1, Point[i - 1], res);
-				LegendreDifFunc(ps, Point[i - 1], dif);
-				Weight[i - 1] = 2 / (n * res * dif);
-			}
-		}
-	}
-
-	template <typename _T> class interval_ld_weightpoint {
-	public:
-		std::vector< _T > Weight;
-		std::vector< _T > Point;
-		// Order of Legendre integral
-		int n;
-
-		interval_ld_weightpoint< _T >() {
-		}
-
-		void set(const int nn) {
-			n = nn;
-			Weight.resize(n);
-			Point.reserve(n);
-			GaussLegendreIntegral::LPointWeight(n, Point, Weight);
-		}
-
-	};
 
 	template <typename _T> class Legendre_base{
 	protected:

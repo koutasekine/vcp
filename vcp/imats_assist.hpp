@@ -86,7 +86,8 @@ namespace vcp {
 					A(j, i) = A(i, j);
 				}
 				else {
-					std::cout << "compsym: error : not overlap" << std::endl;
+					std::cout << "compsym: error : not overlap : i = " << i << " j = " << j << std::endl;
+					std::cout << A(i, j) << " , " << A(j, i) << std::endl;
 					exit(1);
 				}
 			}

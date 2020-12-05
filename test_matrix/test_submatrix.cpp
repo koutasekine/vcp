@@ -70,5 +70,5 @@ int main(void) {
 	//std::cout << B << std::endl;
 
 	std::cout << A.submatrix({1}, {})*A.submatrix({}, {1}) << std::endl;
-	std::cout << B[1, 2] << std::endl;
+	std::cout << B(1, 2) << std::endl;
 }

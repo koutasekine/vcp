@@ -78,7 +78,7 @@ int main(void){
 	vcp::matrix< AppData, POLICY > uh;
 	vcp::Legendre_Bases_Generator< DataType, AppData, POLICY > Approximate_Generator;
 
-	int Order_legendre = 30;
+	int Order_legendre = 20;
 	int uh_Order_legendre = 20;
 	int p = 2;
 	int Dimension = 2;
@@ -233,6 +233,7 @@ int main(void){
 		eigsymge(2*uhphiphi, DL, E);
 
 		E = diag(E);
+		std::cout << E(0) << std::endl;
 		
 		for (int i = 0; i < length(E); i++){
 			using std::pow;

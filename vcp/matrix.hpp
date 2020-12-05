@@ -686,7 +686,7 @@ namespace vcp {
 		}
 
 		//**************** display function ***************//
-		friend std::ostream& operator<<(std::ostream& os, matrix< _T, _P >& A) {
+		friend std::ostream& operator<<(std::ostream& os, const matrix< _T, _P >& A) {
 			return A.display(os);
 		}
 		friend std::ostream& operator<<(std::ostream& os, matrix< _T, _P >&& A) {
@@ -1055,7 +1055,7 @@ namespace vcp {
 			return std::move(A);
 		}
 		
-		friend std::ostream& operator<<(std::ostream& os, matrix< bool >& A) {
+		friend std::ostream& operator<<(std::ostream& os, const matrix< bool >& A) {
 			return A.display(os);
 		}
 		friend std::ostream& operator<<(std::ostream& os, matrix< bool >&& A) {

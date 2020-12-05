@@ -57,7 +57,7 @@ int main(void){
 	int Order_legendre = 15;
 	int uh_Order_legendre = Order_legendre;
 	int p = 1;
-	int Dimension = 3;
+	int Dimension = 2;
 	int Number_of_variables = 1;
 
 	std::cout << "Dimension = " << Dimension << std::endl;
