@@ -72,6 +72,7 @@ int main(void) {
 
 	}
 
+	std::cout << "This BLAS can be changed rounding mode!" << std::endl;
 	kv::hwround::roundnear();
 
 }

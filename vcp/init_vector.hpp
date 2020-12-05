@@ -29,21 +29,56 @@
 
 #pragma once
 
-#ifndef VCP_MATRIX_ASSIST_HPP
-#define VCP_MATRIX_ASSIST_HPP
+#ifndef VCP_INIT_VECTOR_HPP
+#define VCP_INIT_VECTOR_HPP
 
-#ifndef VCP_MATRIX_HPP
-	#error Please include matrix.hpp
-#endif
+#include <initializer_list>
 
-#include <vcp/vcp_metafunction.hpp>
-#include <vcp/init_vector.hpp>
-#include <vcp/matrix_conv.hpp>
+namespace vcp{
+ 
+    template <typename _T, class _P, typename _Tm> 
+    typename std::enable_if< std::is_constructible< _T, _Tm >::value, void >::type init( matrix< _T, _P >& xh, const std::initializer_list< _Tm >& list1){
+        if ( xh.matstype() == 'M' ){
+            std::cout << "ERROR : init_vector :  xh is Matrix..." << std::endl;
+            exit(1);
+        } 
+        if ( list1.size() > xh.rowsize() && xh.matstype() == 'C' ) {
+            xh.clear();
+        }
+        if ( list1.size() > xh.columnsize() && xh.matstype() == 'R' ) {
+            xh.clear();
+        }
+        if (xh.matstype() == 'N'){
+            xh.zeros(list1.size(), 1);
+        }
+        std::vector<_Tm> l1 = list1;
 
-#if defined(INTERVAL_HPP)
-	#include <vcp/imats_assist.hpp>
-#endif
+        for (int i = 0; i < list1.size(); i++){
+            xh(i) = _T(l1[i]);
+        }
+    }
 
-#include <vcp/vcp_fio.hpp>
+    template <typename _T, class _P, typename _Tm> 
+    typename std::enable_if< std::is_constructible< _T, _Tm >::value, void >::type init_vector( matrix< _T, _P >& xh, const std::initializer_list< _Tm >& list1){
+        if ( xh.matstype() == 'M' ){
+            std::cout << "ERROR : init_vector :  xh is Matrix..." << std::endl;
+            exit(1);
+        } 
+        if ( list1.size() > xh.rowsize() && xh.matstype() == 'C' ) {
+            xh.clear();
+        }
+        if ( list1.size() > xh.columnsize() && xh.matstype() == 'R' ) {
+            xh.clear();
+        }
+        if (xh.matstype() == 'N'){
+            xh.zeros(list1.size(), 1);
+        }
+        std::vector<_Tm> l1 = list1;
 
+        xh(0) = 2*_T(l1[0]);
+        for (int i = 1; i < list1.size(); i++){
+            xh(i) = _T(l1[i]);
+        }
+    }
+}
 #endif

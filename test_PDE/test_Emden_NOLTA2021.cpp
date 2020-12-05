@@ -47,18 +47,18 @@
 
 #include <vcp/vcp_timer.hpp>
 
-/* Approximate data (Newton method) */
+/* Approximate data type (Newton method) */
 //typedef double AppData;
 typedef kv::dd AppData;
 //typedef kv::mpfr<110> AppData;
 
-/* Approximate data (Krawczyk method) */
+/* Approximate data type (Krawczyk method) */
 typedef kv::interval< kv::dd > Kraw_Data;
-typedef kv::interval< kv::mpfr< 500 > > Kraw_DataType;
+typedef kv::interval< kv::mpfr< 1500 > > Kraw_DataType;
 typedef vcp::imats< kv::dd > Kraw_POLICY;
 
 typedef kv::interval< double > VData;
-typedef kv::interval< kv::mpfr< 500 > > DataType;
+typedef kv::interval< kv::mpfr< 1500 > > DataType;
 
 typedef kv::dd ResData;
 typedef kv::interval< ResData > VResData;
@@ -86,46 +86,55 @@ int main(void){
 	std::vector< double > uh_min;
 	std::vector< double > uh_max;
 
-	int Order_legendre = 20;
-	int uh_Order_legendre = 20;
+	int uh_Order = 40;
+	int VOrder = 40;
 	int p = 2;
-	int Dimension = 1;
+	int Dimension = 2;
 	int Number_of_variables = 1;
+	int mode;
 
 	std::cout << "Dimension = " << Dimension << std::endl;
-	std::cout << "uh of Legendre Bases Order = " << uh_Order_legendre << std::endl;
-	std::cout << "Inverse Norm for Legendre Bases Order = " << Order_legendre << std::endl;
+	std::cout << "uh of Legendre Bases Order = " << uh_Order << std::endl;
+	std::cout << "Inverse Norm for Legendre Bases Order = " << VOrder << std::endl;
 	std::cout << "p (which is maximum order of uh^p)  = " << p << std::endl;
 	std::cout << "Number of Variables (e.g. 2 => u and v) = " << Number_of_variables << std::endl;
 
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/***************************************** Create uh *******************************************/
+/////////////////////////////////////////////////////////////////////////////////////////////////
 	{
-		// Setting of Approximate_Generator
-		vcp::Legendre_Bases_Generator< DataType, AppData, POLICY > Approximate_Generator;
+		// Setting of Generator
+		vcp::Legendre_Bases_Generator< DataType, AppData, POLICY > Generator;
 		std::cout << "\nSetting the Generator by Approximate mode " << std::endl;
 		std::cout << "Newton Method Start " << std::endl;
 		vcp::time.tic();
-		Approximate_Generator.setting(uh_Order_legendre, p, Dimension, Number_of_variables, 5);
+		mode = 5;
+		Generator.setting(uh_Order, p, Dimension, Number_of_variables, mode);
 
-		// Setting the list of Approximate_Generator
-		//Approximate_Generator.setting_list();
-		Approximate_Generator.setting_evenlist();
+		// Setting the list of Generator
+		//Generator.setting_list();
+		Generator.setting_evenlist();
 
 		// output the list => list_uh
-		list_uh = Approximate_Generator.output_list();
+		list_uh = Generator.output_list();
+		// std::cout << "list_uh = " << std::endl;
+		// std::cout <<  list_uh << std::endl;
+
 
 		// setting initialization value of uh
 		uh.ones(list_uh.rowsize(), Number_of_variables);
-		//	uh(0) = 30;
-		uh = 200 * uh;
-		uh(0) = 600;
+		uh(0) = 30;
+		uh = 20 * uh;	
 	
 		vcp::matrix< AppData, POLICY > DF;
 		vcp::matrix< Kraw_Data, Kraw_POLICY > kraw_init;
 		{
 			// Make the matrix ((\nabla \phi_i, \nabla \phi_j)_{L^2})_{i,j}
-			vcp::matrix< AppData, POLICY > DL = Approximate_Generator.dphidphi();
+			vcp::matrix< AppData, POLICY > D = Generator.dphidphi();
 			// Make the matrix ((phi_i, \phi_j)_{L^2})_{i,j}
-			vcp::matrix< AppData, POLICY > L = Approximate_Generator.phiphi();
+			vcp::matrix< AppData, POLICY > L = Generator.phiphi();
 
 			vcp::matrix< AppData, POLICY > uh2phi;
 			vcp::matrix< AppData, POLICY > uhphiphi;
@@ -136,13 +145,13 @@ int main(void){
 			{
 				AppData cc;
 				while(1){
-					Approximate_Generator.setting_uh(uh);
+					Generator.setting_uh(uh);
 
-					uh2phi = Approximate_Generator.uhphi(2);
-					uhphiphi = Approximate_Generator.uhphiphi(1);
+					uh2phi = Generator.uhphi(2);
+					uhphiphi = Generator.uhphiphi(1);
 
-					DF = DL - 2*uhphiphi;
-					F = DL * uh - uh2phi;
+					DF = D - 2*uhphiphi;
+					F = D * uh - uh2phi;
 					syuusei = lss(DF, F);
 					uh = uh - syuusei;
 					check = max(abs(syuusei));
@@ -157,7 +166,7 @@ int main(void){
 							kraw_init(i).lower() = -syuusei(i); 
 						}
 						kraw_init = 2*kraw_init;
-						Approximate_Generator.setting_uh(uh);
+						Generator.setting_uh(uh);
 						std::cout << "Convergence \n" << std::endl;
 						break;
 					}
@@ -166,21 +175,25 @@ int main(void){
 		}
 	
 		vcp::time.toc();
-		Approximate_Generator.clear();
+		vcp::matrix< AppData, POLICY > Grafics = Generator.output_uh_for_graphics(100);
+		std::cout << "Grafics = " << std::endl;
+		std::cout << Grafics << std::endl;
 
+		Generator.clear();
 		vcp::time.tic();
-	
+
 		std::cout << "Krawczyk Method Start" << std::endl;
-		vcp::Legendre_Bases_Generator< Kraw_DataType, Kraw_Data, Kraw_POLICY > Verification_Generator;		
-		Verification_Generator.setting(uh_Order_legendre, p, Dimension, Number_of_variables, 1, uh_Order_legendre);
+		vcp::Legendre_Bases_Generator< Kraw_DataType, Kraw_Data, Kraw_POLICY > Generator2;
+		mode = 1;
+		Generator2.setting(uh_Order, p, Dimension, Number_of_variables, mode, uh_Order);
 
 		
 		vcp::interval(uh, uhi);
-		Verification_Generator.setting_evenlist();
-		Verification_Generator.setting_uh(uhi, list_uh, 2);
-		vcp::matrix< Kraw_Data, Kraw_POLICY > DL = Verification_Generator.dphidphi();
-		vcp::matrix< Kraw_Data, Kraw_POLICY > uh2phi = Verification_Generator.uhphi(2);
-		vcp::matrix< Kraw_Data, Kraw_POLICY > F = DL * uhi - uh2phi;
+		Generator2.setting_evenlist();
+		Generator2.setting_uh(uhi, list_uh, 2);
+		vcp::matrix< Kraw_Data, Kraw_POLICY > D = Generator2.dphidphi();
+		vcp::matrix< Kraw_Data, Kraw_POLICY > uh2phi = Generator2.uhphi(2);
+		vcp::matrix< Kraw_Data, Kraw_POLICY > F = D * uhi - uh2phi;
 		uh2phi.clear();
 		
 		vcp::matrix< Kraw_Data, Kraw_POLICY > R;
@@ -191,11 +204,11 @@ int main(void){
 
 		int ite = 0;
 		while(true){
-			Verification_Generator.setting_uh(uhi + kraw_init, list_uh, 2);
-			vcp::matrix< Kraw_Data, Kraw_POLICY > uhphiphi = Verification_Generator.uhphiphi(1);
+			Generator2.setting_uh(uhi + kraw_init, list_uh, 2);
+			vcp::matrix< Kraw_Data, Kraw_POLICY > uhphiphi = Generator2.uhphiphi(1);
 
-			vcp::matrix< Kraw_Data, Kraw_POLICY > DFI = DL - 2*uhphiphi;
-		//	DL.clear();
+			vcp::matrix< Kraw_Data, Kraw_POLICY > DFI = D - 2*uhphiphi;
+		//	D.clear();
 			uhphiphi.clear();
 
 			vcp::matrix< Kraw_Data, Kraw_POLICY > I;
@@ -211,6 +224,7 @@ int main(void){
 			if (Flag) {
 				std::cout << "Verification Succeeded!!!!" << std::endl;
 				uhi = uhi + kraw_init;
+				std::cout << "uhi = " << std::endl;
 				std::cout << uhi << std::endl;
 				break;
 			}
@@ -223,7 +237,7 @@ int main(void){
 		// minimal and maximum value of approximate solution uh
 		vcp::time.tic();
 		std::cout << "\nCalculate the maximum and minimum value" << std::endl;
-		Verification_Generator.setting_uh(uhi, list_uh, 2);
+		Generator2.setting_uh(uhi, list_uh, 2);
 
 		std::vector< kv::interval< double > > x;
 		
@@ -233,116 +247,115 @@ int main(void){
 		}
 
 		
-		uh_min = Verification_Generator.global_min(x, std::pow(2.0, -9));
-		uh_max = Verification_Generator.global_max(x, std::pow(2.0, -9));
+		uh_min = Generator2.global_min(x, std::pow(2.0, -9));
+		uh_max = Generator2.global_max(x, std::pow(2.0, -9));
 
 		for (int i = 0; i < Number_of_variables; i++) {
 			std::cout << "uh in [" << uh_min[i] << ", " << uh_max[i] << "]" << std::endl;
 		}
-		Verification_Generator.clear();
+		Generator2.clear();
 		vcp::time.toc();
 	}
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
-/************************** Calculate Theorem 1 : inv(T) and inv(S) ****************************/
+/************************** Compute C1, C2 and C3 in Lemma 1 and K *****************************/
 /////////////////////////////////////////////////////////////////////////////////////////////////
 	vcp::time.tic();
-	VData CN, CNw, Cp, Cpw, Cs, Cs4, Csw;
-	VData fduh_Linf_norm = 2 * VData(uh_max[0]);
+	VData Ch, Cs2, Cs4;
+	VData CfdX = 2 * VData(uh_max[0]);
 	VData invS_norm = VData(0);
-	VData rhoh = VData(0);
+	VData tau = VData(0);
+	VData C1, C2, C3, K;
 	VData kappa = VData(0);
 	vcp::matrix< VData, VPOLICY > phi_i_norm;
-	vcp::matrix< VData, VPOLICY > DL;
+	vcp::matrix< VData, VPOLICY > D;
 	vcp::matrix< VData, VPOLICY > DF;
 	vcp::matrix< int > list_verification;
-
-
 	{
-		std::cout << "\nCalculate Theorem 1 : inv(T) and inv(S) <= K" << std::endl;
-		vcp::Legendre_Bases_Generator< DataType, VData, VPOLICY > Verification_Generator;
-		Verification_Generator.setting(Order_legendre, p, Dimension, Number_of_variables, 1, uh_Order_legendre);
-		//Verification_Generator.setting_list();
-		Verification_Generator.setting_evenlist();
+		std::cout << "\nCompute C1, C2 and C3 in Lemma 1" << std::endl;
+		vcp::Legendre_Bases_Generator< DataType, VData, VPOLICY > Generator;
+		Generator.setting(VOrder, p, Dimension, Number_of_variables, 1, uh_Order);
+		//Generator.setting_list();
+		Generator.setting_evenlist();
 		vcp::matrix< VData, VPOLICY > uhi_rough;
 		vcp::convert(uhi, uhi_rough);
 		// uh setting : Last Argument is list divide : full list => 1 , even list => 2 
-		Verification_Generator.setting_uh(uhi_rough, list_uh, 2);
+		Generator.setting_uh(uhi_rough, list_uh, 2);
 
-		list_verification = Verification_Generator.output_list();
+		list_verification = Generator.output_list();
 			
-		vcp::matrix< VData, VPOLICY > uhphiphi = Verification_Generator.uhphiphi(1);
+		vcp::matrix< VData, VPOLICY > uhphiphi = Generator.uhphiphi(1);
 
 		// Make the matrix ((\nabla \phi_i, \nabla \phi_j)_{L^2})_{i,j}
-		DL = Verification_Generator.dphidphi();
-		vcp::matrix< VData, VPOLICY > L = Verification_Generator.phiphi();
+		D = Generator.dphidphi();
+		vcp::matrix< VData, VPOLICY > L = Generator.phiphi();
 
-		// How to calculate some constants 
-		Cp = Verification_Generator.Poincare_constant< VData >();
-		std::cout << "Cp = " << Cp << std::endl;
+		// Compute some constants 
+		Cs2 = Generator.Poincare_constant< VData >();
+		std::cout << "Cs2 = " << Cs2 << std::endl;
 
-		Cs4 = Verification_Generator.Sobolev_constant< VData >(4);
+		Cs4 = Generator.Sobolev_constant< VData >(4);
 		std::cout << "Cs4 = " << Cs4 << ", p =" << "4" << std::endl;
 
-		CN = Verification_Generator.Ritz_projection_error< VData >();
-		std::cout << "CN = " << CN << std::endl;
-		Verification_Generator.clear();
+		Ch = Generator.Ritz_projection_error< VData >();
+		std::cout << "Ch = " << Ch << std::endl;
+		Generator.clear();
 
-		DF = DL - 2 * uhphiphi;
+		DF = D - 2*(uhphiphi + transpose(uhphiphi)) + uhphiphi*lss(D,transpose(uhphiphi));
 		uhphiphi.clear();
-
-		inv(DF);
 		std::cout << "T is invertible!" << std::endl;
 
 		vcp::matrix< VData, VPOLICY >  E;
 		compsym(DF);
 		compsym(L);
 		eigsymge(DF, L, E);
-		phi_i_norm = sqrt(diag(L));
 		L.clear();
 
 		E = abs(diag(E));
-		rhoh = (1/min(E))(0);
-		std::cout << "rhoh = " << 1/min(E) << std::endl;
+		tau = sqrt((1/min(E))(0));
+		std::cout << "tau = " << tau << std::endl;
 
-		kappa = pow(CN,2) * ( 1 + rhoh*fduh_Linf_norm )*fduh_Linf_norm;
-		std::cout << "kappa = " << kappa << std::endl;
-		if (kappa.upper() >= 1 ){
-			std::cout << "Verification failed..." << std::endl;
-		}
+		C1 = Ch*tau*CfdX;
+		C2 = Ch*Cs2*CfdX;
+		C3 = Ch*Ch*CfdX;
+		std::cout << "CfdX = " << CfdX << std::endl;
+		std::cout << "C1 = " << C1 << std::endl;
+		std::cout << "C2 = " << C2 << std::endl;
+		std::cout << "C3 = " << C3 << std::endl;
 
-		std::cout << "S is invertible!" << std::endl;
-		invS_norm = 1/(1 - kappa);
-		std::cout << "\ninvS_norm = " << invS_norm << std::endl;
-		vcp::time.toc();
+		std::cout << "\nCompute K" << std::endl;
+		K = 2*pow(Cs4,2)*sqrt(pow(tau,2) + pow(Ch, 2));
+		std::cout << "K = " << K << std::endl;
 	}
+	vcp::time.toc();
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
-/******************* Calculate Residual Norm || Laplace(uh) - f(uh) ||_L2 **********************/
+/************************************** Compute delta ******************************************/
 /////////////////////////////////////////////////////////////////////////////////////////////////
 	vcp::time.tic();
 	VData Res = VData(0);
+	VData delta = VData(0);
 	{
 		std::cout << "\nCalculate Residual Norm || Laplace(uh) - f(uh) ||_L2" << std::endl;
-		vcp::Legendre_Bases_Generator< DataType, VResData, VResPOLICY > Verification_Generator;
-		Verification_Generator.setting(uh_Order_legendre, p, Dimension, Number_of_variables, 2);
-		// Setting the list of Verification_Generator 
-		//Verification_Generator.setting_list();
-		Verification_Generator.setting_evenlist();
+		vcp::Legendre_Bases_Generator< DataType, VResData, VResPOLICY > Generator;
+		Generator.setting(uh_Order, p, Dimension, Number_of_variables, 2);
+		// Setting the list of Generator 
+		//Generator.setting_list();
+		Generator.setting_evenlist();
 		vcp::matrix< VResData, VResPOLICY > uhi;
 		vcp::interval(uh, uhi);
 		//vcp::convert(uh, uhi);
 
-		Verification_Generator.setting_uh(uhi);
+		Generator.setting_uh(uhi);
 
 		// || Laplace(uh) - f(uh) ||_L2 = sqrt( | (Laplace(uh), Laplace(uh))_L2 + 2(-Laplace(uh), f(uh))_L2 + (f(uh), f(uh))_L2 | )
-		VResData uh4 = Verification_Generator.integral_uh(4);
+		VResData uh4 = Generator.integral_uh(4);
 		std::cout << "uh4 = " << uh4 << std::endl;
 
-		VResData LuhLuh = Verification_Generator.integral_LuhLuh(0);
+		VResData LuhLuh = Generator.integral_LuhLuh(0);
 		std::cout << "LuhLuh = " << LuhLuh << std::endl;
 
-		VResData Luh_uh2 = Verification_Generator.integral_Luhuh(0, 2);
+		VResData Luh_uh2 = Generator.integral_Luhuh(0, 2);
 		std::cout << "Luh_uh2 = " << Luh_uh2 << std::endl;
 
 		{
@@ -351,99 +364,64 @@ int main(void){
 			vcp::convert(sqrt(abs(LuhLuh + 2 * Luh_uh2 + uh4)), Res);
 			std::cout << "Residual Norm : || Laplace(uh) - f(uh) ||_L2 <= " << Res << std::endl;
 		}
-		Res = Cp * Res;
-		std::cout << "Residual Norm : || F(uh) ||_(H-1) <= " << Res << std::endl;
+		delta = Ch * Res;
+		std::cout << "delta <= " << delta << std::endl;
+	}
+	vcp::time.toc();
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
+/********************************** Method 1 (Corollary 1) *************************************/
+/////////////////////////////////////////////////////////////////////////////////////////////////
+	vcp::time.tic();
+	{
+		std::cout << "\nMethod 1 (Corollary 1)" << std::endl;
+		VData eta = delta;
+		VData m = sqrt((pow(C1,2) + pow(C2,2) + pow(C3,2) + sqrt( pow(pow(C1,2) - pow(C2,2) + pow(C3,2), 2) + 4*pow(C2,2)*pow(C3,2) ))/2);
+		
+		std::cout << "eta = " << eta << std::endl;
+		std::cout << "m = " << m << std::endl;
+		std::cout << "K = " << K << std::endl;
+
+		VData tmp = (2*K*eta)/pow(1-m,2);
+		std::cout << "(2*K*eta)/(1-m)^2 = " << tmp << std::endl;
+
+		if (m.upper() < 1 && tmp.upper() < 1){
+			std::cout << "Verification succeed using Method 1!!" << std::endl;
+			std::cout << "Error bound : " << (1 - m - sqrt(pow(1-m, 2) - 2*K*eta))/K << std::endl;
+		}
 	}
 	vcp::time.toc();
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
-/************************************ Fixed Point Theorem **************************************/
+/********************************** Method 2 (Corollary 2) *************************************/
 /////////////////////////////////////////////////////////////////////////////////////////////////
-vcp::time.tic();
+	vcp::time.tic();
+	{
+		std::cout << "\nMethod 2 (Corollary 2)" << std::endl;
 
-{
-		std::cout << "\nFixed Point Theorem Start" << std::endl;
-		vcp::matrix< VData, VPOLICY > f2, g1, g2;
-		f2 = czero_ball( ((CN * fduh_Linf_norm) * invS_norm * (CN * Res)) *  phi_i_norm );
-		
-		vcp::matrix< VData, VPOLICY > w_h_vec = 2 * lss(DF, f2);
-		VData w_h_normH10 = sqrt(abs(transpose(w_h_vec)*DL*w_h_vec))(0);
-		VData w_bot = 2 * invS_norm * CN * Res;
+		VData kappa = C3+C1*C2;
+		std::cout << "kappa = " << kappa << std::endl;
 
-		std::cout << "Finite dimension || wh ||_H10 <= " << w_h_normH10 << std::endl;
-		std::cout << "Inite dimension || w_bot ||_H10 <= " << w_bot << std::endl;
+		VData eta = sqrt(1+pow(C1,2))/(1-kappa)*delta;
+		VData m = VData(0);
+		K = K/(1-kappa) * sqrt((1 + pow(C1,2) + pow(C2,2) + pow(1-C3,2) + sqrt( pow(pow(C2,2)+pow(1-C3,2)-pow(1-C1,2),2) + 4*pow(C1*(1-C3)+C2,2) ))/2);
 
-		vcp::Legendre_Bases_Generator< DataType, VData, VPOLICY > Verification_Generator;
-		Verification_Generator.setting(Order_legendre, p, Dimension, Number_of_variables, 1, Order_legendre);
-		//Verification_Generator.setting_list();
-		Verification_Generator.setting_evenlist();
+		std::cout << "eta = " << eta << std::endl;
+		std::cout << "m = " << m << std::endl;
+		std::cout << "K = " << K << std::endl;
 
+		VData tmp = 2*K*eta;
+		std::cout << "2*K*eta = " << tmp << std::endl;
 
-
-		while (true) {
-			w_h_normH10 = sqrt(abs(transpose(w_h_vec)*DL*w_h_vec))(0);
-			Verification_Generator.setting_uh(w_h_vec, list_verification, 2);
-			vcp::matrix< VData, VPOLICY > wh2phi = Verification_Generator.uhphi(2);
-			vcp::matrix< VData, VPOLICY > wh2phiphi_diag = diag( Verification_Generator.uhphiphi(2));
-
-//			std::cout << "wh2phi = " << std::endl;
-//			std::cout << wh2phi << std::endl;
-
-//			std::cout << "wh2phiphi_diag = " << std::endl;		
-//			std::cout << wh2phiphi_diag << std::endl;
-
-			g1 = wh2phi + czero_ball((2*CN*w_bot)*wh2phiphi_diag + pow(Cs4*w_bot,2)*phi_i_norm);
-//			std::cout << "g1 = " << std::endl;		
-//			std::cout << g1 << std::endl;
-
-			g2 = czero_ball((pow(CN*Cs4,2)*fduh_Linf_norm*(fduh_Linf_norm*rhoh + 1)*invS_norm*(pow(w_h_normH10,2) + pow(w_bot,2)))*phi_i_norm);
-//			std::cout << "g2 = " << std::endl;		
-//			std::cout << g2 << std::endl;
-
-			vcp::matrix< VData, VPOLICY > Kw_h = lss(DF, -f2 + g1 + g2);
-			std::cout << "DFinv*f2=" << std::endl;
-			std::cout << lss(DF,f2) << std::endl;
-			std::cout << "End: DFinv*f2" << std::endl;
-//			std::cout << "Kw_h = " << std::endl;		
-//			std::cout << Kw_h << std::endl;
-
-//			std::cout << "w_h_vec = " << std::endl;		
-//			std::cout << w_h_vec << std::endl;
-
-			bool FiniteFlag = true;
-			for (int i = 0; i < w_h_vec.rowsize(); i++){
-				if (!subset( Kw_h(i), w_h_vec(i) )){
-					std::cout << "i = " << i << "," << Kw_h(i) << "," << w_h_vec(i) << std::endl;
-					FiniteFlag = false;
-				}
-			}
-
-			if (FiniteFlag) {
-				std::cout << "Finite OK!" << std::endl;
-				std::cout << " w_h in " << std::endl;				
-				std::cout << w_h_vec << std::endl;
-				std::cout << "End" << std::endl;				
-			}
-
-			bool InfiniteFlag = false;
-			VData Kw_bot = invS_norm*( CN*Res + CN*pow(Cs4, 2)*( fduh_Linf_norm*rhoh + 1 )*(pow(w_h_normH10, 2) + pow(w_bot,2)) );
-			std::cout << Kw_bot << std::endl;
-			if (Kw_bot.upper() < w_bot.lower() ){
-				std::cout << "Infinite OK!" << std::endl;
-				InfiniteFlag = true;
-			}
-
-			if (FiniteFlag && InfiniteFlag){
-				std::cout << "Error bound = " << std::endl;
-				std::cout << sqrt(pow(w_h_normH10, 2) + pow(w_bot,2)) << std::endl;
-				w_h_vec = Kw_h;
-				w_bot = 1.01*Kw_bot;
-			}
-			else {
-				break;
-			}
+		if (kappa.upper() < 1 && tmp.upper() < 1){
+			std::cout << "Verification succeed using Method 2!!" << std::endl;
+			std::cout << "Error bound : " << (1 - sqrt(1 - 2*K*eta))/K << std::endl;
 		}
-}
+	}
+	vcp::time.toc();
+
+
 	
 	return 0;
 }

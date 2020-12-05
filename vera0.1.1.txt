@@ -1,0 +1,13 @@
+fourier_basis.hpp: 1次元フーリエ基底を張るためのクラス
+fourier_series.hpp: フーリエ級数の演算クラス
+sincos_class.hpp: fourier_series.hppの下請け
+ldbase.hpp: 拡張: 区間係数を持つ解に対しても最大値・最小値を求められるように，funcメソッドをイコール代入からconvert代入に変更，Mode=1でも利用可能にした.
+minimatrix.hpp: psa型などの符号判定を持たない型用の行列ポリシーminimats< _T >.matrixクラスの部分特殊化.
+
+bugfix: vera0.1.0においてmatrix_assist.hppにてkvのintervalを要求していたバグを解消
+その他: test_PDEのファイルを論文の結果に変更
+  test_Emden_Numerische_Mathematik2020.cpp:
+    Kouta Sekine, Mitsuhiro T. Nakao, and Shin'ichi Oishi: “A new formulation using the Schur complement for the numerical existence proof of solutions to elliptic problems: without direct estimation for an inverse of the linearized operator”, Numer. Math., 146, 907–926, Oct., 2020. doi.org/10.1007/s00211-020-01155-7.
+
+  test_Lotka_Volterra2_NOLTA2021.cpp:
+    Kouta Sekine, Mitsuhiro T. Nakao, and Shin'ichi Oishi: “Numerical verification methods for a system of elliptic PDEs, and their software library”, to appear in NOLTA, IEICE, Vol.12, No.1, Jan., 2021.

@@ -44,7 +44,7 @@
 //#include <vcp/pidblas.hpp>
 
 #include <vcp/matrix.hpp>
-//#include <vcp/matrix_assist.hpp>
+#include <vcp/matrix_assist.hpp>
 
 int main(void) {
 #ifdef _OPENMP

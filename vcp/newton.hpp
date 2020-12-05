@@ -37,7 +37,7 @@
 
 namespace vcp {
     template < typename _T, typename _PM > class Newton {
-        protected:
+protected:
         bool mode; // mode: False => f and Df, True => f and auto diff
         bool flag_Convergence;
         int newton_max_iteration;
@@ -46,12 +46,17 @@ namespace vcp {
         _T Correction_term;
         
 
-        public:
+public:
         Newton< _T, _PM >() {
-			(*this).newton_max_iteration = 50;
+			(*this).newton_max_iteration = 100;
             (*this).flag_Convergence = false;
             (*this).newton_tol = _T(4) * std::numeric_limits< _T >::epsilon();
 		}
+
+        void setting_newton_tol( const int n ){
+            (*this).newton_tol = _T(n) * std::numeric_limits< _T >::epsilon();
+        }
+
         virtual void setting_newton( vcp::matrix< _T, _PM >& xx ){
         }
 
@@ -96,11 +101,15 @@ namespace vcp {
         }
 
         virtual void disp_convergence(){
-            // std::cout << "Convergence : i = " << iteration_newton << ", " << Correction_term << " <= " << (*this).newton_tol << std::endl;
+            std::cout << "Convergence : i = " << iteration_newton << ", " << Correction_term << " <= " << (*this).newton_tol << std::endl;
         }
 
         virtual void disp_continue(){
             std::cout << "i = " << iteration_newton << ", " << Correction_term << " <= " << (*this).newton_tol << std::endl;
+        }
+
+        bool is_convergence( void ) const {
+            return (*this).flag_Convergence;
         }
 
     };

@@ -34,61 +34,65 @@
 
 
 namespace vcp {
-template < typename T > struct is_round_control{
+	template < typename T > struct is_round_control{
+			static constexpr bool value = false;
+	};
+
+	#if defined(RDOUBLE_HPP)
+	template < > struct  is_round_control< double > {
+		static constexpr bool value = true;
+	};
+	#endif
+
+	#if defined(DD_HPP) && defined(RDD_HPP)
+	template < > struct  is_round_control< kv::dd > {
+		static constexpr bool value = true;
+	};
+	#endif
+
+	#if defined(RMPFR_HPP) && defined(MPFR_HPP)
+	template < int _N > struct  is_round_control< kv::mpfr< _N > > {
+		static constexpr bool value = true;
+	};
+	#endif
+
+
+
+	template < typename T > struct is_interval {
 		static constexpr bool value = false;
-};
+	};
 
-#if defined(RDOUBLE_HPP)
-template < > struct  is_round_control< double > {
-	static constexpr bool value = true;
-};
-#endif
-
-#if defined(DD_HPP) && defined(RDD_HPP)
-template < > struct  is_round_control< kv::dd > {
-	static constexpr bool value = true;
-};
-#endif
-
-#if defined(RMPFR_HPP) && defined(MPFR_HPP)
-template < int _N > struct  is_round_control< kv::mpfr< _N > > {
-	static constexpr bool value = true;
-};
-#endif
+	#if defined(INTERVAL_HPP)
+	template < typename T > struct is_interval< kv::interval< T > > {
+		static constexpr bool value = true;
+	};
+	#endif
 
 
 
-template < typename T > struct is_interval {
-	static constexpr bool value = false;
-};
+	template < typename T, typename = void > struct is_round_interval {
+		static constexpr bool value = false;
+	};
 
-#if defined(INTERVAL_HPP)
-template < typename T > struct is_interval< kv::interval< T > > {
-	static constexpr bool value = true;
-};
-#endif
+	#if defined(INTERVAL_HPP)
+	template < typename T > struct is_round_interval< kv::interval< T >, kv::interval< typename std::enable_if< vcp::is_round_control< T >::value, T >::type > > {
+		static constexpr bool value = true;
+	};
+	#endif
 
+	template < typename T > struct is_psa {
+		static constexpr bool value = false;
+	};
 
+	#if defined(PSA_HPP)
+	template < typename T > struct is_psa< kv::psa< T > > {
+		static constexpr bool value = true;
+	};
+	#endif
 
-template < typename T, typename = void > struct is_round_interval {
-	static constexpr bool value = false;
-};
-
-#if defined(INTERVAL_HPP)
-template < typename T > struct is_round_interval< kv::interval< T >, kv::interval< typename std::enable_if< vcp::is_round_control< T >::value, T >::type > > {
-	static constexpr bool value = true;
-};
-#endif
-
-template < typename T > struct is_psa {
-	static constexpr bool value = false;
-};
-
-#if defined(PSA_HPP)
-template < typename T > struct is_psa< kv::psa< T > > {
-	static constexpr bool value = true;
-};
-#endif
+	template < typename T > struct is_hermite_series {
+		static constexpr bool value = false;
+	};
 
 }
 #endif //VCP_METAFUNCTION_HPP

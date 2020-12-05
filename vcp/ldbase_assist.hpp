@@ -36,6 +36,6 @@
 #error Please include ldbase.hpp
 #endif
 
-#include <vcp/make_Matrix_ldbase_on_interval.hpp>
+//#include <vcp/make_Matrix_ldbase_on_interval.hpp>
 
 #endif // VCP_LDBASE_HPP

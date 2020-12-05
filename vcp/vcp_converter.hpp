@@ -57,6 +57,10 @@
 #define VCP_CONVERTER_HPP
 
 namespace vcp {
+	template<typename _T> void convert(const _T& x, _T& y) {
+		y = x;
+	}
+
 #if defined(RDOUBLE_HPP) && defined(RMPFR_HPP) && defined(MPFR_HPP)
 	template <int N> void convert(const kv::mpfr<N>& x, double& y, int rnd = 0)
 	{
@@ -262,8 +266,5 @@ namespace vcp {
 	}
 #endif
 
-	template<typename _T> void convert(const _T& x, _T& y) {
-		y = x;
-	}
 }
 #endif //VCP_CONVERTER_HPP

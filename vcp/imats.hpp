@@ -328,6 +328,7 @@ namespace vcp {
 			// G = || RA - I ||_inf
 			b.norminf(G);
 			G.v[0].lower() = G.v[0].upper();
+			std::cout << "Linear solver Check || I - RA || < 1: " << G.v[0].upper() << " < 1 ?" << std::endl;
 			if (G.v[0].upper() >= one) {
 				std::cout << "error : linearsolve verification is failed ||RA - I|| <= " << G.v[0].upper() << std::endl;
 				exit(1);
