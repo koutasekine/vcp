@@ -1,0 +1,3 @@
+test_Emden.cpp : Newton法の終了後の近似解uhをGeneratorに差し戻し忘れ．最大値，最小値に影響(Bug fixes) 
+test_Gray_Scott.cpp : Newton法の終了後の近似解uhをGeneratorに差し戻し忘れ．最大値，最小値に影響(Bug fixes)
+vcp_timer.hpp : timer用のクラスを作成．C++11のchronoを使用．

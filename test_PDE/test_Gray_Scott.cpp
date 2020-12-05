@@ -149,6 +149,7 @@ int main(void){
 				uh1 = zh.submatrix({ 0,uh.rowsize() - 1}, { 0 });
 				uh2 = zh.submatrix({ uh.rowsize(), zh.rowsize() - 1 }, { 0 });
 				uh = horzcat(uh1, uh2);
+				Approximate_Generator.setting_uh(uh);
 				break;
 			}
 			uh1 = zh.submatrix({ 0, uh.rowsize() - 1 }, { 0 });

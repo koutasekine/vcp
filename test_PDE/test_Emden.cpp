@@ -125,6 +125,7 @@ int main(void){
 			cc = check(0);
 			std::cout << cc << std::endl;
 			if (cc < pow(2.0,-30)) {
+				Approximate_Generator.setting_uh(uh);
 				std::cout << "Convergence \n" << std::endl;
 				break;
 			}
@@ -155,6 +156,7 @@ int main(void){
 	vcp::Legendre_Bases_Generator< DataType, VData, VPOLICY > Verification_Generator;
 	Verification_Generator.setting(Order_legendre, p, Dimension, Number_of_variables, 1, uh_Order_legendre);
 	Verification_Generator.setting_list();
+	//Verification_Generator.setting_evenlist();
 	vcp::matrix< VData, VPOLICY > uhi;
 	vcp::convert(uh, uhi);
 	// uh setting : Last Argument is list divide : full list => 1 , even list => 2 
