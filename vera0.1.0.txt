@@ -1,0 +1,12 @@
+mats.hpp: normtwoメソッドを追加.2ノルムの計算をする.全固有値求めている.multmmとeigsymを使って実装しているため，BLASを使うポリシでは自動で高速に.(normone,norminfと違う実装法)
+matrix.hpp: normtwo関数を追加.
+imats_assist.hpp: 区間行列に対するmag関数を追加.mag(A, B), Bはinterval型ではない.
+imats_assist.hpp: 区間行列に対するintervalmag関数を追加.B = intervalmag(A), Bはinterval型.
+ldbase.hpp: 拡張: 区間係数を持つ解に対しても最大値・最小値を求められるように，funcメソッドをイコール代入からconvert代入に変更，Mode=1でも利用可能にした.
+minimatrix.hpp: psa型などの符号判定を持たない型用の行列ポリシーminimats< _T >.matrixクラスの部分特殊化.
+
+
+irk_legendre_parameter.hpp: Implicit Runge-Kuttaのルジャンドル法のブッチャー表を作成するクラス
+implicit_rk.hpp: Implicit Runge-Kuttaをブッチャー表が与えられたら実行するクラス．デフォルトはルジャンドル法．
+test_IRK_Legendre_approximate.cpp: implicit_rk.hppの使用例1．単純な2変数のODEの近似解を求める．
+test_parabolic_Emden_approximate.cpp: ldbase.hppとimplicit_rk.hppを使用してEmden方程式の初期値-境界値問題の近似解を求める．

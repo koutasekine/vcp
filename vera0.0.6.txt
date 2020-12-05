@@ -1,0 +1,14 @@
+mats.hpp: addmmなどのsubsmmA, subsmmBの行列サイズの判定条件のミスを修正(Bug fix)
+mats.hpp: 表示関数operator<<のconstつけ忘れを修正(Bug fix)
+matrix.hpp: 表示関数operator<<のconstつけ忘れを修正(Bug fix)
+imats.hpp: linearsolveの無駄な計算が行われていた箇所を修正(Bug fix)
+imats.hpp: linearsolveにR(Ax - b)の計算ミスを修正(Bug fix)
+imats.hpp: linearsolveのメモリの節約(Rとmbのclear)
+imats.hpp: eigsymgeの精度保証アルゴリズムを変更
+pidblas.hpp: 内部で使用するmul_m_imとmul_im_mにlCとuCのミスを修正(Bug fix)
+legendre_integral.hpp: Legendre積分の分点と重みのクラスinterval_ld_weightpoint(コードの整理)
+ldbase.hpp: Legendre積分をlegendre_integral.hppに移動(コードの整理)
+ldbase.hpp: LegendrePointFuncを並列化(コード最適化)
+newton.hpp: Newton法のクラス．クラスを継承してメソッドfとdfをオーバーライドで使用
+test_newton1.cpp: newton.hppの使用例1．単純な1変数の非線形方程式の近似解を求める．
+test_newton2_Emden.cpp: newton.hppの使用例2．定常Emden方程式の近似解をnewton.hppで求める．

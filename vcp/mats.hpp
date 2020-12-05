@@ -491,7 +491,7 @@ namespace vcp{
 		}
 		// A = +A
 		void plusm() {
-			return *this;
+			return;
 		}
 
 		// A = A-B
@@ -1541,7 +1541,49 @@ namespace vcp{
 				return;
 			}
 			else {
-				std::cout << "error : norminf" << std::endl;
+				std::cout << "error : normone" << std::endl;
+				exit(1);
+			}
+		}
+		void normtwo(){
+			if (type == 'S') {
+				using std::abs;
+				v[0] = abs(v[0]);
+				return;
+			}
+			else if (type == 'C' || type == 'R') {
+				_T B;
+				using std::sqrt;
+				using std::pow;
+				B = pow(v[0],2);
+				for (int i = 1; i < n; i++) {
+					B += pow(v[0],2);
+				}
+				B = sqrt(B);
+				(*this).zeros(1);
+				(*this).v[0] = B;
+				return;
+			}
+			else if (type == 'M') {
+				_T B;
+				using std::sqrt;
+				using std::max;
+				mats< _T > A;
+				(*this).mulltmm(A); // A = A^T*A
+				(*this) = A;
+				A.clear();
+				(*this).eigsym();
+				
+				for (int i = 0; i < (*this).row; i++) {
+					B = max(B, (*this).v[i + row*i]);
+				}
+				B = sqrt(B);
+				(*this).zeros(1);
+				(*this).v[0] = B;
+				return;
+			}
+			else {
+				std::cout << "error : normtwo" << std::endl;
 				exit(1);
 			}
 		}

@@ -94,6 +94,37 @@ namespace vcp {
 		}
 	}
 
+	template<typename _T, class _P1, class _P2> void mag(const vcp::matrix< kv::interval< _T >, _P1 >& A, vcp::matrix< _T , _P2 > &supmagA) {
+		supmagA.zeros(A.rowsize(), A.columnsize());
+		for (int i = 0; i < A.rowsize(); i++){
+			for (int j = 0; j < A.columnsize(); j++){
+				supmagA(i, j) = mag(A(i, j));
+			}
+		}
+	}
+
+	template<typename _T, class _P> vcp::matrix< kv::interval< _T >, _P > intervalmag(const vcp::matrix< kv::interval< _T >, _P >& A) {
+		vcp::matrix< kv::interval< _T >, _P > imagA;
+		imagA = abs(A);
+		for (int i = 0; i < imagA.rowsize(); i++){
+			for (int j = 0; j < imagA.columnsize(); j++){
+				imagA(i, j).lower() = imagA(i, j).upper();
+			}
+		}
+		return imagA;
+	}
+
+	template<typename _T, class _P> vcp::matrix< kv::interval< _T >, _P > czero_ball(const vcp::matrix< kv::interval< _T >, _P >& A) {
+		vcp::matrix< kv::interval< _T >, _P > imagA;
+		imagA = abs(A);
+		for (int i = 0; i < imagA.rowsize(); i++){
+			for (int j = 0; j < imagA.columnsize(); j++){
+				imagA(i, j).lower() = -imagA(i, j).upper();
+			}
+		}
+		return imagA;
+	}
+
 	template<typename _T, class _P1, class _P2> vcp::matrix< kv::interval< _T >, _P1 > operator*(const vcp::matrix< kv::interval< _T >, _P1 >& A, const  vcp::matrix< _T, _P2 >& B) {
 		if (A.columnsize() != B.rowsize()) {
 			std::cout << "vmatmul:error " << A.columnsize() << " != " << B.rowsize() << std::endl;
@@ -126,9 +157,9 @@ namespace vcp {
 				}
 			}
 		}
-
 		return std::move(C);
 	}
+
 #endif
 }
 #endif // VCP_IMATS_ASSIST_HPP

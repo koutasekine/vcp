@@ -63,14 +63,16 @@ typedef vcp::mats< AppData > POLICY;
 
 typedef vcp::pidblas VPOLICY;
 
+#define EPS 0.08
+
 int main(void){
 
 	std::cout.precision(17);
 	std::cout << "/**********************************************************************************/" << std::endl;
 	std::cout << "/**********************************************************************************/" << std::endl;
-	std::cout << "/*************                                                       **************/" << std::endl;
-	std::cout << "/************* Verified computation for solution to Emden's equation **************/" << std::endl;
-	std::cout << "/*************                                                       **************/" << std::endl;
+	std::cout << "/***********                                                          *************/" << std::endl;
+	std::cout << "/*********** Verified computation for solution to Allen-Cahn equation *************/" << std::endl;
+	std::cout << "/***********                                                          *************/" << std::endl;
 	std::cout << "/**********************************************************************************/" << std::endl;
 	std::cout << "/**********************************************************************************/\n" << std::endl;
 
@@ -80,9 +82,11 @@ int main(void){
 
 	int Order_legendre = 20;
 	int uh_Order_legendre = 20;
-	int p = 2;
+	int p = 3;
 	int Dimension = 2;
 	int Number_of_variables = 1;
+
+	
 
 	std::cout << "Dimension = " << Dimension << std::endl;
 	std::cout << "uh of Legendre Bases Order = " << uh_Order_legendre << std::endl;
@@ -103,10 +107,10 @@ int main(void){
 	vcp::matrix< int > list_uh = Approximate_Generator.output_list();
 
 	// setting initialization value of uh
-	uh.ones(list_uh.rowsize(), Number_of_variables);
+	uh.rand(list_uh.rowsize(), Number_of_variables);
 	//	uh(0) = 30;
-	uh = 200 * uh;
-	uh(0) = 600;
+	uh = 4 * uh;
+	uh(0) = 20;
 
 	std::cout << "Newton Method Start " << std::endl;
 	{
@@ -115,8 +119,9 @@ int main(void){
 		// Make the matrix ((phi_i, \phi_j)_{L^2})_{i,j}
 		vcp::matrix< AppData, POLICY > L = Approximate_Generator.phiphi();
 
-		vcp::matrix< AppData, POLICY > uh2phi;
-		vcp::matrix< AppData, POLICY > uhphiphi;
+		vcp::matrix< AppData, POLICY > uhphi;
+		vcp::matrix< AppData, POLICY > uh3phi;
+		vcp::matrix< AppData, POLICY > uh2phiphi;
 		vcp::matrix< AppData, POLICY > DF;
 		vcp::matrix< AppData, POLICY > F;
 		vcp::matrix< AppData, POLICY > syuusei;
@@ -126,12 +131,13 @@ int main(void){
 			AppData cc;
 			while(1){
 				Approximate_Generator.setting_uh(uh);
+				uhphi = Approximate_Generator.uhphi(1);
+				uh3phi = Approximate_Generator.uhphi(3);
+				uh2phiphi = Approximate_Generator.uhphiphi(2);
 
-				uh2phi = Approximate_Generator.uhphi(2);
-				uhphiphi = Approximate_Generator.uhphiphi(1);
-
-				DF = DL - 2*uhphiphi;
-				F = DL * uh - uh2phi;
+				using std::pow;
+				DF = DL - ( 1.0/(  pow(EPS, 2) )) * ( L - 3.0*uh2phiphi);
+				F = DL * uh - ( 1.0/(  pow(EPS, 2) )) *( uhphi - uh3phi )  ;
 				syuusei = lss(DF, F);
 				uh = uh - syuusei;
 				check = max(abs(syuusei));
@@ -151,9 +157,6 @@ int main(void){
 	// uh data for Grafics
 	vcp::matrix< AppData, POLICY > Grafics = Approximate_Generator.output_uh_for_graphics(100);
 //	std::cout << Grafics << std::endl;
-
-//	std::cout << "uh = " << std::endl;
-//	std::cout << uh << std::endl;
 
 	// minimal and maximum value of approximate solution uh
 	vcp::time.tic();
@@ -179,8 +182,12 @@ int main(void){
 /******************* Calculate Inverse Norm || F'[uh]^-1 ||_(H-1,H10) <= K *********************/
 /////////////////////////////////////////////////////////////////////////////////////////////////
 	vcp::time.tic();
-	VData CN, CNw, Cp, Cpw, Cs, Cs3, Csw;
-	VData fduh_Linf_norm = 2 * VData(uh_max[0]);
+	VData CN, CNw, Cp, Cpw, Cs, Cs3, Cs4, Csw4;
+	VData uh_infsup;
+	uh_infsup.lower() = uh_min[0];
+	uh_infsup.upper() = uh_max[0];
+	VData LA = 1.0/ pow(VData(EPS),2);
+	VData fduh_Linf_norm = abs(LA*( VData(1) - 3*pow(uh_infsup,2) ));
 	VData K = VData(0);
 	{
 		std::cout << "\nCalculate Inverse Norm || F'[uh]^-1 ||_(H-1,H10) <= K" << std::endl;
@@ -193,7 +200,8 @@ int main(void){
 		// uh setting : Last Argument is list divide : full list => 1 , even list => 2 
 		Verification_Generator.setting_uh(uhi, list_uh, 2);
 			
-		vcp::matrix< VData, VPOLICY > uhphiphi = Verification_Generator.uhphiphi(1);
+		vcp::matrix< VData, VPOLICY > uh2phiphi = Verification_Generator.uhphiphi(2);
+		vcp::matrix< VData, VPOLICY > L = Verification_Generator.phiphi();
 
 		// Make the matrix ((\nabla \phi_i, \nabla \phi_j)_{L^2})_{i,j}
 		vcp::matrix< VData, VPOLICY > DL = Verification_Generator.dphidphi();
@@ -207,8 +215,10 @@ int main(void){
 
 		CN = Verification_Generator.Ritz_projection_error< VData >();
 		std::cout << "CN = " << CN << std::endl;
-		/* 
-		double weight_value = 1234.567;
+		
+		double weight_value = fduh_Linf_norm.upper();
+		std::cout << "Weight value(sigma) = " << weight_value << std::endl;
+		
 		CNw = Verification_Generator.weighted_Ritz_projection_error< VData >(weight_value);
 		std::cout << "CNw = " << CNw << ", weight_value = " << weight_value << std::endl;
 
@@ -216,37 +226,32 @@ int main(void){
 		std::cout << "Cpw = " << Cpw << ", weight_value = " << weight_value << std::endl;
 
 		
-		Cs = Verification_Generator.Sobolev_constant< VData >(4);
-		std::cout << "Cs4 = " << Cs << ", p =" << "4" << std::endl;
-		Cs = Verification_Generator.Sobolev_constant< VData >(VData("5.2"));
-		std::cout << "Cs5.2 = " << Cs << ", p =" << "5.2" << std::endl;
-		Cs = Verification_Generator.Sobolev_constant< VData >(6);
-		std::cout << "Cs6 = " << Cs << ", p =" << "6" << std::endl;
+		Cs4 = Verification_Generator.Sobolev_constant< VData >(4);
+		std::cout << "Cs4 = " << Cs4 << ", p =" << "4" << std::endl;
 
-		Csw = Verification_Generator.weighted_Sobolev_constant< VData >(4, weight_value);
-		std::cout << "Csw4 = " << Csw << ", p =" << "4" << ", weight_value = " << weight_value << std::endl;
-		Csw = Verification_Generator.weighted_Sobolev_constant< VData >(VData("5.2"), weight_value);
-		std::cout << "Csw5.2 = " << Csw << ", p =" << "5.2" << ", weight_value = " << weight_value << std::endl;
-		Csw = Verification_Generator.weighted_Sobolev_constant< VData >(6, weight_value);
-		std::cout << "Csw6 = " << Csw << ", p =" << "6" << ", weight_value = " << weight_value << std::endl;
-		*/
+		Csw4 = Verification_Generator.weighted_Sobolev_constant< VData >(4, weight_value);
+		std::cout << "Csw4 = " << Csw4 << ", p =" << "4" << ", weight_value = " << weight_value << std::endl;		
+
+	
 		Verification_Generator.clear();
 
 		vcp::matrix< VData, VPOLICY >  E;
-		eigsymge(2*uhphiphi, DL, E);
+		eigsymge(( 1/(  pow(VData(EPS), 2) )) * ( L - 3.0*uh2phiphi) + weight_value*L, DL + weight_value*L, E);
 
-		E = diag(E);
+		E = 1/diag(E);
 		std::cout << E(0) << std::endl;
-		
+
+		VData K2 = abs( weight_value + LA*( VData(1) - 3* pow(uh_infsup,2) ));
+
 		for (int i = 0; i < length(E); i++){
 			using std::pow;
 			using std::abs;
 			using std::max;
 			VData cc;
 			cc = E(i);
-			E(i) = E(i)/(1 + pow(CN,2)*fduh_Linf_norm*E(i));
+			E(i) = E(i)/(1 + pow(CNw,2)*VData(K2.upper())*E(i));
 			E(i).upper() = cc.upper();
-			E(i) = abs(E(i)/( 1 - E(i) ));
+			E(i) = abs(E(i)/( E(i) - 1 ));
 			if (K.upper() < E(i).upper()){
 				K = E(i);
 			}
@@ -255,112 +260,7 @@ int main(void){
 			K = VData(1);
 		}
 		std::cout << "Inverse Norm || F'[uh]^-1 ||_(H-1,H10) <= " << K << std::endl;
-		
-	}
-	vcp::time.toc();
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-/******************* Calculate Residual Norm || Laplace(uh) - f(uh) ||_L2 **********************/
-/////////////////////////////////////////////////////////////////////////////////////////////////
-	vcp::time.tic();
-	VData Res = VData(0);
-	{
-		std::cout << "\nCalculate Residual Norm || Laplace(uh) - f(uh) ||_L2" << std::endl;
-		vcp::Legendre_Bases_Generator< DataType, VResData, VResPOLICY > Verification_Generator;
-		Verification_Generator.setting(uh_Order_legendre, p, Dimension, Number_of_variables, 2);
-		// Setting the list of Verification_Generator 
-		//Verification_Generator.setting_list();
-		Verification_Generator.setting_evenlist();
-		vcp::matrix< VResData, VResPOLICY > uhi;
-		vcp::interval(uh, uhi);
-		//vcp::convert(uh, uhi);
-
-		Verification_Generator.setting_uh(uhi);
-
-		// || Laplace(uh) - f(uh) ||_L2 = sqrt( | (Laplace(uh), Laplace(uh))_L2 + 2(-Laplace(uh), f(uh))_L2 + (f(uh), f(uh))_L2 | )
-		VResData uh4 = Verification_Generator.integral_uh(4);
-		std::cout << "uh4 = " << uh4 << std::endl;
-
-		VResData LuhLuh = Verification_Generator.integral_LuhLuh(0);
-		std::cout << "LuhLuh = " << LuhLuh << std::endl;
-
-		VResData Luh_uh2 = Verification_Generator.integral_Luhuh(0, 2);
-		std::cout << "Luh_uh2 = " << Luh_uh2 << std::endl;
-
-		{
-			using std::sqrt;
-			using std::abs;
-			vcp::convert(sqrt(abs(LuhLuh + 2 * Luh_uh2 + uh4)), Res);
-			std::cout << "Residual Norm : || Laplace(uh) - f(uh) ||_L2 <= " << Res << std::endl;
-		}
-		Res = Cp * Res;
-		std::cout << "Residual Norm : || F(uh) ||_(H-1) <= " << Res << std::endl;
-	}
-	vcp::time.toc();
-
-	/////////////////////////////////////////////////////////////////////////////////////////////////
-	/***** Calculate Lipschitz constant || F'[w1] - F'[w2] ||_(H-1,H10) <= G || w1 - w2 ||_(H10) *****/
-	/////////////////////////////////////////////////////////////////////////////////////////////////
-	vcp::time.tic();
-	VData G;
-	{
-		std::cout << "\nCalculate Lipschitz constant || F'[w1] - F'[w2] ||_(H-1,H10) <= G || w1 - w2 ||_(H10)" << std::endl;
-		using std::pow;
-		G = 2 * pow(Cs3, 3);
-		std::cout << "G = " << G << std::endl;
-
-		/* 
-		vcp::Legendre_Bases_Generator< DataType, VData, VPOLICY > Verification_Generator;
-		std::cout << "Check Start" << std::endl;
-		Verification_Generator.setting(uh_Order_legendre, 1, Dimension, Number_of_variables, 1, uh_Order_legendre);
-		std::cout << "Check End" << std::endl;
-		// Setting the list of Verification_Generator 
-		//Verification_Generator.setting_list();
-		Verification_Generator.setting_evenlist();
-
-		// Make the matrix ((\nabla \phi_i, \nabla \phi_j)_{L^2})_{i,j}
-		vcp::matrix< VData, VPOLICY > DL = Verification_Generator.dphidphi();
-		// Make the matrix ((phi_i, \phi_j)_{L^2})_{i,j}
-		vcp::matrix< VData, VPOLICY > L = Verification_Generator.phiphi();
-
-		vcp::matrix< VData, VPOLICY > uhi;
-		vcp::convert(uh, uhi);
-
-		vcp::matrix< VData, VPOLICY > uh_H10_norm = transpose(uhi)*(DL*uhi);
-		vcp::matrix< VData, VPOLICY > uh_L2_norm = transpose(uhi)*(L*uhi);
-
-		std::cout << "|| uh ||_(H10) = " << uh_H10_norm << std::endl;
-		std::cout << "|| uh ||_(L2) = " << uh_L2_norm << std::endl;
-		*/
-	}
-	vcp::time.toc();
-
-	/////////////////////////////////////////////////////////////////////////////////////////////////
-	/*************************** Calculate Kantorovich's Theorem :  ********************************/
-	/////////////////////////////////////////////////////////////////////////////////////////////////
-	vcp::time.tic();
-	VData Kantorovich_constant;
-	VData error_bound;
-	{
-		std::cout << "\nCalculate Kantorovich's Theorem" << std::endl;
-
-		VData alpha = K*Res;
-		VData omega = K*G;
-		Kantorovich_constant = alpha*omega;
-
-		std::cout << "Check :: K^2 delta G <= 1/2" << std::endl;
-		std::cout << "K^2 delta G = " << Kantorovich_constant << std::endl;
-
-		if (Kantorovich_constant.upper() <= 0.5) {
-			std::cout << "Verification is success!!" << std::endl;
-		}
-		else {
-			std::cout << "Verification is fail..." << std::endl;
-			exit(1);
-		}
-		using std::sqrt;
-		error_bound = (1 - sqrt(1 - 2 * alpha*omega)) / omega;
-		std::cout << "|| u^* - uh ||_(H10) <= " << error_bound << std::endl;
+	
 	}
 	vcp::time.toc();
 

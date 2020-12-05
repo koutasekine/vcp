@@ -27,15 +27,51 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#pragma once
 
-#ifndef VCP_LDBASE_ASSIST_HPP
-#define VCP_LDBASE_ASSIST_HPP
+#include <iostream>
 
-#ifndef VCP_LDBASE_HPP
-#error Please include ldbase.hpp
+#include <omp.h>
+
+#include <kv/interval.hpp>
+#include <kv/rdouble.hpp>
+#include <kv/dd.hpp>
+#include <kv/rdd.hpp>
+#include <kv/mpfr.hpp>
+#include <kv/rmpfr.hpp>
+#include <kv/psa.hpp>
+
+#include <vcp/matrix.hpp>
+#include <vcp/minimatrix.hpp>
+
+int main(void) {
+#ifdef _OPENMP
+#ifndef VCP_MATS_NOMP
+	std::cout << "Using Open MP for Mats Policy" << std::endl;
 #endif
+#endif
+/*---  Matrix size  ---*/
+	int n = 3;
+	// vcp::matrix< double, vcp::minimats<double> > A, B, E, D, X, G, I;
+	vcp::matrix< kv::psa< kv::interval< double > > , vcp::minimats< kv::psa< kv::interval< double > > > > A, B, C;
 
-#include <vcp/make_Matrix_ldbase_on_interval.hpp>
+/*---  Make vectors and matrices ---*/
+	A.zeros(n,2);
+	
+	A(0,0).v.resize(2);
+	A(0,0).v[0] = 1;
+	A(1,0).v.resize(2);
+	A(1,0).v[1] = 1;
+	A=2*A;
+	A = A*transpose(A);
 
-#endif // VCP_LDBASE_HPP
+	B.zeros(n,4);
+	B(0,0).v.resize(2);
+	B(0,0).v[1] = 1;
+	B(0,1).v.resize(2);
+	B(0,1).v[0] = 1;
+	B = B*transpose(B);
+
+	C = A+B;
+	std::cout << A + B << std::endl;
+	return 0;
+}

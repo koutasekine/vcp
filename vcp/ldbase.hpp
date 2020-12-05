@@ -189,11 +189,14 @@ namespace vcp {
 		int Order_of_Base;   // Order of Legendre Base
 		int elementsize;     // (*this).elementsize = std::pow((*this).phi.size(), (*this).dimension);
 		int variablesize;    // Number of Variables
+		int variablesize_cx; // Number of Variables for cx
 		int dimension;       // Dimension of Domein
 		int mode;			 // 1: verification mode (Inverse operator), 2: verification mode (Residual), k > 2: approximation mode k*10
 		int p;				 // -Delta u = u^p
 		int Order_uh;		 // Order_uh
+		int Order_cx;		 // Order_cx
 		bool flag_order_uh;
+		bool flag_order_cx;
 
 		std::vector< kv::psa< _T > > phi;
 		std::vector< kv::psa< _T > > dphi;
@@ -204,8 +207,10 @@ namespace vcp {
 		matrix< _TM, _PM > Legendre_with_GLpoint;
 		matrix< _TM, _PM > DifDifLegendre_with_GLpoint;
 		matrix< _TM, _PM > uh;
+		matrix< _TM, _PM > cx;
 		matrix< _TM, _PM > phi_point;
 		matrix< _TM, _PM > uhphi_point;
+		matrix< _TM, _PM > cxphi_point;		
 		matrix< _TM, _PM > DDuhphi_point;
 		matrix< _TM, _PM > weight_point;
 
@@ -240,7 +245,14 @@ namespace vcp {
 			std::cout << "--------------Generating :: Even List of bases-------------------------------------" << std::endl;
 			std::cout << ">> Size of list is (" << std::pow(mnumber, dim) << "," << dim << ") \n" << std::endl;
 #endif
-			(*this).list.zeros(std::pow(mnumber, dim), dim);
+			try {
+				(*this).list.zeros(std::pow(mnumber, dim), dim);
+			}
+			catch (const std::length_error& le){
+				std::cout << "even_list_set:" << std::endl;
+				std::cout << "Error: Matrix size: (" << std::pow(mnumber, dim) << ", " << dim << " )" << std::endl;
+				std::cerr << "Length error: " << le.what() << '\n';
+			}
 			int ii = 0;
 			for (int d = 0; d < dim; d++) {
 				di = dim - d;
@@ -325,7 +337,7 @@ namespace vcp {
 #endif
 			(*this).uhphi_point.zeros((*this).variablesize, column_Pointlist);
 			(*this).DDuhphi_point.zeros((*this).variablesize, column_Pointlist);
-			if ((*this).mode == 2) {
+			if ( ( (*this).mode == 2 ) || ( (*this).mode == 0 ) ) {
 				_TM Phi_Time;
 				for (int v = 0; v < (*this).variablesize; v++) {
 					for (int j = 0; j < (*this).Pointlist.rowsize(); j++) {
@@ -425,6 +437,59 @@ namespace vcp {
 
 		}
 
+		void cxphi_point_set(const matrix< int >& list_cx, int& order_cx) {
+			(*this).Order_cx = order_cx;
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "--------------Generating :: Legendre Base------------------------------------------" << std::endl;
+			std::cout << ">> Order of Legendre base for cx is " << (*this).Order_cx << std::endl;
+			std::cout << ">> Order of polynomial is " << (*this).Order_cx + 2 << " (= Order_cx + 2)\n" << std::endl;
+#endif
+			std::vector< kv::psa< _T > > phi_cx;
+			LegendreBaseFunctions::makeLegendreBase((*this).Order_cx + 2, phi_cx);
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "--------------Generating :: Legendre Base <== Point of Gauss Legendre--------------" << std::endl;
+			std::cout << ">> Size of Legendre_with_GLpoint is (" << (*this).Order_cx << "," << (*this).Point.size() << ")" << std::endl;
+			std::cout << ">> Size of DifDifLegendre_with_GLpoint is (" << (*this).Order_cx << "," << (*this).Point.size() << ")\n" << std::endl;
+#endif
+			std::vector< std::vector< _T > > LBP2;
+			LegendreBaseFunctions::LegendrePointFunc(phi_cx, (*this).Point, LBP2);
+
+			matrix< _TM, _PM > Legendre_cx_with_GLpoint;
+			Legendre_cx_with_GLpoint.zeros((*this).Order_cx, (*this).Point.size());
+
+			for (int i = 0; i < (*this).Order_cx; i++) {
+				for (int j = 0; j < (*this).Point.size(); j++) {
+					convert(LBP2[i + 2][j], Legendre_cx_with_GLpoint(i, j));
+//					Legendre_cx_with_GLpoint(i, j) = LBP2[i + 2][j];
+				}
+			}
+			for (int j = 0; j < phi_cx.size() - 2; j++) {
+				phi_cx[j] = phi_cx[j + 2];
+			}
+			phi_cx.resize((*this).Order_cx);
+
+			int column_Pointlist = (*this).Pointlist.rowsize();
+			(*this).cxphi_point.zeros((*this).variablesize, column_Pointlist);
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "--------------Generating :: cx_i * phi_i with PointList----------------------------" << std::endl;
+			std::cout << ">> cx size is (" << list_cx.rowsize() << "," << (*this).variablesize << ")" << std::endl;
+			std::cout << ">> cx_i * phi_i size is (" << (*this).variablesize << "," << column_Pointlist << ")\n" << std::endl;
+#endif
+
+			for (int v = 0; v < (*this).variablesize_cx; v++) {
+				for (int j = 0; j < (*this).Pointlist.rowsize(); j++) {
+					for (int i = 0; i < list_cx.rowsize(); i++) {
+						_TM Phi_Time = Legendre_cx_with_GLpoint(list_cx(i, 0), (*this).Pointlist(j, 0));
+						for (int d = 1; d < list_cx.columnsize(); d++) {
+							Phi_Time *= Legendre_cx_with_GLpoint(list_cx(i, d), (*this).Pointlist(j, d));
+						}
+						(*this).cxphi_point(v, j) += cx(i, v) * Phi_Time;
+					}
+				}
+			}
+
+		}
+
 		template<typename... Args> void make_uh_p(matrix< _TM, _PM >& uh_p_phi_point) {
 		}
 		template<typename... Args> void make_uh_p(matrix< _TM, _PM >& uh_p_phi_point, const int& p, const Args&... args) {
@@ -442,6 +507,26 @@ namespace vcp {
 					uh_p_phi_point(0, i) *= pow((*this).uhphi_point((*this).variablesize - (vari_size + 1), i), p);
 				}
 				(*this).make_uh_p(uh_p_phi_point, args...);
+			}
+		}
+
+		template<typename... Args> void make_cx_p(matrix< _TM, _PM >& cx_p_phi_point) {
+		}
+		template<typename... Args> void make_cx_p(matrix< _TM, _PM >& cx_p_phi_point, const int& p, const Args&... args) {
+			using std::pow;
+			constexpr std::size_t vari_size = sizeof...(args);
+			if (p == 0) {
+				(*this).make_cx_p(cx_p_phi_point, args...);
+			}
+			else if (p < 0) {
+				std::cout << ">> ERROR : make_cx_p : input arguments is negative ( p = " << p << " )" << std::endl;
+				exit(1);
+			}
+			else {
+				for (int i = 0; i < (*this).Pointlist.rowsize(); i++) {
+					cx_p_phi_point(0, i) *= pow((*this).cxphi_point((*this).variablesize_cx - (vari_size + 1), i), p);
+				}
+				(*this).make_cx_p(cx_p_phi_point, args...);
 			}
 		}
 
@@ -526,7 +611,8 @@ namespace vcp {
 
 			_TC tmp;
 			for (int k = 0; k < (*this).list.rowsize(); k++) {
-				tmp = uh(k, v);
+				//tmp = uh(k, v);
+				convert(uh(k,v), tmp);
 				for (int di = 0; di < dim; di++) {
 					tmp *= p_phi_TC((*this).list(k, di), di);
 				}
@@ -546,17 +632,24 @@ namespace vcp {
 			std::cout << "////////////////// Legendre_Bases_Generator :: setting(" << mm << "," << pp << "," << dim << "," << vs << "," << k << "," << uh_o << ") //////////////" << std::endl;
 			std::cout << "//////////////////////////////////////////////////////////////////////////////////// \n" << std::endl;
 #endif
-			if (mm < 2 || pp < 1 || dim < 1 || vs < 1 || k < 1 || uh_o < -1 || uh_o == 0) {
+			if (mm < 2 || pp < 1 || dim < 1 || vs < 1 || k < 0 || uh_o < -1 || uh_o == 0) {
 				std::cout << ">> ERROR : setting : Not Appropriate Input Arguments" << std::endl;
 				exit(1);
 			}
-			if (uh_o > 1 && k != 1) {
+			if (uh_o > 1 && (k != 1 && k != 0 ) ) {
 				std::cout << ">> ERROR : Order of uh > 1 && Mode isn't With out Residual Mode  " << std::endl;
 				exit(1);
 			}
 			if (uh_o > 1) {
-				(*this).flag_order_uh = true;
-				(*this).Order_uh = uh_o;
+				if (k == 0){
+					(*this).flag_order_cx = true;
+					(*this).Order_cx = uh_o;
+				}
+				else{
+					(*this).flag_order_uh = true;
+					(*this).Order_uh = uh_o;
+				}
+
 			}
 			else {
 				(*this).flag_order_uh = false;
@@ -614,6 +707,25 @@ namespace vcp {
 #ifdef VCP_LEGENDRE_DEBUG
 				std::cout << ">> Order of Gauss Legendre Integration is " << n << " = (" << k << "*(Order_of_Base + 2) * p + 1)/2 + 2 \n" << std::endl;
 #endif
+			}
+			else if (k == 0){
+#ifdef VCP_LEGENDRE_DEBUG
+				std::cout << ">> You can use the Goerisch theorem (L uhi, L uhj)_{L^2}" << std::endl;
+#endif
+				if ((*this).flag_order_cx) {
+					//  2*nn1-1 > (p - 1)*(Order_cx + 2) + 2*(Order_of_Base + 2)   -->  n := ((p - 1)*(Order_uh + 2) + 2*(Order_of_Base + 2) + 1)/2 + 1
+					int nn1 = (2*(p - 1)*((*this).Order_cx + 2) + 2 * ((*this).Order_of_Base + 2) + 2) / 2 + 2;
+					//  2*nn2-1 > p*(Order_uh + 2) + (Order_of_Base + 2)   -->  n := ((p - 1)*(Order_uh + 2) + 2*(Order_of_Base + 2) + 1)/2 + 1
+					int nn2 = (2*p*((*this).Order_cx + 2) + ((*this).Order_of_Base + 2) + 2) / 2 + 2;
+					n = std::max(nn1, nn2);
+				}
+				else{
+					//  2*n-1 > 2*(Order_of_Base + 2)  -->  n := ( 2*(Order_of_Base + 2) + 1 ) /2 + 2;
+					n = (2*((*this).Order_of_Base + 2) + 1) / 2 + 2;
+				}
+				if (n % 2 != 0) {
+					n = n + 1;
+				}
 			}
 			else {
 #ifdef VCP_LEGENDRE_DEBUG
@@ -680,7 +792,7 @@ namespace vcp {
 		void setting_list() {
 			(*this).list_set();
 			(*this).elementsize = (*this).list.rowsize();
-			if ((*this).mode != 2) {
+			if (((*this).mode != 2) && ((*this).mode != 0) ) {
 				(*this).phi_point_set();
 			}
 		}
@@ -688,7 +800,7 @@ namespace vcp {
 		void setting_evenlist() {
 			(*this).even_list_set();
 			(*this).elementsize = (*this).list.rowsize();
-			if ((*this).mode != 2) {
+			if (((*this).mode != 2) && ((*this).mode != 0) ) {
 				(*this).phi_point_set();
 			}
 		}
@@ -732,6 +844,7 @@ namespace vcp {
 		//	}
 		}
 		void setting_uh(const matrix< _TM, _PM >& uuh, const matrix< int >& list_uh, int ind) {
+			// ind: full list => 1 , even list => 2
 #ifdef VCP_LEGENDRE_DEBUG
 			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
 			std::cout << "//// Legendre_Bases_Generator :: setting_uh(matrix<_T> uh, matrix<int> list_uh) ////" << std::endl;
@@ -762,6 +875,38 @@ namespace vcp {
 			}
 		}
 
+		void setting_cx(const matrix< _TM, _PM >& ccx, const matrix< int >& list_cx, int ind) {
+			// ind: full list => 1 , even list => 2
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "//// Legendre_Bases_Generator :: setting_cx(matrix<_T> cx, matrix<int> list_cx) ////" << std::endl;
+			std::cout << "//////////////////////////////////////////////////////////////////////////////////// \n" << std::endl;
+#endif
+			matrix< int > cx_o = max(max(list_cx));
+			int cx_order = cx_o(0) + ind;
+
+			if (!(*this).flag_order_cx) {
+				std::cout << ">> ERROR : setting_cx : Flag for order of cx is False..." << std::endl;
+				std::cout << ">> Please check the Last Argument of the function .setting()" << std::endl;
+				exit(1);
+			}
+			if ((*this).Order_cx != cx_order) {
+				std::cout << ">> ERROR : setting_cx : no much the cx_order : " << (*this).Order_cx << "!=" << cx_order << std::endl;
+				std::cout << ">> Please check the Last Argument of the function .setting() or Order of the Argument cx" << std::endl;
+				exit(1);
+			}
+			(*this).variablesize_cx = ccx.columnsize();
+			if (ccx.rowsize() != (std::pow(cx_order/ind, (*this).dimension))) {
+				std::cout << ">> ERROR : setting_cx : no much the matrix size : cx : " << ccx.rowsize() << "!=" << std::pow(cx_order, (*this).dimension) << std::endl;
+				exit(1);
+			}
+		
+			(*this).cx = ccx;
+			if ((*this).mode != 2) {
+				(*this).cxphi_point_set(list_cx, cx_order);
+			}
+		}
+
 		template<typename... Args> matrix< _TM, _PM > uhphiphi(const Args&... args) {
 #ifdef VCP_LEGENDRE_DEBUG
 			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
@@ -769,7 +914,7 @@ namespace vcp {
 			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
 #endif
 			constexpr std::size_t vari_size = sizeof...(args);
-			if ((*this).mode == 2) {
+			if ( ((*this).mode == 2) || ((*this).mode == 0) ) {
 				std::cout << ">> ERROR : uhphiphi : This function can not use the Residual mode (Mode = 2)" << std::endl;
 				exit(1);
 			}
@@ -830,7 +975,7 @@ namespace vcp {
 			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
 #endif
 			constexpr std::size_t vari_size = sizeof...(args);
-			if ((*this).mode == 2) {
+			if ( ((*this).mode == 2) || ((*this).mode == 0) ) {
 				std::cout << ">> ERROR : uhphi : This function can not use the Residual mode (Mode = 2)" << std::endl;
 				exit(1);
 			}
@@ -880,7 +1025,7 @@ namespace vcp {
 			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
 #endif
 
-			if ((*this).mode == 2) {
+			if ( ((*this).mode == 2) || ((*this).mode == 0) ) {
 				std::cout << ">> ERROR : phiphi : This function can not use the Residual mode (Mode = 2)" << std::endl;
 				exit(1);
 			}
@@ -942,7 +1087,7 @@ namespace vcp {
 			std::cout << "//////////////////// Legendre_Bases_Generator :: fphi()////////////////////" << std::endl;
 			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
 #endif
-			if ((*this).mode == 2) {
+			if ( ((*this).mode == 2) || ((*this).mode == 0) ) {
 				std::cout << ">> ERROR : uhphi : This function can not use the Residual mode (Mode = 2)" << std::endl;
 				exit(1);
 			}
@@ -969,7 +1114,7 @@ namespace vcp {
 			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
 #endif
 
-			if ((*this).mode == 2) {
+			if ( ((*this).mode == 2) || ((*this).mode == 0) ) {
 				std::cout << ">> ERROR : dphidphi : This function can not use the Residual mode (Mode = 2)" << std::endl;
 				exit(1);
 			}
@@ -1133,8 +1278,8 @@ namespace vcp {
 			int dim = (*this).dimension;
 			int var = (*this).variablesize;
 
-			if ((*this).mode <= 2) {
-				std::cout << ">> ERROR : global_min : This function can only use the approximation mode (Mode > 2) (with verification)" << std::endl;
+			if ((*this).mode == 2) {
+				std::cout << ">> ERROR : global_min : This function can use the approximation mode or Inverse Mode (Mode = 2) (with verification)" << std::endl;
 				exit(1);
 			}
 
@@ -1315,8 +1460,8 @@ namespace vcp {
 			int dim = (*this).dimension;
 			int var = (*this).variablesize;
 
-			if ((*this).mode <= 2) {
-				std::cout << ">> ERROR : global_max : This function can only use the approximation mode (Mode > 2) (with verification)" << std::endl;
+			if ((*this).mode == 2) {
+				std::cout << ">> ERROR : global_max : This function can only use the approximation mode or Inverse Mode (Mode = 2) (with verification)" << std::endl;
 				exit(1);
 			}
 
@@ -1534,7 +1679,7 @@ namespace vcp {
 		_TM integral_LuhLuh(int select_v) {
 #ifdef VCP_LEGENDRE_DEBUG
 			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
-			std::cout << "//////////////// Legendre_Bases_Generator :: integral_LuhLuh(Args... )//////////////" << std::endl;
+			std::cout << "///////////// Legendre_Bases_Generator :: integral_LuhLuh(int select_v)/////////////" << std::endl;
 			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
 #endif
 			if ((*this).mode != 2) {
@@ -1552,6 +1697,35 @@ namespace vcp {
 
 			for (int k = 0; k < (*this).Pointlist.rowsize(); k++) {
 				res += (*this).weight_point(0, k) * pow( DDuhphi_point(select_v, k), 2);
+			}
+			return res;
+		}
+
+		_TM integral_LuhLuh(int select_v1, int select_v2) {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "//////////////// Legendre_Bases_Generator :: integral_LuhLuh(v1, v2)   /////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+#endif
+			if ( ( (*this).mode != 2) && ( (*this).mode != 0) ) {
+				std::cout << ">> ERROR : integral_LuhLuh : This function only use the Residual mode (Mode = 0 or 2) : " << (*this).mode << std::endl;
+				exit(1);
+			}
+
+			if ( select_v1 + 1 >  (*this).variablesize ) {
+				std::cout << ">> ERROR : integral_LuhLuh : select valiable size != variablesize ( " << select_v1 + 1 << " > " << (*this).variablesize << " )" << std::endl;
+				exit(1);
+			}
+			if ( select_v2 + 1 >  (*this).variablesize ) {
+				std::cout << ">> ERROR : integral_LuhLuh : select valiable size != variablesize ( " << select_v2 + 1 << " > " << (*this).variablesize << " )" << std::endl;
+				exit(1);
+			}
+
+			_TM res = _TM(0);
+			using std::pow;
+
+			for (int k = 0; k < (*this).Pointlist.rowsize(); k++) {
+				res += (*this).weight_point(0, k) * DDuhphi_point(select_v1, k)*DDuhphi_point(select_v2, k);
 			}
 			return res;
 		}
@@ -1600,6 +1774,112 @@ namespace vcp {
 
 			for (int k = 0; k < (*this).Pointlist.rowsize(); k++) {
 				res += (*this).weight_point(0, k) * uh_p_phi_point(0, k) * DDuhphi_point(select_v, k);
+			}
+			return res;
+		}
+
+		template<typename... Args> _TM integral_Luhcxuh(int select_v_Luh, int select_v_uh, const Args&... args) {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "////////////// Legendre_Bases_Generator :: integral_Luhcxuh(Args... ) //////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+#endif
+
+			constexpr std::size_t vari_size = sizeof...(args);
+			if ((*this).mode != 0) {
+				std::cout << ">> ERROR : integral_Luhcxuh : This function only use the Goerisch mode (Mode = 0)" << std::endl;
+				exit(1);
+			}
+
+			if (vari_size != (*this).variablesize_cx) {
+				std::cout << ">> ERROR : integral_Luhcxuh : size of input arguments != variablesize_cx ( " << vari_size << " != " << (*this).variablesize_cx << " )" << std::endl;
+				exit(1);
+			}
+
+			if (select_v_Luh + 1 >  (*this).variablesize) {
+				std::cout << ">> ERROR : integral_Luhcxuh : select valiable size != variablesize ( " << select_v_Luh + 1 << " > " << (*this).variablesize << " )" << std::endl;
+				exit(1);
+			}
+
+			if (select_v_uh + 1 >  (*this).variablesize) {
+				std::cout << ">> ERROR : integral_Luhcxuh : select valiable size != variablesize ( " << select_v_uh + 1 << " > " << (*this).variablesize << " )" << std::endl;
+				exit(1);
+			}
+
+			matrix< _TM, _PM > cx_p_phi_point;
+			cx_p_phi_point.ones(1, (*this).Pointlist.rowsize());
+			(*this).make_cx_p(cx_p_phi_point, args...);
+
+			int vs = 0;
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << ">> Generate the value int(";
+#endif
+			(*this).disp_args(vs, args...);
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << " Laplace(uh) uh) dx \n" << std::endl;
+#endif
+			if ( ((*this).p + 1) < vs + 1) {
+				std::cout << ">> ERROR : integral_Luhcxuh : p + 1 < vs + 1" << "( p + 1=" <<  (*this).p + 1 << ", vs + 1=" << vs + 1 << ")" << std::endl;
+				exit(1);
+			}
+
+			_TM res = _TM(0);
+
+			for (int k = 0; k < (*this).Pointlist.rowsize(); k++) {
+				res += (*this).weight_point(0, k) * cx_p_phi_point(0, k) * DDuhphi_point(select_v_Luh, k) * uhphi_point(select_v_uh, k);
+			}
+			return res;
+		}
+
+		template<typename... Args> _TM integral_cxuhuh(int select_v_uh1, int select_v_uh2, const Args&... args) {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "////////////// Legendre_Bases_Generator :: integral_cxuhuh(Args... ) ///////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+#endif
+
+			constexpr std::size_t vari_size = sizeof...(args);
+			if ((*this).mode != 0) {
+				std::cout << ">> ERROR : integral_cxuhuh : This function only use the Goerisch mode (Mode = 0)" << std::endl;
+				exit(1);
+			}
+
+			if (vari_size != (*this).variablesize_cx) {
+				std::cout << ">> ERROR : integral_cxuhuh : size of input arguments != variablesize_cx ( " << vari_size << " != " << (*this).variablesize_cx << " )" << std::endl;
+				exit(1);
+			}
+
+			if (select_v_uh1 + 1 >  (*this).variablesize) {
+				std::cout << ">> ERROR : integral_cxuhuh : select valiable size != variablesize ( " << select_v_uh1 + 1 << " > " << (*this).variablesize << " )" << std::endl;
+				exit(1);
+			}
+
+			if (select_v_uh2 + 1 >  (*this).variablesize) {
+				std::cout << ">> ERROR : integral_cxuhuh : select valiable size != variablesize ( " << select_v_uh2 + 1 << " > " << (*this).variablesize << " )" << std::endl;
+				exit(1);
+			}
+
+			matrix< _TM, _PM > cx_p_phi_point;
+			cx_p_phi_point.ones(1, (*this).Pointlist.rowsize());
+			(*this).make_cx_p(cx_p_phi_point, args...);
+
+			int vs = 0;
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << ">> Generate the value int(";
+#endif
+			(*this).disp_args(vs, args...);
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << " cx*ui*uj dx \n" << std::endl;
+#endif
+			if ( 2*((*this).p -1) + 2 < vs + 1) {
+				std::cout << ">> ERROR : integral_cxuhuh : 2*(p-1)+2 < vs + 1" << "( 2*(p-1)+2=" <<  2*((*this).p -1) + 2 << ", vs + 1=" << vs + 1 << ")" << std::endl;
+				exit(1);
+			}
+
+			_TM res = _TM(0);
+
+			for (int k = 0; k < (*this).Pointlist.rowsize(); k++) {
+				res += (*this).weight_point(0, k) * cx_p_phi_point(0, k) * uhphi_point(select_v_uh1, k) * uhphi_point(select_v_uh2, k);
 			}
 			return res;
 		}

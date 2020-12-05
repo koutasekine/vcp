@@ -496,6 +496,15 @@ namespace vcp {
 			A.normone(c);
 			return std::move(c);
 		}
+		friend matrix< _T, _P > normtwo(const matrix< _T, _P >& A) {
+			matrix< _T, _P > c = A;
+			c.normtwo();
+			return std::move(c);
+		}
+		friend matrix< _T, _P > normtwo(matrix< _T, _P >&& A) {
+			A.normtwo();
+			return std::move(A);
+		}
 		friend matrix< _T, _P > norminf(const matrix< _T, _P >& A) {
 			matrix< _T, _P > c;
 			A.norminf(c);

@@ -54,10 +54,10 @@ typedef kv::interval< kv::mpfr< 500 > > VMPFR;
 int main(void){
 	std::cout.precision(17);
 
-	int Order_legendre = 15;
+	int Order_legendre = 30;
 	int uh_Order_legendre = Order_legendre;
 	int p = 1;
-	int Dimension = 2;
+	int Dimension = 1;
 	int Number_of_variables = 1;
 
 	std::cout << "Dimension = " << Dimension << std::endl;
@@ -89,6 +89,8 @@ int main(void){
 
 		vcp::matrix< VD, VDP >  E;
 		eigsymge(L, DL, E);
+
+		std::cout << DL << std::endl;
 
 		DL.clear();
 		L.clear();

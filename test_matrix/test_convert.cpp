@@ -74,5 +74,6 @@ int main(void) {
 	std::cout << Aidd(0, 0) << std::endl;
 	vcp::convert(Aidd, Am500);
 	std::cout << Am500(0, 0) << std::endl;
+
 	return 0;
 }

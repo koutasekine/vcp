@@ -42,6 +42,7 @@
 //#include <vcp/imats.hpp>
 //#include <vcp/pdblas.hpp>
 //#include <vcp/pidblas.hpp>
+
 #include <vcp/matrix.hpp>
 //#include <vcp/matrix_assist.hpp>
 
@@ -64,6 +65,7 @@ int main(void) {
 /*---  3.Approximate Data type with BLAS and Lapack  ---*/
 //	vcp::matrix< double, vcp::pdblas > A, B, E, D, X, G, I;
 
+// vcp::mats< T >
 /*---  4.Verification Data type with KV  ---*/
 //	vcp::matrix< kv::interval< double >, vcp::imats< double > > A, B, E, D, X, G, I;
 //	vcp::matrix< kv::interval< kv::dd >, vcp::imats< kv::dd > > A, B, E, D, X, G, I;

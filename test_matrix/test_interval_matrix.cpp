@@ -27,15 +27,61 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#pragma once
 
-#ifndef VCP_LDBASE_ASSIST_HPP
-#define VCP_LDBASE_ASSIST_HPP
+#include <iostream>
 
-#ifndef VCP_LDBASE_HPP
-#error Please include ldbase.hpp
+#include <omp.h>
+
+#include <kv/interval.hpp>
+#include <kv/rdouble.hpp>
+#include <kv/dd.hpp>
+#include <kv/rdd.hpp>
+#include <kv/mpfr.hpp>
+#include <kv/rmpfr.hpp>
+
+#include <vcp/imats.hpp>
+#include <vcp/pdblas.hpp>
+#include <vcp/pidblas.hpp>
+#include <vcp/matrix.hpp>
+#include <vcp/matrix_assist.hpp>
+
+typedef double DATA;
+typedef kv::interval< DATA > IDATA;
+typedef vcp::pdblas DP;
+typedef vcp::pidblas IDP;
+
+int main(void) {
+std::cout.precision(17);
+#ifdef _OPENMP
+#ifndef VCP_MATS_NOMP
+	std::cout << "Using Open MP for Mats Policy" << std::endl;
 #endif
+#endif
+/*---  Matrix size  ---*/
+	int n = 5;
+	vcp::matrix< DATA, DP > A, B, C;	
+	vcp::matrix< IDATA, IDP > IA, IB, IC, II;	
 
-#include <vcp/make_Matrix_ldbase_on_interval.hpp>
+/*---  Make vectors and matrices ---*/
+	IA.rand(n);
+	IB.rand(n);
+	II.eye(n);
 
-#endif // VCP_LDBASE_HPP
+	IC = IA*IB;
+
+	mag(IC, C);
+	std::cout << C << std::endl;
+
+	IC = intervalmag(IC);
+	std::cout << IC << std::endl;
+
+	IC = IC + transpose(IC);
+	IC = lss(IC, II);
+	std::cout << IC << std::endl;
+
+	compsym(IC);
+	std::cout << IC << std::endl;
+	
+
+	return 0;
+}

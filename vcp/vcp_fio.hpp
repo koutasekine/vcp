@@ -76,7 +76,7 @@ namespace vcp {
 		loadfile.read(d, 7);
 		std::string check_type(d);
 		if (check_type != "integer") {
-			std::cout << "ERROR : load : No match the data type" << std::endl;
+			std::cout << "ERROR : load : No match the data type: check_type : " << check_type << std::endl;
 			exit(1);
 		}
 		int row, column;
@@ -132,7 +132,7 @@ namespace vcp {
 		loadfile.read(d, 6);
 		std::string check_type(d);
 		if (check_type != "double") {
-			std::cout << "ERROR : load : No match the data type" << std::endl;
+			std::cout << "ERROR : load : No match the data type: check_type : " << check_type << std::endl;
 			exit(1);
 		}
 		int row, column;
@@ -189,8 +189,8 @@ namespace vcp {
 		char d[15];
 		loadfile.read(d, 15);
 		std::string check_type(d);
-		if (check_type != "interval_double") {
-			std::cout << "ERROR : load : No match the data type" << std::endl;
+		if (check_type.find("interval_double") == std::string::npos ) {
+			std::cout << "ERROR : load : No match the data type: check_type : " << check_type << std::endl;
 			exit(1);
 		}
 		int row, column;
@@ -250,7 +250,7 @@ namespace vcp {
 		loadfile.read(d, 15);
 		std::string check_type(d);
 		if (check_type != "kv_doubledouble") {
-			std::cout << "ERROR : load : No match the data type" << std::endl;
+			std::cout << "ERROR : load : No match the data type: check_type : " << check_type << std::endl;
 			exit(1);
 		}
 		int row, column;
@@ -312,7 +312,7 @@ namespace vcp {
 		loadfile.read(d, 14);
 		std::string check_type(d);
 		if (check_type != "interval_kv_dd") {
-			std::cout << "ERROR : load : No match the data type" << std::endl;
+			std::cout << "ERROR : load : No match the data type: check_type : " << check_type << std::endl;
 			exit(1);
 		}
 		int row, column;
