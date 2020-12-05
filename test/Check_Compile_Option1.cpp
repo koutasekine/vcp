@@ -8,8 +8,8 @@
 #include <kv/rdd.hpp>
 
 #include <vcp/imats.hpp>
-#include <vcp/pdblas.hpp>
-#include <vcp/pidblas.hpp>
+//#include <vcp/pdblas.hpp>
+//#include <vcp/pidblas.hpp>
 #include <vcp/matrix.hpp>
 #include <vcp/matrix_assist.hpp>
 
@@ -19,10 +19,10 @@ int main(void) {
 	std::cout << "Using Opem MP for Mats Policy" << std::endl;
 #endif
 #endif
-	int n = 1000;
-//	vcp::matrix< kv::interval< double >, vcp::imats< double > > A, B, C0;
+	int n = 100;
+	vcp::matrix< kv::interval< double >, vcp::imats< double > > A, B, C0;
 //	vcp::matrix< kv::interval< kv::dd >, vcp::imats< kv::dd > > A, B, C0;
-  vcp::matrix< kv::interval< double >, vcp::pidblas > A, B, C0;
+//  vcp::matrix< kv::interval< double >, vcp::pidblas > A, B, C0;
 
 	A.rand(n);
 	B.rand(n);

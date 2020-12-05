@@ -2,18 +2,18 @@
 
 #include <omp.h>
 
-#include <kv/interval.hpp>
-#include <kv/rdouble.hpp>
-#include <kv/dd.hpp>
-#include <kv/rdd.hpp>
-#include <kv/mpfr.hpp>
-#include <kv/rmpfr.hpp>
+//#include <kv/interval.hpp>
+//#include <kv/rdouble.hpp>
+//#include <kv/dd.hpp>
+//#include <kv/rdd.hpp>
+//#include <kv/mpfr.hpp>
+//#include <kv/rmpfr.hpp>
 
-#include <vcp/imats.hpp>
-#include <vcp/pdblas.hpp>
-#include <vcp/pidblas.hpp>
+//#include <vcp/imats.hpp>
+//#include <vcp/pdblas.hpp>
+//#include <vcp/pidblas.hpp>
 #include <vcp/matrix.hpp>
-#include <vcp/matrix_assist.hpp>
+//#include <vcp/matrix_assist.hpp>
 
 int main(void) {
 #ifdef _OPENMP

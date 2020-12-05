@@ -162,6 +162,10 @@ namespace vcp {
 	}
 #endif
 
+	void convert(const int& x, double& y) {
+		y = x;
+	}
+
 #if defined(INTERVAL_HPP) && defined(RDOUBLE_HPP)
 	template<typename _T> void convert(const kv::interval< _T >& x, double& y) {
 		convert(mid(x), y);
@@ -169,6 +173,9 @@ namespace vcp {
 	template<typename _T> void convert(const double& x, kv::interval< _T >& y) {
 		kv::interval< double > yy = kv::interval< double >(x);
 		convert(yy, y);
+	}
+	void convert(const int& x, kv::interval< double >& y) {
+		y = x;
 	}
 #endif
 #if defined(INTERVAL_HPP) && defined(DD_HPP) && defined(RDD_HPP)
@@ -179,6 +186,12 @@ namespace vcp {
 		kv::interval< kv::dd > yy = kv::interval< kv::dd >(x);
 		convert(yy, y);
 	}
+	void convert(const int& x, kv::dd& y) {
+		y = x;
+	}
+	void convert(const int& x, kv::interval< kv::dd >& y) {
+		y = x;
+	}
 #endif
 #if defined(INTERVAL_HPP) && defined(MPFR_HPP) && defined(RMPFR_HPP)
 	template<typename _T, int N> void convert(const kv::interval< _T >& x, kv::mpfr< N >& y) {
@@ -187,6 +200,12 @@ namespace vcp {
 	template<typename _T, int N> void convert(const kv::mpfr< N >& x, kv::interval< _T >& y) {
 		kv::interval< kv::mpfr< N > > yy = kv::interval< kv::mpfr< N > >(x);
 		convert(yy, y);
+	}
+	template<int N> void convert(const int& x, kv::mpfr< N >& y) {
+		y = x;
+	}
+	template<int N> void convert(const int& x, kv::interval< kv::mpfr< N > >& y) {
+		y = x;
 	}
 #endif
 
