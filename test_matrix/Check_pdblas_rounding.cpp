@@ -7,7 +7,7 @@ int main(void) {
 
 	kv::hwround::roundnear();
 
-	int n = 100;
+	int n = 300;
 	vcp::matrix< double, vcp::pdblas> A, B, CU, CD;
 //	vcp::matrix< double > A, B, CU, CD;
 

@@ -303,5 +303,10 @@ namespace vcp {
 	}
 #endif
 
+	template< class _T, class _P > void save(vcp::matrix< kv::interval< _T >, _P >& A, const std::string name) {
+		const char* name2 = name.c_str();
+		vcp::save(A, name2);
+	}
+
 }
 #endif //VCP_FIO_HPP

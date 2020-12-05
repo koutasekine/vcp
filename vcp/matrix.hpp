@@ -623,6 +623,9 @@ namespace vcp {
 		}
 
 		//Matlab C = [A,B];
+		friend matrix< _T, _P > horzcat(const matrix< _T, _P >& A) {
+			return A;
+		}
 		friend matrix< _T, _P > horzcat(const matrix< _T, _P >& A, const matrix< _T, _P >& B) {
 			matrix< _T, _P > C;
 			A.horzcat(B, C);
@@ -635,6 +638,9 @@ namespace vcp {
 		}
 		
 		//Matlab C = [A;B];
+		friend matrix< _T, _P > vercat(const matrix< _T, _P >& A) {
+			return A;
+		}
 		friend matrix< _T, _P > vercat(const matrix< _T, _P >& A, const matrix< _T, _P >& B) {
 			matrix< _T, _P > C;
 			A.vercat(B, C);

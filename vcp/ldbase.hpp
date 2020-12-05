@@ -3,6 +3,10 @@
 #ifndef VCP_LDBASE_HPP
 #define VCP_LDBASE_HPP
 
+#ifndef INTERVAL_HPP
+#error Please include interval.hpp
+#endif
+
 #include <iostream>
 
 #include <kv/psa.hpp>
@@ -237,7 +241,7 @@ namespace vcp {
 			K1 = (n - 1) / (8 * n*n*_T(n));
 			K2 = _T(4 * n + 2);
 
-			std::cout.precision(32);
+			//std::cout.precision(32);
 			for (int i = 1; i <= n; i++) {
 				x = (1 - K1)*cos((4 * i - 1) / K2*PI);
 				AppNewton(psapp, x, y);
@@ -306,7 +310,7 @@ namespace vcp {
 		int elementsize;     // (*this).elementsize = std::pow((*this).phi.size(), (*this).dimension);
 		int variablesize;    // Number of Variables
 		int dimension;       // Dimension of Domein
-		int mode;			 // 1: verification mode without residual, 2: verification mode, k > 2: approximation mode k*10
+		int mode;			 // 1: verification mode (Inverse operator), 2: verification mode (Residual), k > 2: approximation mode k*10
 		int p;				 // -Delta u = u^p
 		int Order_uh;		 // Order_uh
 		bool flag_order_uh;
@@ -943,6 +947,32 @@ namespace vcp {
 			return L;
 		}
 
+		matrix< _TM, _PM > fphi() {
+#ifdef VCP_LEGENDRE_DEBUG
+			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+			std::cout << "//////////////////// Legendre_Bases_Generator :: fphi()////////////////////" << std::endl;
+			std::cout << "////////////////////////////////////////////////////////////////////////////////////" << std::endl;
+#endif
+			if ((*this).mode == 2) {
+				std::cout << ">> ERROR : uhphi : This function can not use the Residual mode (Mode = 2)" << std::endl;
+				exit(1);
+			}
+			matrix< _TM, _PM > A;
+			A.zeros((*this).elementsize, 1);
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+#pragma omp parallel for
+#endif
+#endif	
+			for (int i = 0; i < (*this).elementsize; i++) {
+				for (int k = 0; k < (*this).Pointlist.rowsize(); k++) {
+					A(i, 0) += (*this).weight_point(0, k) * (*this).phi_point(i, k);
+				}
+			}
+			return A;
+
+		}
+
 		matrix< _TM, _PM > dphidphi() {
 #ifdef VCP_LEGENDRE_DEBUG
 			std::cout << "\n\n////////////////////////////////////////////////////////////////////////////////////" << std::endl;
@@ -1016,6 +1046,79 @@ namespace vcp {
 				}
 			}
 			return DL;
+		}
+
+		matrix< _TM, _PM > output_uh_for_graphics(const int Div_number = 100) {
+			if ((*this).mode <= 2) {
+				std::cout << ">> ERROR : output_uh__for_graphics : This function only use the Approximation mode (Mode > 2)" << std::endl;
+				exit(1);
+			}
+
+			matrix< _TM, _PM > Output_Data;
+			int dim = (*this).dimension;
+			int Output_data_row_size = std::pow(Div_number + 1, dim);
+			matrix< int > list_of_Output_data;
+			
+			list_of_Output_data.zeros(Output_data_row_size, dim);
+			
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+#pragma omp parallel for
+#endif
+#endif	
+			for (int d = 0; d < dim; d++) {
+				int di = dim - d;
+				for (int j = 0; j < std::pow(Div_number + 1, d); j++) {
+					for (int i = 0; i < Div_number + 1; i++) {
+						for (int k = 0; k < std::pow(Div_number, di - 1); k++) {
+							list_of_Output_data(i*std::pow(Div_number + 1, di - 1) + j * std::pow(Div_number + 1, di) + k, d) = i;
+						}
+					}
+				}
+			}
+			
+			_T mesh_size_T = 1 / _T(Div_number);
+			_TM mesh_size = 1 / _TM(Div_number);
+			int mmax = (*this).phi.size();
+			vcp::matrix< _T > p_phi_T;
+			vcp::matrix< _TM, _PM > p_phi;
+			p_phi_T.zeros(mmax, Div_number + 1);
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+#pragma omp parallel for
+#endif
+#endif	
+			for (int i = 0; i < mmax; i++) {
+				for (int j = 0; j < Div_number + 1; j++){
+					LegendreBaseFunctions::LegendreFunc(phi[i],j*mesh_size_T,p_phi_T(i, j));
+				}
+			}
+
+			convert(p_phi_T, p_phi);
+			Output_Data.zeros(Output_data_row_size,(*this).variablesize + dim);
+
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+#pragma omp parallel for
+#endif
+#endif	
+			for (int i = 0; i < Output_data_row_size; i++) {
+				for (int di = 0; di < dim; di++){
+					Output_Data(i, di) = list_of_Output_data(i, di)*mesh_size;
+				}
+				for (int v = 0; v < (*this).variablesize; v++) {
+					_TM tmp;
+					for (int k = 0; k < (*this).list.rowsize(); k++) {
+						tmp = uh(k, v);
+						for (int di = 0; di < dim; di++) {
+							tmp *= p_phi((*this).list(k, di), list_of_Output_data(i, di));
+						}
+						Output_Data(i, dim + v) += tmp;
+					}
+				}
+			}
+
+			return Output_Data;
 		}
 
 		matrix< int > output_list() {

@@ -18,20 +18,20 @@
 
 #include <cmath>
 
-typedef double AppData;
-//typedef kv::dd AppData;
+//typedef double AppData;
+typedef kv::dd AppData;
 //typedef kv::mpfr<110> AppData;
 
 typedef kv::interval< double > VData;
 typedef kv::interval< kv::mpfr< 300 > > DataType;
 
-typedef vcp::pdblas POLICY;
-//typedef vcp::mats< AppData > POLICY;
+//typedef vcp::pdblas POLICY;
+typedef vcp::mats< AppData > POLICY;
 
 typedef vcp::pidblas VPOLICY;
 
 int main(void){
-	std::cout.precision(10);
+	std::cout.precision(4);
 
 	vcp::matrix< AppData, POLICY > uh;
 	vcp::Legendre_Bases_Generator< DataType, AppData, POLICY > Approximate_Generator;
@@ -39,7 +39,7 @@ int main(void){
 	int Order_legendre = 20;
 	int uh_Order_legendre = 10;
 	int p = 2;
-	int Dimension = 1;
+	int Dimension = 2;
 	int Number_of_variables = 1;
 
 	std::cout << "Dimension = " << Dimension << std::endl;
@@ -101,6 +101,10 @@ int main(void){
 		}
 	}
 	}
+	// uh data for Grafics
+	vcp::matrix< AppData, POLICY > Grafics = Approximate_Generator.output_uh_for_graphics(100);
+	std::cout << Grafics << std::endl;
+
 	Approximate_Generator.clear();
 
 	vcp::Legendre_Bases_Generator< DataType, VData, VPOLICY > Verification_Generator;
@@ -108,7 +112,7 @@ int main(void){
 	Verification_Generator.setting_list();
 
 	vcp::matrix< VData, VPOLICY > uhi;
-	vcp::interval(uh, uhi);
+	vcp::convert(uh, uhi);
 	// uh setting : Last Argument is list divide : full list => 1 , even list => 2 
 	Verification_Generator.setting_uh(uhi, list_uh, 2);
 
