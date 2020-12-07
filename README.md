@@ -62,7 +62,7 @@ Kouta Sekine
 
 ### Ubuntu 20.04 (also compatible with WSL2 or Docker for Mac)
 
-##### Recommended packages
+##### Ubuntu 20.04: Recommended packages
 ```
 sudo apt update
 yes | sudo apt upgrade
@@ -74,7 +74,7 @@ yes | sudo apt install liblapack-dev
 yes | sudo apt install intel-mkl
 ```
 
-##### Compile options
+##### Ubuntu 20.04: Compile options
 Minimum Compilation Options:<br>
 `g++ -I.. <filename.cpp>`
 
@@ -83,7 +83,7 @@ Recommended Compile options with BLAS, Lapack, mpfr, OpenMP and kv library:<br>
 
 Note that compile options `-DNDEBUG` and `-DKV_FASTROUND` are optional for kv library.
 
-##### Check if the rounding mode of BLAS's dgemm is changeable using the kv library
+##### Ubuntu 20.04: Check if the rounding mode of BLAS's dgemm is changeable using the kv library
 The rounding mode of BLAS is important for rigorous computing.
 You have to make sure of the rounding mode of BLAS after installation.
 
@@ -101,16 +101,16 @@ You have to make sure of the rounding mode of BLAS after installation.
 ```
 
 If the rounding cannot be changed
- * Do not use the `pidblas` policy
+ * Do not use the `pidblas` policy. (Can use `vcp::imats< double >` and `vcp::imats< double, vcp::pdblas >` policy)
  * Please check:
       - `sudo update-alternatives --config libblas.so-x86_64-linux-gnu`
       - `sudo update-alternatives --config liblapack.so-x86_64-linux-gnu`
 
 
-### Ubuntu 16.04, 18.04, Centos 6, Centor 7
+### Ubuntu 18.04
 
-##### Recommended packages
-```
+##### Ubuntu 18.04: Recommended packages
+```bash
 sudo apt update
 yes | sudo apt upgrade
 yes | sudo apt install build-essential
@@ -119,25 +119,51 @@ yes | sudo apt install libgmp-dev
 yes | sudo apt install libmpfr-dev
 yes | sudo apt install liblapack-dev
 ```
-with [MKL liblary](https://software.intel.com/content/www/us/en/develop/tools/performance-libraries.html).
+and MKL liblary.
 
-How to install MKL library
-  1) Download the MKL
-  2) Extract the compressed folder of the MKL.
-  3) Open the file of MKL, silent.cfg, with a text editor.
-  4) Change `ACCEPT_EULA=decline` to `ACCEPT_EULA=accept` and close the editor.
-  5) Run `sudo . /install.sh -s silent.cfg`
-  6) Run `source /opt/intel/bin/compilervars.sh intel64`
-  7) Run `source /opt/intel/mkl/bin/mklvars.sh intel64 lp64`
+How to [install MKL library](https://software.intel.com/content/www/us/en/develop/articles/installing-intel-free-libs-and-python-apt-repo.html):
+```bash
+  cd /tmp
+  sudo wget https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB
+  sudo apt-key add GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB
+  sudo rm GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB
+  sudo wget https://apt.repos.intel.com/setup/intelproducts.list -O /etc/apt/sources.list.d/intelproducts.list
+  sudo apt update
+  yes | sudo apt install intel-mkl-2020.0-088
+
+  echo 'export MKL_ROOT_DIR=/opt/intel/mkl' >> ~/.bashrc
+  echo 'export LD_LIBRARY_PATH=$MKL_ROOT_DIR/lib/intel64:/opt/intel/lib/intel64_lin:$LD_LIBRARY_PATH' >> ~/.bashrc
+  echo 'export LIBRARY_PATH=$MKL_ROOT_DIR/lib/intel64:$LIBRARY_PATH' >> ~/.bashrc
+  echo 'source /opt/intel/mkl/bin/mklvars.sh intel64' >> ~/.bashrc
+```
 
 
-##### Compile options
+##### Ubuntu 18.04: Compile options
 Minimum Compilation Options:<br>
 `g++ -I.. <filename.cpp>`
 
 Recommended Compile options with MKL, mpfr, OpenMP and kv library:<br>
 `g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 <filename.cpp> -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
 
+##### Ubuntu 18.04: Check if the rounding mode of BLAS's dgemm is changeable using the kv library
+The rounding mode of BLAS is important for rigorous computing.
+You have to make sure of the rounding mode of BLAS after installation.
+
+```bash check_round.sh
+  echo "######################################################"
+  echo "Check for BLAS's rounding mode changes: Please wait..."
+  cd "<folder_path>/test_matrix/"
+  g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pdblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
+  g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pidblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
+
+  echo
+  echo "######################################################"
+  echo "Check for OpenMP's rounding mode changes: Please wait..."
+  g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_OpenMP.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
+```
+
+If the rounding cannot be changed
+ * Do not use the `pidblas` policy. (Can use `vcp::imats< double >` and `vcp::imats< double, vcp::pdblas >` policy)
 
 ## How to use VCP's matrix class
 The matrix class of the VCP library is based on a policy using a template.
