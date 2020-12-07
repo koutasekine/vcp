@@ -83,6 +83,30 @@ Recommended Compile options with BLAS, Lapack, mpfr, OpenMP and kv library:<br>
 
 Note that compile options `-DNDEBUG` and `-DKV_FASTROUND` are optional for kv library.
 
+##### Check if the rounding mode of BLAS's dgemm is changeable using the kv library
+The rounding mode of BLAS is important for rigorous computing.
+You have to make sure of the rounding mode of BLAS after installation.
+
+```bash check_round.sh
+  echo "######################################################"
+  echo "Check for BLAS's rounding mode changes: Please wait..."
+  cd "<folder_path>/test_matrix/"
+  g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lblas -lmpfr -fopenmp && ./a.out
+  g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lblas -lmpfr -fopenmp && ./a.out
+
+  echo
+  echo "######################################################"
+  echo "Check for OpenMP's rounding mode changes: Please wait..."
+  g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 Check_OpenMP.cpp -llapack -lblas -lmpfr -fopenmp && ./a.out
+```
+
+If the rounding cannot be changed
+ * Do not use the `pidblas` policy
+ * Please check:
+      - `sudo update-alternatives --config libblas.so-x86_64-linux-gnu`
+      - `sudo update-alternatives --config liblapack.so-x86_64-linux-gnu`
+
+
 ### Ubuntu 16.04, 18.04, Centos 6, Centor 7
 
 ##### Recommended packages
@@ -95,7 +119,7 @@ yes | sudo apt install libgmp-dev
 yes | sudo apt install libmpfr-dev
 yes | sudo apt install liblapack-dev
 ```
-with [MKL liblary](https://software.intel.com/content/www/us/en/develop/tools/performance-libraries.html)
+with [MKL liblary](https://software.intel.com/content/www/us/en/develop/tools/performance-libraries.html).
 
 How to install MKL library
   1) Download the MKL
@@ -167,7 +191,7 @@ Therefore, lines 13 to 17 in Source code 2 are the same as lines 7 to 11 in Sour
 #include <vcp/matrix_assist.hpp>
 
 int main(void){
-   vcp::matrix< kv::interval<kv::mpfr<300>>, vcp::imats<kv::mpfr<300>> > A, b, x;
+   vcp::matrix< kv::interval< kv::mpfr<300> >, vcp::imats<kv::mpfr<300> > > A, b, x;
    A.rand(10); // Create a 10*10 random matrix
    b.rand(10,1); // Create a 10*1 random vector
    b = A*b;  // Compute A times b
