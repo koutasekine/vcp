@@ -1,5 +1,6 @@
 # VCP Library
 
+## About
 The realization of computer-assisted existence proof to solutions of partial differential equations (PDEs) cannot be completed without a computer environment.
 However, various kinds of techniques are required to estimate the errors that occur in all computations.
 Additionally, the computer-assisted proof for existence of solutions of PDEs requires numerical accuracy with a reasonable time of computation.
@@ -12,13 +13,21 @@ A feature of the matrix class of the VCP library is that it can be integrated wi
 
 Additionally, because the VCP library has extensibility, which is one of the features of policy-based design, it is designed to withstand the computer-assisted proof of PDEs.
 
+VCP library comprises of
+  * Matrix class
+  * Newton method class
+  * Legendre basis class (for elliptic PDEs)
+  * Fourier series class (for delay ODEs)
+  * Gauss-Legendre method: implicit runge kutta method (for ODEs and parabolic PDE, **Not verification**) 
+
+
 We require using the following libraries in the VCP library:
   * [BLAS and Lapack](http://www.netlib.org/lapack/)
   * [MPFR](https://www.mpfr.org/): multiple-precision floating-point number library
   * [kv library](http://verifiedby.me/kv/index-e.html): numerical verification library with guaranteed accuracy written in the C++ programming language
 
-Homepage (Japanese) [VCP Library](https://verified.computation.jp/)
-To cite VCP Library, please use 
+Homepage (Japanese) [VCP Library](https://verified.computation.jp/)<br>
+To cite VCP Library, please use <br>
 *Kouta Sekine, Mitsuhiro T. Nakao, and Shin'ichi Oishi: “Numerical verification methods for a system of elliptic PDEs, and their software library”, NOLTA, IEICE, Vol.12, No.1, Jan., 2021.*
 
 E-mail:
@@ -26,8 +35,8 @@ k.sekine@computation.jp
 
 Kouta Sekine
 
-# How to install
-## Directory configuration
+## How to install
+### Directory configuration
 ```
  ~/any/
   　├ vcp/
@@ -37,7 +46,7 @@ Kouta Sekine
             └ <your_file.cpp>
 ```
 
-## Directory configuration with kv library
+### Directory configuration with kv library
 ```
  ~/any/
   　├ kv/
@@ -51,7 +60,7 @@ Kouta Sekine
 ```
 
 
-## Ubuntu 20.04 (Recommend)
+### Ubuntu 20.04 (also compatible with WSL2 or Docker for Mac)
 
 ##### Recommended packages
 ```
@@ -74,7 +83,7 @@ Recommended Compile options with BLAS, Lapack, mpfr, OpenMP and kv library:<br>
 
 Note that compile options `-DNDEBUG` and `-DKV_FASTROUND` are optional for kv library.
 
-## Ubuntu 16.04, 18.04, Centos 6, Centor 7
+### Ubuntu 16.04, 18.04, Centos 6, Centor 7
 
 ##### Recommended packages
 ```
@@ -87,6 +96,7 @@ yes | sudo apt install libmpfr-dev
 yes | sudo apt install liblapack-dev
 ```
 with [MKL liblary](https://software.intel.com/content/www/us/en/develop/tools/performance-libraries.html)
+
 How to install MKL library
   1) Download the MKL
   2) Extract the compressed folder of the MKL.
@@ -105,7 +115,7 @@ Recommended Compile options with MKL, mpfr, OpenMP and kv library:<br>
 `g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 <filename.cpp> -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
 
 
-# How to use VCP's matrix class
+## How to use VCP's matrix class
 The matrix class of the VCP library is based on a policy using a template.
 Therefore, when declaring the matrix, it is necessary to determine **data type for elements** and **algorithm policy** as template arguments.
 The VCP library provides the following four Algorithm policies:
