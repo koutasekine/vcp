@@ -28,14 +28,17 @@ Kouta Sekine
 
 # How to install
 ## Directory configuration
+```
  ~/any/
   　├ vcp/
   　├ test_matrix/
   　├ test_PDE/
   　└ <your_folder>/
             └ <your_file.cpp>
+```
 
 ## Directory configuration with kv library
+```
  ~/any/
   　├ kv/
   　├ test/
@@ -45,6 +48,7 @@ Kouta Sekine
   　├ test_PDE/
   　└ <your_folder>/
             └ <your_file.cpp>
+```
 
 
 ## Ubuntu 20.04 (Recommend)
@@ -120,8 +124,7 @@ Line 10 uses the function `lss` to determine the solution `x` of simultaneous li
 Finally, line 11 displays the solution `x`.
 
 
-```
-// Source code 1
+```cpp Source code 1 {.line-number .copy}
 #include <iostream>
 #include <vcp/matrix.hpp>
 #include <vcp/matrix_assist.hpp>
@@ -142,8 +145,7 @@ Line 5 in Source code 2 declares matrix `A, b, x` with `kv::interval< kv::mpfr<3
 Because `vcp::imats< _T >` is selected as the algorithm policy in line 12, the matrix computation is an algorithm with guaranteed accuracy.
 Therefore, lines 13 to 17 in Source code 2 are the same as lines 7 to 11 in Source code 1, but the results of the matrix-vector product on line 15 and the solution `x` on line 16 in Source code 2 contain exact solutions.
 
-```
-// Source code 2
+```cpp Source code 2 {.line-number .copy}
 #include <iostream>
 
 #include <kv/interval.hpp> // kv library
