@@ -66,10 +66,10 @@ yes | sudo apt install intel-mkl
 ```
 
 ### Compile options
-Minimum Compilation Options:
+Minimum Compilation Options:<br>
 `g++ -I.. <filename.cpp>`
 
-Recommended Compile options with BLAS, Lapack, mpfr, OpenMP and kv library:
+Recommended Compile options with BLAS, Lapack, mpfr, OpenMP and kv library:<br>
 `g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 <filename.cpp> -llapack -lblas -lmpfr -fopenmp`
 
 Note that compile options `-DNDEBUG` and `-DKV_FASTROUND` are optional for kv library.
@@ -98,10 +98,10 @@ How to install MKL library
 
 
 ### Compile options
-Minimum Compilation Options:
+Minimum Compilation Options:<br>
 `g++ -I.. <filename.cpp>`
 
-Recommended Compile options with MKL, mpfr, OpenMP and kv library:
+Recommended Compile options with MKL, mpfr, OpenMP and kv library:<br>
 `g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 <filename.cpp> -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
 
 
@@ -124,7 +124,7 @@ Line 10 uses the function `lss` to determine the solution `x` of simultaneous li
 Finally, line 11 displays the solution `x`.
 
 
-```cpp Source code 1 {.line-number .copy}
+```cpp Source_code_1.cpp {.line-number .copy}
 #include <iostream>
 #include <vcp/matrix.hpp>
 #include <vcp/matrix_assist.hpp>
@@ -145,7 +145,7 @@ Line 5 in Source code 2 declares matrix `A, b, x` with `kv::interval< kv::mpfr<3
 Because `vcp::imats< _T >` is selected as the algorithm policy in line 12, the matrix computation is an algorithm with guaranteed accuracy.
 Therefore, lines 13 to 17 in Source code 2 are the same as lines 7 to 11 in Source code 1, but the results of the matrix-vector product on line 15 and the solution `x` on line 16 in Source code 2 contain exact solutions.
 
-```cpp Source code 2 {.line-number .copy}
+```cpp Source_code_2.cpp {.line-number .copy}
 #include <iostream>
 
 #include <kv/interval.hpp> // kv library
@@ -170,7 +170,7 @@ Additionally, if we declare a matrix with `vcp::matrix<double, vcp::pdblas>`, it
 When using high-speed numerical computation with guaranteed accuracy using BLAS and Lapack, we declare a matrix similar to `vcp::matrix< kv::interval<double>, vcp::pidblas>`.
 For other functions of VCP's matrix class, see:
 
-```
+```cpp
   //(1) Matrix initialization
   int n = 10;
   int m = 5;
