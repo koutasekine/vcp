@@ -53,7 +53,7 @@ Kouta Sekine
 
 ## Ubuntu 20.04 (Recommend)
 
-### Recommended packages
+##### Recommended packages
 ```
 sudo apt update
 yes | sudo apt upgrade
@@ -65,7 +65,7 @@ yes | sudo apt install liblapack-dev
 yes | sudo apt install intel-mkl
 ```
 
-### Compile options
+##### Compile options
 Minimum Compilation Options:<br>
 `g++ -I.. <filename.cpp>`
 
@@ -76,7 +76,7 @@ Note that compile options `-DNDEBUG` and `-DKV_FASTROUND` are optional for kv li
 
 ## Ubuntu 16.04, 18.04, Centos 6, Centor 7
 
-### Recommended packages
+##### Recommended packages
 ```
 sudo apt update
 yes | sudo apt upgrade
@@ -97,7 +97,7 @@ How to install MKL library
   7) Run `source /opt/intel/mkl/bin/mklvars.sh intel64 lp64`
 
 
-### Compile options
+##### Compile options
 Minimum Compilation Options:<br>
 `g++ -I.. <filename.cpp>`
 
