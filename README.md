@@ -36,14 +36,62 @@ k.sekine@computation.jp
 Kouta Sekine
 
 ## How to install
-### Directory configuration
+### Supported OS
+ * Ubuntu 20.04
+ * Ubuntu 18.04
+ * CentOS 7
+ * CentOS 8
+
+### Supported CPU
+Only Intel CPU because rounding changes are not easily available for BLAS.
+
+### Installer
+The installer will ask for a new folder name, and create a new folder in your home directory.
+The installation procedure is below:
+ 1. Update the installed packages if necessary
+ 2. Install wget 
+ 3. Download the installer
+ 4. Excute the installer
+ 
+
+#### Ubuntu 20.04
+
+```bash
+  sudo apt update -y
+  sudo apt upgrade -y
+  sudo apt install wget -y
+  weget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_ubuntu2004.sh
+  bash install_ubuntu2004.sh
 ```
- ~/any/
-  　├ vcp/
-  　├ test_matrix/
-  　├ test_PDE/
-  　└ <your_folder>/
-            └ <your_file.cpp>
+Note that Intel MKL will ask you about the update-alternative setting.<br>
+I recommend setting them all to yes, but be aware that other libraries are also affected.<br>
+After install, please check:
+  * `sudo update-alternatives --config libblas.so-x86_64-linux-gnu`
+  * `sudo update-alternatives --config liblapack.so-x86_64-linux-gnu`
+
+#### Ubuntu 18.04
+```bash
+  sudo apt update -y
+  sudo apt upgrade -y
+  sudo apt install wget -y
+  weget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_ubuntu1804.sh
+  bash install_ubuntu1804.sh
+```
+
+#### CentOS 8
+```bash
+  sudo dnf updaate -y
+  sudo dnf install wget -y
+  wget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_centos8.sh
+  bash install_centos8.sh
+```
+
+#### CentOS 7
+```bash
+  sudo yum updaate -y
+  sudo yum install wget -y
+  wget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_centos7.sh
+  bash install_centos7.sh
 ```
 
 ### Directory configuration with kv library
@@ -59,114 +107,24 @@ Kouta Sekine
             └ <your_file.cpp>
 ```
 
-
-### Ubuntu 20.04 (also compatible with WSL2 or Docker for Mac)
-
-##### Ubuntu 20.04: Recommended packages
-```
-sudo apt update
-yes | sudo apt upgrade
-yes | sudo apt install build-essential
-yes | sudo apt install libboost-all-dev
-yes | sudo apt install libgmp-dev
-yes | sudo apt install libmpfr-dev
-yes | sudo apt install liblapack-dev
-yes | sudo apt install intel-mkl
-```
-
-##### Ubuntu 20.04: Compile options
+## How to compile
 Minimum Compile options:<br>
 `g++ -I.. <filename.cpp>`
 
+<br>
+
 Recommended Compile options with BLAS, Lapack, mpfr, OpenMP and kv library:<br>
+**Ubuntu 20.04**<br>
 `g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 <filename.cpp> -llapack -lblas -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
+
+<br>
+
+**Other**<br>
+`g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 <filename.cpp> -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
 
 Note that compile options 
   * `-DNDEBUG` and `-DKV_FASTROUND` are options for kv library
   * `-Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl` are options for Intel MKL (see [Intel MKL Link Line Advisor](https://software.intel.com/content/www/us/en/develop/articles/intel-mkl-link-line-advisor.html))
-
-##### Ubuntu 20.04: Check if the rounding mode of BLAS's dgemm is changeable using the kv library
-The rounding mode of BLAS is important for rigorous computing.
-You have to make sure of the rounding mode of BLAS after installation.
-
-```bash check_round.sh
-  echo "######################################################"
-  echo "Check for BLAS's rounding mode changes: Please wait..."
-  cd "<folder_path>/test_matrix/"
-  g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lblas -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
-  g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lblas -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
-
-  echo
-  echo "######################################################"
-  echo "Check for OpenMP's rounding mode changes: Please wait..."
-  g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 Check_OpenMP.cpp -llapack -lblas -lmpfr -fopenmp && ./a.out
-```
-
-If the rounding cannot be changed
- * Do not use the `pidblas` policy. (Can use `vcp::imats< double >` and `vcp::imats< double, vcp::pdblas >` policy)
- * Please check:
-      - `sudo update-alternatives --config libblas.so-x86_64-linux-gnu`
-      - `sudo update-alternatives --config liblapack.so-x86_64-linux-gnu`
-
-
-### Ubuntu 18.04
-
-##### Ubuntu 18.04: Recommended packages
-```bash
-sudo apt update
-yes | sudo apt upgrade
-yes | sudo apt install build-essential
-yes | sudo apt install libboost-all-dev
-yes | sudo apt install libgmp-dev
-yes | sudo apt install libmpfr-dev
-yes | sudo apt install liblapack-dev
-```
-and MKL liblary.
-
-How to [install MKL library](https://software.intel.com/content/www/us/en/develop/articles/installing-intel-free-libs-and-python-apt-repo.html):
-```bash
-  cd /tmp
-  sudo wget https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB
-  sudo apt-key add GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB
-  sudo rm GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB
-  sudo wget https://apt.repos.intel.com/setup/intelproducts.list -O /etc/apt/sources.list.d/intelproducts.list
-  sudo apt update
-  yes | sudo apt install intel-mkl-2020.0-088
-
-  echo 'export MKL_ROOT_DIR=/opt/intel/mkl' >> ~/.bashrc
-  echo 'export LD_LIBRARY_PATH=$MKL_ROOT_DIR/lib/intel64:/opt/intel/lib/intel64_lin:$LD_LIBRARY_PATH' >> ~/.bashrc
-  echo 'export LIBRARY_PATH=$MKL_ROOT_DIR/lib/intel64:$LIBRARY_PATH' >> ~/.bashrc
-  echo 'source /opt/intel/mkl/bin/mklvars.sh intel64' >> ~/.bashrc
-```
-
-
-##### Ubuntu 18.04: Compile options
-Minimum Compile options:<br>
-`g++ -I.. <filename.cpp>`
-
-Recommended Compile options with MKL, mpfr, OpenMP and kv library:<br>
-`g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 <filename.cpp> -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
-
-##### Ubuntu 18.04: Check if the rounding mode of BLAS's dgemm is changeable using the kv library
-The rounding mode of BLAS is important for rigorous computing.
-You have to make sure of the rounding mode of BLAS after installation.
-
-```bash check_round.sh
-  echo "######################################################"
-  echo "Check for BLAS's rounding mode changes: Please wait..."
-  cd "<folder_path>/test_matrix/"
-  g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pdblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
-  g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pidblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
-
-  echo
-  echo "######################################################"
-  echo "Check for OpenMP's rounding mode changes: Please wait..."
-  g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_OpenMP.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
-```
-
-If the rounding cannot be changed
- * Do not use the `pidblas` policy. (Can use `vcp::imats< double >` and `vcp::imats< double, vcp::pdblas >` policy)
-
 
 
 ## How to use VCP's matrix class
