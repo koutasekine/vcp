@@ -80,7 +80,7 @@ After install, please check:
 
 #### CentOS 8
 ```bash
-  sudo dnf updaate -y
+  sudo dnf update -y
   sudo dnf install wget -y
   wget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_centos8.sh
   bash install_centos8.sh
@@ -88,7 +88,7 @@ After install, please check:
 
 #### CentOS 7
 ```bash
-  sudo yum updaate -y
+  sudo yum update -y
   sudo yum install wget -y
   wget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_centos7.sh
   bash install_centos7.sh
