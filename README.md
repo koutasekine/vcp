@@ -75,13 +75,15 @@ yes | sudo apt install intel-mkl
 ```
 
 ##### Ubuntu 20.04: Compile options
-Minimum Compilation Options:<br>
+Minimum Compile options:<br>
 `g++ -I.. <filename.cpp>`
 
 Recommended Compile options with BLAS, Lapack, mpfr, OpenMP and kv library:<br>
-`g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 <filename.cpp> -llapack -lblas -lmpfr -fopenmp`
+`g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 <filename.cpp> -llapack -lblas -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
 
-Note that compile options `-DNDEBUG` and `-DKV_FASTROUND` are optional for kv library.
+Note that compile options 
+  * `-DNDEBUG` and `-DKV_FASTROUND` are options for kv library
+  * `-Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl` are options for Intel MKL (see [Intel MKL Link Line Advisor](https://software.intel.com/content/www/us/en/develop/articles/intel-mkl-link-line-advisor.html))
 
 ##### Ubuntu 20.04: Check if the rounding mode of BLAS's dgemm is changeable using the kv library
 The rounding mode of BLAS is important for rigorous computing.
@@ -91,8 +93,8 @@ You have to make sure of the rounding mode of BLAS after installation.
   echo "######################################################"
   echo "Check for BLAS's rounding mode changes: Please wait..."
   cd "<folder_path>/test_matrix/"
-  g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lblas -lmpfr -fopenmp && ./a.out
-  g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lblas -lmpfr -fopenmp && ./a.out
+  g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lblas -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
+  g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lblas -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
 
   echo
   echo "######################################################"
@@ -107,9 +109,9 @@ If the rounding cannot be changed
       - `sudo update-alternatives --config liblapack.so-x86_64-linux-gnu`
 
 
-### Ubuntu 18.04
+### Ubuntu 16.04, 18.04
 
-##### Ubuntu 18.04: Recommended packages
+##### Ubuntu 16.04, 18.04: Recommended packages
 ```bash
 sudo apt update
 yes | sudo apt upgrade
@@ -138,14 +140,14 @@ How to [install MKL library](https://software.intel.com/content/www/us/en/develo
 ```
 
 
-##### Ubuntu 18.04: Compile options
-Minimum Compilation Options:<br>
+##### Ubuntu 16.04, 18.04: Compile options
+Minimum Compile options:<br>
 `g++ -I.. <filename.cpp>`
 
 Recommended Compile options with MKL, mpfr, OpenMP and kv library:<br>
 `g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 <filename.cpp> -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
 
-##### Ubuntu 18.04: Check if the rounding mode of BLAS's dgemm is changeable using the kv library
+##### Ubuntu 16.04, 18.04: Check if the rounding mode of BLAS's dgemm is changeable using the kv library
 The rounding mode of BLAS is important for rigorous computing.
 You have to make sure of the rounding mode of BLAS after installation.
 
@@ -164,6 +166,8 @@ You have to make sure of the rounding mode of BLAS after installation.
 
 If the rounding cannot be changed
  * Do not use the `pidblas` policy. (Can use `vcp::imats< double >` and `vcp::imats< double, vcp::pdblas >` policy)
+
+
 
 ## How to use VCP's matrix class
 The matrix class of the VCP library is based on a policy using a template.
