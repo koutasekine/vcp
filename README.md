@@ -63,11 +63,11 @@ The installation procedure is below:
   weget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_ubuntu2004.sh
   bash install_ubuntu2004.sh
 ```
-Note that Intel MKL will ask you about the update-alternative setting.
-I recommend setting them all to yes, but be aware that other libraries are also affected.
+Note that Intel MKL will ask you about the update-alternative setting.<br>
+I recommend setting them all to yes, but be aware that other libraries are also affected.<br>
 After install, please check:
-      - `sudo update-alternatives --config libblas.so-x86_64-linux-gnu`
-      - `sudo update-alternatives --config liblapack.so-x86_64-linux-gnu`
+      * `sudo update-alternatives --config libblas.so-x86_64-linux-gnu`
+      * `sudo update-alternatives --config liblapack.so-x86_64-linux-gnu`
 
 #### Ubuntu 18.04
 ```bash
@@ -112,15 +112,14 @@ Minimum Compile options:<br>
 `g++ -I.. <filename.cpp>`
 
 <br>
-<br>
 
 Recommended Compile options with BLAS, Lapack, mpfr, OpenMP and kv library:<br>
-**Ubuntu 20.04**
+**Ubuntu 20.04**<br>
 `g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 <filename.cpp> -llapack -lblas -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
 
 <br>
 
-**Other**
+**Other**<br>
 `g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 <filename.cpp> -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
 
 Note that compile options 
