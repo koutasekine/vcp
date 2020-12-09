@@ -66,8 +66,8 @@ The installation procedure is below:
 Note that Intel MKL will ask you about the update-alternative setting.<br>
 I recommend setting them all to yes, but be aware that other libraries are also affected.<br>
 After install, please check:
-      * `sudo update-alternatives --config libblas.so-x86_64-linux-gnu`
-      * `sudo update-alternatives --config liblapack.so-x86_64-linux-gnu`
+  * `sudo update-alternatives --config libblas.so-x86_64-linux-gnu`
+  * `sudo update-alternatives --config liblapack.so-x86_64-linux-gnu`
 
 #### Ubuntu 18.04
 ```bash
