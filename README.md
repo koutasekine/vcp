@@ -109,9 +109,9 @@ If the rounding cannot be changed
       - `sudo update-alternatives --config liblapack.so-x86_64-linux-gnu`
 
 
-### Ubuntu 16.04, 18.04
+### Ubuntu 18.04
 
-##### Ubuntu 16.04, 18.04: Recommended packages
+##### Ubuntu 18.04: Recommended packages
 ```bash
 sudo apt update
 yes | sudo apt upgrade
@@ -140,14 +140,14 @@ How to [install MKL library](https://software.intel.com/content/www/us/en/develo
 ```
 
 
-##### Ubuntu 16.04, 18.04: Compile options
+##### Ubuntu 18.04: Compile options
 Minimum Compile options:<br>
 `g++ -I.. <filename.cpp>`
 
 Recommended Compile options with MKL, mpfr, OpenMP and kv library:<br>
 `g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 <filename.cpp> -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
 
-##### Ubuntu 16.04, 18.04: Check if the rounding mode of BLAS's dgemm is changeable using the kv library
+##### Ubuntu 18.04: Check if the rounding mode of BLAS's dgemm is changeable using the kv library
 The rounding mode of BLAS is important for rigorous computing.
 You have to make sure of the rounding mode of BLAS after installation.
 
