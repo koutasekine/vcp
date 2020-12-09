@@ -60,7 +60,7 @@ The installation procedure is below:
   sudo apt update -y
   sudo apt upgrade -y
   sudo apt install wget -y
-  weget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_ubuntu2004.sh
+  wget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_ubuntu2004.sh
   bash install_ubuntu2004.sh
 ```
 Note that Intel MKL will ask you about the update-alternative setting.<br>
@@ -74,7 +74,7 @@ After install, please check:
   sudo apt update -y
   sudo apt upgrade -y
   sudo apt install wget -y
-  weget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_ubuntu1804.sh
+  wget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_ubuntu1804.sh
   bash install_ubuntu1804.sh
 ```
 
