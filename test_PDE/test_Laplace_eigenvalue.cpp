@@ -90,7 +90,8 @@ int main(void){
 		vcp::matrix< VD, VDP >  E;
 		eigsymge(L, DL, E);
 
-		std::cout << DL << std::endl;
+		std::cout << "Approximate eigenvalues" << std::endl;
+		std::cout << 1/diag(E) << std::endl;
 
 		DL.clear();
 		L.clear();
