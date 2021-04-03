@@ -44,6 +44,10 @@
 	#include <vcp/imats_assist.hpp>
 #endif
 
+#if defined(VCP_PDBLAS_HPP) && defined(RDOUBLE_HPP)
+	#include <vcp/hybrid_app_lss.hpp>
+#endif
+
 #include <vcp/vcp_fio.hpp>
 
 #endif

@@ -483,6 +483,36 @@ public:
 			return std::move(A);
 		}
 
+		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator+( const fourier_series<_T>& A, const _Tm& a ){
+			fourier_series<_T> C;
+			_T Ta = _T(a);
+			C = A;
+			C.a0 += Ta;
+			return C;
+		}
+
+		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator+( fourier_series<_T>&& A, const _Tm& a ){
+			_T Ta = _T(a);
+			A.a0 += Ta;
+			return std::move(A);
+		}
+
+
+		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator+( const _Tm& a, const fourier_series<_T>& A ){
+			fourier_series<_T> C;
+			_T Ta = _T(a);
+			C = +A;
+			C.a0 += Ta;
+			return C;
+		}
+
+		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator+( const _Tm& a, fourier_series<_T>&& A ){
+			_T Ta = _T(a);
+			A.a0 += Ta;
+			return std::move(A);
+		}
+
+
         friend fourier_series< _T >& operator+=(fourier_series< _T >& A, const fourier_series< _T >& B) {
 			A.AplusB(B);
 			return A;
@@ -535,6 +565,36 @@ public:
 		friend fourier_series< _T > operator-(fourier_series< _T >&& A, fourier_series< _T >&& B) {
 			A.AminusB(B);
 			return std::move(A);
+		}
+
+		
+		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator-( const fourier_series<_T>& A, const _Tm& a ){
+			fourier_series<_T> C;
+			_T Ta = _T(a);
+			C = A;
+			C.a0 -= Ta;
+			return C;
+		}
+
+		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator-( fourier_series<_T>&& A, const _Tm& a ){
+			_T Ta = _T(a);
+			A.a0 -= Ta;
+			return std::move(A);
+		}
+
+
+		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator-( const _Tm& a, const fourier_series<_T>& A ){
+			fourier_series<_T> C;
+			_T Ta = _T(a);
+			C = -A;
+			C.a0 += Ta;
+			return C;
+		}
+
+		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator-( const _Tm& a, fourier_series<_T>&& A ){
+			_T Ta = _T(a);
+			A.a0 -= Ta;
+			return std::move(-A);
 		}
 
 		friend fourier_series< _T > operator*(const fourier_series< _T >& A, const fourier_series< _T >& B) {
@@ -765,18 +825,18 @@ public:
 			for (int i = 0; i < (*this).n; i++){
 				if ((*this).c[i].b != _T(0)){
 					if ((*this).c[i].b > _T(0)){
-						os << " + " << abs((*this).c[i].b) << "cos(" << i+1 << "t)";
+						os << " + " << abs((*this).c[i].b) << "*cos(" << i+1 << "t)";
 					}
 					else{
-						os << " - " << abs((*this).c[i].b) << "cos(" << i+1 << "t)";
+						os << " - " << abs((*this).c[i].b) << "*cos(" << i+1 << "t)";
 					}
 				}
 				if ((*this).c[i].a != _T(0)){
 					if ((*this).c[i].a > _T(0)){
-						os << " + " << abs((*this).c[i].a) << "sin(" << i+1 << "t)";
+						os << " + " << abs((*this).c[i].a) << "*sin(" << i+1 << "t)";
 					}
 					else{
-						os << " - " << abs((*this).c[i].a) << "sin(" << i+1 << "t)";
+						os << " - " << abs((*this).c[i].a) << "*sin(" << i+1 << "t)";
 					}
 				}
 			}
