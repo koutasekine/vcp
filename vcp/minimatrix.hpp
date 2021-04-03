@@ -131,7 +131,6 @@ namespace vcp{
 		}
 		// A = +A
 		void plusm() {
-			return *this;
 		}
 
 		// A = A-B
