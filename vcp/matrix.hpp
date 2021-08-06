@@ -96,6 +96,10 @@ namespace vcp {
 			return (*this).v;
 		}
 
+		_T* data() {
+			return (*this).v.data();
+		}
+
 		void eye(const int r) { _P::eye(r); }
 		void ones(const int i) { _P::ones(i); }
 		void ones(const int r, const int c) { _P::ones(r, c); }
