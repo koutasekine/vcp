@@ -714,7 +714,7 @@ public:
 			return std::move(B);
 		}
 
-		template <typename _Tm> typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type delay( const _Tm& tau ){
+		template <typename _Tm> typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type delay( const _Tm& tau )const{
 			fourier_series< _T > B;
 			B = (*this);
 			B.time_delay(tau);
@@ -778,10 +778,10 @@ public:
 			std::cout << "\n" << std::endl;
 		}
 
-		_T L2norm(void){
+		_T L2norm(void) const {
 			using std::pow;
 			using std::sqrt;
-			_T s = pow(this->a0,2);
+			_T s = pow(_T(2)*a0, 2)/_T(2);
 			for (int i = 0; i < this->n; i++){
 				s += pow(this->c[i].a, 2);
 				s += pow(this->c[i].b, 2);
@@ -789,9 +789,10 @@ public:
 			return sqrt(s);
 		}
 
-		_T value( const _T& t){
+		template <typename _Tm>
+		typename std::enable_if<std::is_constructible< _Tm, _T >::value, _Tm >::type value( const _Tm& t) const {
 			int n = this->get_n();
-			_T s = this->get_a0();
+			_Tm s = this->get_a0();
 			for (int j = 1; j <= n; j++){
 				s += this->get_sin(j)*(sin(t*j));
 				s += this->get_cos(j)*(cos(t*j));
