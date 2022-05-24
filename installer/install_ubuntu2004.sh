@@ -10,6 +10,10 @@ yes | sudo apt install intel-mkl
 yes | sudo apt install curl
 yes | sudo apt install wget
 
+echo 'export MKL_ROOT_DIR=/opt/intel/mkl' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=$MKL_ROOT_DIR/lib/intel64:/opt/intel/lib/intel64_lin:$LD_LIBRARY_PATH' >> ~/.bashrc
+echo 'export LIBRARY_PATH=$MKL_ROOT_DIR/lib/intel64:$LIBRARY_PATH' >> ~/.bashrc
+
 echo 
 echo "######################################################"
 echo "######################################################"
