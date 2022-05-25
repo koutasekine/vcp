@@ -64,18 +64,17 @@ void udmatmul(int m, int n, int k, double *A, double *B, double *CU, double *CD)
             alignas(64) double AA[NB_L2*NB_L2];
             alignas(64) double CCU[NB_L2*NB_L2];
             alignas(64) double CCD[NB_L2*NB_L2];
-            for (int ii = iL2; ii < iL2 + NB_L2; ii++){
-            for (int jj = jL2; jj < jL2 + NB_L2; jj++){
-                AA[(ii - iL2) + NB_L2*(jj - jL2)] = A[ii + m*jj];
-            }
-            }
 
             for (int ii = iL2; ii < iL2 + NB_L2; ii++){
             for (int kk = kL2; kk < kL2 + NB_L2; kk++){
                 CCU[(ii - iL2) + NB_L2*(kk - kL2)] = CU[ii + m*kk];
                 CCD[(ii - iL2) + NB_L2*(kk - kL2)] = CD[ii + m*kk];
-            }
-            }
+            }}
+
+            for (int ii = iL2; ii < iL2 + NB_L2; ii++){
+            for (int jj = jL2; jj < jL2 + NB_L2; jj++){
+                AA[(ii - iL2) + NB_L2*(jj - jL2)] = A[ii + m*jj];
+            }}
 
             for (int jL1 = jL2; jL1 < jL2 + NB_L2; jL1+=NB_L1){
             for (int kL1 = kL2; kL1 < kL2 + NB_L2; kL1+=NB_L1){
@@ -103,15 +102,14 @@ void udmatmul(int m, int n, int k, double *A, double *B, double *CU, double *CD)
                     c = _mm512_load_pd( CCD + (ii - iL2 ) + NB_L2*(kk - kL2) );
                     c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC);
                     _mm512_store_pd(CCD + (ii - iL2 ) + NB_L2*(kk - kL2), c);
-                    
+
                 }}}
             }}}
             for (int ii = iL2; ii < iL2 + NB_L2; ii++){
             for (int kk = kL2; kk < kL2 + NB_L2; kk++){
                 CU[ii + m*kk] = CCU[(ii - iL2) + NB_L2*(kk - kL2)];
                 CD[ii + m*kk] = CCD[(ii - iL2) + NB_L2*(kk - kL2)];
-            }
-            }
+            }}
         }}}
     }
         for (int jj = n_L3; jj < n; jj++){
