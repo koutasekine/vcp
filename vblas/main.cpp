@@ -1,6 +1,8 @@
 #include <iostream>
 #include <omp.h>
 
+#include <kv/hwround.hpp>
+
 #include <vcp/pdblas.hpp>
 
 #include <vcp/matrix.hpp>
@@ -11,10 +13,10 @@
 #include <vcp/vcp_timer.hpp>
 
 int main(void){
-    int m = 2000;
-    int n = 4000;
-    int k = 4567;
-    vcp::matrix< double, vcp::pdblas > A, B, CU, CD, D;
+    int m = 1800;
+    int n = 1500;
+    int k = 1900;
+    vcp::matrix< double, vcp::pdblas > A, B, CU, CD, DU, DD;
 
     A.rand(m, n);
     B.rand(n, k);
@@ -29,14 +31,17 @@ int main(void){
     //std::cout << B << std::endl;
  
 
+
     vcp::time.tic();
-    D = A*B;
-    D = A*B;
+    kv::hwround::roundup();
+    DU = A*B;
+    kv::hwround::rounddown();
+    DD = A*B;
     vcp::time.toc();
 
     std::cout << CU.submatrix({m-11,m-1}, {k-11,k-1}) << std::endl;
     std::cout << CD.submatrix({m-11,m-1}, {k-11,k-1}) << std::endl;    
-    std::cout << D.submatrix({m-11,m-1}, {k-11,k-1}) << std::endl;
+    std::cout << DU.submatrix({m-11,m-1}, {k-11,k-1}) << std::endl;
 
 /*
     std::cout << CU.submatrix({0,10}, {0,10}) << std::endl;
@@ -45,6 +50,8 @@ int main(void){
 */
     //std::cout << D - C << std::endl;
 
-    std::cout << max(max(D - CU)) << std::endl;
-    std::cout << max(max(CU - CD)) << std::endl;
+    std::cout << "|| DU - CU || <=" << norminf(DU - CU) << std::endl;
+    std::cout << "|| DD - CD || <=" << norminf(DD - CD) << std::endl;
+    std::cout << "|| CU - CD || <=" << norminf(CU - CD) << std::endl;
+    std::cout << "|| DU - DD || <=" << norminf(DU - DD) << std::endl;
 }

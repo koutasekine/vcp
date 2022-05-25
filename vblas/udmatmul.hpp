@@ -42,7 +42,6 @@
 // B: n*k matrix
 
 void udmatmul(int m, int n, int k, double *A, double *B, double *CU, double *CD){
-
     int NL1, NL2, NL0;
     int m_L3, n_L3, k_L3;
 
@@ -61,18 +60,25 @@ void udmatmul(int m, int n, int k, double *A, double *B, double *CU, double *CD)
         for (int jL2 = jL3; jL2 < jL3 + NB_L3; jL2+=NB_L2){
         for (int kL2 = kL3; kL2 < kL3 + NB_L3; kL2+=NB_L2){
         for (int iL2 = iL3; iL2 < iL3 + NB_L3; iL2+=NB_L2){
+
+            alignas(64) double AA[NB_L2*NB_L2];
+            alignas(64) double CCU[NB_L2*NB_L2];
+            alignas(64) double CCD[NB_L2*NB_L2];
+
+            for (int ii = iL2; ii < iL2 + NB_L2; ii++){
+            for (int kk = kL2; kk < kL2 + NB_L2; kk++){
+                CCU[(ii - iL2) + NB_L2*(kk - kL2)] = CU[ii + m*kk];
+                CCD[(ii - iL2) + NB_L2*(kk - kL2)] = CD[ii + m*kk];
+            }}
+
+            for (int ii = iL2; ii < iL2 + NB_L2; ii++){
+            for (int jj = jL2; jj < jL2 + NB_L2; jj++){
+                AA[(ii - iL2) + NB_L2*(jj - jL2)] = A[ii + m*jj];
+            }}
+
             for (int jL1 = jL2; jL1 < jL2 + NB_L2; jL1+=NB_L1){
             for (int kL1 = kL2; kL1 < kL2 + NB_L2; kL1+=NB_L1){
-            for (int iL1 = iL2; iL1 < iL2 + NB_L2; iL1+=NB_L1){
-                
-                alignas(64) double AA[NB_L1*NB_L1];
-                alignas(64) double CC[NB_L1*NB_L1];
-                for (int ii = iL1; ii < iL1 + NB_L1; ii++){
-                for (int jj = jL1; jj < jL1 + NB_L1; jj++){
-                    AA[(ii - iL1) + NB_L1*(jj - jL1)] = A[ii + m*jj];
-                }
-                }
-                
+            for (int iL1 = iL2; iL1 < iL2 + NB_L2; iL1+=NB_L1){                
 
                 for (int kk = kL1; kk < kL1 + NB_L1; kk++){
                 for (int jj = jL1; jj < jL1 + NB_L1; jj++){
@@ -88,22 +94,22 @@ void udmatmul(int m, int n, int k, double *A, double *B, double *CU, double *CD)
 //                      c = _mm512_fmadd_pd(a, b, c);
                     */
 
-                    __m512d a = _mm512_load_pd( AA + (ii - iL1) + NB_L1*(jj - jL1) );
-                    __m512d c = _mm512_loadu_pd( CU + ii + m*kk );
+                    __m512d a = _mm512_load_pd( AA + (ii - iL2) + NB_L2*(jj - jL2) );
+                    __m512d c = _mm512_load_pd(CCU + (ii - iL2 ) + NB_L2*(kk - kL2));
                     c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC);
-                    _mm512_storeu_pd(CU + ii + m*kk, c);
+                    _mm512_store_pd(CCU + (ii - iL2 ) + NB_L2*(kk -kL2), c);
 
-                    c = _mm512_loadu_pd( CD + ii + m*kk );
+                    c = _mm512_load_pd( CCD + (ii - iL2 ) + NB_L2*(kk - kL2) );
                     c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC);
-                    _mm512_storeu_pd(CD + ii + m*kk, c);
-/*
-                    a = _mm512_loadu_pd( A + ii + 8 + m*jj );
-                    c = _mm512_loadu_pd( C + ii + 8 + m*kk );
-                    c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC);
-                    _mm512_storeu_pd(C + ii + 8 + m*kk, c);
-*/
+                    _mm512_store_pd(CCD + (ii - iL2 ) + NB_L2*(kk - kL2), c);
+
                 }}}
             }}}
+            for (int ii = iL2; ii < iL2 + NB_L2; ii++){
+            for (int kk = kL2; kk < kL2 + NB_L2; kk++){
+                CU[ii + m*kk] = CCU[(ii - iL2) + NB_L2*(kk - kL2)];
+                CD[ii + m*kk] = CCD[(ii - iL2) + NB_L2*(kk - kL2)];
+            }}
         }}}
     }
         for (int jj = n_L3; jj < n; jj++){
