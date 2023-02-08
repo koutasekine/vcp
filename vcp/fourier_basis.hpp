@@ -240,11 +240,55 @@ public:
 			}
 		}
 
+		void add_fourier_pt_delay( const vcp::fourier_series< _T >& series, const _T& dly ){
+			if ((*this).type != 'F') {
+				std::cout << "fourier_basis : add_fourier_pt_delay : Only use Full List of fourier_series " << std::endl;
+				exit(1);
+			}
+
+			if ((*this).is_initial) (*this).initial_matrix();
+
+
+			for ( int i = 0; i < (*this).list.size(); i++ ){
+				int ii = (*this).list.at(i);
+				vcp::fourier_series<_T> tfs;
+				vcp::matrix< _T, _P > tmp;
+				
+				if (ii == 0){
+				//	std::cout << "ii/2 = " << ii/2 << std::endl;
+					tmp = (*this).to_vector( series/_T(2) );
+				}
+				else if (ii%2 == 1){
+				//	std::cout << "ii/2+1 = " << ii/2 + 1 << std::endl;
+					vcp::fourier_series<_T> ftmp;
+					ftmp.zeros(ii/2 + 1);
+					ftmp.set_sinm( 1, ii/2 + 1);
+					ftmp = ftmp.delay(dly);
+					tfs = series*ftmp;
+					tmp = (*this).to_vector( tfs );
+				}
+				else if (ii%2 == 0){
+				//	std::cout << "ii/2 = " << ii/2 << std::endl;
+					vcp::fourier_series<_T> ftmp;
+					ftmp.zeros(ii/2);
+					ftmp.set_cosm( 1, ii/2);
+					ftmp = ftmp.delay(dly);
+					tfs = series*ftmp;
+					
+					tmp = (*this).to_vector( tfs );
+				}
+				for (int j = 0; j < (*this).list.size(); j++ ){
+					(*this).jmat(j, i) += tmp(j);
+				}
+			}
+		}
+
+
 		void add_fourier_pt( const vcp::fourier_series< _T >& series ){
 			if ((*this).is_initial) (*this).initial_matrix();
 			int zeroind = -1;
 
-			for (int i = 0; i < (*this).list.size(); i++ ){
+			for ( int i = 0; i < (*this).list.size(); i++ ){
 				int ii = (*this).list.at(i);
 				vcp::fourier_series<_T> tfs;
 				vcp::matrix< _T, _P > tmp;

@@ -182,4 +182,215 @@ void udmatmul(int m, int n, int k, double *A, double *B, double *CU, double *CD)
     }}
 }
 
+void jimae5(int m, int n, int k, double *A, double *B, double *CU, double *CD){
+    int mamari, namari,kamari,NL0;
+    mamari = m / NB_L2 * NB_L2;
+    namari = n / NB_L2 * NB_L2;
+    kamari = k / NB_L2 * NB_L2;
+    NL0 = m/8 * 8;
+    int tmp =0;
+    for(int i = 0; i < m - NL0; i++)tmp += pow(2,i);
+    __mmask8 mmask = tmp;
+   #pragma omp parallel for
+    for (int iii = 0; iii < mamari; iii+=NB_L2){
+    for (int jjj = 0; jjj < namari; jjj+=NB_L2){
+    for (int zzz = 0; zzz < kamari; zzz+=NB_L2){
+        for (int ii = iii; ii < iii + NB_L2; ii+=NB_L1){
+        for (int jj = jjj; jj < jjj + NB_L2; jj+=NB_L1){
+        for (int zz = zzz; zz < zzz + NB_L2; zz+=NB_L1){
+            //L1*L1サイズの行列作る
+            alignas(64) double L1A[NB_L1*NB_L1];
+            alignas(64) double L1CU[NB_L1*NB_L1];
+            alignas(64) double L1CD[NB_L1*NB_L1];
+            for (int j = jj; j < jj + NB_L1; j++){
+                for(int i = ii; i < ii + NB_L1; i++){
+                    L1A[i-ii + NB_L1*(j-jj)] = A[i + m*j];
+                }}
+            for(int z = zz; z < zz + NB_L1; z++){
+                for(int i = ii; i < ii + NB_L1; i++){
+                    L1CU[i-ii + NB_L1*(z-zz)] = CU[i + m*z];
+                    L1CD[i-ii + NB_L1*(z-zz)] = CD[i + m*z];
+                }}
+            for(int z = 0; z <  NB_L1; z++){
+            for(int j = 0; j <  NB_L1; j++){
+                    __m512d b = _mm512_set1_pd(B[j + jj + n*(z + zz)]);
+            for(int i = 0; i <  NB_L1; i+=8){
+                    __m512d a = _mm512_load_pd(L1A + i + NB_L1*j);
+                    __m512d c = _mm512_load_pd(L1CU + i + NB_L1*z);
+                    c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC);
+                    _mm512_store_pd(L1CU + i + NB_L1*z, c);
+                    c = _mm512_load_pd(L1CD + i + NB_L1*z);
+                    c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC);
+                    _mm512_store_pd(L1CD + i + NB_L1*z, c);
+            }}}
+            for(int z = zz; z < zz + NB_L1; z++){
+                for(int i = ii; i < ii + NB_L1; i++){
+                    CU[i + m*z] = L1CU[i-ii + NB_L1*(z-zz)];
+                    CD[i + m*z] = L1CD[i-ii + NB_L1*(z-zz)];
+                }}
+        }}}
+    }///zzzの終わり
+    for (int zamari = kamari; zamari < k; zamari+=(k-kamari)){
+        for (int ii = iii; ii < iii + NB_L2; ii+=NB_L1){
+        for (int jj = jjj; jj < jjj + NB_L2; jj+=NB_L1){
+            //L1*L1サイズの行列作る
+            alignas(64) double L1A[NB_L1*NB_L1];
+            alignas(64) double L1CU[NB_L1*(k-kamari)];
+            alignas(64) double L1CD[NB_L1*(k-kamari)];
+            for(int j = jj; j < jj + NB_L1; j++){
+            for(int i = ii; i < ii + NB_L1; i++){
+                    L1A[i-ii + NB_L1*(j-jj)] = A[i + m*j];
+                }}//std::cout << 'a' <<std::endl;
+            for(int z = zamari; z < k; z++){
+            for(int i = ii; i < ii + NB_L1; i++){
+                    L1CU[i-ii + NB_L1*(z-zamari)] = CU[i + m*z];
+                    L1CD[i-ii + NB_L1*(z-zamari)] = CD[i + m*z];
+                }}
+            for(int z = 0; z <  k-kamari; z++){
+            for(int j = 0; j <  NB_L1; j++){
+                    __m512d b = _mm512_set1_pd(B[j + jj + n*(z + zamari)]);
+            for(int i = 0; i <  NB_L1; i+=8){
+                    __m512d a = _mm512_load_pd(L1A + i + NB_L1*j);
+                    __m512d c = _mm512_load_pd(L1CU + i + NB_L1*z);
+                    c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC);
+                    _mm512_store_pd(L1CU + i + NB_L1*z, c);
+                    c = _mm512_load_pd(L1CD + i + NB_L1*z);
+                    c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC);
+                    _mm512_store_pd(L1CD + i + NB_L1*z, c);
+            }}}
+            for(int z = zamari; z < k; z++){
+                for(int i = ii; i < ii + NB_L1; i++){
+                    CU[i + m*z] = L1CU[i-ii + NB_L1*(z-zamari)];
+                    CD[i + m*z] = L1CD[i-ii + NB_L1*(z-zamari)];
+                }}
+        }}
+    }//zamariの終わり
+    }//jjjの終わり
+    for (int jamari = namari; jamari < n; jamari+=(n-namari)){
+    for (int zzz = 0; zzz < kamari; zzz+=NB_L2){
+        for (int ii = iii; ii < iii + NB_L2; ii+=NB_L1){
+        //for (int jj = jjj; jj < n;           jj++){
+        for (int zz = zzz; zz < zzz + NB_L2; zz+=NB_L1){
+            //L1サイズの行列作る
+            alignas(64) double L1A[NB_L1*(n-namari)];
+            alignas(64) double L1CU[NB_L1*NB_L1];
+            alignas(64) double L1CD[NB_L1*NB_L1];
+            for(int j = jamari; j < n; j++){
+            for(int i = ii; i < ii + NB_L1; i++){
+                    L1A[i-ii + NB_L1*(j-jamari)] = A[i + m*j];
+                }}
+            for(int z = zz; z < zz + NB_L1; z++){
+            for(int i = ii; i < ii + NB_L1; i++){
+                    L1CU[i-ii + NB_L1*(z-zz)] = CU[i + m*z];
+                    L1CD[i-ii + NB_L1*(z-zz)] = CD[i + m*z];
+                }}
+            for(int z = 0; z <  NB_L1; z++){
+            for(int j = 0; j < n-namari; j++){
+                    __m512d b = _mm512_set1_pd(B[j + jamari + n*(z + zz)]);
+            for(int i = 0; i <  NB_L1; i+=8){
+                    __m512d a = _mm512_load_pd(L1A + i + NB_L1*j);
+                    __m512d c = _mm512_load_pd(L1CU + i + NB_L1*z);
+                    c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC);
+                    _mm512_store_pd(L1CU + i + NB_L1*z, c);
+                    c = _mm512_load_pd(L1CD + i + NB_L1*z);
+                    c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC);
+                    _mm512_store_pd(L1CD + i + NB_L1*z, c);
+            }}}
+            for(int z = zz; z < zz + NB_L1; z++){
+                for(int i = ii; i < ii + NB_L1; i++){
+                    CU[i + m*z] = L1CU[i-ii + NB_L1*(z-zz)];
+                    CD[i + m*z] = L1CD[i-ii + NB_L1*(z-zz)];
+                }}
+        }}//}
+    }//jamariの中のzzzの終わり
+    for (int zamari = kamari; zamari < k; zamari+=(k-kamari)){
+        for (int ii = iii; ii < iii + NB_L2; ii+=NB_L1){
+            //L1*L1サイズの行列作る
+            alignas(64) double L1A[NB_L1*(n-namari)];
+            alignas(64) double L1CU[NB_L1*(k-kamari)];
+            alignas(64) double L1CD[NB_L1*(k-kamari)];
+            for(int j = jamari; j < n; j++){
+            for(int i = ii; i < ii + NB_L1; i++){
+                    L1A[i-ii + NB_L1*(j-jamari)] = A[i + m*j];
+                }}//std::cout << 'a' <<std::endl;
+            for(int z = zamari; z < k; z++){
+            for(int i = ii; i < ii + NB_L1; i++){
+                    L1CU[i-ii + NB_L1*(z-zamari)] = CU[i + m*z];
+                    L1CD[i-ii + NB_L1*(z-zamari)] = CD[i + m*z];
+                }}
+            for(int z = 0; z <  k-kamari; z++){
+            for(int j = 0; j <  n-namari; j++){
+                    __m512d b = _mm512_set1_pd(B[j + jamari + n*(z + zamari)]);
+            for(int i = 0; i <  NB_L1; i+=8){
+                    __m512d a = _mm512_load_pd(L1A + i + NB_L1*j);
+                    __m512d c = _mm512_load_pd(L1CU + i + NB_L1*z);
+                    c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC);
+                    _mm512_store_pd(L1CU + i + NB_L1*z, c);
+                    c = _mm512_load_pd(L1CD + i + NB_L1*z);
+                    c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC);
+                    _mm512_store_pd(L1CD + i + NB_L1*z, c);
+            }}}
+            for(int z = zamari; z < k; z++){
+                for(int i = ii; i < ii + NB_L1; i++){
+                    CU[i + m*z] = L1CU[i-ii + NB_L1*(z-zamari)];
+                    CD[i + m*z] = L1CD[i-ii + NB_L1*(z-zamari)];
+                }}
+        }
+    }//jamariの中のzamariの終わり
+    }//jamariの終わり
+    }//iiiの終わり
+
+    for (int jjj = 0; jjj < namari; jjj+=NB_L2){
+    for (int zzz = 0; zzz < kamari; zzz+=NB_L2){
+        for (int jj = jjj; jj < jjj + NB_L2; jj+=NB_L1){
+        for (int zz = zzz; zz < zzz + NB_L2; zz+=NB_L1){
+        //入れ物を作る
+        int mmamari2 = ((m-mamari)/8 + 1)*8;
+            alignas(64) double L1A[NB_L1*mmamari2]; 
+            alignas(64) double L1CU[NB_L1*mmamari2];
+            alignas(64) double L1CD[NB_L1*mmamari2];
+
+            for (int j = jj; j < jj + NB_L1; j++){
+                for(int i = mamari; i < m; i++){
+                    L1A[i-mamari + mmamari2*(j-jj)] = A[i + m*j];
+            }}
+            for(int z = zz; z < zz + NB_L1; z++){
+                for(int i = mamari; i < m; i++){
+                    L1CU[i-mamari + mmamari2*(z-zz)] = CU[i + m*z];
+                    L1CD[i-mamari + mmamari2*(z-zz)] = CD[i + m*z];
+            }}
+            for(int z = 0; z <  NB_L1; z++){
+            for(int j = 0; j <  NB_L1; j++){
+                __m512d b = _mm512_set1_pd(B[j + jj + n*(z + zz)]);
+                __m512d a,c;
+            for(int i = 0; i < NL0-mamari; i+=8){ 
+                    a = _mm512_load_pd(L1A + i + mmamari2*j);
+                    c = _mm512_load_pd(L1CU + i + mmamari2*z);
+                    c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC);
+                    _mm512_store_pd(L1CU + i + mmamari2*z, c);
+                    c = _mm512_load_pd(L1CD + i + mmamari2*z);
+                    c = _mm512_fmadd_round_pd(a, b, c, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC);
+                    _mm512_store_pd(L1CD + i + mmamari2*z, c);
+            }
+                a = _mm512_maskz_load_pd( mmask,L1A + NL0-mamari + mmamari2*j);
+                c = _mm512_maskz_load_pd( mmask,L1CU + NL0-mamari + mmamari2*z);
+                c = _mm512_maskz_fmadd_round_pd( mmask,a, b, c, _MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC);
+                _mm512_mask_store_pd(L1CU + NL0-mamari + mmamari2*z, mmask, c);
+                c = _mm512_maskz_load_pd( mmask,L1CD + NL0-mamari + mmamari2*z);
+                c = _mm512_maskz_fmadd_round_pd( mmask,a, b, c, _MM_FROUND_TO_NEG_INF | _MM_FROUND_NO_EXC);
+                _mm512_mask_store_pd(L1CD + NL0-mamari + mmamari2*z, mmask, c);
+            }}
+            
+            for(int z = zz; z < zz + NB_L1; z++){
+                for(int i = mamari; i < m; i++){
+                    CU[i + m*z] = L1CU[i-mamari +mmamari2*(z-zz)];
+                    CD[i + m*z] = L1CD[i-mamari +mmamari2*(z-zz)];
+                }}
+                
+        }}
+    }//iamariの中のzzzの終わり
+    }
+
+}
+
 #endif // VBLAS_UDMATMUL_HPP
