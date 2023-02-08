@@ -345,7 +345,6 @@ namespace vcp {
                 j++;
             }
         }
-
         template <class _Pm>
         vcp::matrix< _T, _Pm > output_matrix( void ) const {
             vcp::matrix< _T, _Pm > tmp;
