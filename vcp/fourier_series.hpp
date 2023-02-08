@@ -532,6 +532,7 @@ public:
 			}
 			return B;
 		}
+		
 		friend fourier_series< _T > operator-(fourier_series< _T >&& A) {
 			A.a0 = -A.a0;
 #ifdef _OPENMP
