@@ -13,9 +13,9 @@
 #include <vcp/vcp_timer.hpp>
 
 int main(void){
-    int m = 1800;
-    int n = 1500;
-    int k = 1900;
+    int m = 1042;
+    int n = 1024;
+    int k = 2048;
     vcp::matrix< double, vcp::pdblas > A, B, CU, CD, DU, DD;
 
     A.rand(m, n);
@@ -24,7 +24,7 @@ int main(void){
     CD.zeros(m, k);
 
     vcp::time.tic();
-    udmatmul( m, n, k, A.data(), B.data(), CU.data(), CD.data() );
+    jimae5( m, n, k, A.data(), B.data(), CU.data(), CD.data() );
     vcp::time.toc();
 
     //std::cout << A << std::endl;

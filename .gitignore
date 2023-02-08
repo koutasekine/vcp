@@ -6,8 +6,8 @@ test_matrix/a.out
 *.matrix_d
 *.matrix_id
 *.matrix_int
-*.csv
 *.log
+*.csv
 imats_old_before_0.0.5.hpp
 /kv
 /paper_*
