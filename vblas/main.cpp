@@ -24,7 +24,7 @@ int main(void){
     CD.zeros(m, k);
 
     vcp::time.tic();
-    jimae5( m, n, k, A.data(), B.data(), CU.data(), CD.data() );
+    udmatmul( m, n, k, A.data(), B.data(), CU.data(), CD.data() );
     vcp::time.toc();
 
     //std::cout << A << std::endl;
