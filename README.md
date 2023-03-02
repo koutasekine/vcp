@@ -54,7 +54,7 @@ The installation procedure is below:
  3. Download the installer
  4. Excute the installer
 
-#### Ubuntu 20.04
+#### Ubuntu 22.04
 
 ```bash
   sudo apt update -y
