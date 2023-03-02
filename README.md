@@ -61,7 +61,7 @@ The installation procedure is below:
   sudo apt upgrade -y
   sudo apt install wget -y
   wget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_ubuntu2204.sh
-  bash install_ubuntu2004.sh
+  bash install_ubuntu2204.sh
 ```
 Note that Intel MKL will ask you about the update-alternative setting.<br>
 I recommend setting them all to yes, but be aware that other libraries are also affected.<br>
