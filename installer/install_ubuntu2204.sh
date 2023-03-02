@@ -58,6 +58,7 @@ else
     cp -r vcp-master/vcp/ ./
     cp -r vcp-master/test_matrix/ ./
     cp -r vcp-master/test_PDE/ ./
+    cp -r vcp-master/vblas/ ./
     rm "master.tar.gz"
     rm -r vcp-master    
 fi
