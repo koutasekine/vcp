@@ -37,6 +37,7 @@ Kouta Sekine
 
 ## How to install
 ### Supported OS
+ * Ubuntu 22.04
  * Ubuntu 20.04
  * Ubuntu 18.04
  * CentOS 7
@@ -52,7 +53,21 @@ The installation procedure is below:
  2. Install wget 
  3. Download the installer
  4. Excute the installer
- 
+
+#### Ubuntu 20.04
+
+```bash
+  sudo apt update -y
+  sudo apt upgrade -y
+  sudo apt install wget -y
+  wget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_ubuntu2204.sh
+  bash install_ubuntu2004.sh
+```
+Note that Intel MKL will ask you about the update-alternative setting.<br>
+I recommend setting them all to yes, but be aware that other libraries are also affected.<br>
+After install, please check:
+  * `sudo update-alternatives --config libblas.so-x86_64-linux-gnu`
+  * `sudo update-alternatives --config liblapack.so-x86_64-linux-gnu` 
 
 #### Ubuntu 20.04
 
@@ -114,7 +129,7 @@ Minimum Compile options:<br>
 <br>
 
 Recommended Compile options with BLAS, Lapack, mpfr, OpenMP and kv library:<br>
-**Ubuntu 20.04**<br>
+**Ubuntu 22.04 and 20.04**<br>
 `g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 <filename.cpp> -llapack -lblas -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
 
 <br>
