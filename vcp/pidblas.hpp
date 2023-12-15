@@ -210,7 +210,7 @@ namespace vcp {
 		}
 	public:
 		//C = IA * IB
-		void mulmm(const vcp::mats< kv::interval< double > >& B, vcp::mats< kv::interval< double > >& c)const override {
+		virtual void mulmm(const vcp::mats< kv::interval< double > >& B, vcp::mats< kv::interval< double > >& c)const override {
 			kv::hwround::roundnear();
 			if (type == 'S' && (B.type == 'C' || B.type == 'R' || B.type == 'M')) {
 				c = B;
