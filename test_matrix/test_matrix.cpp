@@ -42,6 +42,7 @@
 //#include <vcp/imats.hpp>
 //#include <vcp/pdblas.hpp>
 //#include <vcp/pidblas.hpp>
+//#include <vcp/pidblas_fma.hpp>
 
 #include <vcp/matrix.hpp>
 #include <vcp/matrix_assist.hpp>
@@ -76,6 +77,10 @@ int main(void) {
 
 /*---  6.Verification Data type with KV, BLAS and Lapack (Please check to chenge the rounding mode on BLAS)  ---*/
 //	vcp::matrix< kv::interval< double >, vcp::pidblas > A, B, E, D, X, G, I;
+
+/*---  7.Verification Data type with KV, BLAS and Lapack (Please check to chenge the rounding mode on BLAS) with fma (AVX512)  ---*/
+//	vcp::matrix< kv::interval< double >, vcp::pidblas_fma > A, B, E, D, X, G, I;
+
 
 /*---  Make vectors and matrices ---*/
 	// Zero column vector A = (0,0, ... , 0)^T

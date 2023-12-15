@@ -408,11 +408,21 @@ public:
 		}
 
 		_T get_sin(const int& NN) const {
-			return (*this).c[NN - 1].a;
+			if ( NN <= this->n ){
+				return (*this).c[NN - 1].a;
+			}
+			else{
+				return _T(0);
+			}
 		}
 
 		_T get_cos(const int& NN) const {
-			return (*this).c[NN - 1].b;
+			if ( NN <= this->n ){
+				return (*this).c[NN - 1].b;
+			}
+			else{
+				return _T(0);
+			}
 		}
 
 		_T get_a0(void) const {
