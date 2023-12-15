@@ -1427,14 +1427,19 @@ namespace vcp {
 							local_point[d] = div_interval_list[div_list(i, d)][d];
 						}
 						list_stack.push(local_point);
-					}
-					count += div_list_size - 1;
-					
+					}					
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 				}
 #endif
 #endif
+
+#ifdef _OPENMP
+#ifndef VCP_LEGENDRE_NOMP
+						#pragma omp atomic
+#endif
+#endif
+					count += div_list_size - 1;
 				}
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
