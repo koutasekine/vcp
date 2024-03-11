@@ -45,6 +45,15 @@ namespace vcp {
 		}
 	}
 
+	template<typename _T, class _P1, class _P2> void imid(const vcp::matrix< kv::interval< _T >, _P1 >& A, vcp::matrix< kv::interval< _T >, _P2 >& B) {
+		B.zeros(A.rowsize(), A.columnsize());
+		for (int i = 0; i < A.rowsize(); i++) {
+			for (int j = 0; j < A.columnsize(); j++) {
+				B(i, j) = kv::interval< _T >(mid(A(i, j)));
+			}
+		}
+	}
+
 	template<typename _T, class _P1, class _P2> void rad(const vcp::matrix< kv::interval< _T >, _P1 >& A, vcp::matrix< _T, _P2 >& B) {
 		B.zeros(A.rowsize(), A.columnsize());
 		for (int i = 0; i < A.rowsize(); i++) {
