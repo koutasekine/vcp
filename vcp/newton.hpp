@@ -57,6 +57,10 @@ public:
             (*this).newton_tol = _T(n) * std::numeric_limits< _T >::epsilon();
         }
 
+        bool is_convergence(){
+            return this->flag_Convergence;
+        }
+
         virtual void setting_newton( vcp::matrix< _T, _PM >& xx ){
         }
 
