@@ -3,16 +3,19 @@
 # yes | sudo apt upgrade
 yes | sudo apt install build-essential
 yes | sudo apt install libboost-all-dev
-yes | sudo apt install libgmp-dev
+yes | sudo apt install libgmp-dev 
 yes | sudo apt install libmpfr-dev
-yes | sudo apt install liblapack-dev
-sudo apt install intel-mkl -y
 yes | sudo apt install curl
 yes | sudo apt install wget
 
-# echo 'export MKL_ROOT_DIR=/opt/intel/mkl' >> ~/.bashrc
-# echo 'export LD_LIBRARY_PATH=$MKL_ROOT_DIR/lib/intel64:/opt/intel/lib/intel64_lin:$LD_LIBRARY_PATH' >> ~/.bashrc
-# echo 'export LIBRARY_PATH=$MKL_ROOT_DIR/lib/intel64:$LIBRARY_PATH' >> ~/.bashrc
+wget -O- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | sudo gpg --dearmor | sudo  tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" | sudo tee /etc/apt/sources.list.d/oneAPI.list
+sudo apt update
+yes | sudo apt install intel-basekit
+yes | sudo apt install intel-hpckit
+echo "source /opt/intel/oneapi/setvars.sh" >> ~/.bashrc
+source /opt/intel/oneapi/setvars.sh
+
 
 echo 
 echo "######################################################"
@@ -68,12 +71,13 @@ echo "######################################################"
 echo "Check for BLAS rounding mode changes: Please wait..."
 source /opt/intel/mkl/bin/mklvars.sh intel64
 cd "${folderpath}/test_matrix/"
-g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pdblas_rounding.cpp -llapack -lblas -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
-g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pidblas_rounding.cpp -llapack -lblas -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
+g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pdblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
+g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pidblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
+
 
 echo
 echo "######################################################"
 echo "Check for Open MP rounding mode changes: Please wait..."
-g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_OpenMP.cpp -llapack -lblas -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
+g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_OpenMP.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
 
 echo "Finish!"
