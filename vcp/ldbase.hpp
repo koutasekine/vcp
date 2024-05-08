@@ -1194,7 +1194,7 @@ namespace vcp {
 #endif	
 			if ((*this).mode <= 2) {
 				std::cout << ">> ERROR : output_uh__for_graphics : This function only use the Approximation mode (Mode > 2)" << std::endl;
-				exit(1);
+			//	exit(1);
 			}
 
 			matrix< _TM, _PM > Output_Data;
@@ -1326,7 +1326,7 @@ namespace vcp {
 				for (int i = 0; i < dim; i++) {
 					local_vector[i] = kv::interval< _TC >(mid(local_vector[i]));
 				}
-				_TC delta = ((*this).func<  kv::interval< _TC > >(local_vector, v)).lower();
+				_TC delta = ((*this).template func<  kv::interval< _TC > >(local_vector, v)).lower();
 
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
@@ -1359,7 +1359,7 @@ namespace vcp {
 						continue;
 					}
 					
-					kv::interval< _TC > tmp = (*this).func<  kv::interval< _TC > >(local_point, v);
+					kv::interval< _TC > tmp = (*this).template func<  kv::interval< _TC > >(local_point, v);
 					
 					if (delta < tmp.lower()) {
 #ifdef _OPENMP
@@ -1403,7 +1403,7 @@ namespace vcp {
 					for (int i = 0; i < dim; i++) {
 						local_point_center[i] = kv::interval< _TC >(mid(local_point_center[i]));
 					}
-					tmp = ((*this).func<  kv::interval< _TC > >(local_point_center, v));
+					tmp = ((*this).template func<  kv::interval< _TC > >(local_point_center, v));
 					if (tmp.lower() < delta) {
 						delta = tmp.lower();
 					}
@@ -1513,7 +1513,7 @@ namespace vcp {
 				for (int i = 0; i < dim; i++) {
 					local_vector[i] = kv::interval< _TC >(mid(local_vector[i]));
 				}
-				_TC delta = ((*this).func<  kv::interval< _TC > >(local_vector, v)).upper();
+				_TC delta = ((*this).template func<  kv::interval< _TC > >(local_vector, v)).upper();
 
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
@@ -1546,7 +1546,7 @@ namespace vcp {
 							continue;
 						}
 
-						kv::interval< _TC > tmp = (*this).func<  kv::interval< _TC > >(local_point, v);
+						kv::interval< _TC > tmp = (*this).template func<  kv::interval< _TC > >(local_point, v);
 
 						if (delta > tmp.upper()) {
 #ifdef _OPENMP
@@ -1589,7 +1589,7 @@ namespace vcp {
 						for (int i = 0; i < dim; i++) {
 							local_point_center[i] = kv::interval< _TC >(mid(local_point_center[i]));
 						}
-						tmp = ((*this).func<  kv::interval< _TC > >(local_point_center, v));
+						tmp = ((*this).template func<  kv::interval< _TC > >(local_point_center, v));
 						if (tmp.upper() > delta) {
 							delta = tmp.upper();
 						}
