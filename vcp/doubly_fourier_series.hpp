@@ -49,6 +49,7 @@
 
 #include <vcp/vcp_metafunction.hpp>
 #include <vcp/vcp_converter.hpp>
+#include <vcp/error.hpp>
 #include <vcp/matrix.hpp>
 
 namespace vcp {
@@ -72,7 +73,6 @@ namespace vcp {
 
         void plist_sort(){
             sort( this->plist.begin(), this->plist.end(), [](const std::vector< int >& x, const std::vector< int >& y) { return (x[0] < y[0]) || (x[0] == y[0] && (x[1] < y[1])) ;});
-            this->plist.shrink_to_fit();
         }
 
         void setting_list(){
@@ -126,18 +126,15 @@ namespace vcp {
         void init_element(){
             if (this->elementsize > 0){
                 this->a_cos.resize(this->elementsize);
-                this->a_cos.shrink_to_fit();
 
                 this->b_sin.resize(this->elementsize);
-                this->b_sin.shrink_to_fit();
                 this->a0 = _T(0);
             }
         }
 
         void AplusB(const doubly_fourier_series< _T >& B){
-			if ( this->m != B.m && this->elementsize != B.elementsize){
-                std::cout << "Error: AplusB: Not match size or order" << std::endl;
-                exit(1);
+			if ( this->m != B.m || this->elementsize != B.elementsize){
+                vcp::throw_error<vcp::dimension_error>("Error: AplusB: Not match size or order");
             }
             this->a0 += B.a0;
 #ifdef _OPENMP
@@ -152,9 +149,8 @@ namespace vcp {
         }
 
         void AminusB(const doubly_fourier_series< _T >& B){
-			if ( this->m != B.m && this->elementsize != B.elementsize){
-                std::cout << "Error: AminusB: Not match size or order" << std::endl;
-                exit(1);
+			if ( this->m != B.m || this->elementsize != B.elementsize){
+                vcp::throw_error<vcp::dimension_error>("Error: AminusB: Not match size or order");
             }
             this->a0 -= B.a0;
 #ifdef _OPENMP
@@ -169,9 +165,8 @@ namespace vcp {
         }
 
         void minusAplusB(const doubly_fourier_series< _T >& B){
-            if ( this->m != B.m && this->elementsize != B.elementsize){
-                std::cout << "Error: minusAplusB: Not match size or order" << std::endl;
-                exit(1);
+            if ( this->m != B.m || this->elementsize != B.elementsize){
+                vcp::throw_error<vcp::dimension_error>("Error: minusAplusB: Not match size or order");
             }
             this->a0 = - this->a0 + B.a0;
 #ifdef _OPENMP
@@ -227,6 +222,12 @@ namespace vcp {
             this->m = mm;
             this->setting_list();
             this->init_element();
+        }
+
+        void shrink_to_fit(void) {
+            this->plist.shrink_to_fit();
+            this->a_cos.shrink_to_fit();
+            this->b_sin.shrink_to_fit();
         }
 
         void setting_omega( const _T& omg1, const _T& omg2 ){
@@ -333,8 +334,7 @@ namespace vcp {
 		template <class _Pm>
         void setting_uh( const vcp::matrix< _T, _Pm >& uh ){
             if (uh.rowsize() > 2*plist.size()+1 ){
-                std::cout << "setting_uh: Error...: No match size" << std::endl;
-                exit(0);
+                vcp::throw_error<vcp::dimension_error>("setting_uh: Error...: No match size");
             }
             this->a0 = uh(0);
             int j = 1;
@@ -506,7 +506,7 @@ namespace vcp {
 			doubly_fourier_series< _T > C;
 			C = A;
 			C.AplusB(B);
-			return std::move(C);
+			return C;
 		}
 
 		friend doubly_fourier_series< _T > 
@@ -601,7 +601,7 @@ namespace vcp {
 			doubly_fourier_series< _T > C;
 			C = A;
 			C.AminusB(B);
-			return std::move(C);
+			return C;
 		}
 
 		friend doubly_fourier_series< _T > operator-(doubly_fourier_series< _T >&& A, const doubly_fourier_series< _T >& B) {
@@ -650,7 +650,7 @@ namespace vcp {
         friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, doubly_fourier_series< _T > >::type operator-( const _Tm& a, doubly_fourier_series<_T>&& A ){
 			_T Ta = _T(a);
 			A.a0 -= Ta;
-			return std::move(-A);
+			return -A;
 		}
 
         template <typename _Tm> 
@@ -659,7 +659,7 @@ namespace vcp {
 			doubly_fourier_series< _T > C;
 			C = B;
 			C.scalar_mul(Ta);
-			return std::move(C);
+			return C;
 		}
 
 		template <typename _Tm> 
@@ -675,7 +675,7 @@ namespace vcp {
 			doubly_fourier_series< _T > C;
 			C = B;
 			C.scalar_mul(Ta);
-			return std::move(C);
+			return C;
 		}
 
 		template <typename _Tm> 

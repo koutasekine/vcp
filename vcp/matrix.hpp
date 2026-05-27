@@ -38,10 +38,10 @@ namespace vcp {
 	template <typename _T, class _P = mats< _T >> class matrix : protected _P {
 	public:
 		matrix< _T, _P >() {
-			(*this).row = 0;
-			(*this).column = 0;
-			(*this).n = 0;
-			(*this).type = 'N';
+			this->row = 0;
+			this->column = 0;
+			this->n = 0;
+			this->type = 'N';
 		}
 		~matrix< _T, _P >() = default;
 		matrix< _T, _P >(const matrix< _T, _P >&) = default;
@@ -50,54 +50,57 @@ namespace vcp {
 		matrix< _T, _P >& operator=(matrix< _T, _P >&& A) = default;
 
 		_T& operator () (const int i) {
-			return (*this).v[i];
+			return this->v[i];
 		}
 		_T operator () (const int i) const {
-			return (*this).v[i];
+			return this->v[i];
 		}
 		_T& operator () (const int i, const int j) {
-			if ((*this).type == 'R') {
-				return (*this).v[j];
+			if (this->type == 'R') {
+				return this->v[j];
 			}
 			else {
-				return (*this).v[i + (*this).row*j];
+				return this->v[i + this->row*j];
 			}
 		}
 		_T operator () (const int i, const int j)const {
-			if ((*this).type == 'R') {
-				return (*this).v[j];
+			if (this->type == 'R') {
+				return this->v[j];
 			}
 			else {
-				return (*this).v[i + (*this).row*j];
+				return this->v[i + this->row*j];
 			}
 		}
 	/*
 		_T& operator [] (const int i) {
-			return (*this).v[i];
+			return this->v[i];
 		}
 		_T operator [] (const int i) const {
-			return (*this).v[i];
+			return this->v[i];
 		}
 		*/
 		
 		matrix< _T, _P > submatrix(const std::initializer_list<int>& list1, const std::initializer_list<int>& list2) const {
 			matrix< _T, _P > A;
-			(*this).submat(A, list1, list2);
-			return std::move(A);
+			this->submat(A, list1, list2);
+			return A;
 		}
 
-		int elementsize()const { return (*this).n; }
-		int columnsize()const { return (*this).column; }
-		int rowsize()const { return (*this).row; }
+		int elementsize()const { return this->n; }
+		int columnsize()const { return this->column; }
+		int rowsize()const { return this->row; }
 		char matstype()const {
-			return (*this).type;
+			return this->type;
 		}
-		std::vector< _T > vecpointer()const {
-			return (*this).v;
+		const std::vector< _T >& vecpointer()const {
+			return this->v;
 		}
 
 		_T* data() {
-			return (*this).v.data();
+			return this->v.data();
+		}
+		const _T* data() const {
+			return this->v.data();
 		}
 
 		void eye(const int r) { _P::eye(r); }
@@ -115,7 +118,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = A;
 			C.addmm(B);
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > operator+(matrix< _T, _P >&& A, const matrix< _T, _P >& B) {
 			A.addmm(B);
@@ -134,7 +137,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = B;
 			C.addsm(Ta);
-			return std::move(C);
+			return C;
 		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, matrix< _T, _P > >::type operator+(const _Tm a, matrix< _T, _P >&& B) {
 			_T Ta = _T(a);
@@ -146,7 +149,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = B;
 			C.addms(Ta);
-			return std::move(C);
+			return C;
 		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, matrix< _T, _P > >::type operator+(matrix< _T, _P >&& B, const _Tm a) {
 			_T Ta = _T(a);
@@ -176,7 +179,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = A;
 			C.subsmmA(B);
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > operator-(matrix< _T, _P >&& A, const matrix< _T, _P >& B) {
 			A.subsmmA(B);
@@ -195,7 +198,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = B;
 			C.subssm(Ta);
-			return std::move(C);
+			return C;
 		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, matrix< _T, _P > >::type operator-(const _Tm a, matrix< _T, _P >&& B) {
 			_T Ta = _T(a);
@@ -207,7 +210,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = B;
 			C.subsms(Ta);
-			return std::move(C);
+			return C;
 		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, matrix< _T, _P > >::type operator-(matrix< _T, _P >&& B, const _Tm a) {
 			_T Ta = _T(a);
@@ -218,7 +221,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = A;
 			C.minusm();
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > operator-(matrix< _T, _P >&& A) {
 			A.minusm();
@@ -238,7 +241,7 @@ namespace vcp {
 		friend matrix< _T, _P > operator*(const matrix< _T, _P >& A, const matrix< _T, _P >& B) {
 			matrix< _T, _P > C;
 			A.mulmm(B, C);
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > operator*(matrix< _T, _P >&& A, const matrix< _T, _P >& B) {
 			matrix< _T, _P > C;
@@ -263,7 +266,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = B;
 			C.mulsm(Ta);
-			return std::move(C);
+			return C;
 		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, matrix< _T, _P > >::type operator*(const _Tm a, matrix< _T, _P >&& B) {
 			_T Ta = _T(a);
@@ -275,7 +278,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = B;
 			C.mulms(Ta);
-			return std::move(C);
+			return C;
 		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, matrix< _T, _P > >::type operator*(matrix< _T, _P >&& B, const _Tm a) {
 			_T Ta = _T(a);
@@ -298,7 +301,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = B;
 			C.divsm(Ta);
-			return std::move(C);
+			return C;
 		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, matrix< _T, _P > >::type operator/(const _Tm a, matrix< _T, _P >&& B) {
 			_T Ta = _T(a);
@@ -310,7 +313,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = B;
 			C.divms(Ta);
-			return std::move(C);
+			return C;
 		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, matrix< _T, _P > >::type operator/(matrix< _T, _P >&& B, const _Tm a) {
 			_T Ta = _T(a);
@@ -327,39 +330,39 @@ namespace vcp {
 		friend mbool operator>(const matrix< _T, _P >& A, const matrix< _T, _P >& B) {
 			mbool C;
 			A.gt(B, C);
-			return std::move(C);
+			return C;
 		}
 		friend mbool operator>=(const matrix< _T, _P >& A, const matrix< _T, _P >& B) {
 			mbool C;
 			A.ge(B, C);
-			return std::move(C);
+			return C;
 		}
 		friend mbool operator<(const matrix< _T, _P >& A, const matrix< _T, _P >& B) {
 			mbool C;
 			A.lt(B, C);
-			return std::move(C);
+			return C;
 		}
 		friend mbool operator<=(const matrix< _T, _P >& A, const matrix< _T, _P >& B) {
 			mbool C;
 			A.le(B, C);
-			return std::move(C);
+			return C;
 		}
 		friend mbool operator==(const matrix< _T, _P >& A, const matrix< _T, _P >& B) {
 			mbool C;
 			A.eq(B, C);
-			return std::move(C);
+			return C;
 		}
 		friend mbool operator!=(const matrix< _T, _P >& A, const matrix< _T, _P >& B) {
 			mbool C;
 			A.neq(B, C);
-			return std::move(C);
+			return C;
 		}
 
 		friend matrix< _T, _P > pow(const matrix< _T, _P >& A, const matrix< _T, _P >& B) {
 			matrix< _T, _P > C;
 			C = A;
 			C.powmmA(B);
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > pow(matrix< _T, _P >&& A, const matrix< _T, _P >& B) {
 			A.powmmA(B);
@@ -374,7 +377,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = B;
 			C.powms(Ta);
-			return std::move(C);
+			return C;
 		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, matrix< _T, _P > >::type pow(matrix< _T, _P >&& B, const _Tm a) {
 			_T Ta = _T(a);
@@ -386,7 +389,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = B;
 			C.powsm(Ta);
-			return std::move(C);
+			return C;
 		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, matrix< _T, _P > >::type pow(const _Tm a, matrix< _T, _P >&& B) {
 			_T Ta = _T(a);
@@ -398,7 +401,7 @@ namespace vcp {
 		friend matrix< _T, _P > ltransmul(const matrix< _T, _P >& A) {
 			matrix< _T, _P > C;
 			A.mulltmm(C);
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > ltransmul(matrix< _T, _P >&& A) {
 			matrix< _T, _P > C;
@@ -412,7 +415,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = A;
 			C.abs();
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > abs(matrix< _T, _P >&& A) {
 			A.abs();
@@ -422,7 +425,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = A;
 			C.sqrt();
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > sqrt(matrix< _T, _P >&& A) {
 			A.sqrt();
@@ -432,7 +435,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = A;
 			C.sin();
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > sin(matrix< _T, _P >&& A) {
 			A.sin();
@@ -442,7 +445,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = A;
 			C.cos();
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > cos(matrix< _T, _P >&& A) {
 			A.cos();
@@ -452,7 +455,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = A;
 			C.exp();
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > exp(matrix< _T, _P >&& A) {
 			A.exp();
@@ -462,7 +465,7 @@ namespace vcp {
 			matrix< _T, _P > C;
 			C = A;
 			C.log();
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > log(matrix< _T, _P >&& A) {
 			A.log();
@@ -473,37 +476,37 @@ namespace vcp {
 		friend matrix< _T, _P > sum(const matrix< _T, _P >& A) {
 			matrix< _T, _P > c;
 			A.sum(c);
-			return std::move(c);
+			return c;
 		}
 		friend matrix< _T, _P > diag(const matrix< _T, _P >& A) {
 			matrix< _T, _P > C;
 			A.diag(C);
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > transpose(const matrix< _T, _P >& A) {
 			matrix< _T, _P > C;
 			A.transpose(C);
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > max(const matrix< _T, _P >& A) {
 			matrix< _T, _P > c;
 			A.max(c);
-			return std::move(c);
+			return c;
 		}
 		friend matrix< _T, _P > min(const matrix< _T, _P >& A) {
 			matrix< _T, _P > c;
 			A.min(c);
-			return std::move(c);
+			return c;
 		}
 		friend matrix< _T, _P > normone(const matrix< _T, _P >& A) {
 			matrix< _T, _P > c;
 			A.normone(c);
-			return std::move(c);
+			return c;
 		}
 		friend matrix< _T, _P > normtwo(const matrix< _T, _P >& A) {
 			matrix< _T, _P > c = A;
 			c.normtwo();
-			return std::move(c);
+			return c;
 		}
 		friend matrix< _T, _P > normtwo(matrix< _T, _P >&& A) {
 			A.normtwo();
@@ -512,13 +515,13 @@ namespace vcp {
 		friend matrix< _T, _P > norminf(const matrix< _T, _P >& A) {
 			matrix< _T, _P > c;
 			A.norminf(c);
-			return std::move(c);
+			return c;
 		}
 
 		friend matrix< _T, _P > tril(const matrix< _T, _P >& A) {
 			matrix< _T, _P > c = A;
 			c.tril();
-			return std::move(c);
+			return c;
 		}
 		friend matrix< _T, _P > tril(matrix< _T, _P >&& A) {
 			A.tril();
@@ -527,7 +530,7 @@ namespace vcp {
 		friend matrix< _T, _P > triu(const matrix< _T, _P >& A) {
 			matrix< _T, _P > c = A;
 			c.triu();
-			return std::move(c);
+			return c;
 		}
 		friend matrix< _T, _P > triu(matrix< _T, _P >&& A) {
 			A.triu();
@@ -607,30 +610,30 @@ namespace vcp {
 			matrix< _T, _P > bb = b;
 			matrix< _T, _P > x;
 			AA.linearsolve(bb, x);
-			return std::move(x);
+			return x;
 		}
 		friend matrix< _T, _P > lss(matrix< _T, _P >&& A, const matrix< _T, _P >& b) {
 			matrix< _T, _P > bb = b;
 			matrix< _T, _P > x;
 			A.linearsolve(bb, x);
-			return std::move(x);
+			return x;
 		}
 		friend matrix< _T, _P > lss(const matrix< _T, _P >& A, matrix< _T, _P >&& b) {
 			matrix< _T, _P > AA = A;
 			matrix< _T, _P > x;
 			AA.linearsolve(b, x);
-			return std::move(x);
+			return x;
 		}
 		friend matrix< _T, _P > lss(matrix< _T, _P >&& A, matrix< _T, _P >&& b) {
 			matrix< _T, _P > x;
 			A.linearsolve(b, x);
-			return std::move(x);
+			return x;
 		}
 		// R = inv(A)
 		friend matrix< _T, _P > inv(const matrix< _T, _P >& A) {
 			matrix< _T, _P > R = A;
 			R.inv();
-			return std::move(R);
+			return R;
 		}
 		friend matrix< _T, _P > inv(matrix< _T, _P >&& A) {
 			A.inv();
@@ -639,7 +642,7 @@ namespace vcp {
 		friend matrix< _T, _P > Cholesky(const matrix< _T, _P >& A) {
 			matrix< _T, _P > C = A;
 			C.Cholesky();
-			return std::move(C);
+			return C;
 		}
 		friend matrix< _T, _P > Cholesky(matrix< _T, _P >&& A) {
 			A.Cholesky();
@@ -671,12 +674,12 @@ namespace vcp {
 		friend matrix< _T, _P > horzcat(const matrix< _T, _P >& A, const matrix< _T, _P >& B) {
 			matrix< _T, _P > C;
 			A.horzcat(B, C);
-			return std::move(C);
+			return C;
 		}
 		template<typename... Args> friend matrix< _T, _P > horzcat(const matrix< _T, _P >& A, const matrix< _T, _P >& B, const Args&... args) {
 			matrix< _T, _P > C;
 			A.horzcat(B, C);
-			return std::move(horzcat(C, args...));
+			return horzcat(C, args...);
 		}
 		
 		//Matlab C = [A;B];
@@ -686,12 +689,12 @@ namespace vcp {
 		friend matrix< _T, _P > vercat(const matrix< _T, _P >& A, const matrix< _T, _P >& B) {
 			matrix< _T, _P > C;
 			A.vercat(B, C);
-			return std::move(C);
+			return C;
 		}
 		template<typename... Args> friend matrix< _T, _P > vercat(const matrix< _T, _P >& A, const matrix< _T, _P >& B, const Args&... args) {
 			matrix< _T, _P > C;
 			A.vercat(B, C);
-			return std::move(vercat(C, args...));
+			return vercat(C, args...);
 		}
 
 		friend int length(matrix< _T, _P >& A) {
@@ -717,34 +720,32 @@ namespace vcp {
 
 		// A = and(A,B)
 		void mats_and(const matrix< bool >& B) {
-			if ((*this).row != B.row && (*this).column != B.column) {
-				std::cout << "&&:error " << std::endl;
-				exit(1);
+			if (this->row != B.row || this->column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("&&: dimension mismatch");
 			}
-			if ((*this).type == 'S') {
-				(*this).v[0] = (*this).v[0] && B.v[0];
+			if (this->type == 'S') {
+				this->v[0] = this->v[0] && B.v[0];
 				return;
 			}
 			else {
 				for (int i = 0; i < n; i++) {
-					(*this).v[i] = (*this).v[i] && B.v[i];
+					this->v[i] = this->v[i] && B.v[i];
 				}
 				return;
 			}
 		}
 		// A = or(A,B)
 		void mats_or(const matrix< bool >& B) {
-			if ((*this).row != B.row && (*this).column != B.column) {
-				std::cout << "&&:error " << std::endl;
-				exit(1);
+			if (this->row != B.row || this->column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("||: dimension mismatch");
 			}
-			if ((*this).type == 'S') {
-				(*this).v[0] = (*this).v[0] || B.v[0];
+			if (this->type == 'S') {
+				this->v[0] = this->v[0] || B.v[0];
 				return;
 			}
 			else {
 				for (int i = 0; i < n; i++) {
-					(*this).v[i] = (*this).v[i] || B.v[i];
+					this->v[i] = this->v[i] || B.v[i];
 				}
 				return;
 			}
@@ -783,24 +784,24 @@ namespace vcp {
 		}
 	
 		bool all() const {
-			for (int i = 0; i < (*this).n; i++) {
-				if (!(*this).v[i]) {
+			for (int i = 0; i < this->n; i++) {
+				if (!this->v[i]) {
 					return false;
 				}
 			}
 			return true;
 		}
 		bool any() const {
-			for (int i = 0; i < (*this).n; i++) {
-				if ((*this).v[i]) {
+			for (int i = 0; i < this->n; i++) {
+				if (this->v[i]) {
 					return true;
 				}
 			}
 			return false;
 		}
 		bool none() const {
-			for (int i = 0; i < (*this).n; i++) {
-				if ((*this).v[i]) {
+			for (int i = 0; i < this->n; i++) {
+				if (this->v[i]) {
 					return false;
 				}
 			}
@@ -810,17 +811,17 @@ namespace vcp {
 
 	public:
 		matrix() {
-			(*this).row = 0;
-			(*this).column = 0;
-			(*this).n = 0;
-			(*this).type = 'N';
+			this->row = 0;
+			this->column = 0;
+			this->n = 0;
+			this->type = 'N';
 		}
 		matrix(const mbool& A) {
-			(*this).row = A.row;
-			(*this).column = A.column;
-			(*this).n = A.n;
-			(*this).type = A.type;
-			(*this).v = A.v;
+			this->row = A.row;
+			this->column = A.column;
+			this->n = A.n;
+			this->type = A.type;
+			this->v = A.v;
 		}
 		~matrix() = default;
 		matrix(const matrix< bool >&) = default;
@@ -829,36 +830,36 @@ namespace vcp {
 		matrix< bool >& operator=(matrix< bool >&& A) = default;
 	
 		std::vector< bool >::reference operator () (const int i) {
-			return (*this).v[i];
+			return this->v[i];
 		}
 		std::vector< bool >::const_reference operator () (const int i) const {
-			return (*this).v[i];
+			return this->v[i];
 		}
 		std::vector< bool >::reference operator () (const int i, const int j) {
-			if ((*this).type == 'R') {
-				return (*this).v[j];
+			if (this->type == 'R') {
+				return this->v[j];
 			}
 			else {
-				return (*this).v[i + (*this).row*j];
+				return this->v[i + this->row*j];
 			}
 		}
 		std::vector< bool >::const_reference operator () (const int i, const int j)const {
-			if ((*this).type == 'R') {
-				return (*this).v[j];
+			if (this->type == 'R') {
+				return this->v[j];
 			}
 			else {
-				return (*this).v[i + (*this).row*j];
+				return this->v[i + this->row*j];
 			}
 		}
 
-		int elementsize()const { return (*this).n; }
-		int columnsize()const { return (*this).column; }
-		int rowsize()const { return (*this).row; }
+		int elementsize()const { return this->n; }
+		int columnsize()const { return this->column; }
+		int rowsize()const { return this->row; }
 		char matstype()const {
-			return (*this).type;
+			return this->type;
 		}
-		std::vector< bool > vecpointer()const {
-			return (*this).v;
+		const std::vector< bool >& vecpointer()const {
+			return this->v;
 		}
 		friend int length(matrix < bool > & A) {
 			return A.length();
@@ -878,7 +879,6 @@ namespace vcp {
 			for (int j = 0; j < n; j++) {
 				v[j] = true;
 			}
-			v.shrink_to_fit();
 		}
 		void alltrue(const int r, const int c) {
 			row = r;
@@ -902,13 +902,12 @@ namespace vcp {
 					v[i + row*j] = true;
 				}
 			}
-			v.shrink_to_fit();
 		}
 		void set(const int i) {
-			(*this).alltrue(i);
+			this->alltrue(i);
 		}
 		void set(const int r, const int c) {
-			(*this).alltrue(r, c);
+			this->alltrue(r, c);
 		}
 
 		void allfalse(const int i) {
@@ -925,7 +924,6 @@ namespace vcp {
 			for (int j = 0; j < n; j++) {
 				v[j] = false;
 			}
-			v.shrink_to_fit();
 		}
 		void allfalse(const int r, const int c) {
 			row = r;
@@ -949,17 +947,16 @@ namespace vcp {
 					v[i + row*j] = false;
 				}
 			}
-			v.shrink_to_fit();
 		}
 		void reset(const int i) {
-			(*this).allfalse(i);
+			this->allfalse(i);
 		}
 		void reset(const int r, const int c) {
-			(*this).allfalse(r, c);
+			this->allfalse(r, c);
 		}
 
 		void flip() {
-			(*this).v.flip();
+			this->v.flip();
 		}
 
 		void resize(const int i, const int j) {
@@ -970,8 +967,9 @@ namespace vcp {
 			on = n;
 
 			if (row > i || column > j) {
-				std::cout << "error : resize : row > i || column > j" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"resize: new size is smaller than current size: (",
+					row, ", ", column, ") > (", i, ", ", j, ")");
 			}
 			n = nn;
 			row = i;
@@ -998,14 +996,13 @@ namespace vcp {
 					}
 				}
 			}
-			v.shrink_to_fit();
 		}
 		void clear() {
-			(*this).v.clear();
-			(*this).row = 0;
-			(*this).column = 0;
-			(*this).n = 0;
-			(*this).type = 'N';
+			this->v.clear();
+			this->row = 0;
+			this->column = 0;
+			this->n = 0;
+			this->type = 'N';
 		}
 
 		
@@ -1023,7 +1020,7 @@ namespace vcp {
 			matrix< bool > C;
 			C = A;
 			C.mats_and(B);
-			return std::move(C);
+			return C;
 		}
 		friend matrix< bool > operator&&(matrix< bool >&& A, const matrix< bool >& B) {
 			A.mats_and(B);
@@ -1042,7 +1039,7 @@ namespace vcp {
 			matrix< bool > C;
 			C = A;
 			C.mats_or(B);
-			return std::move(C);
+			return C;
 		}
 		friend matrix< bool > operator||(matrix< bool >&& A, const matrix< bool >& B) {
 			A.mats_or(B);
@@ -1061,7 +1058,7 @@ namespace vcp {
 			matrix< bool > C;
 			C = A;
 			C.flip();
-			return std::move(C);
+			return C;
 		}
 		friend matrix< bool > operator!(matrix< bool >&& A) {
 			A.flip();

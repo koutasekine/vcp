@@ -32,6 +32,8 @@
 #ifndef VCP_IMATS_ASSIST_HPP
 #define VCP_IMATS_ASSIST_HPP
 
+#include <vcp/error.hpp>
+
 
 
 namespace vcp {
@@ -84,8 +86,8 @@ namespace vcp {
 	
 	template<typename _T, class _P> typename std::enable_if< vcp::is_interval< _T >::value, void >::type compsym(vcp::matrix< _T, _P >& A) {
 		if (A.columnsize() != A.rowsize()) {
-			std::cout << "compsym: error " << A.columnsize() << " != " << A.rowsize() << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::dimension_error>(
+				"compsym: matrix must be square: ", A.columnsize(), " != ", A.rowsize());
 		}
 		
 		for (int i = 0; i < A.rowsize(); i++) {
@@ -95,9 +97,9 @@ namespace vcp {
 					A(j, i) = A(i, j);
 				}
 				else {
-					std::cout << "compsym: error : not overlap : i = " << i << " j = " << j << std::endl;
-					std::cout << A(i, j) << " , " << A(j, i) << std::endl;
-					exit(1);
+					vcp::throw_error<vcp::verification_error>(
+						"compsym: intervals do not overlap: i = ", i, ", j = ", j,
+						", A(i,j) = ", A(i, j), ", A(j,i) = ", A(j, i));
 				}
 			}
 		}
@@ -136,8 +138,8 @@ namespace vcp {
 
 	template<typename _T, class _P1, class _P2> vcp::matrix< kv::interval< _T >, _P1 > operator*(const vcp::matrix< kv::interval< _T >, _P1 >& A, const  vcp::matrix< _T, _P2 >& B) {
 		if (A.columnsize() != B.rowsize()) {
-			std::cout << "vmatmul:error " << A.columnsize() << " != " << B.rowsize() << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::dimension_error>(
+				"vmatmul: dimension mismatch: ", A.columnsize(), " != ", B.rowsize());
 		}
 
 		vcp::matrix< kv::interval< _T >, _P1 > C;
@@ -145,28 +147,28 @@ namespace vcp {
 		for (int i = 0; i < A.rowsize(); i++) {
 			for (int j = 0; j < A.columnsize(); j++) {
 				for (int k = 0; k < B.columnsize(); k++) {
-					C(i, k) = A(i, j) * B(j, k);
+					C(i, k) += A(i, j) * B(j, k);
 				}
 			}
 		}
 
-		return std::move(C);
+		return C;
 	}
 	template<typename _T, class _P1, class _P2> vcp::matrix< kv::interval< _T >, _P2 > operator*(const vcp::matrix< _T, _P1 >& A, const vcp::matrix< kv::interval< _T >, _P2 >& B) {
 		if (A.columnsize() != B.rowsize()) {
-			std::cout << "vmatmul:error " << A.columnsize() << " != " << B.rowsize() << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::dimension_error>(
+				"vmatmul: dimension mismatch: ", A.columnsize(), " != ", B.rowsize());
 		}
 		vcp::matrix< kv::interval< _T >, _P2 > C;
 		C.zeros(A.rowsize(), B.columnsize());
 		for (int i = 0; i < A.rowsize(); i++) {
 			for (int j = 0; j < A.columnsize(); j++) {
 				for (int k = 0; k < B.columnsize(); k++) {
-					C(i, k) = A(i, j) * B(j, k);
+					C(i, k) += A(i, j) * B(j, k);
 				}
 			}
 		}
-		return std::move(C);
+		return C;
 	}
 
 #endif

@@ -42,8 +42,8 @@ namespace vcp {
         _T b; // b*cos
 
         sincos< _T >() {
-			(*this).a = _T(0);
-			(*this).b = _T(0);
+			this->a = _T(0);
+			this->b = _T(0);
 		}
 		~sincos< _T >() = default;
 		sincos< _T >(const sincos< _T >&) = default;
@@ -53,18 +53,18 @@ namespace vcp {
 
         template <typename _Tm> 
         typename std::enable_if< std::is_constructible< _T, _Tm >::value, void >::type set_a( const _Tm& aa){
-            (*this).a = _T(aa);
+            this->a = _T(aa);
         }
 
         template <typename _Tm>
         typename std::enable_if< std::is_constructible< _T, _Tm >::value, void >::type set_b( const _Tm& bb){
-            (*this).b = _T(bb);
+            this->b = _T(bb);
         }
 
         template <typename _Tm>
         typename std::enable_if< std::is_constructible< _T, _Tm >::value, void >::type set_ab( const _Tm& aa, const _Tm& bb){
-            (*this).a = _T(aa);
-            (*this).b = _T(bb);
+            this->a = _T(aa);
+            this->b = _T(bb);
         }
 		// tau > 0
 		// a*sin(nt + tau) =  a*cos(tau)sin(nt) + a*sin(tau)cos(nt)
@@ -81,16 +81,16 @@ namespace vcp {
             using std::cos;
             using std::abs;
             _T abstau = abs(_T(tau));
-            _T aa = (*this).a;
-            _T bb = (*this).b;
+            _T aa = this->a;
+            _T bb = this->b;
 
             if (tau > 0){
-                (*this).a = aa*cos(abstau) - bb*sin(abstau);
-                (*this).b = bb*cos(abstau) + aa*sin(abstau);
+                this->a = aa*cos(abstau) - bb*sin(abstau);
+                this->b = bb*cos(abstau) + aa*sin(abstau);
             }
             else{
-                (*this).a = aa*cos(abstau) + bb*sin(abstau);
-                (*this).b = bb*cos(abstau) - aa*sin(abstau);
+                this->a = aa*cos(abstau) + bb*sin(abstau);
+                this->b = bb*cos(abstau) - aa*sin(abstau);
             }
         }
 
@@ -107,7 +107,7 @@ namespace vcp {
 			C = A;
 			C.a += B.a;
             C.b += B.b;
-			return std::move(C);
+			return C;
 		}
 
 		friend sincos< _T > operator+(sincos< _T >&& A, const sincos< _T >& B) {
@@ -151,7 +151,7 @@ namespace vcp {
 			C = A;
 			C.a -= B.a;
             C.b -= B.b;
-			return std::move(C);
+			return C;
 		}
 
 		friend sincos< _T > operator-(sincos< _T >&& A, const sincos< _T >& B) {
@@ -185,7 +185,7 @@ namespace vcp {
 			C = B;
 			C.a *= Ta;
             C.b *= Ta;
-			return std::move(C);
+			return C;
 		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, sincos< _T > >::type operator*(sincos< _T >&& B, const _Tm& a) {
 			_T Ta = _T(a);
@@ -200,7 +200,7 @@ namespace vcp {
 			C = B;
 			C.a *= Ta;
             C.b *= Ta;
-			return std::move(C);
+			return C;
 		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, sincos< _T > >::type operator*(const _Tm& a, sincos< _T >&& B) {
 			_T Ta = _T(a);
@@ -215,7 +215,7 @@ namespace vcp {
 			C = B;
 			C.a /= Ta;
             C.b /= Ta;
-			return std::move(C);
+			return C;
 		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, sincos< _T > >::type operator/(sincos< _T >&& B, const _Tm& a) {
 			_T Ta = _T(a);

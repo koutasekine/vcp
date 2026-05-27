@@ -36,7 +36,9 @@
 #include <vcp/ldbase.hpp>
 #include <vcp/allsol/constants.hpp>
 
-#include<omp.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 namespace vcp {
     template <typename _T, typename _TM, class _PM>
     struct candidate_set {

@@ -81,7 +81,7 @@ public:
             for (int i = 1; i < this->m+1; i++) {
                 D(i,i) = i*i;
             }
-            return std::move(D);
+            return D;
         }
 
         vcp::matrix< _T, _P > phiphi(void){
@@ -94,7 +94,7 @@ public:
                 L(i,i) = _T(1);
             }
 
-            return std::move(L);
+            return L;
         }
 
         vcp::matrix< _T, _P > fphi(const vcp::fourier_series< _T >& series){
@@ -107,7 +107,7 @@ public:
                 f(i) = series.get_cos(i);
             }
 
-            return std::move(f);
+            return f;
         }
 
         vcp::matrix< _T, _P > Dfphiphi(const vcp::fourier_series< _T >& series){
@@ -126,7 +126,7 @@ public:
                 }
             }
  
-            return std::move(Df);
+            return Df;
         }
 
         vcp::fourier_series< _T > vec_to_fourier_series(const vcp::matrix< _T, _P >& cof){

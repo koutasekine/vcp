@@ -60,139 +60,139 @@ namespace vcp {
         std::vector< std::tuple< _T , vcp::matrix< _T, _P > > > ode_logger;
 
         void x_to_x_vec(){ 
-            for ( int i = 0; i < (*this).order; i++) {
-                for ( int j = 0; j < (*this).dim; j++ ){
-                    ((*this).x_vec[i])(j, 0) = x((*this).dim * i + j, 0);
+            for ( int i = 0; i < this->order; i++) {
+                for ( int j = 0; j < this->dim; j++ ){
+                    (this->x_vec[i])(j, 0) = x(this->dim * i + j, 0);
                 }
             }
         }
 
         void save_data_logger_ode(){
-            if ((*this).logger_flag){
-                if ((*this).number_local_step == 1){
-                    ode_logger.push_back(std::make_tuple((*this).t0, x_t0));
+            if (this->logger_flag){
+                if (this->number_local_step == 1){
+                    ode_logger.push_back(std::make_tuple(this->t0, x_t0));
                 }
-                for (int i = 0; i < (*this).order; i++){
-                    ode_logger.push_back(std::make_tuple((*this).t0 + (*this).cpoint(i)*(*this).tau, (*this).x_vec[i]));
+                for (int i = 0; i < this->order; i++){
+                    ode_logger.push_back(std::make_tuple(this->t0 + this->cpoint(i)*this->tau, this->x_vec[i]));
                 }
-                ode_logger.push_back(std::make_tuple((*this).t1, x_t1));
+                ode_logger.push_back(std::make_tuple(this->t1, x_t1));
             }
         }
 
         public:
         Implicit_RK< _FUNC, _T, _P, _PIRK >() {
-            (*this).t_start = _T(0);
-            (*this).t_end = _T(1000000);
-            (*this).t0 = _T(0);
-            (*this).tau = 1/_T(8);
-            (*this).t1 = (*this).t0 + (*this).tau;
-            (*this).logger_flag = true;
-            (*this).tau_refinement_flag = true;
-            (*this).number_local_step = 0;
+            this->t_start = _T(0);
+            this->t_end = _T(1000000);
+            this->t0 = _T(0);
+            this->tau = 1/_T(8);
+            this->t1 = this->t0 + this->tau;
+            this->logger_flag = true;
+            this->tau_refinement_flag = true;
+            this->number_local_step = 0;
 		}
 
         void setting(){
-            (*this).setting_parameter();
-            (*this).x_vec.resize((*this).order);
+            this->setting_parameter();
+            this->x_vec.resize(this->order);
         }
 
         void setting( int n ){
-            (*this).setting_parameter(n);
-            (*this).x_vec.resize((*this).order);
+            this->setting_parameter(n);
+            this->x_vec.resize(this->order);
         }
 
         void setting_local_time( _T hh ){
-            (*this).tau = hh;
-            (*this).t0 = (*this).t_start;
-            (*this).t1 = (*this).t0 + (*this).tau;
+            this->tau = hh;
+            this->t0 = this->t_start;
+            this->t1 = this->t0 + this->tau;
         }
 
         void setting_local_time( _T hh, _T t ){
-            (*this).tau = hh;
-            (*this).t0 = t;
-            (*this).t1 = (*this).t0 + (*this).tau;
+            this->tau = hh;
+            this->t0 = t;
+            this->t1 = this->t0 + this->tau;
         }
 
         void change_local_time( _T hh ){
-            (*this).tau = hh;
-            (*this).t1 = (*this).t0 + (*this).tau;
+            this->tau = hh;
+            this->t1 = this->t0 + this->tau;
         }
         
         void setting_global_time(_T ts, _T te){
-            (*this).t_start = ts;
-            (*this).t_end = te;
+            this->t_start = ts;
+            this->t_end = te;
         }
 
         void setting_order( int n = 4 ){
-            (*this).setting_parameter(n);
-            (*this).x_vec.resize((*this).order);
+            this->setting_parameter(n);
+            this->x_vec.resize(this->order);
         }
 
         void setting_logger(bool lflag){
-            (*this).logger_flag = lflag;
+            this->logger_flag = lflag;
         }
 
         void setting_auto_refinement(bool lflag){
-            (*this).tau_refinement_flag = lflag;
+            this->tau_refinement_flag = lflag;
         }
 
         void initial_value(const vcp::matrix< _T, _P >& xh){
-            (*this).x_t0 = xh;
-            (*this).dim = xh.rowsize();
-            (*this).x.zeros((*this).order * (*this).dim, 1);
-            for ( int i = 0; i < (*this).order; i++) {
-                 (*this).x_vec[i] = (*this).x_t0;
-                 for (int j = 0; j < (*this).dim; j++ ){
-                    x(i*(*this).dim + j, 0) = (*this).x_t0(j, 0);
+            this->x_t0 = xh;
+            this->dim = xh.rowsize();
+            this->x.zeros(this->order * this->dim, 1);
+            for ( int i = 0; i < this->order; i++) {
+                 this->x_vec[i] = this->x_t0;
+                 for (int j = 0; j < this->dim; j++ ){
+                    x(i*this->dim + j, 0) = this->x_t0(j, 0);
                  }
             }
         }
 
         void setting_newton( vcp::matrix< _T, _P >& xh ) override {
-            (*this).x = xh;
+            this->x = xh;
         }
 
         vcp::matrix< _T, _P > f() override {
-            (*this).x_to_x_vec();
+            this->x_to_x_vec();
             std::vector< vcp::matrix< _T, _P > > fx_vec;
             vcp::matrix< _T, _P > xtmp;
-            xtmp.zeros((*this).order * (*this).dim, 1);
+            xtmp.zeros(this->order * this->dim, 1);
 
             vcp::matrix< _T, _P > tmp;
-            fx_vec.resize((*this).order);
+            fx_vec.resize(this->order);
 
-            for (int i = 0; i < (*this).order; i++){
-                fx_vec[i] = (*this).x_vec[i] - (*this).x_t0;
+            for (int i = 0; i < this->order; i++){
+                fx_vec[i] = this->x_vec[i] - this->x_t0;
             }
-            for (int j = 0; j < (*this).order; j++){
-                tmp = (*this).tau * (*this).func( t0 + (*this).cpoint(j) *(*this).tau, (*this).x_vec[j] );
-                for (int i = 0; i < (*this).order; i++ ){
-                    fx_vec[i] -= (*this).alpha(i, j) * tmp;
+            for (int j = 0; j < this->order; j++){
+                tmp = this->tau * this->func( t0 + this->cpoint(j) *this->tau, this->x_vec[j] );
+                for (int i = 0; i < this->order; i++ ){
+                    fx_vec[i] -= this->alpha(i, j) * tmp;
                 }
             }
             
-            for ( int i = 0; i < (*this).order; i++) {
-                for ( int j = 0; j < (*this).dim; j++ ){
-                    xtmp((*this).dim * i + j, 0) = (fx_vec[i])(j, 0);
+            for ( int i = 0; i < this->order; i++) {
+                for ( int j = 0; j < this->dim; j++ ){
+                    xtmp(this->dim * i + j, 0) = (fx_vec[i])(j, 0);
                 }
             }
             return xtmp;
         }
 
         vcp::matrix< _T, _P > Df() override {
-            (*this).x_to_x_vec();
+            this->x_to_x_vec();
             vcp::matrix< _T, _P > tmp1;
             vcp::matrix< _T, _P > tmp2;
             vcp::matrix< _T, _P > dfx;
-            dfx.eye( (*this).order * (*this).dim);
+            dfx.eye( this->order * this->dim);
 
-            for (int j = 0; j < (*this).order; j++){
-                tmp1 = (*this).tau * (*this).diffunc(t0 + (*this).cpoint(j) *(*this).tau, (*this).x_vec[j] );
-                for (int i = 0; i < (*this).order; i++ ){
-                    tmp2 = (*this).alpha(i, j) * tmp1;
-                    for (int ii = 0; ii < (*this).dim; ii++ ){
-                        for (int jj = 0; jj < (*this).dim; jj++){
-                            dfx(i * (*this).dim + ii, j * (*this).dim + jj) -= tmp2(ii, jj);
+            for (int j = 0; j < this->order; j++){
+                tmp1 = this->tau * this->diffunc(t0 + this->cpoint(j) *this->tau, this->x_vec[j] );
+                for (int i = 0; i < this->order; i++ ){
+                    tmp2 = this->alpha(i, j) * tmp1;
+                    for (int ii = 0; ii < this->dim; ii++ ){
+                        for (int jj = 0; jj < this->dim; jj++){
+                            dfx(i * this->dim + ii, j * this->dim + jj) -= tmp2(ii, jj);
                         }
                     }
                 }
@@ -201,73 +201,73 @@ namespace vcp {
         }
 
         void disp_continue() override {
-        //    std::cout << "i = " << iteration_newton << ", " << Correction_term << " <= " << (*this).newton_tol << std::endl;
+        //    std::cout << "i = " << iteration_newton << ", " << Correction_term << " <= " << this->newton_tol << std::endl;
         }
 
         bool local_solve_ode(){
             while (true){
-                (*this).x = (*this).solve_nls((*this).x);
+                this->x = this->solve_nls(this->x);
                 
-                if ( (*this).convergence_condition() ) break;
-                if ((*this).tau_refinement_flag){
-                    (*this).not_convergence();
-                    (*this).initial_value((*this).x_t0);
+                if ( this->convergence_condition() ) break;
+                if (this->tau_refinement_flag){
+                    this->not_convergence();
+                    this->initial_value(this->x_t0);
                 }
                 else {
                     return false;
                 }
             }
-            (*this).x_t1 = (*this).x_t0;
-            (*this).x_to_x_vec();
-            for (int i = 0; i < (*this).order; i++){
-                (*this).x_t1 += (*this).tau * (*this).bweight(i) * (*this).func( t0 + (*this).cpoint(i) *(*this).tau, (*this).x_vec[i] );
+            this->x_t1 = this->x_t0;
+            this->x_to_x_vec();
+            for (int i = 0; i < this->order; i++){
+                this->x_t1 += this->tau * this->bweight(i) * this->func( t0 + this->cpoint(i) *this->tau, this->x_vec[i] );
             }
 
-            ++(*this).number_local_step;
-            (*this).save_data_logger_ode();
+            ++this->number_local_step;
+            this->save_data_logger_ode();
             return true;
         }
 
         std::tuple< std::vector< _T >, std::vector< vcp::matrix< _T, _P > > > local_output(){
             std::vector< _T > t_local;
-            t_local.resize((*this).order + 2);
-            t_local[0] = (*this).t0;
-            for (int i = 0; i < (*this).order; i++ ){
-                t_local[i+1] = (*this).t0 + (*this).cpoint(i)*(*this).tau;
+            t_local.resize(this->order + 2);
+            t_local[0] = this->t0;
+            for (int i = 0; i < this->order; i++ ){
+                t_local[i+1] = this->t0 + this->cpoint(i)*this->tau;
             }
-            t_local[(*this).order + 1] = (*this).t1;
+            t_local[this->order + 1] = this->t1;
             
             std::vector< vcp::matrix< _T, _P > > x_local_output;
-            x_local_output.resize((*this).order + 2);
-            x_local_output[0] = (*this).x_t0;
-            for (int i = 0; i < (*this).order; i++ ){
-                x_local_output[i+1] = (*this).x_vec[i];
+            x_local_output.resize(this->order + 2);
+            x_local_output[0] = this->x_t0;
+            for (int i = 0; i < this->order; i++ ){
+                x_local_output[i+1] = this->x_vec[i];
             }
-            x_local_output[(*this).order + 1] = (*this).x_t1;
+            x_local_output[this->order + 1] = this->x_t1;
 
             return std::make_tuple(t_local, x_local_output);
         }
 
         void next_step(){
-            (*this).setting_local_time( (*this).tau, (*this).t1 );
-            (*this).initial_value((*this).x_t1);
+            this->setting_local_time( this->tau, this->t1 );
+            this->initial_value(this->x_t1);
         }
 
         std::vector< std::tuple< _T , vcp::matrix< _T, _P > > > output(){
-            if (!(*this).logger_flag){
+            if (!this->logger_flag){
                 std::cout << "Please logger flag = true (setting_logger(true))" << std::endl;
             }
-            return (*this).ode_logger;
+            return this->ode_logger;
         }
 
         void solve_ode(){
             int step_num = 0; 
             while(true){
-                (*this).local_solve_ode();
+                this->local_solve_ode();
                 ++step_num;
-                std::cout << "Step : " << step_num << ", t in [" << (*this).t0 << ", " << (*this).t1 << "]"  << std::endl;
-                if ((*this).t_end < (*this).t1) break;
-                (*this).next_step();
+                std::cout << "Step : " << step_num << ", t in [" << this->t0 << ", " << this->t1 << "]"  << std::endl;
+                if (this->t_end < this->t1) break;
+                this->next_step();
             }
         }
         /*
@@ -281,12 +281,12 @@ namespace vcp {
         */
 
         virtual void not_convergence(){ 
-            (*this). setting_local_time( (*this).tau / _T(2), (*this).t0 );
-            std::cout << "Refining tau : " << (*this).tau << std::endl;
+            this-> setting_local_time( this->tau / _T(2), this->t0 );
+            std::cout << "Refining tau : " << this->tau << std::endl;
         }
 
         virtual bool convergence_condition(){
-            return (*this).flag_Convergence;
+            return this->flag_Convergence;
         }
     };
 }

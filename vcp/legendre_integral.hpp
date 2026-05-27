@@ -47,7 +47,9 @@
 #include <vcp/vcp_converter.hpp>
 #include <vcp/matrix.hpp>
 
-#include<omp.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace vcp {
     namespace GaussLegendreIntegral {

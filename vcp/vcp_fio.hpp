@@ -35,6 +35,8 @@
 #include <string>
 #include <fstream>
 
+#include <vcp/error.hpp>
+
 namespace vcp {
 	template< class _P > void save(vcp::matrix< int, _P >& A, const char* name) {
 		std::string str(name);
@@ -44,8 +46,7 @@ namespace vcp {
 		std::fstream savefile;
 		savefile.open(filename, std::ios::out | std::ios::binary | std::ios::trunc);
 		if (!savefile.is_open()) {
-			std::cout << "ERROR : save : matrix int" << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>("save matrix<int>: cannot open file: ", filename);
 		}
 		savefile.write("integer", 7);
 		int row, column;
@@ -69,15 +70,14 @@ namespace vcp {
 		std::fstream loadfile;
 		loadfile.open(filename, std::ios::in | std::ios::binary);
 		if (!loadfile.is_open()) {
-			std::cout << "ERROR : load : matrix int : Cannot Open the file : " << name << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>("load matrix<int>: cannot open file: ", filename);
 		}
 		char d[7];
 		loadfile.read(d, 7);
-		std::string check_type(d);
+		std::string check_type(d, 7);
 		if (check_type != "integer") {
-			std::cout << "ERROR : load : No match the data type: check_type : " << check_type << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>(
+				"load matrix<int>: data type mismatch: ", check_type);
 		}
 		int row, column;
 		loadfile.read((char*)& row, sizeof(int));
@@ -100,8 +100,7 @@ namespace vcp {
 		std::fstream savefile;
 		savefile.open(filename, std::ios::out | std::ios::binary| std::ios::trunc);
 		if (!savefile.is_open()) {
-			std::cout << "ERROR : save : matrix double" << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>("save matrix<double>: cannot open file: ", filename);
 		}
 		savefile.write("double", 6);
 		int row, column;
@@ -125,15 +124,14 @@ namespace vcp {
 		std::fstream loadfile;
 		loadfile.open(filename, std::ios::in | std::ios::binary);
 		if (!loadfile.is_open()) {
-			std::cout << "ERROR : load : matrix double : Cannot Open the file : " << name << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>("load matrix<double>: cannot open file: ", filename);
 		}
 		char d[6];
 		loadfile.read(d, 6);
-		std::string check_type(d);
+		std::string check_type(d, 6);
 		if (check_type != "double") {
-			std::cout << "ERROR : load : No match the data type: check_type : " << check_type << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>(
+				"load matrix<double>: data type mismatch: ", check_type);
 		}
 		int row, column;
 		loadfile.read((char*)& row, sizeof(int));
@@ -157,8 +155,7 @@ namespace vcp {
 		std::fstream savefile;
 		savefile.open(filename, std::ios::out | std::ios::binary | std::ios::trunc);
 		if (!savefile.is_open()) {
-			std::cout << "ERROR : save : matrix interval double" << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>("save matrix<interval<double>>: cannot open file: ", filename);
 		}
 		savefile.write("interval_double", 15);
 		int row, column;
@@ -183,15 +180,14 @@ namespace vcp {
 		std::fstream loadfile;
 		loadfile.open(filename, std::ios::in | std::ios::binary);
 		if (!loadfile.is_open()) {
-			std::cout << "ERROR : load : matrix interval double : Cannot Open the file : " << name << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>("load matrix<interval<double>>: cannot open file: ", filename);
 		}
 		char d[15];
 		loadfile.read(d, 15);
-		std::string check_type(d);
+		std::string check_type(d, 15);
 		if (check_type.find("interval_double") == std::string::npos ) {
-			std::cout << "ERROR : load : No match the data type: check_type : " << check_type << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>(
+				"load matrix<interval<double>>: data type mismatch: ", check_type);
 		}
 		int row, column;
 		loadfile.read((char*)& row, sizeof(int));
@@ -217,8 +213,7 @@ namespace vcp {
 		std::fstream savefile;
 		savefile.open(filename, std::ios::out | std::ios::binary | std::ios::trunc);
 		if (!savefile.is_open()) {
-			std::cout << "ERROR : save : matrix kv::dd" << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>("save matrix<kv::dd>: cannot open file: ", filename);
 		}
 		savefile.write("kv_doubledouble", 15);
 		int row, column;
@@ -243,15 +238,14 @@ namespace vcp {
 		std::fstream loadfile;
 		loadfile.open(filename, std::ios::in | std::ios::binary);
 		if (!loadfile.is_open()) {
-			std::cout << "ERROR : load : matrix kv::dd : Cannot Open the file : " << name << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>("load matrix<kv::dd>: cannot open file: ", filename);
 		}
 		char d[15];
 		loadfile.read(d, 15);
-		std::string check_type(d);
+		std::string check_type(d, 15);
 		if (check_type != "kv_doubledouble") {
-			std::cout << "ERROR : load : No match the data type: check_type : " << check_type << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>(
+				"load matrix<kv::dd>: data type mismatch: ", check_type);
 		}
 		int row, column;
 		loadfile.read((char*)& row, sizeof(int));
@@ -277,8 +271,7 @@ namespace vcp {
 		std::fstream savefile;
 		savefile.open(filename, std::ios::out | std::ios::binary | std::ios::trunc);
 		if (!savefile.is_open()) {
-			std::cout << "ERROR : save : matrix interval kv::dd" << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>("save matrix<interval<kv::dd>>: cannot open file: ", filename);
 		}
 		savefile.write("interval_kv_dd", 14);
 		int row, column;
@@ -305,15 +298,14 @@ namespace vcp {
 		std::fstream loadfile;
 		loadfile.open(filename, std::ios::in | std::ios::binary);
 		if (!loadfile.is_open()) {
-			std::cout << "ERROR : load : matrix interval kv::dd : Cannot Open the file : " << name << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>("load matrix<interval<kv::dd>>: cannot open file: ", filename);
 		}
 		char d[14];
 		loadfile.read(d, 14);
-		std::string check_type(d);
+		std::string check_type(d, 14);
 		if (check_type != "interval_kv_dd") {
-			std::cout << "ERROR : load : No match the data type: check_type : " << check_type << std::endl;
-			exit(1);
+			vcp::throw_error<vcp::io_error>(
+				"load matrix<interval<kv::dd>>: data type mismatch: ", check_type);
 		}
 		int row, column;
 		loadfile.read((char*)& row, sizeof(int));

@@ -48,13 +48,13 @@ protected:
 
 public:
         Newton< _T, _PM >() {
-			(*this).newton_max_iteration = 100;
-            (*this).flag_Convergence = false;
-            (*this).newton_tol = _T(4) * std::numeric_limits< _T >::epsilon();
+			this->newton_max_iteration = 100;
+            this->flag_Convergence = false;
+            this->newton_tol = _T(4) * std::numeric_limits< _T >::epsilon();
 		}
 
         void setting_newton_tol( const int n ){
-            (*this).newton_tol = _T(n) * std::numeric_limits< _T >::epsilon();
+            this->newton_tol = _T(n) * std::numeric_limits< _T >::epsilon();
         }
 
         bool is_convergence(){
@@ -78,42 +78,42 @@ public:
         vcp::matrix< _T, _PM> solve_nls(const vcp::matrix< _T, _PM>& uh){
             vcp::matrix< _T, _PM> x_old, x_new, fdi_fx;
             x_new = uh;
-            (*this).flag_Convergence = false;
+            this->flag_Convergence = false;
             using std::abs;
-            for (iteration_newton = 0; iteration_newton < (*this).newton_max_iteration; iteration_newton++){
+            for (iteration_newton = 0; iteration_newton < this->newton_max_iteration; iteration_newton++){
                 x_old = x_new;
 
-                (*this).setting_newton(x_new);
-                vcp::matrix< _T, _PM > fuh = (*this).f();
+                this->setting_newton(x_new);
+                vcp::matrix< _T, _PM > fuh = this->f();
 
-                fdi_fx = lss((*this).Df(), fuh);
+                fdi_fx = lss(this->Df(), fuh);
                 x_new = x_old - fdi_fx; 
                 vcp::matrix< _T, _PM> s = max(abs(fdi_fx));
                 Correction_term = s(0);
                 s = max(abs(x_old));
                 Correction_term /= s(0);
-                if( Correction_term <= (*this).newton_tol){
-                    (*this).flag_Convergence = true;
-                    (*this).disp_convergence();
+                if( Correction_term <= this->newton_tol){
+                    this->flag_Convergence = true;
+                    this->disp_convergence();
                     return x_new;            
                 }
-                (*this).disp_continue();
+                this->disp_continue();
             }
-            (*this).flag_Convergence = false;
-            std::cout << "Not Convergence : i = " << (*this).newton_max_iteration << ", " << Correction_term << " <= " << (*this).newton_tol << std::endl;
+            this->flag_Convergence = false;
+            std::cout << "Not Convergence : i = " << this->newton_max_iteration << ", " << Correction_term << " <= " << this->newton_tol << std::endl;
             return x_new;
         }
 
         virtual void disp_convergence(){
-            std::cout << "Convergence : i = " << iteration_newton << ", " << Correction_term << " <= " << (*this).newton_tol << std::endl;
+            std::cout << "Convergence : i = " << iteration_newton << ", " << Correction_term << " <= " << this->newton_tol << std::endl;
         }
 
         virtual void disp_continue(){
-            std::cout << "i = " << iteration_newton << ", " << Correction_term << " <= " << (*this).newton_tol << std::endl;
+            std::cout << "i = " << iteration_newton << ", " << Correction_term << " <= " << this->newton_tol << std::endl;
         }
 
         bool is_convergence( void ) const {
-            return (*this).flag_Convergence;
+            return this->flag_Convergence;
         }
 
     };
