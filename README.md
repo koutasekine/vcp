@@ -1,296 +1,254 @@
 # VCP Library
 
-## About
-The realization of computer-assisted existence proof to solutions of partial differential equations (PDEs) cannot be completed without a computer environment.
-However, various kinds of techniques are required to estimate the errors that occur in all computations.
-Additionally, the computer-assisted proof for existence of solutions of PDEs requires numerical accuracy with a reasonable time of computation.
-For this purpose, the Verified Computation for PDEs (VCP) library is introduced as a software library for the computer-assisted existence proof of solutions to PDEs.
-The VCP library is a software library developed by the first author in the C++ programming language.
-A feature of the matrix class of the VCP library is that it can be integrated with policy-based design, for example,
-  * high-speed approximate computation by Intel(R) MKL with double-data type
-  * high precision approximate computation using MPFR
-  * numerical linear algebra with guaranteed accuracy using the above data type combined with the kv library
+VCP Library は、偏微分方程式に対する精度保証付き数値計算を支援する
+C++11 以降で利用できるヘッダ中心のライブラリです。中心になるのは policy-based design の
+密行列クラス `vcp::matrix` で、通常の浮動小数点計算、BLAS/LAPACK を使う
+高速計算、別途導入した kv ライブラリによる区間演算を同じ行列インターフェースから扱えます。
 
-Additionally, because the VCP library has extensibility, which is one of the features of policy-based design, it is designed to withstand the computer-assisted proof of PDEs.
+- Web サイト: <https://verified.computation.jp/>
+- GitHub: <https://github.com/koutasekine/vcp>
+- 論文: Kouta Sekine, Mitsuhiro T. Nakao, and Shin'ichi Oishi,
+  "Numerical verification methods for a system of elliptic PDEs, and their
+  software library", NOLTA, IEICE, Vol. 12, No. 1, pp. 41-74, 2021.
+  DOI: <https://doi.org/10.1587/nolta.12.41>
 
-VCP library comprises of
-  * Matrix class
-  * Newton method class
-  * Legendre basis class (for elliptic PDEs)
-  * Fourier series class (for delay ODEs)
-  * Gauss-Legendre method: implicit runge kutta method (for ODEs and parabolic PDE, **Not verification**) 
+## 最初に読む場所
 
+インストールは [docs/install.md](docs/install.md) を読んでください。VCP Library は
+ヘッダ中心のライブラリなので、基本的には `vcp/` ディレクトリを配置し、
+`vcp/` を含むディレクトリを include path に指定します。
 
-We require using the following libraries in the VCP library:
-  * [BLAS and Lapack](http://www.netlib.org/lapack/)
-  * [MPFR](https://www.mpfr.org/): multiple-precision floating-point number library
-  * [kv library](http://verifiedby.me/kv/index-e.html): numerical verification library with guaranteed accuracy written in the C++ programming language
+まず `vcp::matrix` を使う場合は、この README の「最小例」と
+「Matrix policy の選び方」を読んでください。policy の詳しい違いは
+[docs/matrix.md](docs/matrix.md) にまとめています。
+行列のファイル保存・読み込みは [docs/file_io.md](docs/file_io.md) に
+まとめています。既存形式の `save/load` と、環境間移行向けの
+`save_portable/load_portable` を分けて説明しています。
 
-Homepage (Japanese) [VCP Library](https://verified.computation.jp/)<br>
-To cite VCP Library, please use <br>
-*Kouta Sekine, Mitsuhiro T. Nakao, and Shin'ichi Oishi: “Numerical verification methods for a system of elliptic PDEs, and their software library”, NOLTA, IEICE, Vol.12, No.1, Jan., 2021.*
+コンパイラ、BLAS/LAPACK、OpenMP の設定例は
+[docs/build.md](docs/build.md) にまとめています。Apple Silicon Mac で
+丸めモード変更可能な OpenBLAS を使う設定例や、AMD/Intel の Linux 環境で
+OpenBLAS を source build する設定例もそちらにあります。
+BLAS の丸めモード変更を使う環境では、インストール後に
+`test_matrix/Check_pdblas_rounding.cpp` と
+`test_matrix/Check_pidblas_rounding.cpp` を実行することを推奨します。
+Intel MKL を前提にした installer script では、この確認をインストールの最後に
+実行します。
 
-E-mail:
-k.sekine@computation.jp
+PDE の基本的な使い方は、`test_PDE/test_Emden.cpp` が入口になります。
+PDE の例は手法や論文ごとにファイルが分かれており、
+`test_PDE/test_Emden_NOLTA2021.cpp` や
+`test_PDE/test_Emden_Numerische_Mathematik2020.cpp` のように論文と紐づいた
+構成の例もあります。
+Newton 法を独自の非線形問題に使う場合は、[docs/newton.md](docs/newton.md) を
+参照してください。最小例は `test_PDE/test_newton1.cpp` です。
+行列クラスの基本的な使い方は、`test_matrix/test_matrix.cpp` が小さく読みやすい例です。
 
-Kouta Sekine
+## ディレクトリ構成
 
-## How to install
-### Supported OS
- * Ubuntu 22.04
- * Ubuntu 20.04
- * Ubuntu 18.04
- * CentOS 7
- * CentOS 8
+| ディレクトリ | 内容 |
+| --- | --- |
+| `vcp/` | VCP Library 本体のヘッダ |
+| `vblas/` | 公開中だが開発中の低レベル BLAS 風カーネル。一部の実験・高速化で利用 |
+| `test_matrix/` | 行列クラスの利用例と確認プログラム |
+| `test_PDE/` | PDE の精度保証付き数値計算例 |
+| `test_doubly_fourier/` | 公開中だが開発中の 2重 Fourier 級数関連の例 |
+| `installer/` | Linux 環境向けの依存ライブラリ導入スクリプト |
 
-### Supported CPU
-Only Intel CPU because rounding changes are not easily available for BLAS.
+利用側のコンパイルでは、`vcp/` そのものではなく、`vcp/` を含む
+ディレクトリを include path に追加してください。詳しくは
+[docs/install.md](docs/install.md) を参照してください。区間演算や
+`kv::mpfr` を使う場合は、別途取得した kv ライブラリの include path も
+追加してください。
 
-### Installer
-The installer will ask for a new folder name, and create a new folder in your home directory.
-The installation procedure is below:
- 1. Update the installed packages if necessary
- 2. Install wget 
- 3. Download the installer
- 4. Excute the installer
+## 依存ライブラリ
 
-#### Ubuntu 22.04
+最小の `vcp::matrix<double>` は C++11 コンパイラで利用できます。
+現在、C++11 から C++20 までのコンパイルで動作を確認しています。
+gcc と clang の両方で検証しています。Apple Silicon Mac や AMD 環境でも
+検証しています。VCP Library 本体は Intel 専用ではありません。
+Intel MKL を前提にしているのは、一部の installer script の自動設定部分です。
+選択する policy やスカラー型によって、次の依存が必要になります。
+
+| 用途 | 主な依存 |
+| --- | --- |
+| `vcp::pdblas`, `vcp::pidblas` | BLAS/LAPACK または Intel MKL |
+| OpenMP による内部並列化 | OpenMP 対応コンパイラ |
+| `kv::mpfr` | MPFR |
+| 区間演算 | 別途取得した kv ライブラリ |
+
+開発環境、Boost、GMP、MPFR などの基本パッケージの導入例は
+[docs/install.md](docs/install.md) にまとめています。
+
+## コンパイル例
+
+以下の例では、最小対応規格として `-std=c++11` を指定しています。
+検証済みの環境では、`-std=c++14`、`-std=c++17`、`-std=c++20` も利用できます。
+
+`vcp/` ディレクトリを含む VCP Library の展開先を include path に追加する例:
 
 ```bash
-  sudo apt update -y
-  sudo apt upgrade -y
-  sudo apt install wget -y
-  wget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_ubuntu2204.sh
-  bash install_ubuntu2204.sh
+g++ -std=c++11 -I/path/to/VCP-Library example.cpp
 ```
-Note that Intel MKL will ask you about the update-alternative setting.<br>
-I recommend setting them all to yes, but be aware that other libraries are also affected.<br>
-After install, please check:
-  * `sudo update-alternatives --config libblas.so-x86_64-linux-gnu`
-  * `sudo update-alternatives --config liblapack.so-x86_64-linux-gnu` 
 
-#### Ubuntu 20.04
+`-I/path/to/VCP-Library/vcp` ではなく、`-I/path/to/VCP-Library` を指定します。
+
+区間演算を使う場合は、kv ライブラリの include path も追加します。
 
 ```bash
-  sudo apt update -y
-  sudo apt upgrade -y
-  sudo apt install wget -y
-  wget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_ubuntu2004.sh
-  bash install_ubuntu2004.sh
+g++ -std=c++11 -I/path/to/VCP-Library -I/path/to/kv-library example.cpp
 ```
-Note that Intel MKL will ask you about the update-alternative setting.<br>
-I recommend setting them all to yes, but be aware that other libraries are also affected.<br>
-After install, please check:
-  * `sudo update-alternatives --config libblas.so-x86_64-linux-gnu`
-  * `sudo update-alternatives --config liblapack.so-x86_64-linux-gnu`
 
-#### Ubuntu 18.04
+BLAS/LAPACK を使う policy の場合:
+
 ```bash
-  sudo apt update -y
-  sudo apt upgrade -y
-  sudo apt install wget -y
-  wget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_ubuntu1804.sh
-  bash install_ubuntu1804.sh
+g++ -std=c++11 -I/path/to/VCP-Library example.cpp -llapack -lblas
 ```
 
-#### CentOS 8
+OpenMP と MPFR も使う典型的な例:
+
 ```bash
-  sudo dnf update -y
-  sudo dnf install wget -y
-  wget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_centos8.sh
-  bash install_centos8.sh
+g++ -std=c++11 -I/path/to/VCP-Library -I/path/to/kv-library -O3 -DNDEBUG -DKV_FASTROUND example.cpp -llapack -lblas -lmpfr -fopenmp
 ```
 
-#### CentOS 7
-```bash
-  sudo yum update -y
-  sudo yum install wget -y
-  wget https://raw.githubusercontent.com/koutasekine/vcp/master/installer/install_centos7.sh
-  bash install_centos7.sh
-```
+Intel MKL を使う場合は、`-lblas` や `-llapack` ではなく MKL の各ライブラリを
+明示的にリンクする構成を推奨します。MKL のインストールは Intel oneAPI の
+公式 Installation Guide を参照してください。
+macOS、Apple Silicon、AMD/Intel Linux、OpenBLAS、clang、Homebrew GCC の具体例は
+[docs/build.md](docs/build.md) を参照してください。
 
-### Directory configuration with kv library
-```
- ~/any/
-  　├ kv/
-  　├ test/
-　  ├ example/
-  　├ vcp/
-  　├ test_matrix/
-  　├ test_PDE/
-  　└ <your_folder>/
-            └ <your_file.cpp>
-```
+## 最小例
 
-## How to compile
-Minimum Compile options:<br>
-`g++ -I.. <filename.cpp>`
+これは標準 policy `vcp::mats<double>` を使う例です。
 
-<br>
-
-Recommended Compile options with BLAS, Lapack, mpfr, OpenMP and kv library:<br>
-**Ubuntu 22.04 and 20.04**<br>
-`g++ -I.. -DNDEBUG -DKV_FASTROUND -O3 <filename.cpp> -llapack -lblas -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
-
-<br>
-
-**Other**<br>
-`g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 <filename.cpp> -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp`
-
-Note that compile options 
-  * `-DNDEBUG` and `-DKV_FASTROUND` are options for kv library
-  * `-Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl` are options for Intel MKL (see [Intel MKL Link Line Advisor](https://software.intel.com/content/www/us/en/develop/articles/intel-mkl-link-line-advisor.html))
-
-
-## How to use VCP's matrix class
-The matrix class of the VCP library is based on a policy using a template.
-Therefore, when declaring the matrix, it is necessary to determine **data type for elements** and **algorithm policy** as template arguments.
-The VCP library provides the following four Algorithm policies:
-
- * `vcp::mats< _T >`: performs approximate computations on general data type `_T`.
- * `vcp::pdblas`: performs fast approximate computations on `double` data type using BLAS and Lapack.
- * `vcp::imats< _T >`: performs verified computations on general data type `_T`.
- * `vcp::pidblas`: performs fast verified computations on `double` data type using BLAS and Lapack.
-
-
-For example, we can use the VCP library as shown in Source code 1.
-Line 6 in Source code \ref{basic_matrix1} declares matrix `A, b, x` with `double`-type and `vcp::mats<double>`-algorithm.
-Random matrix `A` and random vector `b` are created on lines 7 and 8, respectively.
-On line 9, the result of `A` times `b` is substituted for `b`.
-Line 10 uses the function `lss` to determine the solution `x` of simultaneous linear equation `Ax = b`.
-Finally, line 11 displays the solution `x`.
-
-
-```cpp Source_code_1.cpp {.line-number .copy}
+```cpp
 #include <iostream>
+
 #include <vcp/matrix.hpp>
 #include <vcp/matrix_assist.hpp>
 
-int main(void){
-   vcp::matrix< double, vcp::mats<double> > A, b, x;
-   A.rand(10); // Create a 10*10 random matrix
-   b.rand(10,1); // Create a 10*1 random vector
-   b = A*b;  // Compute A times b
-   x = lss(A, b); // Solve Ax = b
-   std::cout << x << std::endl; // Display x
+int main() {
+    vcp::matrix<double> A, b, x;
+
+    A.rand(10);       // 10 x 10 random matrix
+    b.rand(10, 1);    // 10 x 1 random vector
+
+    b = A * b;
+    x = lss(A, b);
+
+    std::cout << x << std::endl;
 }
 ```
 
-The feature of the VCP's matrix class is that it can be changed to verify a numerical computation by changing the `kv::interval< _T >`-data type and **algorithm policy**.
-For example, when verifying a computation with high precision, the VCP's matrix class can be written as Source code 2.
-Line 5 in Source code 2 declares matrix `A, b, x` with `kv::interval< kv::mpfr<300> >`-type and `vcp::imats< kv::mpfr<300> >`-algorithm, where `kv::mpfr<300>` is an MPFR type with a mantissa part of 300 bits, and `kv::interval< _T>` is kv's interval arithmetic class.
-Because `vcp::imats< _T >` is selected as the algorithm policy in line 12, the matrix computation is an algorithm with guaranteed accuracy.
-Therefore, lines 13 to 17 in Source code 2 are the same as lines 7 to 11 in Source code 1, but the results of the matrix-vector product on line 15 and the solution `x` on line 16 in Source code 2 contain exact solutions.
+## Matrix policy の選び方
 
-```cpp Source_code_2.cpp {.line-number .copy}
+`vcp::matrix` は次の形で使います。
+
+```cpp
+vcp::matrix<ElementType, Policy>
+```
+
+`Policy` を省略すると `vcp::mats<ElementType>` が使われます。
+
+```cpp
+vcp::matrix<double> A;
+vcp::matrix<double, vcp::mats<double> > B;
+```
+
+よく使う選択は次の通りです。
+
+| 目的 | 型 |
+| --- | --- |
+| まず普通の行列計算をしたい | `vcp::matrix<double>` |
+| BLAS/LAPACK で高速に計算したい | `vcp::matrix<double, vcp::pdblas>` |
+| 汎用の区間行列を使いたい | `vcp::matrix<kv::interval<T>, vcp::imats<T> >` |
+| `kv::interval<double>` を高速に扱いたい | `vcp::matrix<kv::interval<double>, vcp::pidblas>` |
+| 依存を抑えた軽量 policy を使いたい | `vcp::matrix<T, vcp::minimats<T> >` |
+
+policy ごとの include、向いている用途、注意点は
+[docs/matrix.md](docs/matrix.md) を参照してください。
+
+## 区間行列の例
+
+```cpp
 #include <iostream>
 
-#include <kv/interval.hpp> // kv library
-#include <kv/mpfr.hpp> // kv library
-#include <kv/rmpfr.hpp> // kv library
+#include <kv/interval.hpp>
+#include <kv/rdouble.hpp>
 
 #include <vcp/imats.hpp>
 #include <vcp/matrix.hpp>
 #include <vcp/matrix_assist.hpp>
 
-int main(void){
-   vcp::matrix< kv::interval< kv::mpfr<300> >, vcp::imats<kv::mpfr<300> > > A, b, x;
-   A.rand(10); // Create a 10*10 random matrix
-   b.rand(10,1); // Create a 10*1 random vector
-   b = A*b;  // Compute A times b
-   x = lss(A, b); // Solve Ax = b
-   std::cout << x << std::endl; // Display x
+int main() {
+    typedef kv::interval<double> I;
+    typedef vcp::imats<double> Policy;
+
+    vcp::matrix<I, Policy> A, b, x;
+
+    A.rand(10);
+    b.rand(10, 1);
+
+    b = A * b;
+    x = lss(A, b);
+
+    std::cout << x << std::endl;
 }
 ```
 
-Additionally, if we declare a matrix with `vcp::matrix<double, vcp::pdblas>`, it can be changed to an algorithm using BLAS and Lapack.
-When using high-speed numerical computation with guaranteed accuracy using BLAS and Lapack, we declare a matrix similar to `vcp::matrix< kv::interval<double>, vcp::pidblas>`.
-For other functions of VCP's matrix class, see:
+高精度計算を使う場合は、`double` の代わりに `kv::mpfr<N>` などの
+kv の高精度型を使います。
+
+## エラー処理
+
+VCP Library のエラーは例外で通知されます。VCP 由来の例外は
+`vcp::error` から派生します。
 
 ```cpp
-  //(1) Matrix initialization
-  int n = 10;
-  int m = 5;
-  A.zeros(n); // Create an n*n zero matrix
-  A.zeros(n, m); // Create an n*m zero matrix 
-  A.ones(n); // Create an n*n matrix with all elements 1
-  A.ones(n, m); // Create an n*m matrix with all elements 1 
-  A.rand(n); // Create an n*n random matrix 
-  A.rand(n, m); // Create an n*m random matrix 
-  A.eye(n); // Create an n*n identity matrix 
-  B.eye(n);
+#include <vcp/error.hpp>
 
-  //(2) Obtain the matrix size
-  int row = A.rowsize();
-  int column = A.columnsize();
-
-  //(3) Access the elements
-  A(0,0) = 10;
-  A(5,3) = A(0,0); 
-
-  //(4) Arithmetic operations
-  C = 1 + A; // For all elements
-  C = A + 2; // For all elements
-  C = A + B; // Matrix addition
-  C += A; // C = C + A
-
-  C = 1 - A; // For all elements
-  C = A - 2; // For all elements
-  C = A - B; // Matrix subtraction
-  C -= A; // C = C - A
-
-  C = 1 * A; // For all elements
-  C = A * 2; // For all elements
-  C = A * B; // Matrix multiplication
-  C *= A; // C = C*A
-  C = ltransmul(A); // C = transpose(A)*A 
-
-  A = A + 1; 
-  C = 1 / A; // For all elements
-  C = A / 2; // For all elements
-
-  //(5) Elementary functions, etc. (Element wise)
-  C = abs(A);
-  C = sqrt(A);
-  C = sin(A);
-  C = cos(A);
-  C = exp(A);
-  C = log(A);
-
-  //(6) MATLAB-like functions
-  C = sum(A);
-  C = diag(A);
-  C = transpose(A);
-  C = max(A);
-  C = min(A);
-  C = normone(A);
-  C = norminf(A);
-
-  //(7) Solve linear system Ax = b
-  A.rand(n);
-  b.ones(n,m);
-  b = A*b;
-  x = lss(A,b); // Find x s.t. Ax=b
-
-  //(8) Solve symmetric eigenvalue problem Ax = lambda x
-  A = transpose(A) + A; 
-  eigsym(A, C); // Eigenvalue for the diagonal part of matrix C
-
-  //(9) Solve generalized symmetric eigenvalue problem Ax = lambda B x
-  B.rand(n); 
-  A = transpose(A) + A; 
-  B = ltransmul(B); 
-  eigsymge(A, B, C); // Eigenvalue for the diagonal of matrix C
-
-  //(10) Display matrix
-  std::cout << "Matrix C = \n" << C << std::endl; //
-
-  //(11) Concatenate the matrix
-  D = vercat(A,B,C); // Vertically (similar to MATLAB's [A;B;C])
-  D = horzcat(A,B,C); // Horizontally (similar to MATLAB's [A,B,C])
-  C.rand(n);
-  A = vercat(D, horzcat(A,B,C));
-
-  //(12) Release the matrix 
-  A.clear();
+try {
+    x = lss(A, b);
+} catch (const vcp::error& e) {
+    std::cerr << "VCP error: " << e.what() << std::endl;
+}
 ```
+
+代表的な例外は次の通りです。
+
+| 例外 | 意味 |
+| --- | --- |
+| `vcp::dimension_error` | 行列サイズの不一致 |
+| `vcp::index_error` | 添字や部分行列範囲の誤り |
+| `vcp::state_error` | 対応していない行列状態や policy 状態 |
+| `vcp::domain_error` | 対称性など数学的仮定の破れ |
+| `vcp::verification_error` | 精度保証の検証条件の失敗 |
+| `vcp::lapack_error` | LAPACK routine が非ゼロの `info` を返した |
+| `vcp::io_error` | ファイル入出力やバイナリ形式のエラー |
+
+BLAS/LAPACK を使う一部の操作は、大きな行列で余分なメモリを使わないため
+破壊的に実行されます。そのため、例外が投げられた時点で入力行列の内容が
+backend routine によって上書き済みの場合があります。
+
+## OpenMP
+
+コンパイラで OpenMP が有効な場合、VCP 内部の一部ループが並列化されます。
+外側のループを利用者側で並列化したい場合など、VCP 内部の OpenMP を
+止めたいときは次を定義してください。
+
+```bash
+-DVCP_NOMP
+```
+
+コンポーネント単位では、次のような局所的な無効化も使えます。
+
+```bash
+-DVCP_MATS_NOMP
+-DVCP_FOURIER_NOMP
+-DVCP_LEGENDRE_NOMP
+```
+
+## ライセンス
+
+VCP Library は BSD 3-Clause License で配布されています。詳細は
+[LICENSE](LICENSE) を参照してください。
