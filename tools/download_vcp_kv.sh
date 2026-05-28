@@ -94,9 +94,6 @@ fi
 if [ -d "${vcp_dir}/test_PDE" ]; then
     cp -R "${vcp_dir}/test_PDE" "${folderpath}/"
 fi
-if [ -d "${vcp_dir}/test_doubly_fourier" ]; then
-    cp -R "${vcp_dir}/test_doubly_fourier" "${folderpath}/"
-fi
 if [ -d "${vcp_dir}/vblas" ]; then
     cp -R "${vcp_dir}/vblas" "${folderpath}/"
 fi
