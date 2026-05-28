@@ -52,7 +52,7 @@ Fourier 級数を係数列として扱う `vcp::fourier_series` については
 | ディレクトリ | 内容 |
 | --- | --- |
 | `vcp/` | VCP Library 本体のヘッダ |
-| `vblas/` | 公開中だが開発中の低レベル BLAS 風カーネル。一部の実験・高速化で利用 |
+| `vblas/` | AVX-512 の丸め方向指定 GEMM を試す実験用コード。VCP 本体 API ではない |
 | `test_matrix/` | 行列クラスの利用例と確認プログラム |
 | `test_PDE/` | PDE の精度保証付き数値計算例 |
 | `test_doubly_fourier/` | 公開中だが開発中の 2重 Fourier 級数関連の例 |

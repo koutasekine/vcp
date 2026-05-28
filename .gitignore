@@ -1,5 +1,6 @@
 test_PDE/a.out
 test_matrix/a.out
+vblas/a.out
 *.out
 *.matrix_kvdd
 *.matrix_ikvdd
