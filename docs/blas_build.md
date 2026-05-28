@@ -16,7 +16,9 @@ C++23 についても Ubuntu clang version 18.1.3 と gcc version 13.3.0 で
 
 検証している環境には、Linux、macOS、Apple Silicon Mac、AMD CPU 環境が
 含まれます。BLAS/LAPACK を使う policy では、利用環境に応じて OpenBLAS、
-Apple BLAS/LAPACK、Intel MKL などを選択してください。
+Intel MKL、Apple Accelerate BLAS/LAPACK などを選択できます。ただし、
+精度保証付き数値計算で BLAS の丸めモード変更を使う場合は、後述の
+丸めモード確認を必ず実行してください。
 
 VCP Library 本体は Intel 専用ではありません。Intel MKL は選択肢の一つです。
 現在の `tools/download_vcp_kv.sh` は、Intel MKL/oneAPI の導入や shell 設定を
@@ -241,6 +243,35 @@ env | grep PATH
 最後に、`test_matrix/Check_pdblas_rounding.cpp` と
 `test_matrix/Check_pidblas_rounding.cpp` を実行し、BLAS の丸めモード変更が
 反映されることを確認してください。
+
+## Apple Accelerate BLAS の注意
+
+macOS では、Xcode Command Line Tools などの Developer Tools を導入すると、
+Accelerate framework の BLAS/LAPACK を利用できる構成になります。
+Apple 公式ドキュメントでも、Accelerate framework が BLAS/LAPACK を提供する
+こと、および BLAS/LAPACK の threading model を指定できることは説明されています。
+
+一方で、VCP Library の精度保証付き数値計算で重要になる
+「BLAS 演算がハードウェア丸めモードの変更を反映すること」については、
+Apple Accelerate BLAS で利用できる設定方法をまだ確認できていません。
+少なくともこの文書の作成時点では、Accelerate BLAS に対して OpenBLAS の
+`CONSISTENT_FPCSR` のような丸めモード同期・反映の設定方法は把握していません。
+
+そのため、Apple Accelerate BLAS を使う場合は、精度保証付き数値計算に使う前に
+必ず `test_matrix/Check_pdblas_rounding.cpp` と
+`test_matrix/Check_pidblas_rounding.cpp` を実行してください。これらの確認に
+失敗する場合、Accelerate BLAS を丸めモード変更に依存する精度保証付き計算の
+BLAS backend として使う方法は、現時点では未確認です。
+
+Apple Silicon Mac で BLAS の丸めモード変更が必要な場合は、次節のように
+`CONSISTENT_FPCSR` を有効にした OpenBLAS を明示的に `-lopenblas` でリンクする
+構成を推奨します。
+
+参考:
+
+- [Apple Accelerate](https://developer.apple.com/accelerate/)
+- [Apple Accelerate BLAS](https://developer.apple.com/documentation/accelerate/blas-library)
+- [Apple BLAS threading model](https://developer.apple.com/documentation/accelerate/blas_threading)
 
 ## Apple Silicon Mac での OpenBLAS
 
