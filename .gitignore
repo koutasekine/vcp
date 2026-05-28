@@ -6,7 +6,9 @@ test_matrix/a.out
 *.matrix_d
 *.matrix_id
 *.matrix_int
+*.matrix_*.tmp
 *.vcpmat
+*.vcpmat.tmp
 *.log
 *.csv
 imats_old_before_0.0.5.hpp
