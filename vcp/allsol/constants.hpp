@@ -59,7 +59,7 @@ namespace vcp {
         std::vector< _T > uh_Lpnorm;
         vcp::matrix< int > list_uh;
 
-        constants< _T >() {
+        constants() {
 			this->N = -1;
             this->maximam_p = -1;
             this->dim = -1;
@@ -78,11 +78,11 @@ namespace vcp {
             this->Cfd_O = _T(0);
             this->delta = _T(0);
 		}
-		~constants< _T >() = default;
-		constants< _T >(const constants< _T >&) = default;
-		constants< _T >(constants< _T >&&) = default;
-		constants< _T >& operator=(const constants< _T >& A) = default;
-		constants< _T >& operator=(constants< _T >&& A) = default;
+		~constants() = default;
+		constants(const constants&) = default;
+		constants(constants&&) = default;
+		constants& operator=(const constants& A) = default;
+		constants& operator=(constants&& A) = default;
     };
 }
 #endif

@@ -40,6 +40,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <type_traits>
 
 #include <vcp/vcp_metafunction.hpp>
 #include <vcp/vcp_converter.hpp>
@@ -160,7 +161,7 @@ protected:
 		}
 
 public:
-		fourier_basis< _T, _P >() {
+		fourier_basis() {
 			this->is_initial = true;
 		}
 

@@ -48,6 +48,9 @@
 #include <limits>
 #include <random>
 #include <initializer_list>
+#include <type_traits>
+#include <utility>
+
 #include <vcp/matrix.hpp>
 
 namespace vcp{
@@ -59,17 +62,17 @@ namespace vcp{
 		char type;      //'N':NULL  'S':Scala  'R' Row Vector 'C':Column Vector 'M':Matrix
 		std::vector< _T > v;
 
-		minimats< _T >() {
+		minimats() {
 			this->row = 0;
 			this->column = 0;
 			this->n = 0;
 			this->type = 'N';
 		}
-		virtual ~minimats< _T >() = default;
-		minimats< _T >(const minimats< _T >&) = default;
-		minimats< _T >(minimats< _T >&&) = default;
-		minimats< _T >& operator=(const minimats< _T >& A) = default;
-		minimats< _T >& operator=(minimats< _T >&& A) = default;
+		virtual ~minimats() = default;
+		minimats(const minimats&) = default;
+		minimats(minimats&&) = default;
+		minimats& operator=(const minimats& A) = default;
+		minimats& operator=(minimats&& A) = default;
 
 		// A = A+B
 		void addmm(const minimats< _T >& B) {
@@ -956,17 +959,17 @@ namespace vcp{
 
 	template <typename _T> class matrix< _T, vcp::minimats< _T > > : protected vcp::minimats< _T > {
 	public:
-		matrix< _T, vcp::minimats< _T > >() {
+		matrix() {
 			this->row = 0;
 			this->column = 0;
 			this->n = 0;
 			this->type = 'N';
 		}
-		~matrix< _T, vcp::minimats< _T > >() = default;
-		matrix< _T, vcp::minimats< _T > >(const matrix< _T, vcp::minimats< _T > >&) = default;
-		matrix< _T, vcp::minimats< _T > >(matrix< _T, vcp::minimats< _T > >&&) = default;
-		matrix< _T, vcp::minimats< _T > >& operator=(const matrix< _T, vcp::minimats< _T > >& A) = default;
-		matrix< _T, vcp::minimats< _T > >& operator=(matrix< _T, vcp::minimats< _T > >&& A) = default;
+		~matrix() = default;
+		matrix(const matrix&) = default;
+		matrix(matrix&&) = default;
+		matrix& operator=(const matrix& A) = default;
+		matrix& operator=(matrix&& A) = default;
 
 		_T& operator () (const int i) {
 			return this->v[i];

@@ -47,7 +47,7 @@ protected:
         
 
 public:
-        Newton< _T, _PM >() {
+        Newton() {
 			this->newton_max_iteration = 100;
             this->flag_Convergence = false;
             this->newton_tol = _T(4) * std::numeric_limits< _T >::epsilon();

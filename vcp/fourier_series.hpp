@@ -45,6 +45,8 @@
 #include <limits>
 #include <random>
 #include <initializer_list>
+#include <type_traits>
+#include <utility>
 
 #include <vcp/error.hpp>
 #include <vcp/sincos_class.hpp>
@@ -382,14 +384,14 @@ protected:
 
 
 public:
-        fourier_series< _T >() {
+        fourier_series() {
 			this->n = 0;
 		}
-		~fourier_series< _T >() = default;
-		fourier_series< _T >(const fourier_series< _T >&) = default;
-		fourier_series< _T >(fourier_series< _T >&&) = default;
-		fourier_series< _T >& operator=(const fourier_series< _T >& A) = default;
-		fourier_series< _T >& operator=(fourier_series< _T >&& A) = default;
+		~fourier_series() = default;
+		fourier_series(const fourier_series&) = default;
+		fourier_series(fourier_series&&) = default;
+		fourier_series& operator=(const fourier_series& A) = default;
+		fourier_series& operator=(fourier_series&& A) = default;
 
 		template <typename _Tm> typename std::enable_if<std::is_constructible< _T, _Tm >::value, void >::type set_a0( _Tm a ){
 			this->a0 = _T(a);

@@ -33,6 +33,8 @@
 #define VCP_INIT_VECTOR_HPP
 
 #include <initializer_list>
+#include <type_traits>
+
 #include <vcp/error.hpp>
 
 namespace vcp{

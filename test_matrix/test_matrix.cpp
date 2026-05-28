@@ -115,10 +115,24 @@ int main(void) {
 	A.eye(n);
 
 /*
-	// file save and load 
+	// fast file save and load 
 	A.rand(10, 30);
 	save(A, "test");
 	load(B, "test");
+	// file io check
+	for (int i = 0; i < A.rowsize(); i++) {
+		std::cout << i << std::endl;
+		for (int j = 0; j < A.columnsize(); j++) {
+			if (A(i, j) != B(i, j)) {
+				std::cout << "Ahhhhhhhhhhhhh" << std::endl;
+			}
+		}
+	}
+*/
+/* 
+	// Portable file save and load 
+	vcp::save_portable(A, "A");  // A.vcpmat に保存
+	vcp::load_portable(B, "A");  // A.vcpmat から読み込み
 	// file io check
 	for (int i = 0; i < A.rowsize(); i++) {
 		std::cout << i << std::endl;

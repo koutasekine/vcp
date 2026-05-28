@@ -80,7 +80,7 @@ namespace vcp {
         }
 
         public:
-        Implicit_RK< _FUNC, _T, _P, _PIRK >() {
+        Implicit_RK() {
             this->t_start = _T(0);
             this->t_end = _T(1000000);
             this->t0 = _T(0);

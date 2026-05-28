@@ -48,6 +48,7 @@
 #include <limits>
 #include <random>
 #include <initializer_list>
+#include <utility>
 
 #include <vcp/error.hpp>
 
@@ -415,17 +416,17 @@ namespace vcp{
 		char type;      //'N':NULL  'S':Scala  'R' Row Vector 'C':Column Vector 'M':Matrix
 		std::vector< _T > v;
 
-		mats< _T >() {
+		mats() {
 			this->row = 0;
 			this->column = 0;
 			this->n = 0;
 			this->type = 'N';
 		}
-		virtual ~mats< _T >() = default;
-		mats< _T >(const mats< _T >&) = default;
-		mats< _T >(mats< _T >&&) = default;
-		mats< _T >& operator=(const mats< _T >& A) = default;
-		mats< _T >& operator=(mats< _T >&& A) = default;
+		virtual ~mats() = default;
+		mats(const mats&) = default;
+		mats(mats&&) = default;
+		mats& operator=(const mats& A) = default;
+		mats& operator=(mats&& A) = default;
 
 		// A = A+B
 		void addmm(const mats< _T >& B) {

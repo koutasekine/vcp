@@ -32,6 +32,8 @@
 #ifndef VCP_IMATS_ASSIST_HPP
 #define VCP_IMATS_ASSIST_HPP
 
+#include <type_traits>
+
 #include <vcp/error.hpp>
 
 

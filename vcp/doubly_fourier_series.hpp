@@ -46,6 +46,8 @@
 #include <random>
 #include <initializer_list>
 #include <functional>
+#include <type_traits>
+#include <utility>
 
 #include <vcp/vcp_metafunction.hpp>
 #include <vcp/vcp_converter.hpp>

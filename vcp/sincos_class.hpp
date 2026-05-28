@@ -33,6 +33,8 @@
 #define VCP_SINCOS_CLASS_HPP
 
 #include <iostream>
+#include <type_traits>
+#include <utility>
 
 namespace vcp {
     template <typename _T>
@@ -41,15 +43,15 @@ namespace vcp {
         _T a; // a*sin
         _T b; // b*cos
 
-        sincos< _T >() {
+        sincos() {
 			this->a = _T(0);
 			this->b = _T(0);
 		}
-		~sincos< _T >() = default;
-		sincos< _T >(const sincos< _T >&) = default;
-		sincos< _T >(sincos< _T >&&) = default;
-		sincos< _T >& operator=(const sincos< _T >& A) = default;
-		sincos< _T >& operator=(sincos< _T >&& A) = default;
+		~sincos() = default;
+		sincos(const sincos&) = default;
+		sincos(sincos&&) = default;
+		sincos& operator=(const sincos& A) = default;
+		sincos& operator=(sincos&& A) = default;
 
         template <typename _Tm> 
         typename std::enable_if< std::is_constructible< _T, _Tm >::value, void >::type set_a( const _Tm& aa){

@@ -189,7 +189,7 @@ namespace vcp {
 		// Order of Legendre integral
 		int n;
 
-		interval_ld_weightpoint< _T >() {
+		interval_ld_weightpoint() {
 		}
 
 		void set(const int nn) {

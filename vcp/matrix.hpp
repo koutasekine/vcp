@@ -32,22 +32,26 @@
 #ifndef VCP_MATRIX_HPP
 #define VCP_MATRIX_HPP
 
+#include <initializer_list>
+#include <type_traits>
+#include <utility>
+
 #include <vcp/mats.hpp>
 
 namespace vcp {
 	template <typename _T, class _P = mats< _T >> class matrix : protected _P {
 	public:
-		matrix< _T, _P >() {
+		matrix() {
 			this->row = 0;
 			this->column = 0;
 			this->n = 0;
 			this->type = 'N';
 		}
-		~matrix< _T, _P >() = default;
-		matrix< _T, _P >(const matrix< _T, _P >&) = default;
-		matrix< _T, _P >(matrix< _T, _P >&&) = default;
-		matrix< _T, _P >& operator=(const matrix< _T, _P >& A) = default;
-		matrix< _T, _P >& operator=(matrix< _T, _P >&& A) = default;
+		~matrix() = default;
+		matrix(const matrix&) = default;
+		matrix(matrix&&) = default;
+		matrix& operator=(const matrix& A) = default;
+		matrix& operator=(matrix&& A) = default;
 
 		_T& operator () (const int i) {
 			return this->v[i];
@@ -824,10 +828,10 @@ namespace vcp {
 			this->v = A.v;
 		}
 		~matrix() = default;
-		matrix(const matrix< bool >&) = default;
-		matrix(matrix< bool >&&) = default;
-		matrix< bool >& operator=(const matrix< bool >& A) = default;
-		matrix< bool >& operator=(matrix< bool >&& A) = default;
+		matrix(const matrix&) = default;
+		matrix(matrix&&) = default;
+		matrix& operator=(const matrix& A) = default;
+		matrix& operator=(matrix&& A) = default;
 	
 		std::vector< bool >::reference operator () (const int i) {
 			return this->v[i];

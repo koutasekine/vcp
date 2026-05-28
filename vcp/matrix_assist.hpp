@@ -49,5 +49,6 @@
 #endif
 
 #include <vcp/vcp_fio.hpp>
+#include <vcp/vcp_portable_fio.hpp>
 
 #endif

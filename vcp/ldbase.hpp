@@ -40,6 +40,7 @@
 
 #include <limits>
 #include <stack>
+#include <type_traits>
 #include <vector>
 
 #include <kv/psa.hpp>
@@ -209,7 +210,7 @@ namespace vcp {
 		int m;
 		
 	public:
-		Legendre_base< _T >() {
+		Legendre_base() {
 		}
 		void set(const int n) {
 			m = n;
@@ -664,7 +665,7 @@ namespace vcp {
 		}
 
 	public:
-		Legendre_Bases_Generator< _T, _TM, _PM >() {
+		Legendre_Bases_Generator() {
 			this->flag_order_uh = false;
 		}
 
