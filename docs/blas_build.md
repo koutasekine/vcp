@@ -1,4 +1,4 @@
-# Build And BLAS Notes
+# BLAS / LAPACK Build Notes
 
 この文書では、VCP Library を利用する際のコンパイラ、BLAS/LAPACK、
 OpenMP、Apple Silicon Mac での OpenBLAS 設定例をまとめます。
@@ -35,26 +35,27 @@ VCP Library 本体は Intel 専用ではありません。Intel MKL を前提に
 [install.md](install.md) を参照してください。
 
 ```bash
-g++ -std=c++11 -I/path/to/VCP-Library example.cpp
+g++ -std=c++11 -I/path/to/libs example.cpp
 ```
 
 区間演算を使う場合は、別途取得した kv ライブラリの include path も
-追加します。
+必要です。推奨配置は `vcp/` と `kv/` を同じ親ディレクトリに置く形で、
+この場合は include path を 1 つ指定するだけで済みます。
 
 ```bash
-g++ -std=c++11 -I/path/to/VCP-Library -I/path/to/kv-library example.cpp
+g++ -std=c++11 -I/path/to/libs example.cpp
 ```
 
 BLAS/LAPACK を使う場合:
 
 ```bash
-g++ -std=c++11 -I/path/to/VCP-Library example.cpp -llapack -lblas
+g++ -std=c++11 -I/path/to/libs example.cpp -llapack -lblas
 ```
 
 OpenMP、MPFR、GMP も使う場合:
 
 ```bash
-g++ -std=c++11 -I/path/to/VCP-Library -I/path/to/kv-library -O3 -DNDEBUG -DKV_FASTROUND example.cpp -llapack -lblas -lmpfr -lgmp -fopenmp
+g++ -std=c++11 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND example.cpp -llapack -lblas -lmpfr -lgmp -fopenmp
 ```
 
 ## Intel MKL を使う場合
@@ -96,10 +97,10 @@ OpenBLAS や Apple LAPACK を使う例:
 
 ```bash
 cd test_matrix
-g++ -I.. -I/path/to/kv-library -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp
+g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp
 ./a.out
 
-g++ -I.. -I/path/to/kv-library -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp
+g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp
 ./a.out
 ```
 

@@ -266,7 +266,7 @@ eigsymge(A, B, E);
 丸ごとのコピーを標準では行いません。
 
 MKL の推奨リンクオプションや、Apple Silicon Mac で丸めモード変更可能な
-OpenBLAS を使う設定例は [build.md](build.md) を参照してください。
+OpenBLAS を使う設定例は [blas_build.md](blas_build.md) を参照してください。
 
 Newton 法で非線形方程式を解く場合は、`matrix` で残差ベクトルと
 ヤコビ行列を作り、`vcp::Newton` に渡す形になります。詳しくは
