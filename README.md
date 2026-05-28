@@ -32,8 +32,7 @@ OpenBLAS を source build する設定例もそちらにあります。
 BLAS の丸めモード変更を使う環境では、インストール後に
 `test_matrix/Check_pdblas_rounding.cpp` と
 `test_matrix/Check_pidblas_rounding.cpp` を実行することを推奨します。
-Intel MKL を前提にした installer script では、この確認をインストールの最後に
-実行します。
+Intel MKL を使う場合は、コンパイル前に oneAPI/MKL の環境設定も必要です。
 
 PDE の基本的な使い方は、`test_PDE/test_Emden.cpp` が入口になります。
 PDE の例は手法や論文ごとにファイルが分かれており、
@@ -53,7 +52,7 @@ Newton 法を独自の非線形問題に使う場合は、[docs/newton.md](docs/
 | `test_matrix/` | 行列クラスの利用例と確認プログラム |
 | `test_PDE/` | PDE の精度保証付き数値計算例 |
 | `test_doubly_fourier/` | 公開中だが開発中の 2重 Fourier 級数関連の例 |
-| `installer/` | Linux 環境向けの依存ライブラリ導入スクリプト |
+| `tools/` | ダウンロードや展開を補助する小さなツール |
 
 利用側のコンパイルでは、`vcp/` そのものではなく、`vcp/` を含む
 ディレクトリを include path に追加してください。詳しくは
@@ -67,7 +66,6 @@ Newton 法を独自の非線形問題に使う場合は、[docs/newton.md](docs/
 現在、C++11 から C++20 までのコンパイルで動作を確認しています。
 gcc と clang の両方で検証しています。Apple Silicon Mac や AMD 環境でも
 検証しています。VCP Library 本体は Intel 専用ではありません。
-Intel MKL を前提にしているのは、一部の installer script の自動設定部分です。
 選択する policy やスカラー型によって、次の依存が必要になります。
 
 | 用途 | 主な依存 |

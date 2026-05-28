@@ -160,6 +160,60 @@ g++ -std=c++11 -I.. test_matrix.cpp
 
 ここで `..` は `vcp/` と `kv/` を含む親ディレクトリを指します。
 
+## ダウンロード補助ツール
+
+GitHub archive や tar ファイルの展開に慣れていない場合は、
+`tools/download_vcp_kv.sh` を使えます。このツールは、kv ライブラリと
+VCP Library をダウンロードし、`vcp/` と `kv/` を同じ親ディレクトリに
+配置します。あわせて `test_matrix/`、`test_PDE/`、`docs/` なども展開します。
+kv ライブラリは [mskashi/kv](https://github.com/mskashi/kv) の GitHub archive から
+取得します。
+
+このツールは `sudo`、`apt`、`dnf`、`.bashrc` の編集、Intel MKL/oneAPI の
+導入を行いません。必要な外部ライブラリは、利用する環境に合わせて別途
+導入してください。
+
+利用例:
+
+```bash
+bash tools/download_vcp_kv.sh vcp-work
+```
+
+この例では、現在のディレクトリではなく、ホームディレクトリの下に
+次のような配置を作ります。
+
+```text
+~/vcp-work/
+├── vcp/
+├── kv/
+├── test_matrix/
+├── test_PDE/
+└── docs/
+```
+
+展開後、例えば行列クラスの例を確認する場合は次のようにします。
+
+```bash
+cd ~/vcp-work/test_matrix
+g++ -std=c++11 -I.. test_matrix.cpp
+```
+
+BLAS/LAPACK を使う場合は、BLAS の演算が丸めモード変更を反映するかも
+確認してください。OpenBLAS を使う場合の例:
+
+```bash
+cd ~/vcp-work/test_matrix
+g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out
+g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out
+```
+
+Intel MKL やその他の BLAS/LAPACK を使う場合は、リンクオプションや
+oneAPI/MKL の環境設定が異なります。[blas_build.md](blas_build.md) を
+参照してください。
+
+`tools/download_vcp_kv.sh` は `wget` と `tar` を使います。
+これらが入っていない環境では、先に導入してください。
+
 ## 外部ライブラリが必要な場合
 
 通常の `vcp::matrix<double>` だけなら、VCP のヘッダを配置して include path を
@@ -196,3 +250,6 @@ sudo dnf install mpfr-devel -y
 
 BLAS/LAPACK、Intel MKL、OpenBLAS、OpenMP の設定例は
 [blas_build.md](blas_build.md) を参照してください。
+
+旧 `installer/` スクリプトについては
+[legacy_installers.md](legacy_installers.md) にメモを残しています。
