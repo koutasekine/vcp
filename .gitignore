@@ -22,4 +22,9 @@ imats_old_before_0.0.5.hpp
 /oonuma
 /takashima
 /asano
-/test_All_Solution_PDE
+/test_All_Solution_PDE_v0.01
+/test_All_Solution_PDE_v0.02
+/hutchinson
+/test_doubly_fourier
+vcp/doubly_fourier_series.hpp
+vcp/allsol
