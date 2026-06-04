@@ -33,14 +33,16 @@
 #define VCP_INIT_VECTOR_HPP
 
 #include <initializer_list>
+#include <type_traits>
+
+#include <vcp/error.hpp>
 
 namespace vcp{
  
     template <typename _T, class _P, typename _Tm> 
     typename std::enable_if< std::is_constructible< _T, _Tm >::value, void >::type init( matrix< _T, _P >& xh, const std::initializer_list< _Tm >& list1){
         if ( xh.matstype() == 'M' ){
-            std::cout << "ERROR : init_vector :  xh is Matrix..." << std::endl;
-            exit(1);
+            vcp::throw_error<vcp::invalid_argument>("init: xh must be a vector, not a matrix");
         } 
         if ( list1.size() > xh.rowsize() && xh.matstype() == 'C' ) {
             xh.clear();
@@ -61,8 +63,7 @@ namespace vcp{
     template <typename _T, class _P, typename _Tm> 
     typename std::enable_if< std::is_constructible< _T, _Tm >::value, void >::type init_vector( matrix< _T, _P >& xh, const std::initializer_list< _Tm >& list1){
         if ( xh.matstype() == 'M' ){
-            std::cout << "ERROR : init_vector :  xh is Matrix..." << std::endl;
-            exit(1);
+            vcp::throw_error<vcp::invalid_argument>("init_vector: xh must be a vector, not a matrix");
         } 
         if ( list1.size() > xh.rowsize() && xh.matstype() == 'C' ) {
             xh.clear();

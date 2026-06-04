@@ -43,18 +43,18 @@ namespace vcp {
 		unsigned int o;
 	public:
 		void tic() {
-			(*this).start = std::chrono::high_resolution_clock::now();
+			this->start = std::chrono::high_resolution_clock::now();
 		}
 
 		void toc() {
-			(*this).end = std::chrono::high_resolution_clock::now();
-			(*this).diff = (*this).end - (*this).start;
-			(*this).o = std::chrono::duration_cast<std::chrono::milliseconds>(diff).count();
-			std::cout << (*this).o << " [msec]" << std::endl;
+			this->end = std::chrono::high_resolution_clock::now();
+			this->diff = this->end - this->start;
+			this->o = std::chrono::duration_cast<std::chrono::milliseconds>(diff).count();
+			std::cout << this->o << " [msec]" << std::endl;
 		}
 		
 		unsigned int output() {
-			return (*this).o;
+			return this->o;
 		}
 
 	};

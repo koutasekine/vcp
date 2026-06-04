@@ -47,7 +47,9 @@
 #include <vcp/vcp_converter.hpp>
 #include <vcp/matrix.hpp>
 
-#include<omp.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace vcp {
     namespace GaussLegendreIntegral {
@@ -187,7 +189,7 @@ namespace vcp {
 		// Order of Legendre integral
 		int n;
 
-		interval_ld_weightpoint< _T >() {
+		interval_ld_weightpoint() {
 		}
 
 		void set(const int nn) {

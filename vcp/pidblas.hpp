@@ -36,6 +36,7 @@
 
 #include <vcp/pdblas.hpp>
 #include <vcp/imats.hpp>
+#include <vcp/hwround_guard.hpp>
 
 namespace vcp {
 	namespace pidblas_assist{
@@ -57,30 +58,55 @@ namespace vcp {
 				}
 			}
 		}
+		inline void addmm_sequential(vcp::pdblas& A, const vcp::pdblas& B) {
+			if (A.row != B.row || A.column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("addmm_sequential: dimension mismatch");
+			}
+			if (A.type == 'S') {
+				A.v[0] += B.v[0];
+				return;
+			}
+			for (int i = 0; i < A.n; i++) {
+				A.v[i] += B.v[i];
+			}
+		}
+		inline void subsmmA_sequential(vcp::pdblas& A, const vcp::pdblas& B) {
+			if (A.row != B.row || A.column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("subsmmA_sequential: dimension mismatch");
+			}
+			if (A.type == 'S') {
+				A.v[0] -= B.v[0];
+				return;
+			}
+			for (int i = 0; i < A.n; i++) {
+				A.v[i] -= B.v[i];
+			}
+		}
 	}
 
 	class pidblas : public vcp::imats< double, vcp::pdblas > { 
 	protected:	
 		//C = IA * B
 		void mul_im_m(const vcp::pdblas& B, vcp::imats< double, vcp::pdblas >& c) const override {
-			if ((*this).type == 'S' && (B.type == 'C' || B.type == 'R' || B.type == 'M')) {
+			if (this->type == 'S' && (B.type == 'C' || B.type == 'R' || B.type == 'M')) {
 				c.row = B.row;
 				c.column = B.column;
 				c.n = c.row * c.column;
 				c.v.resize(c.n);
 				c.type = B.type;
 				for (int i = 0; i < B.n; i++) {
-					c.v[i] = B.v[i] * (*this).v[0];
+					c.v[i] = B.v[i] * this->v[0];
 				}
 				return;
 			}
-			else if (((*this).type == 'C' || (*this).type == 'R' || (*this).type == 'M') && B.type == 'S') {
+			else if ((this->type == 'C' || this->type == 'R' || this->type == 'M') && B.type == 'S') {
 				c = *this;
-				for (int i = 0; i < (*this).n; i++) {
+				for (int i = 0; i < this->n; i++) {
 					c.v[i] *= B.v[0];
 				}
 				return;
 			}
+			const vcp::hwround_guard guard;
 			vcp::pdblas lC, uC;
 			{
 				vcp::pdblas mA, rA, temp;
@@ -101,9 +127,9 @@ namespace vcp {
 				mA.abs();
 				// temp = rA*|B|
 				rA.mulmm(mA, temp);
-				uC.addmm(temp);
+				pidblas_assist::addmm_sequential(uC, temp);
 				kv::hwround::rounddown();
-				lC.subsmmA(temp);
+				pidblas_assist::subsmmA_sequential(lC, temp);
 			}
 			kv::hwround::roundnear();
 			c.zeros(uC.row, uC.column);
@@ -114,28 +140,29 @@ namespace vcp {
 		}
 		//C = B * IA
 		void mul_m_im(const vcp::pdblas& B, vcp::imats< double, vcp::pdblas >& c) const override {
-			if (B.type == 'S' && ((*this).type == 'C' || (*this).type == 'R' || (*this).type == 'M')) {
-				c.row = (*this).row;
-				c.column = (*this).column;
+			if (B.type == 'S' && (this->type == 'C' || this->type == 'R' || this->type == 'M')) {
+				c.row = this->row;
+				c.column = this->column;
 				c.n = c.row * c.column;
 				c.v.resize(c.n);
-				c.type = (*this).type;
-				for (int i = 0; i < (*this).n; i++) {
-					c.v[i] = (*this).v[i] * B.v[0];
+				c.type = this->type;
+				for (int i = 0; i < this->n; i++) {
+					c.v[i] = this->v[i] * B.v[0];
 				}
 				return;
 			}
-			else if ((B.type == 'C' || B.type == 'R' || B.type == 'M') && (*this).type == 'S') {
+			else if ((B.type == 'C' || B.type == 'R' || B.type == 'M') && this->type == 'S') {
 				c.row = B.row;
 				c.column = B.column;
 				c.n = c.row * c.column;
 				c.v.resize(c.n);
 				c.type = B.type;
 				for (int i = 0; i < B.n; i++) {
-					c.v[i] = (*this).v[0] * B.v[i];
+					c.v[i] = this->v[0] * B.v[i];
 				}
 				return;
 			}
+			const vcp::hwround_guard guard;
 			vcp::pdblas lC, uC;
 			{
 				vcp::pdblas mA, rA, temp;
@@ -156,9 +183,9 @@ namespace vcp {
 				mA.abs();
 				// temp = |B|*rA
 				mA.mulmm(rA, temp);
-				uC.addmm(temp);
+				pidblas_assist::addmm_sequential(uC, temp);
 				kv::hwround::rounddown();
-				lC.subsmmA(temp);
+				pidblas_assist::subsmmA_sequential(lC, temp);
 			}
 			kv::hwround::roundnear();
 			c.zeros(uC.row, uC.column);
@@ -169,42 +196,41 @@ namespace vcp {
 		}
 		//IC = transpose(A)*A with verification 
 		void vmulmm(const vcp::pdblas& C) override {
-			(*this).zeros(C.column);
+			this->zeros(C.column);
 			vcp::pdblas tmp;
+			const vcp::hwround_guard guard;
 			kv::hwround::roundup();
 			C.mulltmm(tmp);
 			if (tmp.type == 'S') {
-				(*this).v[0].upper() = tmp.v[0];
+				this->v[0].upper() = tmp.v[0];
 			}
 			else if(tmp.type == 'M'){
 				for (int i = 0; i < tmp.row; i++) {
 					for (int j = 0; j < tmp.column; j++) {
-						(*this).v[i + (*this).row*j].upper() = tmp.v[i + tmp.row*j];
+						this->v[i + this->row*j].upper() = tmp.v[i + tmp.row*j];
 					}
 				}
 			}
 			else {
 				kv::hwround::roundnear();
-				std::cout << "Error : type miss" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::state_error>("mulltmm: unsupported upper result type: ", tmp.type);
 			}
 
 			kv::hwround::rounddown();
 			C.mulltmm(tmp);
 			if (tmp.type == 'S') {
-				(*this).v[0].lower() = tmp.v[0];
+				this->v[0].lower() = tmp.v[0];
 			}
 			else if (tmp.type == 'M') {
 				for (int i = 0; i < tmp.row; i++) {
 					for (int j = 0; j < tmp.column; j++) {
-						(*this).v[i + (*this).row*j].lower() = tmp.v[i + tmp.row*j];
+						this->v[i + this->row*j].lower() = tmp.v[i + tmp.row*j];
 					}
 				}
 			}
 			else {
 				kv::hwround::roundnear();
-				std::cout << "Error : type miss" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::state_error>("mulltmm: unsupported lower result type: ", tmp.type);
 			}
 			kv::hwround::roundnear();
 		}
@@ -227,6 +253,7 @@ namespace vcp {
 				return;
 			}
 			
+			const vcp::hwround_guard guard;
 			vcp::pdblas lC, uC;
 			{
 				vcp::pdblas mA, rA, mB, rB, temp;
@@ -247,16 +274,16 @@ namespace vcp {
 				//mB = |mB|
 				mB.abs();
 				// mA = |mA| + rA
-				mA.addmm(rA);
+				pidblas_assist::addmm_sequential(mA, rA);
 				// temp = (|mA|+rA)*rB
 				mA.mulmm(rB, temp);
 				// mA = rA*|mB|
 				rA.mulmm(mB, mA);
 				// temp = (|mA|+rA)*rB + rA*|mB|
-				temp.addmm(mA);
-				uC.addmm(temp);
+				pidblas_assist::addmm_sequential(temp, mA);
+				pidblas_assist::addmm_sequential(uC, temp);
 				kv::hwround::rounddown();
-				lC.subsmmA(temp);
+				pidblas_assist::subsmmA_sequential(lC, temp);
 			}
 			kv::hwround::roundnear();
 			c.zeros(uC.row, uC.column);
@@ -267,13 +294,14 @@ namespace vcp {
 		}
 		// C = transpose(A)*A : multiplication left side transpose
 		void mulltmm(vcp::mats< kv::interval< double > >& c)const override{
-			c.zeros((*this).column, (*this).column);
-			if ((*this).type == 'S') {
+			c.zeros(this->column, this->column);
+			if (this->type == 'S') {
 				using std::pow;
-				c.v[0] = (*this).v[0] * (*this).v[0];
+				c.v[0] = this->v[0] * this->v[0];
 				return;
 			}
-			else if ((*this).type == 'M' || (*this).type == 'R' || (*this).type == 'C') {
+			else if (this->type == 'M' || this->type == 'R' || this->type == 'C') {
+				const vcp::hwround_guard guard;
 				vcp::pdblas lC, uC;
 				{
 					vcp::pdblas mA, mAt, rA, temp;
@@ -307,9 +335,9 @@ namespace vcp {
 					}
 
 					// temp = (|mA|+rA)*rB + rA*|mB|
-					uC.addmm(temp);
+					pidblas_assist::addmm_sequential(uC, temp);
 					kv::hwround::rounddown();
-					lC.subsmmA(temp);
+					pidblas_assist::subsmmA_sequential(lC, temp);
 				}
 				kv::hwround::roundnear();
 				c.zeros(uC.row, uC.column);
@@ -318,15 +346,14 @@ namespace vcp {
 					c.v[i].upper() = uC.v[i];
 				}
 
-				for (int i = 0; i < (*this).column; i++) {
-					for (int j = i + 1; j < (*this).column; j++) {
-						c.v[j + (*this).column*i] = c.v[i + (*this).column*j];
+				for (int i = 0; i < this->column; i++) {
+					for (int j = i + 1; j < this->column; j++) {
+						c.v[j + this->column*i] = c.v[i + this->column*j];
 					}
 				}
 			}
 			else {
-				std::cout << "*:error " << (*this).type << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::state_error>("mulltmm: unsupported matrix type: ", this->type);
 			}
 		}
 	};

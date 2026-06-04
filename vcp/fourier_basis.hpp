@@ -40,6 +40,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <type_traits>
 
 #include <vcp/vcp_metafunction.hpp>
 #include <vcp/vcp_converter.hpp>
@@ -72,51 +73,51 @@ public:
 
 public:
 		fourier_basis_list() {
-			(*this).m = 0;
-			(*this).type = 'N';
+			this->m = 0;
+			this->type = 'N';
 		}
 
 		void setting_m(const int& M){
-			(*this).m = M;
+			this->m = M;
 		}
 
 		void create_full_list( void ){
-			(*this).type = 'F';
-			for (int i = 0; i < 2*(*this).m+1; i++ ){
-				(*this).list.push_back(i);
+			this->type = 'F';
+			for (int i = 0; i < 2*this->m+1; i++ ){
+				this->list.push_back(i);
 			}
 		}
 
 		void create_odd_list( void ){
-			(*this).type = 'O';
+			this->type = 'O';
 			// sum(sin(i*t))
 			int j = 0;
-			for (int i = 1; i < 2*(*this).m+1; i+=2 ){
-				(*this).list.push_back(i);
+			for (int i = 1; i < 2*this->m+1; i+=2 ){
+				this->list.push_back(i);
 				j++;
 			}
 		}
 
 		void create_even_list( void ){
-			(*this).type = 'E';
+			this->type = 'E';
 			// a0 + sum(cos(i*t))
 			int j = 0;
-			for (int i = 0; i < 2*(*this).m+1; i+=2 ){
-				(*this).list.push_back(i);
+			for (int i = 0; i < 2*this->m+1; i+=2 ){
+				this->list.push_back(i);
 				j++;
 			}
 		}
 
 		void add_omit_a0( void ){
-			(*this).omit_list.push_back( 0 );
+			this->omit_list.push_back( 0 );
 		}
 
 		void add_omit_sin( const int& nn ){
-			(*this).omit_list.push_back( nn*2 - 1 );
+			this->omit_list.push_back( nn*2 - 1 );
 		}
 
 		void add_omit_cos( const int& nn ){
-			(*this).omit_list.push_back( nn*2 );
+			this->omit_list.push_back( nn*2 );
 		}
 		
 		int list_size(void) const{
@@ -133,86 +134,86 @@ protected:
 		bool is_initial;
 
 		void initial_matrix( void ){
-			int nn = (*this).list.size();
-			int mm = (*this).omit_list.size();
-			(*this).jmat.zeros( nn, nn);
-			(*this).jvec.zeros( nn, mm);
-			(*this).fxvec.zeros( nn, 1);
-			(*this).is_initial = false;
+			int nn = this->list.size();
+			int mm = this->omit_list.size();
+			this->jmat.zeros( nn, nn);
+			this->jvec.zeros( nn, mm);
+			this->fxvec.zeros( nn, 1);
+			this->is_initial = false;
 		}
 
 		vcp::matrix< _T, _P > to_vector( const vcp::fourier_series<_T>& series, const _T& tt = _T(1)){
 			vcp::matrix< _T, _P > V;
-			V.zeros((*this).list.size(), 1);
+			V.zeros(this->list.size(), 1);
 
-			for (int i = 0; i < (*this).list.size(); i++ ){
-				if ((*this).list.at(i) == 0){
+			for (int i = 0; i < this->list.size(); i++ ){
+				if (this->list.at(i) == 0){
 					V(i) = tt*series.get_a0();
 				}
-				else if ((*this).list.at(i)%2 == 1){
-					V(i) = series.get_sin((*this).list.at(i)/2+1);
+				else if (this->list.at(i)%2 == 1){
+					V(i) = series.get_sin(this->list.at(i)/2+1);
 				}
-				else if ((*this).list.at(i)%2 == 0){
-					V(i) = series.get_cos((*this).list.at(i)/2);
+				else if (this->list.at(i)%2 == 0){
+					V(i) = series.get_cos(this->list.at(i)/2);
 				}
 			}
 			return V;			
 		}
 
 public:
-		fourier_basis< _T, _P >() {
-			(*this).is_initial = true;
+		fourier_basis() {
+			this->is_initial = true;
 		}
 
 		void clear_data( void ){
-			(*this).jmat.clear();
-			(*this).jvec.clear();
-			(*this).fxvec.clear();
-			(*this).is_initial = true;
+			this->jmat.clear();
+			this->jvec.clear();
+			this->fxvec.clear();
+			this->is_initial = true;
 		}
 
 
 		void add_fourier_fx( const vcp::fourier_series< _T >& series ){
-			if ((*this).is_initial) (*this).initial_matrix();
+			if (this->is_initial) this->initial_matrix();
 
 			vcp::matrix< _T, _P > tmp; 
-			tmp = (*this).to_vector( series );
-			for (int i = 0; i < (*this).jvec.rowsize(); i ++ ){
-				(*this).fxvec(i) += tmp(i);
+			tmp = this->to_vector( series );
+			for (int i = 0; i < this->jvec.rowsize(); i ++ ){
+				this->fxvec(i) += tmp(i);
 			}
 		}
 
 		template <typename _Tm> typename std::enable_if<std::is_constructible< _T, _Tm >::value, void >::type add_scalar_pt( const _Tm& ssc ){
-			if ((*this).is_initial) (*this).initial_matrix();
+			if (this->is_initial) this->initial_matrix();
 
 			_T sc = _T(ssc);
-			int nn = (*this).list.size();
+			int nn = this->list.size();
 
 			for (int i = 0; i < nn; i++ ){
-				int ii = (*this).list.at(i);
+				int ii = this->list.at(i);
 				if (ii == 0) {
-					(*this).jmat(i, i) += sc/(_T(2));
+					this->jmat(i, i) += sc/(_T(2));
 				}
 				else {
-					(*this).jmat(i, i) += sc;
+					this->jmat(i, i) += sc;
 				}
 			}
 		}
 
 		void add_scalar_pt_delay( const _T& sc, const _T& dly ){
-			if ((*this).type != 'F') {
-				std::cout << "fourier_basis : add_scalar_pt_delay : Only use Full List of fourier_series " << std::endl;
-				exit(1);
+			if (this->type != 'F') {
+				vcp::throw_error<vcp::state_error>(
+					"fourier_basis::add_scalar_pt_delay: full list is required");
 			}
 
-			if ((*this).is_initial) (*this).initial_matrix();
+			if (this->is_initial) this->initial_matrix();
 
 
-			for (int i = 0; i < (*this).list.size(); i++ ){
-				int ii = (*this).list.at(i);				
+			for (int i = 0; i < this->list.size(); i++ ){
+				int ii = this->list.at(i);				
 
 				if (ii == 0){
-					(*this).jmat(i, i) += sc/(_T(2));
+					this->jmat(i, i) += sc/(_T(2));
 				}
 				else if (ii%2 == 1){
 					// sin(n(t + delay)) => a*sin(nt) + b*cos(nt)
@@ -222,8 +223,8 @@ public:
 					sinterm.set_b(0);
 					sinterm.time_delay( (ii/2+1)*dly );
 					sinterm = sc*sinterm;
-					(*this).jmat(i, i) += sinterm.a;
-					(*this).jmat(i+1, i) += sinterm.b;
+					this->jmat(i, i) += sinterm.a;
+					this->jmat(i+1, i) += sinterm.b;
 				}
 				else if (ii%2 == 0){
 					// cos(n(t + delay)) => a*sin(nt) + b*cos(nt)
@@ -234,29 +235,29 @@ public:
 					costerm.time_delay( (ii/2)* dly );
 					costerm = sc*costerm;
 
-					(*this).jmat(i-1, i) += costerm.a;
-					(*this).jmat(i, i) += costerm.b;					
+					this->jmat(i-1, i) += costerm.a;
+					this->jmat(i, i) += costerm.b;					
 				}
 			}
 		}
 
 		void add_fourier_pt_delay( const vcp::fourier_series< _T >& series, const _T& dly ){
-			if ((*this).type != 'F') {
-				std::cout << "fourier_basis : add_fourier_pt_delay : Only use Full List of fourier_series " << std::endl;
-				exit(1);
+			if (this->type != 'F') {
+				vcp::throw_error<vcp::state_error>(
+					"fourier_basis::add_fourier_pt_delay: full list is required");
 			}
 
-			if ((*this).is_initial) (*this).initial_matrix();
+			if (this->is_initial) this->initial_matrix();
 
 
-			for ( int i = 0; i < (*this).list.size(); i++ ){
-				int ii = (*this).list.at(i);
+			for ( int i = 0; i < this->list.size(); i++ ){
+				int ii = this->list.at(i);
 				vcp::fourier_series<_T> tfs;
 				vcp::matrix< _T, _P > tmp;
 				
 				if (ii == 0){
 				//	std::cout << "ii/2 = " << ii/2 << std::endl;
-					tmp = (*this).to_vector( series/_T(2) );
+					tmp = this->to_vector( series/_T(2) );
 				}
 				else if (ii%2 == 1){
 				//	std::cout << "ii/2+1 = " << ii/2 + 1 << std::endl;
@@ -265,7 +266,7 @@ public:
 					ftmp.set_sinm( 1, ii/2 + 1);
 					ftmp = ftmp.delay(dly);
 					tfs = series*ftmp;
-					tmp = (*this).to_vector( tfs );
+					tmp = this->to_vector( tfs );
 				}
 				else if (ii%2 == 0){
 				//	std::cout << "ii/2 = " << ii/2 << std::endl;
@@ -275,61 +276,61 @@ public:
 					ftmp = ftmp.delay(dly);
 					tfs = series*ftmp;
 					
-					tmp = (*this).to_vector( tfs );
+					tmp = this->to_vector( tfs );
 				}
-				for (int j = 0; j < (*this).list.size(); j++ ){
-					(*this).jmat(j, i) += tmp(j);
+				for (int j = 0; j < this->list.size(); j++ ){
+					this->jmat(j, i) += tmp(j);
 				}
 			}
 		}
 
 
 		void add_fourier_pt( const vcp::fourier_series< _T >& series ){
-			if ((*this).is_initial) (*this).initial_matrix();
+			if (this->is_initial) this->initial_matrix();
 			int zeroind = -1;
 
-			for ( int i = 0; i < (*this).list.size(); i++ ){
-				int ii = (*this).list.at(i);
+			for ( int i = 0; i < this->list.size(); i++ ){
+				int ii = this->list.at(i);
 				vcp::fourier_series<_T> tfs;
 				vcp::matrix< _T, _P > tmp;
 				
 				if (ii == 0){
 				//	std::cout << "ii/2 = " << ii/2 << std::endl;
-					tmp = (*this).to_vector( series/_T(2) );
+					tmp = this->to_vector( series/_T(2) );
 				}
 				else if (ii%2 == 1){
 				//	std::cout << "ii/2+1 = " << ii/2 + 1 << std::endl;
 					tfs = series.mul_sin(ii/2 + 1);
-					tmp = (*this).to_vector( tfs );
+					tmp = this->to_vector( tfs );
 				}
 				else if (ii%2 == 0){
 				//	std::cout << "ii/2 = " << ii/2 << std::endl;
 					tfs = series.mul_cos(ii/2);
-					tmp = (*this).to_vector( tfs );
+					tmp = this->to_vector( tfs );
 				}
-				for (int j = 0; j < (*this).list.size(); j++ ){
-					(*this).jmat(j, i) += tmp(j);
+				for (int j = 0; j < this->list.size(); j++ ){
+					this->jmat(j, i) += tmp(j);
 				}
 			}
 		}
 
 
 		void add_fourier_iota( const vcp::fourier_series< _T >& series, const int& nn = 1 ){
-			if ((*this).is_initial) (*this).initial_matrix();
+			if (this->is_initial) this->initial_matrix();
 			vcp::matrix< _T, _P > tmp; 
-			tmp = (*this).to_vector( series );
-			for (int i = 0; i < (*this).jvec.rowsize(); i ++ ){
-				(*this).jvec(i, nn-1) += tmp(i);
+			tmp = this->to_vector( series );
+			for (int i = 0; i < this->jvec.rowsize(); i ++ ){
+				this->jvec(i, nn-1) += tmp(i);
 			}
 		}
 
 		template <typename _Tm> typename 
 		std::enable_if<std::is_constructible< _T, _Tm >::value, void >::type add_dpt( const _Tm& ssc ){
-			if ((*this).type != 'F') {
-				std::cout << "fourier_basis : add_dpdx_Jacobi : Only use Full List of fourier_series " << std::endl;
-				exit(1);
+			if (this->type != 'F') {
+				vcp::throw_error<vcp::state_error>(
+					"fourier_basis::add_dpt: full list is required");
 			}
-			if ((*this).is_initial) (*this).initial_matrix();
+			if (this->is_initial) this->initial_matrix();
 			_T sc = _T(ssc);
 
 			// 0 : a0
@@ -338,15 +339,15 @@ public:
 			// 3 : sin(2t) : 3%2 = 1, 3/2+1 = 2
 			// 4 : cos(2t) : 4%2 = 0, 4/2   = 2
 			
-			for (int i = 0; i < (*this).list.size(); i++){
-				int ii = (*this).list.at(i);
+			for (int i = 0; i < this->list.size(); i++){
+				int ii = this->list.at(i);
 				if (ii%2 == 1){
 					// (sin(nt))' => n*cos(nt)
-					(*this).jmat(i+1, i) += sc*_T(ii/2+1);
+					this->jmat(i+1, i) += sc*_T(ii/2+1);
 				}
 				else if ((ii%2 == 0) && (ii != 0)){
 					// (cos(nt))' => -n*sin(nt)
-					(*this).jmat(i-1, i) -= sc*_T(ii/2);
+					this->jmat(i-1, i) -= sc*_T(ii/2);
 				}
 			}
 		}
@@ -357,22 +358,22 @@ public:
 
 		template <typename _Tm> typename 
 		std::enable_if<std::is_constructible< _T, _Tm >::value, void >::type add_ddpt( const _Tm& ssc ){
-			if ((*this).type != 'F') {
-				std::cout << "fourier_basis : add_ddpdx_Jacobi : Only use Full List of fourier_series " << std::endl;
-				exit(1);
+			if (this->type != 'F') {
+				vcp::throw_error<vcp::state_error>(
+					"fourier_basis::add_ddpt: full list is required");
 			}
-			if ((*this).is_initial) (*this).initial_matrix();
+			if (this->is_initial) this->initial_matrix();
 			_T sc = _T(ssc);
 			
-			for (int i = 0; i < (*this).list.size(); i++){
-				int ii = (*this).list.at(i);
+			for (int i = 0; i < this->list.size(); i++){
+				int ii = this->list.at(i);
 				if (ii%2 == 1){
 					// (sin(nt))'' => -n*n*sin(nt)
-					(*this).jmat(i, i) -= sc*_T(ii/2+1)*_T(ii/2+1);
+					this->jmat(i, i) -= sc*_T(ii/2+1)*_T(ii/2+1);
 				}
 				else if (ii%2 == 0){
 					// (cos(nt))'' => -n*n*cos(nt)
-					(*this).jmat(i, i) -= sc*_T(ii/2)*_T(ii/2);
+					this->jmat(i, i) -= sc*_T(ii/2)*_T(ii/2);
 				}
 			}
 		}
@@ -382,20 +383,20 @@ public:
 		}
 
 		vcp::matrix< _T, _P > output_fx( void )const{
-			return (*this).fxvec;
+			return this->fxvec;
 		}
 
 		vcp::matrix< _T, _P > output_Jacobi( void )const{
 			vcp::matrix< _T, _P > Jac;
-			int nn = (*this).list.size();
-			int mm = (*this).omit_list.size();
+			int nn = this->list.size();
+			int mm = this->omit_list.size();
 			bool flags = true;
 			int i = 0;
 			int jvecnum = 0;
 
 			Jac.zeros( nn, nn );
-			for ( int ii : (*this).list ){
-				for (int kk : (*this).omit_list){
+			for ( int ii : this->list ){
+				for (int kk : this->omit_list){
 					if (ii == kk){ 
 						flags = false;
 						break;
@@ -403,7 +404,7 @@ public:
 				}
 				if (flags) {
 					for (int j = 0; j < nn; j++){
-						Jac(j, i) = (*this).jmat(j, ii);
+						Jac(j, i) = this->jmat(j, ii);
 					}
 					i++;
 				}
@@ -411,7 +412,7 @@ public:
 			}
 			for (int k = 0; k < mm; k++){
 				for (int j = 0; j < nn; j++){
-					Jac(j, i) = (*this).jvec(j, k);
+					Jac(j, i) = this->jvec(j, k);
 				}
 				i++;
 			}
@@ -420,19 +421,20 @@ public:
 		}
 
 		vcp::fourier_series< _T > omit_vec_to_fourier_series( const vcp::matrix< _T, _P >& cof ){
-			if ( (*this).list.size() - (*this).omit_list.size() != cof.rowsize() ){
-				std::cout << "fourier_basis : omit_vec_to_fourier_series : " <<  (*this).list.size() << ", " <<  (*this).omit_list.size() << ", " << cof.rowsize() << std::endl;
-				exit(1);
+			if ( this->list.size() - this->omit_list.size() != cof.rowsize() ){
+				vcp::throw_error<vcp::dimension_error>(
+					"fourier_basis::omit_vec_to_fourier_series: coefficient size mismatch: ",
+					this->list.size(), " - ", this->omit_list.size(), " != ", cof.rowsize());
 			}
 
 			vcp::fourier_series< _T > series;
 			bool flags = true;
 			
-			series.zeros((*this).m);
+			series.zeros(this->m);
 			int i = 0;
-			for ( int ii : (*this).list ){
+			for ( int ii : this->list ){
 
-				for ( int kk : (*this).omit_list){
+				for ( int kk : this->omit_list){
 					if (ii == kk){ 
 						flags = false;
 						break;

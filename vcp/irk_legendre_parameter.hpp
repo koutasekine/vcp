@@ -50,11 +50,14 @@
 #include<vcp/vcp_metafunction.hpp>
 #include <vcp/vcp_psa_assist.hpp>
 #include <vcp/vcp_converter.hpp>
+#include <vcp/error.hpp>
 #include <vcp/matrix.hpp>
 
 #include <vcp/legendre_integral.hpp>
 
-#include<omp.h>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace vcp {
     template < typename _T, class _P, typename _TA = kv::interval< kv::mpfr< 500 > > > class IRK_Legendre_Parameter : protected interval_ld_weightpoint< _TA > {
@@ -65,8 +68,8 @@ namespace vcp {
         public:
         void setting_parameter(int n){
             if (n < 3){
-                std::cout << "Error: setting_parameter : Please set n > 4";
-                exit(1);
+                vcp::throw_error<vcp::invalid_argument>(
+                    "setting_parameter: n must be greater than or equal to 3: ", n);
             }
 
             if (n % 2 != 0) {
@@ -76,17 +79,17 @@ namespace vcp {
             std::vector< _TA > PPoint;
             PPoint.resize(n);
 
-            (*this).alpha.zeros(n,n);
-            (*this).bweight.zeros(n,1);
-            (*this).cpoint.zeros(n,1);
+            this->alpha.zeros(n,n);
+            this->bweight.zeros(n,1);
+            this->cpoint.zeros(n,1);
 
-            (*this).interval_ld_weightpoint< _TA >::set(n);
+            this->interval_ld_weightpoint< _TA >::set(n);
 			for (int i = 0; i < n; i++) {
-                (*this).Point[i] = ((*this).Point[i] + 1) / 2;
-                PPoint[n - ( i + 1)] = (*this).Point[i];
-                (*this).Weight[i] = (*this).Weight[i] / 2;
-                convert( (*this).Point[i], (*this).cpoint(n - ( i + 1) ));
-                convert( (*this).Weight[i], (*this).bweight(i));
+                this->Point[i] = (this->Point[i] + 1) / 2;
+                PPoint[n - ( i + 1)] = this->Point[i];
+                this->Weight[i] = this->Weight[i] / 2;
+                convert( this->Point[i], this->cpoint(n - ( i + 1) ));
+                convert( this->Weight[i], this->bweight(i));
 			}
 
             std::vector< kv::psa< _TA > > lagrange;
@@ -114,7 +117,7 @@ namespace vcp {
             }
             for (int i = 0; i < n; i++){
                 for (int j = 0; j < n; j++){
-                    convert(eval(lagrange[j], PPoint[i]), (*this).alpha(i, j));
+                    convert(eval(lagrange[j], PPoint[i]), this->alpha(i, j));
                 }
             }
         }

@@ -45,7 +45,10 @@
 #include <limits>
 #include <random>
 #include <initializer_list>
+#include <type_traits>
+#include <utility>
 
+#include <vcp/error.hpp>
 #include <vcp/sincos_class.hpp>
 
 // Basis {1, sinx, cosx, sin2x, cos2x, ... , sinnx, cosnx}
@@ -90,7 +93,6 @@ protected:
 					this->c.push_back( B.c[i] );
 				}
 				this->n = B.n;
-                this->c.shrink_to_fit();
 			}
 		}
 
@@ -122,7 +124,6 @@ protected:
 					this->c.push_back( -B.c[i] );
 				}
 				this->n = B.n;
-                this->c.shrink_to_fit();
 			}
 		}
 
@@ -153,20 +154,19 @@ protected:
 					this->c.push_back( B.c[i] );
 				}
 				this->n = B.n;
-                this->c.shrink_to_fit();
 			}
 		}
 
 		void mul(const fourier_series< _T >& B, fourier_series< _T >& C) const {
-			C.zeros((*this).n + B.n);
-			C.a0 = (*this).a0*B.a0;
+			C.zeros(this->n + B.n);
+			C.a0 = this->a0*B.a0;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif			
-			for ( int i = 0; i < (*this).n; i++){
-				C.c[i] = (*this).c[i]*B.a0;
+			for ( int i = 0; i < this->n; i++){
+				C.c[i] = this->c[i]*B.a0;
 			}
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
@@ -174,13 +174,13 @@ protected:
 #endif
 #endif			
 			for ( int j = 0; j < B.n; j++){
-				C.c[j] += (*this).a0*B.c[j];
+				C.c[j] += this->a0*B.c[j];
 			}
 			
 			// sin(a) * sin(b) =-(cos(a+b) - cos(a-b))/2
 			// sin(a) * cos(b) = (sin(a+b) + sin(a-b))/2
 			// cos(a) * cos(b) = (cos(a+b) + cos(a-b))/2
-			for ( int i = 1; i <= (*this).n; i++){
+			for ( int i = 1; i <= this->n; i++){
 				for ( int j = 1; j <= B.n; j++){
 					int ii = i - 1;
 					int jj = j - 1;
@@ -188,62 +188,62 @@ protected:
 					int imj = i - j - 1;
 					if ( i > j ){
 						// ai*sin(i)*aj*sin(j) = -ai*aj*( cos(i+j) - cos(i-j) )/2
-						C.c[ipj].b -= ((*this).c[ii].a*B.c[jj].a)/_T(2);
-						C.c[imj].b += ((*this).c[ii].a*B.c[jj].a)/_T(2);
+						C.c[ipj].b -= (this->c[ii].a*B.c[jj].a)/_T(2);
+						C.c[imj].b += (this->c[ii].a*B.c[jj].a)/_T(2);
 
 
 						// ai*sin(i)*bj*cos(j) = ai*bj*(sin(i+j) + sin(i-j))/2
-						C.c[ipj].a += ((*this).c[ii].a*B.c[jj].b)/_T(2);
-						C.c[imj].a += ((*this).c[ii].a*B.c[jj].b)/_T(2);
+						C.c[ipj].a += (this->c[ii].a*B.c[jj].b)/_T(2);
+						C.c[imj].a += (this->c[ii].a*B.c[jj].b)/_T(2);
 
 
 						// bi*cos(i)*aj*sin(j) = bi*aj*(sin(i+j) - sin(i-j))/2
-						C.c[ipj].a += ((*this).c[ii].b*B.c[jj].a)/_T(2);
-						C.c[imj].a -= ((*this).c[ii].b*B.c[jj].a)/_T(2);
+						C.c[ipj].a += (this->c[ii].b*B.c[jj].a)/_T(2);
+						C.c[imj].a -= (this->c[ii].b*B.c[jj].a)/_T(2);
 
 
 						// bi*cos(i)*bj*cos(j) = bi*bj*(cos(i+j) + cos(i-j))/2
-						C.c[ipj].b += ((*this).c[ii].b*B.c[jj].b)/_T(2);
-						C.c[imj].b += ((*this).c[ii].b*B.c[jj].b)/_T(2);
+						C.c[ipj].b += (this->c[ii].b*B.c[jj].b)/_T(2);
+						C.c[imj].b += (this->c[ii].b*B.c[jj].b)/_T(2);
 
 					}
 					else if( i == j ){
 						// sin(0)=0, cos(0)=1
 						// ai*sin(i) * aj*sin(j) = -ai*aj*( cos(i+j) - 1 )/2 = ai*aj/2 - ai*aj*cos(i+j)/2
-						C.c[ipj].b -= ((*this).c[ii].a*B.c[jj].a)/_T(2);
-						C.a0       += ((*this).c[ii].a*B.c[jj].a)/_T(2);
+						C.c[ipj].b -= (this->c[ii].a*B.c[jj].a)/_T(2);
+						C.a0       += (this->c[ii].a*B.c[jj].a)/_T(2);
 
 						// ai*sin(i)*bj*cos(j) = ai*bj*(sin(i+j) + sin(0))/2 = ai*bj*sin(i+j)/2
-						C.c[ipj].a += ((*this).c[ii].a*B.c[jj].b)/_T(2);
+						C.c[ipj].a += (this->c[ii].a*B.c[jj].b)/_T(2);
 
 						// bi*cos(i)*aj*sin(j) = bi*aj*(sin(i+j) - sin(0))/2 = bi*aj*sin(i+j)/2
-						C.c[ipj].a += ((*this).c[ii].b*B.c[jj].a)/_T(2);
+						C.c[ipj].a += (this->c[ii].b*B.c[jj].a)/_T(2);
 
 						// bi*cos(i)*bj*cos(j) = bi*bj*(cos(i+j) + 1)/2 = bi*bj/2 + bi*bj*cos(i+j)/2
-						C.c[ipj].b += ((*this).c[ii].b*B.c[jj].b)/_T(2);
-						C.a0       += ((*this).c[ii].b*B.c[jj].b)/_T(2);
+						C.c[ipj].b += (this->c[ii].b*B.c[jj].b)/_T(2);
+						C.a0       += (this->c[ii].b*B.c[jj].b)/_T(2);
 
 					}
 					else if( i < j ){
 						// sin(-a)=-sin(a), cos(-a)=cos(a)
 						// ai*sin(i)*aj*sin(j) = -ai*aj*( cos(i+j) - cos(i-j) )/2 = -ai*aj*( cos(i+j) - cos(j-i) )/2
-						C.c[ipj].b   -= ((*this).c[ii].a*B.c[jj].a)/_T(2);
-						C.c[j-i-1].b += ((*this).c[ii].a*B.c[jj].a)/_T(2);
+						C.c[ipj].b   -= (this->c[ii].a*B.c[jj].a)/_T(2);
+						C.c[j-i-1].b += (this->c[ii].a*B.c[jj].a)/_T(2);
 
 
 						// ai*sin(i)*bj*cos(j) = ai*bj*(sin(i+j) + sin(i-j))/2 = ai*bj*(sin(i+j) - sin(j-i))/2
-						C.c[ipj].a   += ((*this).c[ii].a*B.c[jj].b)/_T(2);
-						C.c[j-i-1].a -= ((*this).c[ii].a*B.c[jj].b)/_T(2);
+						C.c[ipj].a   += (this->c[ii].a*B.c[jj].b)/_T(2);
+						C.c[j-i-1].a -= (this->c[ii].a*B.c[jj].b)/_T(2);
 
 
 						// bi*cos(i)*aj*sin(j) = bi*aj*(sin(i+j) + sin(j-i))/2
-						C.c[ipj].a += ((*this).c[ii].b*B.c[jj].a)/_T(2);
-						C.c[j-i-1].a += ((*this).c[ii].b*B.c[jj].a)/_T(2);
+						C.c[ipj].a += (this->c[ii].b*B.c[jj].a)/_T(2);
+						C.c[j-i-1].a += (this->c[ii].b*B.c[jj].a)/_T(2);
 
 
 						// bi*cos(i)*bj*cos(j) = bi*bj*(cos(i+j) + cos(i-j))/2 = bi*bj*(cos(i+j) + cos(j-i))/2
-						C.c[ipj].b   += ((*this).c[ii].b*B.c[jj].b)/_T(2);
-						C.c[j-i-1].b += ((*this).c[ii].b*B.c[jj].b)/_T(2);
+						C.c[ipj].b   += (this->c[ii].b*B.c[jj].b)/_T(2);
+						C.c[j-i-1].b += (this->c[ii].b*B.c[jj].b)/_T(2);
 					}
 				}
 			}			
@@ -251,21 +251,20 @@ protected:
 
 
 		void mulsin( const int& N, fourier_series< _T >& C ) const {
-			C.zeros((*this).n + N);
+			C.zeros(this->n + N);
 
 			if ( N <= 0 ){
-				std::cout << "Error: fourier_series: mulsin: N < 0..." << std::endl;
-				exit(0);
+				vcp::throw_error<vcp::invalid_argument>("Error: fourier_series: mulsin: N <= 0...");
 			}
 			else if( N > 0 ){
 				// a0*sin(N)
-				C.c[N-1].a = (*this).a0;
+				C.c[N-1].a = this->a0;
 
 				// N = 1 : phi1 = sin(1t)
 				// N = 2 : phi3 = sin(2t)
 				// N = 3 : phi5 = sin(3t)
 				// N = 4 : phi7 = sin(4t)
-				for ( int i = 1; i <= (*this).n; i++){
+				for ( int i = 1; i <= this->n; i++){
 					int ii = i - 1;
 					int NN = N - 1;
 					int ipN = i + N - 1;
@@ -274,33 +273,33 @@ protected:
 
 					if ( i > N ){
 						// ai*sin(i) * sin(N) =-(ai*cos(i+N) - ai*cos(i-N))/2
-						tmp = (*this).c[ii].a/_T(2);
+						tmp = this->c[ii].a/_T(2);
 						C.c[ipN].b -= tmp;
 						C.c[imN].b += tmp;
 
 						// sin(N) * bi*cos(i) = (bi*sin(i+N) + bi*sin(N-i))/2 = (bi*sin(i+N) - bi*sin(i-N)))/2
-						tmp = (*this).c[ii].b/_T(2);
+						tmp = this->c[ii].b/_T(2);
 						C.c[ipN].a += tmp;
 						C.c[imN].a -= tmp;
 					}
 					else if(i == N){
 						// ai*sin(i) * sin(N) =-(ai*cos(i+N) - ai*cos(i-N))/2 = -(ai*cos(i+N) - ai)/2
-						tmp = (*this).c[ii].a/_T(2);
+						tmp = this->c[ii].a/_T(2);
 						C.c[ipN].b -= tmp;
 						C.a0 += tmp;
 
 						// sin(N) * bi*cos(i) = (bi*sin(i+N) + bi*sin(N-i))/2 = bi*sin(i+N) /2
-						C.c[ipN].a += (*this).c[ii].b/_T(2);
+						C.c[ipN].a += this->c[ii].b/_T(2);
 
 					}
 					else if( i < N){
 						// ai*sin(i) * sin(N) =-(ai*cos(i+N) - ai*cos(i-N))/2 = -(ai*cos(i+N) - ai*cos(N-i))/2
-						tmp = (*this).c[ii].a/_T(2);
+						tmp = this->c[ii].a/_T(2);
 						C.c[ipN].b -= tmp;
 						C.c[N-i-1].b += tmp;
 
 						// sin(N) * bi*cos(i) = (bi*sin(i+N) + bi*sin(N-i))/2
-						tmp = (*this).c[ii].b/_T(2);
+						tmp = this->c[ii].b/_T(2);
 						C.c[ipN].a += tmp;
 						C.c[N-i-1].a += tmp;
 					}
@@ -310,16 +309,15 @@ protected:
 
 		
 		void mulcos( const int& N, fourier_series< _T >& C ) const {
-			C.zeros((*this).n + N);
+			C.zeros(this->n + N);
 
 
 			if ( N <= 0 ){
-				std::cout << "Error: fourier_series: mulcos: N < 0..." << std::endl;
-				exit(0);
+				vcp::throw_error<vcp::invalid_argument>("Error: fourier_series: mulcos: N <= 0...");
 			}
 			else if( N > 0 ){
 				// a0*sin(N)
-				C.c[N-1].b = (*this).a0;
+				C.c[N-1].b = this->a0;
 
 				// N = 1 : phi2 = cos(1t)
 				// N = 2 : phi4 = cos(2t)
@@ -327,7 +325,7 @@ protected:
 				// N = 4 : phi8 = cos(4t)
 				// sin(a) * cos(b) = (sin(a+b) + sin(a-b))/2
 				// cos(a) * cos(b) = (cos(a+b) + cos(a-b))/2
-				for ( int i = 1; i <= (*this).n; i++){
+				for ( int i = 1; i <= this->n; i++){
 					int ii = i - 1;
 					int NN = N - 1;
 					int ipN = i + N - 1;
@@ -336,33 +334,33 @@ protected:
 
 					if ( i > N ){
 						// ai*sin(i) * cos(N) = ai*(sin(i+N) + sin(i-N))/2
-						tmp = (*this).c[ii].a/_T(2);
+						tmp = this->c[ii].a/_T(2);
 						C.c[ipN].a += tmp;
 						C.c[imN].a += tmp;
 
 						// bi*cos(i) * cos(N) = bi*(cos(i+N) + cos(i-N))/2
-						tmp = (*this).c[ii].b/_T(2);
+						tmp = this->c[ii].b/_T(2);
 						C.c[ipN].b += tmp;
 						C.c[imN].b += tmp;
 					}
 					else if(i == N){
 						// ai*sin(i) * cos(N) = ai*(sin(i+N) + sin(i-N))/2 = ai*sin(i+N)/2
-						C.c[ipN].a += (*this).c[ii].a/_T(2);
+						C.c[ipN].a += this->c[ii].a/_T(2);
 
 						// bi*cos(i) * cos(N) = bi*(cos(i+N) + cos(i-N))/2 = bi/2*(cos(i+N) + 1)
-						tmp = (*this).c[ii].b/_T(2);
+						tmp = this->c[ii].b/_T(2);
 						C.c[ipN].b += tmp;
 						C.a0 += tmp;
 
 					}
 					else if( i < N){
 						// ai*sin(i) * cos(N) = ai*(sin(i+N) + sin(i-N))/2 = ai*(sin(i+N) - sin(N-i))/2
-						tmp = (*this).c[ii].a/_T(2);
+						tmp = this->c[ii].a/_T(2);
 						C.c[ipN].a += tmp;
 						C.c[N-i-1].a -= tmp;
 
 						// bi*cos(i) * cos(N) = bi*(cos(i+N) + cos(i-N))/2 = bi*(cos(i+N) + cos(N-i))/2
-						tmp = (*this).c[ii].b/_T(2);
+						tmp = this->c[ii].b/_T(2);
 						C.c[ipN].b += tmp;
 						C.c[N-i-1].b += tmp;
 					}
@@ -380,36 +378,36 @@ protected:
 #endif
 #endif
 			for (int j = 0; j < n; j++) {
-				(*this).c[j].time_delay((j+1)*tau);
+				this->c[j].time_delay((j+1)*tau);
 			}
         }
 
 
 public:
-        fourier_series< _T >() {
-			(*this).n = 0;
+        fourier_series() {
+			this->n = 0;
 		}
-		~fourier_series< _T >() = default;
-		fourier_series< _T >(const fourier_series< _T >&) = default;
-		fourier_series< _T >(fourier_series< _T >&&) = default;
-		fourier_series< _T >& operator=(const fourier_series< _T >& A) = default;
-		fourier_series< _T >& operator=(fourier_series< _T >&& A) = default;
+		~fourier_series() = default;
+		fourier_series(const fourier_series&) = default;
+		fourier_series(fourier_series&&) = default;
+		fourier_series& operator=(const fourier_series& A) = default;
+		fourier_series& operator=(fourier_series&& A) = default;
 
 		template <typename _Tm> typename std::enable_if<std::is_constructible< _T, _Tm >::value, void >::type set_a0( _Tm a ){
-			(*this).a0 = _T(a);
+			this->a0 = _T(a);
 		}
 
 		template <typename _Tm> typename std::enable_if<std::is_constructible< _T, _Tm >::value, void >::type set_sinm( _Tm a, int m ){
-			(*this).c[m-1].set_a( _T(a) );
+			this->c[m-1].set_a( _T(a) );
 		}
 
 		template <typename _Tm> typename std::enable_if<std::is_constructible< _T, _Tm >::value, void >::type set_cosm( _Tm a, int m ){
-			(*this).c[m-1].set_b( _T(a) );
+			this->c[m-1].set_b( _T(a) );
 		}
 
 		_T get_sin(const int& NN) const {
 			if ( NN <= this->n ){
-				return (*this).c[NN - 1].a;
+				return this->c[NN - 1].a;
 			}
 			else{
 				return _T(0);
@@ -418,7 +416,7 @@ public:
 
 		_T get_cos(const int& NN) const {
 			if ( NN <= this->n ){
-				return (*this).c[NN - 1].b;
+				return this->c[NN - 1].b;
 			}
 			else{
 				return _T(0);
@@ -426,41 +424,43 @@ public:
 		}
 
 		_T get_a0(void) const {
-			return (*this).a0;
+			return this->a0;
 		}
 
 		int get_n( void ) const {
-			return (*this).n;
+			return this->n;
 		}
 
         void zeros(const int NN) {
-			(*this).n = NN;
-			(*this).a0 = _T(0);
-			(*this).c.resize(NN);
+			this->n = NN;
+			this->a0 = _T(0);
+			this->c.resize(NN);
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif
-			for (int j = 0; j < (*this).n; j++) {
-				(*this).c[j].set_ab(_T(0), _T(0));
+			for (int j = 0; j < this->n; j++) {
+				this->c[j].set_ab(_T(0), _T(0));
 			}
-			(*this).c.shrink_to_fit();
 		}
 
 		void ones(const int NN) {
-			(*this).n = NN;
-			(*this).a0 = _T(1);
-			(*this).c.resize(n);
+			this->n = NN;
+			this->a0 = _T(1);
+			this->c.resize(n);
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 			for (int j = 0; j < n; j++) {
-				(*this).c[j].set_ab(_T(1), _T(1));
+				this->c[j].set_ab(_T(1), _T(1));
 			}
-			(*this).c.shrink_to_fit();
+		}
+
+		void shrink_to_fit(void) {
+			this->c.shrink_to_fit();
 		}
 
         friend fourier_series< _T > operator+(const fourier_series< _T >& A) {
@@ -475,7 +475,7 @@ public:
 			fourier_series< _T > C;
 			C = A;
 			C.AplusB(B);
-			return std::move(C);
+			return C;
 		}
 
 		friend fourier_series< _T > operator+(fourier_series< _T >&& A, const fourier_series< _T >& B) {
@@ -560,7 +560,7 @@ public:
 			fourier_series< _T > C;
 			C = A;
 			C.AminusB(B);
-			return std::move(C);
+			return C;
 		}
 
 		friend fourier_series< _T > operator-(fourier_series< _T >&& A, const fourier_series< _T >& B) {
@@ -605,13 +605,13 @@ public:
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator-( const _Tm& a, fourier_series<_T>&& A ){
 			_T Ta = _T(a);
 			A.a0 -= Ta;
-			return std::move(-A);
+			return -A;
 		}
 
 		friend fourier_series< _T > operator*(const fourier_series< _T >& A, const fourier_series< _T >& B) {
 			fourier_series< _T > C;
 			A.mul(B, C);
-			return std::move(C);
+			return C;
 		}
 
 		friend fourier_series< _T > operator*(const fourier_series< _T >& A, fourier_series< _T >&& B) {
@@ -648,7 +648,7 @@ public:
 			for (int i = 0; i < C.n; i++){
 				C.c[i] = C.c[i]*Ta;
 			}
-			return std::move(C);
+			return C;
 		}
 
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator*(fourier_series< _T >&& B, const _Tm& a) {
@@ -678,7 +678,7 @@ public:
 			for (int i = 0; i < C.n; i++){
 				C.c[i] = Ta*C.c[i];
 			}
-			return std::move(C);
+			return C;
 		}
 
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator*(const _Tm& a, fourier_series< _T >&& B) {
@@ -708,7 +708,7 @@ public:
 			for (int i = 0; i < C.n; i++){
 				C.c[i] = C.c[i]/Ta;
 			}
-			return std::move(C);
+			return C;
 		}
 		
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator/(fourier_series< _T >&& B, const _Tm& a) {
@@ -734,13 +734,13 @@ public:
 
 		fourier_series< _T > mul_sin( const int& N )const{
 			fourier_series< _T > B;
-			(*this).mulsin(N, B);
+			this->mulsin(N, B);
 			return B;
 		}
 
 		fourier_series< _T > mul_cos( const int& N )const{
 			fourier_series< _T > B;
-			(*this).mulcos(N, B);
+			this->mulcos(N, B);
 			return B;
 		}
 
@@ -762,9 +762,9 @@ public:
 		fourier_series< _T > Pm(const int& m)const{
 			fourier_series< _T > B;
 			B.zeros(m);
-			B.a0 = (*this).a0;
+			B.a0 = this->a0;
 			for (int i = 0; i < m; i++){
-				B.c[i] = (*this).c[i];
+				B.c[i] = this->c[i];
 			}
 			return B;
 		}
@@ -781,10 +781,10 @@ public:
 		}
 		
 		void display(){
-			std::cout << (*this).a0;
-			for (int i = 0; i < (*this).n; i++){
-				std::cout << " + " << (*this).c[i].a << "sin(" << i+1 << "t)";
-				std::cout << " + " << (*this).c[i].b << "cos(" << i+1 << "t)";
+			std::cout << this->a0;
+			for (int i = 0; i < this->n; i++){
+				std::cout << " + " << this->c[i].a << "sin(" << i+1 << "t)";
+				std::cout << " + " << this->c[i].b << "cos(" << i+1 << "t)";
 			}
 			std::cout << "\n" << std::endl;
 		}
@@ -833,22 +833,22 @@ public:
 
 		std::ostream& display(std::ostream& os)const
 		{
-			os << (*this).a0;
-			for (int i = 0; i < (*this).n; i++){
-				if ((*this).c[i].b != _T(0)){
-					if ((*this).c[i].b > _T(0)){
-						os << " + " << abs((*this).c[i].b) << "*cos(" << i+1 << "t)";
+			os << this->a0;
+			for (int i = 0; i < this->n; i++){
+				if (this->c[i].b != _T(0)){
+					if (this->c[i].b > _T(0)){
+						os << " + " << abs(this->c[i].b) << "*cos(" << i+1 << "t)";
 					}
 					else{
-						os << " - " << abs((*this).c[i].b) << "*cos(" << i+1 << "t)";
+						os << " - " << abs(this->c[i].b) << "*cos(" << i+1 << "t)";
 					}
 				}
-				if ((*this).c[i].a != _T(0)){
-					if ((*this).c[i].a > _T(0)){
-						os << " + " << abs((*this).c[i].a) << "*sin(" << i+1 << "t)";
+				if (this->c[i].a != _T(0)){
+					if (this->c[i].a > _T(0)){
+						os << " + " << abs(this->c[i].a) << "*sin(" << i+1 << "t)";
 					}
 					else{
-						os << " - " << abs((*this).c[i].a) << "*sin(" << i+1 << "t)";
+						os << " - " << abs(this->c[i].a) << "*sin(" << i+1 << "t)";
 					}
 				}
 			}
@@ -864,9 +864,9 @@ public:
 		}
 
 		void clear(void){
-			(*this).n = 0;
-			(*this).a0 = 0;
-			(*this).c.clear();
+			this->n = 0;
+			this->a0 = 0;
+			this->c.clear();
 		}
 
     };

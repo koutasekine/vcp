@@ -32,6 +32,8 @@
 #ifndef VCP_METAFUNCTION_HPP
 #define VCP_METAFUNCTION_HPP
 
+#include <type_traits>
+
 
 namespace vcp {
 	template < typename T > struct is_round_control{

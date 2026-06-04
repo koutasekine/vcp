@@ -27,54 +27,26 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#pragma once
 
-#include <iostream>
-#include <cmath>
+#ifndef VCP_HWROUND_GUARD_HPP
+#define VCP_HWROUND_GUARD_HPP
 
-#include <kv/interval.hpp>
-#include <kv/rdouble.hpp>
-#include <kv/dd.hpp>
-#include <kv/rdd.hpp>
-#include <kv/mpfr.hpp>
-#include <kv/rmpfr.hpp>
+#include <kv/hwround.hpp>
 
-#include <vcp/imats.hpp>
-#include <vcp/pdblas.hpp>
-#include <vcp/pidblas.hpp>
+namespace vcp {
 
-#include <vcp/vcp_metafunction.hpp>
-#include <vcp/vcp_converter.hpp>
-#include <vcp/matrix.hpp>
+	class hwround_guard {
+	public:
+		hwround_guard() = default;
+		~hwround_guard() noexcept {
+			kv::hwround::roundnear();
+		}
 
-#include <vcp/doubly_fourier_series.hpp>
+		hwround_guard(const hwround_guard&) = delete;
+		hwround_guard& operator=(const hwround_guard&) = delete;
+	};
 
-int main(void){
-    vcp::doubly_fourier_series< double > xs, du1_xs;
-    vcp::matrix< double, vcp::pdblas > xvec;
-    xs.setting_order(5);
-    xs.setting_omega( 1.2, 2.2 );
-    xs.b_sin[5] = 2.0;
-
-    std::cout << "---- List ---- " << std::endl;
-    std::cout << "p1, p2" << std::endl;
-    for (const auto& e : xs.plist) std::cout << e[0] << ", " << e[1] << std::endl;
-    std::cout << "-------------- " << std::endl;
-
-    xvec = xs.output_matrix< vcp::pdblas >();
-    std::cout << xvec << std::endl;
-
-    du1_xs = xs.diff_u1();
-
-    
-    xvec = du1_xs.output_matrix< vcp::pdblas >();
-    std::cout << xvec << std::endl;
-
-    std::cout << xs << std::endl;
-    std::cout << du1_xs << std::endl;
-    std::cout << xs + du1_xs.delay( 2.2 ) << std::endl;
-
-    xs += du1_xs.delay( 2.2 );
-    std::cout << -(3.0 - xs) - xs << std::endl;
-
-    return 0;
 }
+
+#endif

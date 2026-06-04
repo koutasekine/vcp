@@ -36,6 +36,8 @@
 #error Please include psa.hpp
 #endif
 
+#include <type_traits>
+
 #include<vcp/vcp_metafunction.hpp>
 
 namespace vcp {

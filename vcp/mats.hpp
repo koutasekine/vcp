@@ -48,6 +48,9 @@
 #include <limits>
 #include <random>
 #include <initializer_list>
+#include <utility>
+
+#include <vcp/error.hpp>
 
 namespace vcp{
 	class mbool {
@@ -59,10 +62,10 @@ namespace vcp{
 		std::vector< bool > v;
 
 		mbool() {
-			(*this).row = 0;
-			(*this).column = 0;
-			(*this).n = 0;
-			(*this).type = 'N';
+			this->row = 0;
+			this->column = 0;
+			this->n = 0;
+			this->type = 'N';
 		}
 
 		virtual ~mbool() = default;
@@ -72,36 +75,36 @@ namespace vcp{
 		mbool& operator=(mbool&& A) = default;
 
 		std::vector< bool >::reference operator () (const int i) {
-			return (*this).v[i];
+			return this->v[i];
 		}
 		std::vector< bool >::const_reference operator () (const int i) const {
-			return (*this).v[i];
+			return this->v[i];
 		}
 		std::vector< bool >::reference operator () (const int i, const int j) {
-			if ((*this).type == 'R') {
-				return (*this).v[j];
+			if (this->type == 'R') {
+				return this->v[j];
 			}
 			else {
-				return (*this).v[i + (*this).row*j];
+				return this->v[i + this->row*j];
 			}
 		}
 		std::vector< bool >::const_reference operator () (const int i, const int j)const {
-			if ((*this).type == 'R') {
-				return (*this).v[j];
+			if (this->type == 'R') {
+				return this->v[j];
 			}
 			else {
-				return (*this).v[i + (*this).row*j];
+				return this->v[i + this->row*j];
 			}
 		}
 
-		int elementsize()const { return (*this).n; }
-		int columnsize()const { return (*this).column; }
-		int rowsize()const { return (*this).row; }
+		int elementsize()const { return this->n; }
+		int columnsize()const { return this->column; }
+		int rowsize()const { return this->row; }
 		char matstype()const {
-			return (*this).type;
+			return this->type;
 		}
-		std::vector< bool > vecpointer()const {
-			return (*this).v;
+		const std::vector< bool >& vecpointer()const {
+			return this->v;
 		}
 		friend int length(mbool& A) {
 			return A.length();
@@ -121,7 +124,6 @@ namespace vcp{
 			for (int j = 0; j < n; j++) {
 				v[j] = true;
 			}
-			v.shrink_to_fit();
 		}
 		void alltrue(const int r, const int c) {
 			row = r;
@@ -145,13 +147,12 @@ namespace vcp{
 					v[i + row*j] = true;
 				}
 			}
-			v.shrink_to_fit();
 		}
 		void set(const int i) {
-			(*this).alltrue(i);
+			this->alltrue(i);
 		}
 		void set(const int r, const int c) {
-			(*this).alltrue(r,c);
+			this->alltrue(r,c);
 		}
 
 		void allfalse(const int i) {
@@ -168,7 +169,6 @@ namespace vcp{
 			for (int j = 0; j < n; j++) {
 				v[j] = false;
 			}
-			v.shrink_to_fit();
 		}
 		void allfalse(const int r, const int c) {
 			row = r;
@@ -192,38 +192,37 @@ namespace vcp{
 					v[i + row*j] = false;
 				}
 			}
-			v.shrink_to_fit();
 		}
 		void reset(const int i) {
-			(*this).allfalse(i);
+			this->allfalse(i);
 		}
 		void reset(const int r, const int c) {
-			(*this).allfalse(r, c);
+			this->allfalse(r, c);
 		}
 
 		void flip() {
-			(*this).v.flip();
+			this->v.flip();
 		}
 
 		bool all() const {
-			for (int i = 0; i < (*this).n; i++) {
-				if (!(*this).v[i]) {
+			for (int i = 0; i < this->n; i++) {
+				if (!this->v[i]) {
 					return false;
 				}
 			}
 			return true;
 		}
 		bool any() const {
-			for (int i = 0; i < (*this).n; i++) {
-				if ((*this).v[i]) {
+			for (int i = 0; i < this->n; i++) {
+				if (this->v[i]) {
 					return true;
 				}
 			}
 			return false;
 		}
 		bool none() const {
-			for (int i = 0; i < (*this).n; i++) {
-				if ((*this).v[i]) {
+			for (int i = 0; i < this->n; i++) {
+				if (this->v[i]) {
 					return false;
 				}
 			}
@@ -242,34 +241,32 @@ namespace vcp{
 
 		// A = and(A,B)
 		void mats_and(const mbool& B) {
-			if ((*this).row != B.row && (*this).column != B.column) {
-				std::cout << "&&:error " << std::endl;
-				exit(1);
+			if (this->row != B.row || this->column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("&&: dimension mismatch");
 			}
-			if ((*this).type == 'S') {
-				(*this).v[0] = (*this).v[0] && B.v[0];
+			if (this->type == 'S') {
+				this->v[0] = this->v[0] && B.v[0];
 				return;
 			}
 			else {
 				for (int i = 0; i < n; i++) {
-					(*this).v[i] = (*this).v[i] && B.v[i];
+					this->v[i] = this->v[i] && B.v[i];
 				}
 				return;
 			}
 		}
 		// A = or(A,B)
 		void mats_or(const mbool& B) {
-			if ((*this).row != B.row && (*this).column != B.column) {
-				std::cout << "&&:error " << std::endl;
-				exit(1);
+			if (this->row != B.row || this->column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("||: dimension mismatch");
 			}
-			if ((*this).type == 'S') {
-				(*this).v[0] = (*this).v[0] || B.v[0];
+			if (this->type == 'S') {
+				this->v[0] = this->v[0] || B.v[0];
 				return;
 			}
 			else {
 				for (int i = 0; i < n; i++) {
-					(*this).v[i] = (*this).v[i] || B.v[i];
+					this->v[i] = this->v[i] || B.v[i];
 				}
 				return;
 			}
@@ -279,7 +276,7 @@ namespace vcp{
 			mbool C;
 			C = A;
 			C.mats_and(B);
-			return std::move(C);
+			return C;
 		}
 		friend mbool operator&&(mbool&& A, const mbool& B) {
 			A.mats_and(B);
@@ -298,7 +295,7 @@ namespace vcp{
 			mbool C;
 			C = A;
 			C.mats_or(B);
-			return std::move(C);
+			return C;
 		}
 		friend mbool operator||(mbool&& A, const mbool& B) {
 			A.mats_or(B);
@@ -317,7 +314,7 @@ namespace vcp{
 			mbool C;
 			C = A;
 			C.flip();
-			return std::move(C);
+			return C;
 		}
 		friend mbool operator!(mbool&& A) {
 			A.flip();
@@ -337,8 +334,9 @@ namespace vcp{
 			on = n;
 
 			if (row > i || column > j) {
-				std::cout << "error : resize : row > i || column > j" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"resize: new size is smaller than current size: (",
+					row, ", ", column, ") > (", i, ", ", j, ")");
 			}
 			n = nn;
 			row = i;
@@ -365,14 +363,13 @@ namespace vcp{
 					}
 				}
 			}
-			v.shrink_to_fit();
 		}
 		void clear() {
-			(*this).v.clear();
-			(*this).row = 0;
-			(*this).column = 0;
-			(*this).n = 0;
-			(*this).type = 'N';
+			this->v.clear();
+			this->row = 0;
+			this->column = 0;
+			this->n = 0;
+			this->type = 'N';
 		}
 
 		std::ostream& display(std::ostream& os)const {
@@ -419,23 +416,22 @@ namespace vcp{
 		char type;      //'N':NULL  'S':Scala  'R' Row Vector 'C':Column Vector 'M':Matrix
 		std::vector< _T > v;
 
-		mats< _T >() {
-			(*this).row = 0;
-			(*this).column = 0;
-			(*this).n = 0;
-			(*this).type = 'N';
+		mats() {
+			this->row = 0;
+			this->column = 0;
+			this->n = 0;
+			this->type = 'N';
 		}
-		virtual ~mats< _T >() = default;
-		mats< _T >(const mats< _T >&) = default;
-		mats< _T >(mats< _T >&&) = default;
-		mats< _T >& operator=(const mats< _T >& A) = default;
-		mats< _T >& operator=(mats< _T >&& A) = default;
+		virtual ~mats() = default;
+		mats(const mats&) = default;
+		mats(mats&&) = default;
+		mats& operator=(const mats& A) = default;
+		mats& operator=(mats&& A) = default;
 
 		// A = A+B
 		void addmm(const mats< _T >& B) {
 			if (row != B.row || column != B.column) {
-				std::cout << "+:error " << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>("addmm: dimension mismatch");
 			}
 			if (type == 'S') {
 				v[0] += B.v[0];
@@ -497,8 +493,7 @@ namespace vcp{
 		// A = A-B
 		void subsmmA(const mats< _T >& B) {
 			if (row != B.row || column != B.column) {
-				std::cout << "-:error " << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>("subsmmA: dimension mismatch");
 			}
 			if (type == 'S') {
 				v[0] = v[0] - B.v[0];
@@ -519,8 +514,7 @@ namespace vcp{
 		// A = B-A
 		void subsmmB(const mats< _T >& B) {
 			if (row != B.row || column != B.column) {
-				std::cout << "-:error " << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>("subsmmB: dimension mismatch");
 			}
 			if (type == 'S') {
 				v[0] = B.v[0] - v[0];
@@ -678,58 +672,59 @@ namespace vcp{
 				return;
 			}
 			else {
-				std::cout << "*:error " << (*this).type << " , " << B.type << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"mulmm: unsupported matrix product: type ",
+					this->type, " * ", B.type, ", size (", this->row, ", ", this->column,
+					") * (", B.row, ", ", B.column, ")");
 			}
 		}
 		// C = transpose(A)*A : multiplication left side transpose
 		virtual void mulltmm(mats< _T >& c)const {
 			c.zeros(column);
-			if ((*this).type == 'S') {
+			if (this->type == 'S') {
 				using std::pow;
 				c.type = 'S';
-				c.v[0] = pow((*this).v[0],2);
+				c.v[0] = pow(this->v[0],2);
 				return;
 			}
-			else if ((*this).type == 'C') {
+			else if (this->type == 'C') {
 				using std::pow;
 				c.type = 'S';
 				c.v[0] = _T(0);
-				for (int i = 0; i < (*this).n; i++) {
-					c.v[0] += pow((*this).v[i], 2);
+				for (int i = 0; i < this->n; i++) {
+					c.v[0] += pow(this->v[i], 2);
 				}
 			}
-			else if ((*this).type == 'R') {
+			else if (this->type == 'R') {
 				c.type = 'M';
-				for (int i = 0; i < (*this).column; i++) {
-					for (int j = i; j < (*this).column; j++) {
-						c.v[i + (*this).column*j] = (*this).v[i] * (*this).v[j];
+				for (int i = 0; i < this->column; i++) {
+					for (int j = i; j < this->column; j++) {
+						c.v[i + this->column*j] = this->v[i] * this->v[j];
 					}
 				}
-				for (int i = 0; i < (*this).column; i++) {
-					for (int j = i+1; j < (*this).column; j++) {
-						c.v[j + (*this).column*i] = c.v[i + (*this).column*j];
+				for (int i = 0; i < this->column; i++) {
+					for (int j = i+1; j < this->column; j++) {
+						c.v[j + this->column*i] = c.v[i + this->column*j];
 					}
 				}
 			}
-			else if ((*this).type == 'M') {
+			else if (this->type == 'M') {
 				c.type = 'M';
-				for (int i = 0; i < (*this).column; i++) {
-					for (int j = i; j < (*this).column; j++) {
-						for (int k = 0; k < (*this).row; k++) {
-							c.v[i + (*this).column*j] += (*this).v[k + (*this).row*i] * (*this).v[k + (*this).row*j];
+				for (int i = 0; i < this->column; i++) {
+					for (int j = i; j < this->column; j++) {
+						for (int k = 0; k < this->row; k++) {
+							c.v[i + this->column*j] += this->v[k + this->row*i] * this->v[k + this->row*j];
 						}
 					}
 				}
-				for (int i = 0; i < (*this).column; i++) {
-					for (int j = i+1; j < (*this).column; j++) {
-						c.v[j + (*this).column*i] = c.v[i + (*this).column*j];
+				for (int i = 0; i < this->column; i++) {
+					for (int j = i+1; j < this->column; j++) {
+						c.v[j + this->column*i] = c.v[i + this->column*j];
 					}
 				}
 			}
 			else {
-				std::cout << "*:error " << (*this).type << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::state_error>("mulltmm: unsupported matrix type: ", this->type);
 			}
 		}
 		// A = a*A
@@ -808,76 +803,69 @@ namespace vcp{
 
 		// C = A > B
 		void gt(const mats< _T >& B, mbool& C) const {
-			if ((*this).row != B.row && (*this).column != B.column) {
-				std::cout << "gt:error " << std::endl;
-				exit(1);
+			if (this->row != B.row || this->column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("gt: dimension mismatch");
 			}
-			C.allfalse((*this).row, (*this).column);
-			for (int i = 0; i < (*this).n; i++) {
-				C.v[i] = (*this).v[i] > B.v[i];
+			C.allfalse(this->row, this->column);
+			for (int i = 0; i < this->n; i++) {
+				C.v[i] = this->v[i] > B.v[i];
 			}
 		}
 		// C = A >= B
 		void ge(const mats< _T >& B, mbool& C) const {
-			if ((*this).row != B.row && (*this).column != B.column) {
-				std::cout << "gt:error " << std::endl;
-				exit(1);
+			if (this->row != B.row || this->column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("ge: dimension mismatch");
 			}
-			C.allfalse((*this).row, (*this).column);
-			for (int i = 0; i < (*this).n; i++) {
-				C.v[i] = (*this).v[i] >= B.v[i];
+			C.allfalse(this->row, this->column);
+			for (int i = 0; i < this->n; i++) {
+				C.v[i] = this->v[i] >= B.v[i];
 			}
 		}
 		// C = A < B
 		void lt(const mats< _T >& B, mbool& C) const {
-			if ((*this).row != B.row && (*this).column != B.column) {
-				std::cout << "gt:error " << std::endl;
-				exit(1);
+			if (this->row != B.row || this->column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("lt: dimension mismatch");
 			}
-			C.allfalse((*this).row, (*this).column);
-			for (int i = 0; i < (*this).n; i++) {
-				C.v[i] = (*this).v[i] < B.v[i];
+			C.allfalse(this->row, this->column);
+			for (int i = 0; i < this->n; i++) {
+				C.v[i] = this->v[i] < B.v[i];
 			}
 		}
 		// C = A <= B
 		void le(const mats< _T >& B, mbool& C) const {
-			if ((*this).row != B.row && (*this).column != B.column) {
-				std::cout << "gt:error " << std::endl;
-				exit(1);
+			if (this->row != B.row || this->column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("le: dimension mismatch");
 			}
-			C.allfalse((*this).row, (*this).column);
-			for (int i = 0; i < (*this).n; i++) {
-				C.v[i] = (*this).v[i] <= B.v[i];
+			C.allfalse(this->row, this->column);
+			for (int i = 0; i < this->n; i++) {
+				C.v[i] = this->v[i] <= B.v[i];
 			}
 		}
 		// C = A == B
 		void eq(const mats< _T >& B, mbool& C) const {
-			if ((*this).row != B.row && (*this).column != B.column) {
-				std::cout << "gt:error " << std::endl;
-				exit(1);
+			if (this->row != B.row || this->column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("eq: dimension mismatch");
 			}
-			C.allfalse((*this).row, (*this).column);
-			for (int i = 0; i < (*this).n; i++) {
-				C.v[i] = (*this).v[i] == B.v[i];
+			C.allfalse(this->row, this->column);
+			for (int i = 0; i < this->n; i++) {
+				C.v[i] = this->v[i] == B.v[i];
 			}
 		}
 		// C = A != B
 		void neq(const mats< _T >& B, mbool& C) const {
-			if ((*this).row != B.row && (*this).column != B.column) {
-				std::cout << "gt:error " << std::endl;
-				exit(1);
+			if (this->row != B.row || this->column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("neq: dimension mismatch");
 			}
-			C.allfalse((*this).row, (*this).column);
-			for (int i = 0; i < (*this).n; i++) {
-				C.v[i] = (*this).v[i] != B.v[i];
+			C.allfalse(this->row, this->column);
+			for (int i = 0; i < this->n; i++) {
+				C.v[i] = this->v[i] != B.v[i];
 			}
 		}
 
 		// A = pow(A,B)
 		void powmmA(const mats< _T >& B) {
 			if (row != B.row || column != B.column) {
-				std::cout << "+:error " << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>("powmmA: dimension mismatch");
 			}
 			if (type == 'S') {
 				using std::pow;
@@ -900,8 +888,7 @@ namespace vcp{
 		// A = pow(B,A)
 		void powmmB(const mats< _T >& B) {
 			if (row != B.row || column != B.column) {
-				std::cout << "+:error " << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>("powmmB: dimension mismatch");
 			}
 			if (type == 'S') {
 				using std::pow;
@@ -1057,8 +1044,7 @@ namespace vcp{
 				return;
 			}
 			else {
-				std::cout << "error : diag" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::state_error>("diag: unsupported matrix type: ", this->type);
 			}
 		}
 		void transpose(mats< _T >& B)const {
@@ -1068,14 +1054,14 @@ namespace vcp{
 			}
 			else if (type == 'R') {
 				B = *this;
-				B.row = (*this).column;
-				B.column = (*this).row;
+				B.row = this->column;
+				B.column = this->row;
 				B.type = 'C';
 			}
 			else if (type == 'C') {
 				B = *this;
-				B.row = (*this).column;
-				B.column = (*this).row;
+				B.row = this->column;
+				B.column = this->row;
 				B.type = 'R';
 			}
 			else if (type == 'M') {
@@ -1087,8 +1073,7 @@ namespace vcp{
 				}
 			}
 			else {
-				std::cout << "error : transpose" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::state_error>("transpose: unsupported matrix type: ", this->type);
 			}
 		}
 
@@ -1101,8 +1086,8 @@ namespace vcp{
 			Bm = B.column;
 
 			if (An != Bn) {
-				std::cout << "Error : horzcat : An != Bn" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"horzcat: row size mismatch: ", An, " != ", Bn);
 			}
 			C.zeros(An, Am);
 			for (int i = 0; i < n; i++) {
@@ -1125,8 +1110,8 @@ namespace vcp{
 			Bm = B.column;
 
 			if (Am != Bm) {
-				std::cout << "Error : vercat : Am != Bm" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"vercat: column size mismatch: ", Am, " != ", Bm);
 			}
 			C.zeros(An, Am);
 			for (int i = 0; i < n; i++) {
@@ -1146,8 +1131,8 @@ namespace vcp{
 			std::vector<int> l2 = list2;
 
 			if (list1.size() > 3 || list2.size() > 3 || list1.size() < 0 || list2.size() < 0) {
-				std::cout << "ERROR : submat : size error" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::index_error>(
+					"submat: invalid selector size: ", list1.size(), ", ", list2.size());
 			}
 			if (list1.size() == 0 ) {
 				if (list2.size() == 0) {
@@ -1155,27 +1140,26 @@ namespace vcp{
 					return;
 				}
 				else if (list2.size() == 1) {
-					if (l2[0] < 0 || l2[0] >= (*this).column) {
-						std::cout << "ERROR : submat :" << l2[0] << std::endl;
-						exit(1);
+					if (l2[0] < 0 || l2[0] >= this->column) {
+						vcp::throw_error<vcp::index_error>("submat: column index out of range: ", l2[0]);
 					}
-					B.zeros((*this).row, 1);
-					for (int i = 0; i < (*this).row; i++) {
-						B.v[i] = (*this).v[i + (*this).row*l2[0]];
+					B.zeros(this->row, 1);
+					for (int i = 0; i < this->row; i++) {
+						B.v[i] = this->v[i + this->row*l2[0]];
 					}
 					return;
 				}
 				else if (list2.size() == 2) {
-					if (l2[0] > l2[1] || l2[0] < 0 || l2[1] >= (*this).column) {
-						std::cout << "ERROR : submat :" << l2[0] << " >= " << l2[1] << std::endl;
-						exit(1);
+					if (l2[0] > l2[1] || l2[0] < 0 || l2[1] >= this->column) {
+						vcp::throw_error<vcp::index_error>(
+							"submat: invalid column range: ", l2[0], ":", l2[1]);
 					}
 					int l2i = l2[1] - l2[0] + 1;
-					B.zeros((*this).row, l2i);
+					B.zeros(this->row, l2i);
 					int k = 0;
-					for (int i = 0; i < (*this).row; i++) {
+					for (int i = 0; i < this->row; i++) {
 						for (int j = l2[0]; j <= l2[1]; j++) {
-							B.v[i + B.row*k] = (*this).v[i + (*this).row*j];
+							B.v[i + B.row*k] = this->v[i + this->row*j];
 							k++;
 						}
 						k = 0;
@@ -1183,20 +1167,20 @@ namespace vcp{
 					return;
 				}
 				else if (list2.size() == 3) {
-					if (l2[0] > l2[2] || l2[0] < 0 || l2[1] < 1 || l2[2] >= (*this).column) {
-						std::cout << "ERROR : submat :" << l2[0] << " >= " << l2[2] << " || " << l2[1] << " < 1" << std::endl;
-						exit(1);
+					if (l2[0] > l2[2] || l2[0] < 0 || l2[1] < 1 || l2[2] >= this->column) {
+						vcp::throw_error<vcp::index_error>(
+							"submat: invalid column range: ", l2[0], ":", l2[1], ":", l2[2]);
 					}
 					int k = 0;
 					for (int i = l2[0]; i <= l2[2]; i += l2[1]) {
 						k++;
 					}
 
-					B.zeros((*this).row, k);
+					B.zeros(this->row, k);
 					k = 0;
-					for (int i = 0; i < (*this).row; i++) {
+					for (int i = 0; i < this->row; i++) {
 						for (int j = l2[0]; j <= l2[2]; j += l2[1]) {
-							B.v[i + B.row*k] = (*this).v[i + (*this).row*j];
+							B.v[i + B.row*k] = this->v[i + this->row*j];
 							k++;
 						}
 						k = 0;
@@ -1205,44 +1189,42 @@ namespace vcp{
 				}
 			}
 			else if (list1.size() == 1) {
-				if (l1[0] < 0 || l1[0] >= (*this).row) {
-					std::cout << "ERROR : submat :" << l1[0] << std::endl;
-					exit(1);
+				if (l1[0] < 0 || l1[0] >= this->row) {
+					vcp::throw_error<vcp::index_error>("submat: row index out of range: ", l1[0]);
 				}
 				if (list2.size() == 0) {
-					B.zeros(1, (*this).column);
-					for (int i = 0; i < (*this).column; i++) {
-						B.v[i] = (*this).v[l1[0] + (*this).row*i];
+					B.zeros(1, this->column);
+					for (int i = 0; i < this->column; i++) {
+						B.v[i] = this->v[l1[0] + this->row*i];
 					}
 					return;
 				}
-				else if (list2.size() == 1 || l2[0] >= (*this).column) {
-					if (l2[0] < 0) {
-						std::cout << "ERROR : submat :" << l2[0] << std::endl;
-						exit(1);
+				else if (list2.size() == 1) {
+					if (l2[0] < 0 || l2[0] >= this->column) {
+						vcp::throw_error<vcp::index_error>("submat: column index out of range: ", l2[0]);
 					}
 					B.zeros(1, 1);
-					B.v[0] = (*this).v[l1[0] + (*this).row*l2[0]];
+					B.v[0] = this->v[l1[0] + this->row*l2[0]];
 					return;
 				}
 				else if (list2.size() == 2) {
-					if (l2[0] > l2[1] || l2[0] < 0 || l2[1] >= (*this).column) {
-						std::cout << "ERROR : submat :" << l2[0] << " >= " << l2[1] << std::endl;
-						exit(1);
+					if (l2[0] > l2[1] || l2[0] < 0 || l2[1] >= this->column) {
+						vcp::throw_error<vcp::index_error>(
+							"submat: invalid column range: ", l2[0], ":", l2[1]);
 					}
 					int l2i = l2[1] - l2[0] + 1;
 					B.zeros(1, l2i);
 					int k = 0;
 					for (int j = l2[0]; j <= l2[1]; j++) {
-						B.v[k] = (*this).v[l1[0] + (*this).row*j];
+						B.v[k] = this->v[l1[0] + this->row*j];
 						k++;
 					}
 					return;
 				}
 				else if (list2.size() == 3) {
-					if (l2[0] > l2[2] || l2[0] < 0 || l2[1] < 1 || l2[2] >= (*this).column) {
-						std::cout << "ERROR : submat :" << l2[0] << " >= " << l2[2] << " || " << l2[1] << " < 1" << std::endl;
-						exit(1);
+					if (l2[0] > l2[2] || l2[0] < 0 || l2[1] < 1 || l2[2] >= this->column) {
+						vcp::throw_error<vcp::index_error>(
+							"submat: invalid column range: ", l2[0], ":", l2[1], ":", l2[2]);
 					}
 					int k = 0;
 					for (int i = l2[0]; i <= l2[2]; i += l2[1]) {
@@ -1252,46 +1234,45 @@ namespace vcp{
 					B.zeros(1, k);
 					k = 0;
 					for (int j = l2[0]; j <= l2[2]; j += l2[1]) {
-						B.v[k] = (*this).v[l1[0] + (*this).row*j];
+						B.v[k] = this->v[l1[0] + this->row*j];
 						k++;
 					}
 					return;
 				}
 			}
 			else if (list1.size() == 2) {
-				if (l1[0] > l1[1] || l1[0] < 0 || l1[1] >= (*this).row) {
-					std::cout << "ERROR : submat :" << l1[0] << " >= " << l1[1] << std::endl;
-					exit(1);
+				if (l1[0] > l1[1] || l1[0] < 0 || l1[1] >= this->row) {
+					vcp::throw_error<vcp::index_error>(
+						"submat: invalid row range: ", l1[0], ":", l1[1]);
 				}
 				int l1i = l1[1] - l1[0] + 1;
 				if (list2.size() == 0) {
-					B.zeros(l1i, (*this).column);
+					B.zeros(l1i, this->column);
 					int k = 0;
 					for (int i = l1[0]; i <= l1[1]; i++) {
-						for (int j = 0; j < (*this).column; j++) {
-							B.v[k + B.row*j] = (*this).v[i + (*this).row*j];	
+						for (int j = 0; j < this->column; j++) {
+							B.v[k + B.row*j] = this->v[i + this->row*j];	
 						}
 						k++;
 					}
 					return;
 				}
 				else if (list2.size() == 1) {
-					if (l2[0] < 0 || l2[0] >= (*this).column) {
-						std::cout << "ERROR : submat :" << l2[0] << std::endl;
-						exit(1);
+					if (l2[0] < 0 || l2[0] >= this->column) {
+						vcp::throw_error<vcp::index_error>("submat: column index out of range: ", l2[0]);
 					}
 					B.zeros(l1i, 1);
 					int k = 0;
 					for (int i = l1[0]; i <= l1[1]; i++) {
-						B.v[k] = (*this).v[i + (*this).row*l2[0]];
+						B.v[k] = this->v[i + this->row*l2[0]];
 						k++;
 					}
 					return;
 				}
 				else if (list2.size() == 2) {
-					if (l2[0] > l2[1] || l2[0] < 0 || l2[1] >= (*this).column) {
-						std::cout << "ERROR : submat :" << l2[0] << " >= " << l2[1] << std::endl;
-						exit(1);
+					if (l2[0] > l2[1] || l2[0] < 0 || l2[1] >= this->column) {
+						vcp::throw_error<vcp::index_error>(
+							"submat: invalid column range: ", l2[0], ":", l2[1]);
 					}
 					int l2i = l2[1] - l2[0] + 1;
 					B.zeros(l1i, l2i);
@@ -1299,7 +1280,7 @@ namespace vcp{
 					int kj = 0;
 					for (int i = l1[0]; i <= l1[1]; i++) {
 						for (int j = l2[0]; j <= l2[1]; j++) {
-							B.v[ki + B.row*kj] = (*this).v[i + (*this).row*j];
+							B.v[ki + B.row*kj] = this->v[i + this->row*j];
 							kj++;
 						}
 						kj = 0;
@@ -1308,9 +1289,9 @@ namespace vcp{
 					return;
 				}
 				else if (list2.size() == 3) {
-					if (l2[0] > l2[2] || l2[0] < 0 || l2[1] < 1 || l2[2] >= (*this).column) {
-						std::cout << "ERROR : submat :" << l2[0] << " >= " << l2[2] << " || " << l2[1] << " < 1" << std::endl;
-						exit(1);
+					if (l2[0] > l2[2] || l2[0] < 0 || l2[1] < 1 || l2[2] >= this->column) {
+						vcp::throw_error<vcp::index_error>(
+							"submat: invalid column range: ", l2[0], ":", l2[1], ":", l2[2]);
 					}
 					int ki = 0;
 					for (int i = l2[0]; i <= l2[2]; i += l2[1]) {
@@ -1322,7 +1303,7 @@ namespace vcp{
 					int kj = 0;
 					for (int i = l1[0]; i <= l1[1]; i++) {
 						for (int j = l2[0]; j <= l2[2]; j += l2[1]) {
-							B.v[ki + B.row*kj] = (*this).v[i + (*this).row*j];
+							B.v[ki + B.row*kj] = this->v[i + this->row*j];
 							kj++;
 						}
 						kj = 0;
@@ -1332,42 +1313,41 @@ namespace vcp{
 				}
 			}
 			else if (list1.size() == 3) {
-				if (l1[0] > l1[2] || l1[0] < 0 || l1[1] < 1 || l1[2] >= (*this).row) {
-					std::cout << "ERROR : submat :" << l1[0] << " >= " << l1[2] << " || " << l1[1] << " < 1" << std::endl;
-					exit(1);
+				if (l1[0] > l1[2] || l1[0] < 0 || l1[1] < 1 || l1[2] >= this->row) {
+					vcp::throw_error<vcp::index_error>(
+						"submat: invalid row range: ", l1[0], ":", l1[1], ":", l1[2]);
 				}
 				int l1i = 0;
 				for (int i = l1[0]; i <= l1[2]; i += l1[1]) {
 					l1i++;
 				}
 				if (list2.size() == 0) {
-					B.zeros(l1i, (*this).column);
+					B.zeros(l1i, this->column);
 					int k = 0;
 					for (int i = l1[0]; i <= l1[2]; i += l1[1]) {
-						for (int j = 0; j < (*this).column; j++) {
-							B.v[k + B.row*j] = (*this).v[i + (*this).row*j];
+						for (int j = 0; j < this->column; j++) {
+							B.v[k + B.row*j] = this->v[i + this->row*j];
 						}
 						k++;
 					}
 					return;
 				}
 				else if (list2.size() == 1) {
-					if (l2[0] < 0 || l2[0] >= (*this).column) {
-						std::cout << "ERROR : submat :" << l2[0] << std::endl;
-						exit(1);
+					if (l2[0] < 0 || l2[0] >= this->column) {
+						vcp::throw_error<vcp::index_error>("submat: column index out of range: ", l2[0]);
 					}
 					B.zeros(l1i, 1);
 					int k = 0;
 					for (int i = l1[0]; i <= l1[2]; i += l1[1]) {
-						B.v[k] = (*this).v[i + (*this).row*l2[0]];
+						B.v[k] = this->v[i + this->row*l2[0]];
 						k++;
 					}
 					return;
 				}
 				else if (list2.size() == 2) {
-					if (l2[0] > l2[1] || l2[0] < 0 || l2[1] >= (*this).column) {
-						std::cout << "ERROR : submat :" << l2[0] << " >= " << l2[1] << std::endl;
-						exit(1);
+					if (l2[0] > l2[1] || l2[0] < 0 || l2[1] >= this->column) {
+						vcp::throw_error<vcp::index_error>(
+							"submat: invalid column range: ", l2[0], ":", l2[1]);
 					}
 					int l2i = l2[1] - l2[0] + 1;
 					B.zeros(l1i, l2i);
@@ -1375,7 +1355,7 @@ namespace vcp{
 					int kj = 0;
 					for (int i = l1[0]; i <= l1[2]; i += l1[1]) {
 						for (int j = l2[0]; j <= l2[1]; j++) {
-							B.v[ki + B.row*kj] = (*this).v[i + (*this).row*j];
+							B.v[ki + B.row*kj] = this->v[i + this->row*j];
 							kj++;
 						}
 						kj = 0;
@@ -1384,9 +1364,9 @@ namespace vcp{
 					return;
 				}
 				else if (list2.size() == 3) {
-					if (l2[0] > l2[2] || l2[0] < 0 || l2[1] < 1 || l2[2] >= (*this).column) {
-						std::cout << "ERROR : submat :" << l2[0] << " >= " << l2[2] << " || " << l2[1] << " < 1" << std::endl;
-						exit(1);
+					if (l2[0] > l2[2] || l2[0] < 0 || l2[1] < 1 || l2[2] >= this->column) {
+						vcp::throw_error<vcp::index_error>(
+							"submat: invalid column range: ", l2[0], ":", l2[1], ":", l2[2]);
 					}
 					int ki = 0;
 					for (int i = l2[0]; i <= l2[2]; i += l2[1]) {
@@ -1398,7 +1378,7 @@ namespace vcp{
 					int kj = 0;
 					for (int i = l1[0]; i <= l1[2]; i += l1[1]) {
 						for (int j = l2[0]; j <= l2[2]; j += l2[1]) {
-							B.v[ki + B.row*kj] = (*this).v[i + (*this).row*j];
+							B.v[ki + B.row*kj] = this->v[i + this->row*j];
 							kj++;
 						}
 						kj = 0;
@@ -1435,8 +1415,7 @@ namespace vcp{
 				return;
 			}
 			else {
-				std::cout << "error : sum" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::state_error>("sum: unsupported matrix type: ", this->type);
 			}
 		}
 		void max(mats< _T >& B)const {
@@ -1467,8 +1446,7 @@ namespace vcp{
 				return;
 			}
 			else {
-				std::cout << "error : max" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::state_error>("max: unsupported matrix type: ", this->type);
 			}
 		}
 		void min(mats< _T >& B)const {
@@ -1499,8 +1477,7 @@ namespace vcp{
 				return;
 			}
 			else {
-				std::cout << "error : max" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::state_error>("min: unsupported matrix type: ", this->type);
 			}
 		}
 		void normone(mats< _T >& B)const {
@@ -1541,8 +1518,7 @@ namespace vcp{
 				return;
 			}
 			else {
-				std::cout << "error : normone" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::state_error>("normone: unsupported matrix type: ", this->type);
 			}
 		}
 		void normtwo(){
@@ -1557,11 +1533,11 @@ namespace vcp{
 				using std::pow;
 				B = pow(v[0],2);
 				for (int i = 1; i < n; i++) {
-					B += pow(v[0],2);
+					B += pow(v[i],2);
 				}
 				B = sqrt(B);
-				(*this).zeros(1);
-				(*this).v[0] = B;
+				this->zeros(1);
+				this->v[0] = B;
 				return;
 			}
 			else if (type == 'M') {
@@ -1569,22 +1545,21 @@ namespace vcp{
 				using std::sqrt;
 				using std::max;
 				mats< _T > A;
-				(*this).mulltmm(A); // A = A^T*A
+				this->mulltmm(A); // A = A^T*A
 				(*this) = A;
 				A.clear();
-				(*this).eigsym();
+				this->eigsym();
 				
-				for (int i = 0; i < (*this).row; i++) {
-					B = max(B, (*this).v[i + row*i]);
+				for (int i = 0; i < this->row; i++) {
+					B = max(B, this->v[i + row*i]);
 				}
 				B = sqrt(B);
-				(*this).zeros(1);
-				(*this).v[0] = B;
+				this->zeros(1);
+				this->v[0] = B;
 				return;
 			}
 			else {
-				std::cout << "error : normtwo" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::state_error>("normtwo: unsupported matrix type: ", this->type);
 			}
 		}
 		void norminf(mats< _T >& B)const {
@@ -1624,8 +1599,7 @@ namespace vcp{
 				return;
 			}
 			else {
-				std::cout << "error : norminf" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::state_error>("norminf: unsupported matrix type: ", this->type);
 			}
 		}
 		int length()const {
@@ -1677,8 +1651,8 @@ namespace vcp{
 		}
 		virtual void LUtoLandU(mats< _T >& L, mats< int >& ipiv) {
 			if (column != row) {
-				std::cout << "error : LUtoLandU row != column" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"LUtoLandU: matrix must be square: ", row, " != ", column);
 			}
 			L = *this;
 			for (int i = 0; i < row; i++) {
@@ -1696,12 +1670,12 @@ namespace vcp{
 			for (int i = 0; i < row; i++) {
 				L.v[i + row*i] = T1;
 			}
-			(*this).triu();
+			this->triu();
 		}
 		void ludecomposition(mats< int >& ipiv) {
 			if (column != row) {
-				std::cout << "error : ludeconposition row != column" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"ludecomposition: matrix must be square: ", row, " != ", column);
 			}
 			int nn = row;
 			ipiv.zeros(nn, 1);
@@ -1737,8 +1711,9 @@ namespace vcp{
 		}
 		void luonedsolve(mats< _T >& b, mats< _T >& x, mats< int >& ipiv) const {
 			if (row != column || b.column != 1 || b.row != row) {
-				std::cout << "error : luonedsolve row != column || b.column != 1 || b.row != row" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"luonedsolve: invalid dimensions: A=(", row, ", ", column,
+					"), b=(", b.row, ", ", b.column, ")");
 			}
 			x.zeros(row, 1);
 			for (int j = 0; j < row - 1; j++) {
@@ -1758,11 +1733,12 @@ namespace vcp{
 		}
 		void linearsolve(mats< _T >& b, mats< _T >& x) {
 			if (row != column || b.row != row) {
-				std::cout << "error : linearsolve row != column || b.row != row" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"linearsolve: invalid dimensions: A=(", row, ", ", column,
+					"), b=(", b.row, ", ", b.column, ")");
 			}
 			mats< int > ipiv;
-			(*this).ludecomposition(ipiv);
+			this->ludecomposition(ipiv);
 			mats< _T > bb, xx;
 			x.zeros(row, b.column);
 			bb.zeros(row, 1);
@@ -1771,7 +1747,7 @@ namespace vcp{
 				for (int i = 0; i < b.row; i++) {
 					bb.v[i] = b.v[i + row*j];
 				}
-				(*this).luonedsolve(bb, xx, ipiv);
+				this->luonedsolve(bb, xx, ipiv);
 				for (int i = 0; i < b.row; i++) {
 					x.v[i + row*j] = xx.v[i];
 				}
@@ -1779,11 +1755,11 @@ namespace vcp{
 		}
 		virtual void inv() {
 			if (row != column) {
-				std::cout << "error : inv row != column" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"inv: matrix must be square: ", row, " != ", column);
 			}
 			mats< int > ipiv;
-			(*this).ludecomposition(ipiv);
+			this->ludecomposition(ipiv);
 			mats< _T > b;
 			b.eye(row);
 			mats< _T > bb, xx;
@@ -1793,7 +1769,7 @@ namespace vcp{
 				for (int i = 0; i < b.row; i++) {
 					bb.v[i] = b.v[i + row*j];
 				}
-				(*this).luonedsolve(bb, xx, ipiv);
+				this->luonedsolve(bb, xx, ipiv);
 				for (int i = 0; i < b.row; i++) {
 					b.v[i + row*j] = xx.v[i];
 				}
@@ -1806,9 +1782,8 @@ namespace vcp{
 		}
 		// Cholesky decomposition (Cholesky factor : upper triangular)
 		virtual void Cholesky() {
-			if (!(*this).is_symmetric()) {
-				std::cout << "error : Cholesky : no symmetric matrix" << std::endl;
-				exit(1);
+			if (!this->is_symmetric()) {
+				vcp::throw_error<vcp::domain_error>("Cholesky: matrix must be symmetric");
 			}
 			using std::sqrt;
 
@@ -1837,8 +1812,8 @@ namespace vcp{
 		}
 		void TriLudecomposition(mats< int >& ipiv) {
 			if (column != row) {
-				std::cout << "error : TriLudecomposition row != column" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"TriLudecomposition: matrix must be square: ", row, " != ", column);
 			}
 			int nn = row;
 			ipiv.zeros(nn, 1);
@@ -1877,8 +1852,8 @@ namespace vcp{
 		// Householder tansformation for a Symmetric Matrix
 		void SymTridiagonalization() {
 			if (row != column) {
-				std::cout << "error : SymTridiagonalization row != column" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"SymTridiagonalization: matrix must be square: ", row, " != ", column);
 			}
 			_T s = _T(0);
 			_T c, tmp;
@@ -1940,8 +1915,8 @@ namespace vcp{
 		//TriA = P*A*transpose(P)
 		void SymTridiagonalization(mats< _T >& P) {
 			if (row != column) {
-				std::cout << "error : SymTridiagonalization row != column" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"SymTridiagonalization: matrix must be square: ", row, " != ", column);
 			}
 			_T s = _T(0);
 			_T c, tmp;
@@ -2024,8 +1999,8 @@ namespace vcp{
 		// Householder tansformation for a General Matrix
 		void HessenbergTrans() {
 			if (row != column) {
-				std::cout << "error : HessenbergTrans row != column" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"HessenbergTrans: matrix must be square: ", row, " != ", column);
 			}
 			_T s = _T(0);
 			_T c;
@@ -2072,8 +2047,8 @@ namespace vcp{
 		// QR deconposition for a General Matrix using Householder tansformation
 		void Householder_qrdecomposition(mats< _T >& Q) {
 			if (row != column) {
-				std::cout << "error : Householder_qrdecomposition row != column" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"Householder_qrdecomposition: matrix must be square: ", row, " != ", column);
 			}
 			using std::pow;
 			using std::sqrt;
@@ -2152,8 +2127,9 @@ namespace vcp{
 		// QR deconposition for a Hessenberg Matrix using Householder tansformation
 		void Householder_qrdecomposition_Hessenberg(mats< _T >& Q) {
 			if (row != column) {
-				std::cout << "error : Householder_qrdecomposition_Hessenberg row != column" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"Householder_qrdecomposition_Hessenberg: matrix must be square: ",
+					row, " != ", column);
 			}
 			using std::pow;
 			using std::sqrt;
@@ -2230,8 +2206,9 @@ namespace vcp{
 		// QR deconposition for a Tridiagonal Matrix using Householder tansformation
 		void Householder_qrdecomposition_Tridiag(mats< _T >& Q) {
 			if (row != column) {
-				std::cout << "error : Householder_qrdecomposition_Tridiag row != column" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"Householder_qrdecomposition_Tridiag: matrix must be square: ",
+					row, " != ", column);
 			}
 			using std::pow;
 			using std::sqrt;
@@ -2423,17 +2400,15 @@ namespace vcp{
 
 		}
 		virtual void eigsym(int itep = 1) {
-			if (!(*this).is_symmetric()) {
-				std::cout << "error : eigsym : no symmetric matrix" << std::endl;
-				exit(1);
+			if (!this->is_symmetric()) {
+				vcp::throw_error<vcp::domain_error>("eigsym: matrix must be symmetric");
 			}
-			(*this).SymTridiagonalization();
-			(*this).eigtrisym(itep);
+			this->SymTridiagonalization();
+			this->eigtrisym(itep);
 		}
 		void eigsym(mats< _T >& V, int itep = 1) {
-			if (!(*this).is_symmetric()) {
-				std::cout << "error : eigsym : no symmetric matrix" << std::endl;
-				exit(1);
+			if (!this->is_symmetric()) {
+				vcp::throw_error<vcp::domain_error>("eigsym: matrix must be symmetric");
 			}
 			using std::abs;
 			using std::pow;
@@ -2449,7 +2424,7 @@ namespace vcp{
 			_T rate = _T(0.6); // rate for setting mu
 
 //			std::cout << "Check1" << std::endl;
-			(*this).SymTridiagonalization(V);
+			this->SymTridiagonalization(V);
 
 			// transpose V
 			Vtmp = V;
@@ -2463,10 +2438,10 @@ namespace vcp{
 
 //			std::cout << "Check2" << std::endl;
 			TriA = (*this);
-			(*this).eigtrisym(itep);
+			this->eigtrisym(itep);
 
 //			std::cout << "Check3" << std::endl;
-			(*this).diag(Eigval);
+			this->diag(Eigval);
 			tmpeig1 = Eigval; // eigenvalues by QR method
 //			std::cout << "eigenvalues by QR method" << std::endl;
 //			std::cout << Eigval << std::endl;
@@ -2626,69 +2601,67 @@ namespace vcp{
 //			V = Vtmp * V;
 			Vtmp.mulmm(vv, V);
 			// eigenvalues (diagonal elements)
-			(*this).zeros(row);
+			this->zeros(row);
 			for (int i = 0; i < row; i++) {
-				(*this).v[i + row * i] = eig.v[i];
+				this->v[i + row * i] = eig.v[i];
 			}
 
 		}
 		void eigsymge(mats< _T >& B, int itep = 1) {
-			if (!(*this).is_symmetric()) {
-				std::cout << "error : eigsym : no symmetric matrix A" << std::endl;
-				exit(1);
+			if (!this->is_symmetric()) {
+				vcp::throw_error<vcp::domain_error>("eigsymge: matrix A must be symmetric");
 			}
 			if (!B.is_symmetric()) {
-				std::cout << "error : eigsym : no symmetric matrix B" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::domain_error>("eigsymge: matrix B must be symmetric");
 			}
-			if ((*this).row != B.row || (*this).column != B.column) {
-				std::cout << "error : eigsym : no muching matrix size matrix A, B" << std::endl;
-				exit(1);
+			if (this->row != B.row || this->column != B.column) {
+				vcp::throw_error<vcp::dimension_error>(
+					"eigsymge: dimension mismatch: A=(", this->row, ", ", this->column,
+					"), B=(", B.row, ", ", B.column, ")");
 			}
 			B.Cholesky();
 			B.inv();
 			mats< _T > C;
-			(*this).mulmm(B, C);
+			this->mulmm(B, C);
 			(*this) = B;
-			(*this).transpose(B);
+			this->transpose(B);
 			B.mulmm(C, (*this));
 			
-			for (int i = 0; i < (*this).row; i++) {
-				for (int j = i + 1; j < (*this).column; j++) {
-					(*this).v[i + row*j] = (*this).v[j + row*i];
+			for (int i = 0; i < this->row; i++) {
+				for (int j = i + 1; j < this->column; j++) {
+					this->v[i + row*j] = this->v[j + row*i];
 				}
 			}
 
-			(*this).eigsym();
+			this->eigsym();
 		}
 		void eigsymge(mats< _T >& B, mats< _T >& V, int itep = 1) {
-			if (!(*this).is_symmetric()) {
-				std::cout << "error : eigsym : no symmetric matrix A" << std::endl;
-				exit(1);
+			if (!this->is_symmetric()) {
+				vcp::throw_error<vcp::domain_error>("eigsymge: matrix A must be symmetric");
 			}
 			if (!B.is_symmetric()) {
-				std::cout << "error : eigsym : no symmetric matrix B" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::domain_error>("eigsymge: matrix B must be symmetric");
 			}
-			if ((*this).row != B.row || (*this).column != B.column) {
-				std::cout << "error : eigsym : no muching matrix size matrix A, B" << std::endl;
-				exit(1);
+			if (this->row != B.row || this->column != B.column) {
+				vcp::throw_error<vcp::dimension_error>(
+					"eigsymge: dimension mismatch: A=(", this->row, ", ", this->column,
+					"), B=(", B.row, ", ", B.column, ")");
 			}
 			B.Cholesky();
 			B.inv();
 			mats< _T > C;
-			(*this).mulmm(B, C);
+			this->mulmm(B, C);
 			(*this) = B;
-			(*this).transpose(B);
+			this->transpose(B);
 			B.mulmm(C, (*this));
 
-			for (int i = 0; i < (*this).row; i++) {
-				for (int j = i + 1; j < (*this).column; j++) {
-					(*this).v[i + row*j] = (*this).v[j + row*i];
+			for (int i = 0; i < this->row; i++) {
+				for (int j = i + 1; j < this->column; j++) {
+					this->v[i + row*j] = this->v[j + row*i];
 				}
 			}
 
-			(*this).eigsym(V);
+			this->eigsym(V);
 			B.transpose(C);
 			B = V;
 			C.mulmm(B, V);
@@ -2723,7 +2696,7 @@ namespace vcp{
 			return os;
 		}
 
-		std::vector< _T > vecpointer()const {
+		const std::vector< _T >& vecpointer()const {
 			return v;
 		}
 
@@ -2755,7 +2728,6 @@ namespace vcp{
 					}
 				}
 			}
-			v.shrink_to_fit();
 		}
 		void ones(const int i) {
 			row = i;
@@ -2776,7 +2748,6 @@ namespace vcp{
 			for (int j = 0; j < n; j++) {
 				v[j] = _T(1);
 			}
-			v.shrink_to_fit();
 		}
 		void ones(const int r, const int c) {
 			_T a0 = _T(1);
@@ -2806,7 +2777,6 @@ namespace vcp{
 					v[i + row*j] = a0;
 				}
 			}
-			v.shrink_to_fit();
 		}
 		void zeros(const int i) {
 			row = i;
@@ -2827,7 +2797,6 @@ namespace vcp{
 			for (int j = 0; j < n; j++) {
 				v[j] = _T(0);
 			}
-			v.shrink_to_fit();
 		}
 		void zeros(const int r, const int c) {
 			_T a0 = _T(0);
@@ -2857,14 +2826,12 @@ namespace vcp{
 					v[i + row*j] = a0;
 				}
 			}
-			v.shrink_to_fit();
 		}
 		void rand(const int i) {
 #ifdef rand_debug
 			std::cout << "warning : A data type of the function rand is double." << std::endl;
 #endif
-			std::random_device seed_gen;
-			std::mt19937 engine(seed_gen());
+			static thread_local std::mt19937 engine(std::random_device{}());
 			std::normal_distribution< double > dist(0.0, 1.0);
 			row = i;
 			column = i;
@@ -2880,14 +2847,12 @@ namespace vcp{
 			for (int j = 0; j < n; j++) {
 				v[j] = _T(dist(engine));
 			}
-			v.shrink_to_fit();
 		}
 		void rand(const int r, const int c) {
 #ifdef rand_debug
 			std::cout << "warning : A data type of the function rand is double." << std::endl;
 #endif
-			std::random_device seed_gen;
-			std::mt19937 engine(seed_gen());
+			static thread_local std::mt19937 engine(std::random_device{}());
 			std::normal_distribution< double > dist(0.0, 1.0);
 			row = r;
 			column = c;
@@ -2911,7 +2876,6 @@ namespace vcp{
 					v[i + row*j] = _T(dist(engine));
 				}
 			}
-			v.shrink_to_fit();
 		}
 
 		void resize(const int i, const int j) {
@@ -2923,8 +2887,9 @@ namespace vcp{
 			on = n;
 
 			if (row > i || column > j) {
-				std::cout << "error : resize : row > i || column > j" << std::endl;
-				exit(1);
+				vcp::throw_error<vcp::dimension_error>(
+					"resize: new size is smaller than current size: (",
+					row, ", ", column, ") > (", i, ", ", j, ")");
 			}
 			n = nn;
 			row = i;
@@ -2951,25 +2916,25 @@ namespace vcp{
 					}
 				}
 			}
-			v.shrink_to_fit();
 		}
 		
 		void clear() {
-			(*this).v.clear();
-			(*this).row = 0;
-			(*this).column = 0;
-			(*this).n = 0;
-			(*this).type = 'N';
+			this->v.clear();
+			this->row = 0;
+			this->column = 0;
+			this->n = 0;
+			this->type = 'N';
 		}
 
-		bool is_symmetric() {
-			if ((*this).row != (*this).column){
+		bool is_symmetric() const {
+			if (this->row != this->column){
 				std::cout << "error : is_symmetric : row != column" << std::endl;
+				return false;
 			}
 
-			for (int i = 0; i < (*this).row; i++) {
-				for (int j = i + 1; j < (*this).column; j++) {
-					if ((*this).v[i + (*this).row*j] != (*this).v[j + (*this).row*i]) {
+			for (int i = 0; i < this->row; i++) {
+				for (int j = i + 1; j < this->column; j++) {
+					if (this->v[i + this->row*j] != this->v[j + this->row*i]) {
 						return false;
 					}
 				}
