@@ -31,13 +31,13 @@
 #include <kv/hwround.hpp>
 #include<vcp/pdblas.hpp>
 #include <vcp/matrix.hpp>
-#include "udmatmul.hpp"
+#include "rmatmul.hpp"
 
 int main(void) {
 
 	kv::hwround::roundnear();
 
-	int n = 300;
+	int n = 500;
 	vcp::matrix< double, vcp::pdblas> A, B, CU, CD;
 //	vcp::matrix< double > A, B, CU, CD;
 
@@ -53,7 +53,8 @@ int main(void) {
 		}
 		CU.zeros(n, n);
 		CD.zeros(n, n);
-		udmatmul( n, n, n, A.data(), B.data(), CU.data(), CD.data() );
+		rmatmul( n, n, n, A.data(), B.data(), CU.data(), 1 );
+		rmatmul( n, n, n, A.data(), B.data(), CD.data(), -1 );
 		
 		for (int k1 = 0; k1 < n; k1++) {
 			for (int k2 = 0; k2 < n; k2++) {
@@ -88,7 +89,8 @@ int main(void) {
 		}
 		CU.zeros(n, n);
 		CD.zeros(n, n);
-		udmatmul( n, n, n, A.data(), B.data(), CU.data(), CD.data() );
+		rmatmul( n, n, n, A.data(), B.data(), CU.data(), 1 );
+		rmatmul( n, n, n, A.data(), B.data(), CD.data(), -1 );
 
 		for (int k1 = 0; k1 < n; k1++) {
 			for (int k2 = 0; k2 < n; k2++) {
