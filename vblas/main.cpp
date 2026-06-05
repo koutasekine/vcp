@@ -13,9 +13,9 @@
 #include <vcp/vcp_timer.hpp>
 
 int main(void){
-    int m = 1042;
-    int n = 1024;
-    int k = 2048;
+    int m = 10059;
+    int n = 10010;
+    int k = 9123;
     vcp::matrix< double, vcp::pdblas > A, B, CU, CD, DU, DD;
 
     A.rand(m, n);
