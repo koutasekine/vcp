@@ -29,7 +29,6 @@
 
 #include <iostream>
 #include <kv/hwround.hpp>
-#include<vcp/pdblas.hpp>
 #include <vcp/matrix.hpp>
 #include "rmatmul.hpp"
 
@@ -37,9 +36,8 @@ int main(void) {
 
 	kv::hwround::roundnear();
 
-	int n = 500;
-	vcp::matrix< double, vcp::pdblas> A, B, CU, CD;
-//	vcp::matrix< double > A, B, CU, CD;
+	int n = 1137;
+	vcp::matrix< double > A, B, CU, CD;
 
 
 	for (int i = 0; i < n; i++) {
@@ -101,7 +99,7 @@ int main(void) {
 		}
 	}
 
-	std::cout << "udmatmul can be changed rounding mode!" << std::endl;
+	std::cout << "rmatmul can be changed rounding mode!" << std::endl;
 	kv::hwround::roundnear();
 
 }
