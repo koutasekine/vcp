@@ -36,7 +36,7 @@ int main(void) {
 
 	kv::hwround::roundnear();
 
-	int n = 1137;
+	int n = 450;
 	vcp::matrix< double > A, B, CU, CD;
 
 

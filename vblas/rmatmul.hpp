@@ -49,12 +49,20 @@
 #define VBLAS_RMATMUL_HAS_AVX2 0
 #endif
 
+#if (defined(__aarch64__) || defined(__arm64__)) && (defined(__ARM_NEON) || defined(__ARM_NEON__))
+#define VBLAS_RMATMUL_HAS_NEON 1
+#include "rmatmul_neon.hpp"
+#else
+#define VBLAS_RMATMUL_HAS_NEON 0
+#endif
+
 namespace vblas_rmatmul_detail {
 
 enum Backend {
 	BACKEND_NONE,
 	BACKEND_AVX512,
-	BACKEND_AVX2
+	BACKEND_AVX2,
+	BACKEND_NEON
 };
 
 inline Backend selected_backend() {
@@ -62,6 +70,8 @@ inline Backend selected_backend() {
 	return BACKEND_AVX512;
 #elif VBLAS_RMATMUL_HAS_AVX2
 	return BACKEND_AVX2;
+#elif VBLAS_RMATMUL_HAS_NEON
+	return BACKEND_NEON;
 #else
 	return BACKEND_NONE;
 #endif
@@ -89,6 +99,11 @@ inline void rmatmul(int m, int n, int k, const double* A, const double* B, doubl
 #if VBLAS_RMATMUL_HAS_AVX2
 	case vblas_rmatmul_detail::BACKEND_AVX2:
 		rmatmul_avx2(m, n, k, A, B, CU, rounding_mode);
+		return;
+#endif
+#if VBLAS_RMATMUL_HAS_NEON
+	case vblas_rmatmul_detail::BACKEND_NEON:
+		rmatmul_neon(m, n, k, A, B, CU, rounding_mode);
 		return;
 #endif
 	default:

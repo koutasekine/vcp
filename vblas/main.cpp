@@ -37,7 +37,7 @@
 #include <vcp/matrix.hpp>
 #include <vcp/matrix_assist.hpp>
 
-#include "udmatmul.hpp"
+//#include "udmatmul.hpp"
 #include "rmatmul.hpp"
 
 #include <vcp/vcp_timer.hpp>
@@ -54,7 +54,7 @@ int main(void){
     CD.zeros(m, k);
 
     vcp::time.tic();
-    udmatmul( m, n, k, A.data(), B.data(), CU.data(), CD.data() );
+//    udmatmul( m, n, k, A.data(), B.data(), CU.data(), CD.data() );
     vcp::time.toc();
 
     vcp::time.tic();
