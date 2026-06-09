@@ -398,8 +398,12 @@ inline void set_rounding_mode(const int rounding) {
 	std::fesetround(rounding);
 }
 
-inline void reset_rounding_mode() {
-	std::fesetround(FE_TONEAREST);
+inline int get_rounding_mode() {
+	return std::fegetround();
+}
+
+inline void reset_rounding_mode(const int rounding) {
+	std::fesetround(rounding);
 }
 
 inline void pack_a_panel(
@@ -647,6 +651,7 @@ template<int ROUNDING>
 inline void rmatmul_direct_avx2(const int m, const int n, const int k, const double* A, const double* B, double* CU, const Blocking& blocking) {
 #pragma omp parallel num_threads(blocking.threads)
 	{
+		const int previous_rounding = get_rounding_mode();
 		set_rounding_mode(ROUNDING);
 #pragma omp for collapse(2) schedule(static)
 		for (int jr = 0; jr < k; jr += NR) {
@@ -664,7 +669,7 @@ inline void rmatmul_direct_avx2(const int m, const int n, const int k, const dou
 				}
 			}
 		}
-		reset_rounding_mode();
+		reset_rounding_mode(previous_rounding);
 	}
 }
 
@@ -678,6 +683,7 @@ inline void rmatmul_blocked_m_only_avx2(const int m, const int n, const int k, c
 #pragma omp parallel num_threads(blocking.threads)
 	{
 		std::vector<double> packed_a(static_cast<std::size_t>(max_mb_padded) * max_pb);
+		const int previous_rounding = get_rounding_mode();
 		set_rounding_mode(ROUNDING);
 
 		for (int pc = 0; pc < n; pc += blocking.kc) {
@@ -699,7 +705,7 @@ inline void rmatmul_blocked_m_only_avx2(const int m, const int n, const int k, c
 				}
 			}
 		}
-		reset_rounding_mode();
+		reset_rounding_mode(previous_rounding);
 	}
 }
 
@@ -713,6 +719,7 @@ inline void rmatmul_blocked_2d_avx2(const int m, const int n, const int k, const
 #pragma omp parallel num_threads(blocking.threads)
 	{
 		std::vector<double> packed_a(static_cast<std::size_t>(max_mb_padded) * max_pb);
+		const int previous_rounding = get_rounding_mode();
 		set_rounding_mode(ROUNDING);
 
 		for (int pc = 0; pc < n; pc += blocking.kc) {
@@ -739,7 +746,7 @@ inline void rmatmul_blocked_2d_avx2(const int m, const int n, const int k, const
 				}
 			}
 		}
-		reset_rounding_mode();
+		reset_rounding_mode(previous_rounding);
 	}
 }
 
@@ -774,6 +781,7 @@ inline void rmatmul_impl_avx2(int m, int n, int k, const double* A, const double
 // A: m*n matrix, B: n*k matrix, all matrices are column-major.
 // CU is overwritten with A*B using rounding_mode: 1 upward, 0 nearest, -1 downward.
 inline void rmatmul_avx2(int m, int n, int k, const double* A, const double* B, double* CU, const int rounding_mode) {
+	const int previous_rounding = vblas_rmatmul_avx2_detail::get_rounding_mode();
 	if (rounding_mode == 1) {
 		rmatmul_impl_avx2<FE_UPWARD>(m, n, k, A, B, CU);
 	}
@@ -783,7 +791,7 @@ inline void rmatmul_avx2(int m, int n, int k, const double* A, const double* B, 
 	else {
 		rmatmul_impl_avx2<FE_TONEAREST>(m, n, k, A, B, CU);
 	}
-	vblas_rmatmul_avx2_detail::reset_rounding_mode();
+	vblas_rmatmul_avx2_detail::reset_rounding_mode(previous_rounding);
 }
 
 #endif // VBLAS_RMATMUL_AVX2_HPP

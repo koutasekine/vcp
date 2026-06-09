@@ -1,31 +1,172 @@
 # vblas
 
-`vblas/` は実験用のディレクトリであり、安定版の VCP Library API では
-ありません。
+`vblas/` は、丸め方向を指定して double 行列積を計算するための実験的な
+BLAS 風カーネル群です。外部 BLAS がハードウェア丸めモードの変更を
+精度保証付き数値計算に必要な形で反映しない場合に、代替 backend として
+使えるかを検討する目的で置かれています。
 
-現在のコードは、丸め方向を命令ごとに明示した低レベル BLAS 風カーネルを
-試すためのものです。外部 BLAS ライブラリが、精度保証付き数値計算に必要な形で
-ハードウェア丸めモードの変更を反映しない場合に、代替 backend として使えるかを
-検討する意図で作成されています。
+通常の VCP Library の安定 API ではありません。`vcp::matrix`、
+`vcp::pdblas`、`vcp::pidblas` から自動的に使われるものではなく、
+利用側が `vblas/rmatmul.hpp` などを明示的に include して呼び出します。
 
-現時点での範囲は限定的です。
+## 主なファイル
 
-- `udmatmul.hpp` は `_mm512_fmadd_round_pd` などの AVX-512 intrinsic を使います。
-- 上向き丸めと下向き丸めの double 行列積を、別々の出力行列へ同時に計算します。
-- 対象は点 double 行列であり、一般の区間行列 backend ではありません。
-- `vcp::matrix`、`vcp::pdblas`、`vcp::pidblas` から自動的に使われるものでは
-  ありません。
-- AVX-512 に対応していない CPU やコンパイラでは利用できません。
+- `rmatmul.hpp`
+  - 丸めモードを指定して 1 回の行列積 `A * B` を計算する入口です。
+  - AVX-512、AVX2 + FMA、AArch64 NEON の各実装を compile 時の
+    feature macro により選択します。
+- `rmatmul_avx512.hpp`
+  - AVX-512 実装です。
+  - `_mm512_fmadd_round_pd` などの embedded rounding 付き intrinsic を
+    使います。
+- `rmatmul_avx2.hpp`
+  - AVX2 + FMA 実装です。
+  - FMA 命令が現在の floating-point environment の丸めモードに従うため、
+    `std::fesetround()` により計算中の丸め方向を切り替えます。
+- `rmatmul_neon.hpp`
+  - AArch64 NEON 実装です。
+  - AVX2 実装と同様に `std::fesetround()` で計算中の丸め方向を
+    切り替えます。
+- `udmatmul.hpp`
+  - AVX-512 専用の古い実験用実装です。
+  - 上向き丸め結果 `CU` と下向き丸め結果 `CD` を 1 回の呼び出しで
+    同時に計算します。
+- `Check_rmatmul_rounding.cpp`、`Check_udmatmul_rounding.cpp`
+  - 丸め方向の違いが結果に反映されるかを確認するための検証コードです。
+- `main.cpp`
+  - 大きめの行列で `rmatmul` と `vcp::pdblas` の結果を比較する
+    実験用 driver です。
 
-このディレクトリのファイルは、実験、ベンチマーク、将来の backend 設計のための
-ものです。通常の VCP Library 利用では、`vcp/` と `docs/` 以下の文書を
-参照してください。`vblas/` を、現時点でサポート済みの BLAS 代替実装として
-扱わないでください。
+## `rmatmul`
 
-`main.cpp` は `udmatmul.hpp` の小さな実験用 driver です。丸め方向指定カーネルの
-結果と、ハードウェア丸めモードを変更した状態で `vcp::pdblas` により計算した
-行列積を比較します。
+`rmatmul` の呼び出し形式は次の通りです。
 
-`vblas/` のコードを将来 VCP の公開 API に昇格する場合は、少なくとも
-compile guard、CPU feature check、丸め方向付き計算の正しさテスト、
-policy としてのインターフェース設計が必要です。
+```cpp
+#include "rmatmul.hpp"
+
+rmatmul(m, n, k, A, B, C, rounding_mode);
+```
+
+行列は column-major です。
+
+- `A`: `m * n` 行列
+- `B`: `n * k` 行列
+- `C`: `m * k` 行列
+- `C` は `A * B` の結果で上書きされます。
+
+`rounding_mode` の意味は次の通りです。
+
+- `1`: 上向き丸め
+- `-1`: 下向き丸め
+- `0`: 最近点丸め
+- 上記以外の値: 最近点丸めとして扱います。
+
+上向き丸めと下向き丸めの両方が必要な場合は、出力先を分けて
+2 回呼び出します。
+
+```cpp
+rmatmul(m, n, k, A.data(), B.data(), CU.data(),  1);
+rmatmul(m, n, k, A.data(), B.data(), CD.data(), -1);
+```
+
+## backend 選択
+
+`rmatmul.hpp` は compile 時に利用可能な SIMD 実装を選びます。
+優先順位は次の通りです。
+
+1. `__AVX512F__` が定義されている場合: AVX-512
+2. `__AVX2__` と `__FMA__` が定義されている場合: AVX2 + FMA
+3. AArch64 NEON が有効な場合: NEON
+
+利用可能な実装がない場合は、例外が有効なビルドでは
+`std::runtime_error` を投げ、例外が無効なビルドでは `std::abort()` します。
+
+AVX-512 対応 CPU でも AVX2 実装を確認したい場合は、`-mavx512f` を付けずに
+`-mavx2 -mfma` を付けてコンパイルしてください。
+
+## 丸めモードの取り扱い
+
+`rmatmul` は、呼び出し元から指定された `rounding_mode` で行列積を計算します。
+一方で、呼び出し元が `rmatmul` 実行前に設定していた floating-point
+environment の丸めモードは、`rmatmul` の終了後も維持されるようにしています。
+
+実装ごとの扱いは次の通りです。
+
+- AVX-512 実装
+  - embedded rounding 付き AVX-512 intrinsic により、命令ごとに丸め方向を
+    指定します。
+  - global な `cfenv` の丸めモードは変更しません。
+- AVX2 実装
+  - 計算前に `std::fegetround()` で現在の丸めモードを保存します。
+  - OpenMP の各 worker thread では、計算用に `std::fesetround()` で
+    `FE_UPWARD`、`FE_DOWNWARD`、または `FE_TONEAREST` を設定します。
+  - 計算終了後、保存していた丸めモードへ `std::fesetround()` で戻します。
+- NEON 実装
+  - AVX2 実装と同じ方針で、`std::fegetround()` による保存と
+    `std::fesetround()` による復元を行います。
+
+つまり、AVX2 / NEON では計算中に各スレッドの丸めモードを一時的に変更しますが、
+`rmatmul` から戻った後の呼び出し元スレッドの丸めモードは、呼び出し前の状態に
+戻ります。OpenMP worker thread についても、各 parallel region に入った時点の
+丸めモードへ戻します。
+
+## `udmatmul`
+
+`udmatmul` は AVX-512 の embedded rounding を使い、上向き丸め結果と
+下向き丸め結果を同時に計算する実験用関数です。
+
+```cpp
+#include "udmatmul.hpp"
+
+udmatmul(m, n, k, A, B, CU, CD);
+```
+
+- `CU`: 上向き丸めの結果
+- `CD`: 下向き丸めの結果
+- `CU` と `CD` は計算結果で上書きされます。
+- AVX-512 非対応環境では利用できません。
+
+現在は、より汎用的な入口として `rmatmul` を使用することを想定しています。
+
+## コンパイル例
+
+プロジェクトルートから実行する場合の AVX2 実装の確認例です。
+
+```bash
+mkdir -p sandbox/bin
+
+g++ -I. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 \
+-mavx2 -mfma \
+vblas/Check_rmatmul_rounding.cpp \
+-lpthread \
+-lm \
+-ldl \
+-fopenmp \
+-o sandbox/bin/check_rmatmul_rounding
+
+./sandbox/bin/check_rmatmul_rounding
+```
+
+AVX-512 実装を使う場合は、AVX-512 用の compile option を追加します。
+
+```bash
+g++ -I. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 \
+-mavx512f -DVCP_USE_AVX512 \
+vblas/Check_rmatmul_rounding.cpp \
+-lpthread \
+-lm \
+-ldl \
+-fopenmp \
+-o sandbox/bin/check_rmatmul_rounding_avx512
+```
+
+MKL や OpenBLAS、MPFR を含む既存の VCP 検証コードと一緒にリンクする場合は、
+プロジェクトルートの `AGENTS.md` にある通常の compile option に従ってください。
+
+## 注意
+
+- 対象は点 double 行列です。一般の区間行列 backend ではありません。
+- まだ実験段階のため、通常の VCP Library 利用では `vcp/` と `docs/` 以下の
+  文書を参照してください。
+- 将来 VCP の公開 API に昇格する場合は、CPU feature check、丸め方向付き計算の
+  正しさテスト、性能評価、policy としてのインターフェース設計が必要です。

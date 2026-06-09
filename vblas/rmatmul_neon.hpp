@@ -242,8 +242,12 @@ inline void set_rounding_mode(const int rounding) {
 	std::fesetround(rounding);
 }
 
-inline void reset_rounding_mode() {
-	std::fesetround(FE_TONEAREST);
+inline int get_rounding_mode() {
+	return std::fegetround();
+}
+
+inline void reset_rounding_mode(const int rounding) {
+	std::fesetround(rounding);
 }
 
 inline float64x2_t load_partial_f64(const double* src, const int rows) {
@@ -525,6 +529,7 @@ inline void rmatmul_direct_neon(
 ) {
 #pragma omp parallel num_threads(threads)
 	{
+		const int previous_rounding = get_rounding_mode();
 		set_rounding_mode(ROUNDING);
 #pragma omp for collapse(2) schedule(static)
 		for (int jr = 0; jr < k; jr += NR) {
@@ -542,7 +547,7 @@ inline void rmatmul_direct_neon(
 				}
 			}
 		}
-		reset_rounding_mode();
+		reset_rounding_mode(previous_rounding);
 	}
 }
 
@@ -564,6 +569,7 @@ inline void rmatmul_blocked_m_only_neon(
 #pragma omp parallel num_threads(blocking.threads)
 	{
 		std::vector<double> packed_a(static_cast<std::size_t>(max_mb_padded) * max_pb);
+		const int previous_rounding = get_rounding_mode();
 		set_rounding_mode(ROUNDING);
 
 		for (int pc = 0; pc < n; pc += blocking.kc) {
@@ -585,7 +591,7 @@ inline void rmatmul_blocked_m_only_neon(
 				}
 			}
 		}
-		reset_rounding_mode();
+		reset_rounding_mode(previous_rounding);
 	}
 }
 
@@ -607,6 +613,7 @@ inline void rmatmul_blocked_2d_neon(
 #pragma omp parallel num_threads(blocking.threads)
 	{
 		std::vector<double> packed_a(static_cast<std::size_t>(max_mb_padded) * max_pb);
+		const int previous_rounding = get_rounding_mode();
 		set_rounding_mode(ROUNDING);
 
 		for (int pc = 0; pc < n; pc += blocking.kc) {
@@ -633,7 +640,7 @@ inline void rmatmul_blocked_2d_neon(
 				}
 			}
 		}
-		reset_rounding_mode();
+		reset_rounding_mode(previous_rounding);
 	}
 }
 
@@ -667,6 +674,7 @@ inline void rmatmul_impl_neon(int m, int n, int k, const double* A, const double
 // A: m*n matrix, B: n*k matrix, all matrices are column-major.
 // CU is overwritten with A*B using rounding_mode: 1 upward, 0 nearest, -1 downward.
 inline void rmatmul_neon(int m, int n, int k, const double* A, const double* B, double* CU, const int rounding_mode) {
+	const int previous_rounding = vblas_rmatmul_neon_detail::get_rounding_mode();
 	if (rounding_mode == 1) {
 		rmatmul_impl_neon<FE_UPWARD>(m, n, k, A, B, CU);
 	}
@@ -676,7 +684,7 @@ inline void rmatmul_neon(int m, int n, int k, const double* A, const double* B, 
 	else {
 		rmatmul_impl_neon<FE_TONEAREST>(m, n, k, A, B, CU);
 	}
-	vblas_rmatmul_neon_detail::reset_rounding_mode();
+	vblas_rmatmul_neon_detail::reset_rounding_mode(previous_rounding);
 }
 
 #endif // VBLAS_RMATMUL_NEON_HPP
