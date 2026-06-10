@@ -28,65 +28,78 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <iostream>
-#include <omp.h>
-
 #include <kv/hwround.hpp>
-
-#include <vcp/pdblas.hpp>
-
+#include<vcp/pdblas.hpp>
 #include <vcp/matrix.hpp>
-#include <vcp/matrix_assist.hpp>
+#include "udmatmul.hpp"
 
-//#include "udmatmul.hpp"
-#include "rmatmul.hpp"
+int main(void) {
 
-#include <vcp/vcp_timer.hpp>
+	kv::hwround::roundnear();
 
-int main(void){
-    int m = 10059;
-    int n = 10010;
-    int k = 9123;
-    vcp::matrix< double, vcp::pdblas > A, B, CU, CD, DU, DD;
-
-    A.rand(m, n);
-    B.rand(n, k);
-    CU.zeros(m, k);
-    CD.zeros(m, k);
-
-    vcp::time.tic();
-//    udmatmul( m, n, k, A.data(), B.data(), CU.data(), CD.data() );
-    vcp::time.toc();
-
-    vcp::time.tic();
-    rmatmul( m, n, k, A.data(), B.data(), CU.data(), 1);
-    rmatmul( m, n, k, A.data(), B.data(), CD.data(), -1);
-    vcp::time.toc();
-
-    //std::cout << A << std::endl;
-    //std::cout << B << std::endl;
- 
+	int n = 300;
+	vcp::matrix< double, vcp::pdblas> A, B, CU, CD;
+//	vcp::matrix< double > A, B, CU, CD;
 
 
-    vcp::time.tic();
-    kv::hwround::roundup();
-    DU = A*B;
-    kv::hwround::rounddown();
-    DD = A*B;
-    vcp::time.toc();
+	for (int i = 0; i < n; i++) {
+//		std::cout << i << std::endl;
+		kv::hwround::roundnear();
+		A.zeros(n, n);
+		B.zeros(n, n);
+		for (int j = 0; j < n; j++) {
+			A(j, i) = 1.0/3.0;
+			B(i, j) = 1.0/3.0;
+		}
+		CU.zeros(n, n);
+		CD.zeros(n, n);
+		udmatmul( n, n, n, A.data(), B.data(), CU.data(), CD.data() );
+		
+		for (int k1 = 0; k1 < n; k1++) {
+			for (int k2 = 0; k2 < n; k2++) {
+			//	std::cout << "check:" << CU(k1, k2) <<  CD(k1, k2) <<std::endl;
+				if (CU(k1, k2) == CD(k1, k2)) {
+					std::cout << "VBLAS: udmatmul : Cannot change rounding mode..." << std::endl;
+					kv::hwround::roundnear();
+					exit(1);
+				}
+			}
+		}
+	}
 
-    std::cout << CU.submatrix({m-11,m-1}, {k-11,k-1}) << std::endl;
-    std::cout << CD.submatrix({m-11,m-1}, {k-11,k-1}) << std::endl;    
-    std::cout << DU.submatrix({m-11,m-1}, {k-11,k-1}) << std::endl;
+	kv::hwround::roundnear();
 
-/*
-    std::cout << CU.submatrix({0,10}, {0,10}) << std::endl;
-    std::cout << CD.submatrix({0,10}, {0,10}) << std::endl;
-    std::cout << D.submatrix({0,10}, {0,10}) << std::endl;
-*/
-    //std::cout << D - C << std::endl;
+	for (int i = 2; i < n; i++) {
+//		std::cout << i << std::endl;
+		kv::hwround::roundnear();
+		A.zeros(n, n);
+		B.zeros(n, n);
 
-    std::cout << "|| DU - CU || <=" << norminf(DU - CU) << std::endl;
-    std::cout << "|| DD - CD || <=" << norminf(DD - CD) << std::endl;
-    std::cout << "|| CU - CD || <=" << norminf(CU - CD) << std::endl;
-    std::cout << "|| DU - DD || <=" << norminf(DU - DD) << std::endl;
+		for (int j = 0; j < n; j++) {
+			A(j, 1) = 1.0;
+			B(1, j) = 1.0;
+		}
+		for (int j = 0; j < n; j++) {
+			A(j, i) = std::pow(2.0,-27);
+			B(i, j) = std::pow(2.0, -27);
+		}
+		CU.zeros(n, n);
+		CD.zeros(n, n);
+		udmatmul( n, n, n, A.data(), B.data(), CU.data(), CD.data() );
+
+		for (int k1 = 0; k1 < n; k1++) {
+			for (int k2 = 0; k2 < n; k2++) {
+			//	std::cout << "check:" << CU(k1, k2) <<  CD(k1, k2) <<std::endl;
+				if (CU(k1, k2) == CD(k1, k2)) {
+					std::cout << "VBLAS: udmatmul : Cannot change rounding mode..." << std::endl;
+					kv::hwround::roundnear();
+					exit(1);
+				}
+			}
+		}
+	}
+
+	std::cout << "udmatmul can be changed rounding mode!" << std::endl;
+	kv::hwround::roundnear();
+
 }

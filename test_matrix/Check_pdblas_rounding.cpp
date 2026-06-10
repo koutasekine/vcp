@@ -30,9 +30,7 @@ int main(void) {
 			for (int k2 = 0; k2 < n; k2++) {
 				if (CU(k1, k2) == CD(k1, k2)) {
 					std::cout << "BLAS: Cannot change rounding mode..." << std::endl;
-					std::cout << "Please check BLAS and Lapack:" << std::endl;
-					std::cout << "sudo update-alternatives --config libblas.so-x86_64-linux-gnu" << std::endl;
-					std::cout << "sudo update-alternatives --config liblapack.so-x86_64-linux-gnu" << std::endl;
+					std::cout << "Please check BLAS and Lapack..." << std::endl;
 					kv::hwround::roundnear();
 					exit(1);
 				}
@@ -66,9 +64,7 @@ int main(void) {
 			for (int k2 = 0; k2 < n; k2++) {
 				if (CU(k1, k2) == CD(k1, k2)) {
 					std::cout << "BLAS: Cannot change rounding mode..." << std::endl;
-					std::cout << "Please check BLAS and Lapack:" << std::endl;
-					std::cout << "sudo update-alternatives --config libblas.so-x86_64-linux-gnu" << std::endl;
-					std::cout << "sudo update-alternatives --config liblapack.so-x86_64-linux-gnu" << std::endl;
+					std::cout << "Please check BLAS and Lapack..." << std::endl;
 					kv::hwround::roundnear();
 					exit(1);
 				}

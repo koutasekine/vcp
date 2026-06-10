@@ -14,6 +14,7 @@ vblas/a.out
 *.csv
 imats_old_before_0.0.5.hpp
 /kv
+/sandbox
 /paper_*
 /test_kv
 /test_conference
@@ -32,3 +33,5 @@ imats_old_before_0.0.5.hpp
 /test_doubly_fourier
 vcp/doubly_fourier_series.hpp
 vcp/allsol
+AGENTS.md
+CLAUDE.md
