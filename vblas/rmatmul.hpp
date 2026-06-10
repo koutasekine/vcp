@@ -56,13 +56,21 @@
 #define VBLAS_RMATMUL_HAS_NEON 0
 #endif
 
+#if !VBLAS_RMATMUL_HAS_AVX512 && !VBLAS_RMATMUL_HAS_AVX2 && !VBLAS_RMATMUL_HAS_NEON
+#define VBLAS_RMATMUL_HAS_NOSIMD 1
+#include "rmatmul_nosimd.hpp"
+#else
+#define VBLAS_RMATMUL_HAS_NOSIMD 0
+#endif
+
 namespace vblas_rmatmul_detail {
 
 enum Backend {
 	BACKEND_NONE,
 	BACKEND_AVX512,
 	BACKEND_AVX2,
-	BACKEND_NEON
+	BACKEND_NEON,
+	BACKEND_NOSIMD
 };
 
 inline Backend selected_backend() {
@@ -72,6 +80,8 @@ inline Backend selected_backend() {
 	return BACKEND_AVX2;
 #elif VBLAS_RMATMUL_HAS_NEON
 	return BACKEND_NEON;
+#elif VBLAS_RMATMUL_HAS_NOSIMD
+	return BACKEND_NOSIMD;
 #else
 	return BACKEND_NONE;
 #endif
@@ -104,6 +114,11 @@ inline void rmatmul(int m, int n, int k, const double* A, const double* B, doubl
 #if VBLAS_RMATMUL_HAS_NEON
 	case vblas_rmatmul_detail::BACKEND_NEON:
 		rmatmul_neon(m, n, k, A, B, CU, rounding_mode);
+		return;
+#endif
+#if VBLAS_RMATMUL_HAS_NOSIMD
+	case vblas_rmatmul_detail::BACKEND_NOSIMD:
+		rmatmul_nosimd(m, n, k, A, B, CU, rounding_mode);
 		return;
 #endif
 	default:
