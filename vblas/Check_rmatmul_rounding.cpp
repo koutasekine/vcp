@@ -30,7 +30,19 @@
 #include <iostream>
 #include <kv/hwround.hpp>
 #include <vcp/matrix.hpp>
+#include <cfenv>
 #include "rmatmul.hpp"
+
+void print_round_mode(int round_mode)
+{
+  switch (round_mode) {
+    case FE_DOWNWARD: std::cout << "downward" << std::endl; break;
+    case FE_TONEAREST: std::cout << "to nearest" << std::endl; break;
+    case FE_TOWARDZERO: std::cout << "toward zero" << std::endl; break;
+    case FE_UPWARD: std::cout << "upward" << std::endl; break;
+  }
+}
+
 
 int main(void) {
 
@@ -51,9 +63,10 @@ int main(void) {
 		}
 		CU.zeros(n, n);
 		CD.zeros(n, n);
+		print_round_mode(std::fegetround());
 		rmatmul( n, n, n, A.data(), B.data(), CU.data(), 1 );
 		rmatmul( n, n, n, A.data(), B.data(), CD.data(), -1 );
-		
+		print_round_mode(std::fegetround());
 		for (int k1 = 0; k1 < n; k1++) {
 			for (int k2 = 0; k2 < n; k2++) {
 			//	std::cout << "check:" << CU(k1, k2) <<  CD(k1, k2) <<std::endl;
@@ -84,9 +97,10 @@ int main(void) {
 		}
 		CU.zeros(n, n);
 		CD.zeros(n, n);
+		print_round_mode(std::fegetround());
 		rmatmul( n, n, n, A.data(), B.data(), CU.data(), 1 );
 		rmatmul( n, n, n, A.data(), B.data(), CD.data(), -1 );
-
+		print_round_mode(std::fegetround());
 		for (int k1 = 0; k1 < n; k1++) {
 			for (int k2 = 0; k2 < n; k2++) {
 			//	std::cout << "check:" << CU(k1, k2) <<  CD(k1, k2) <<std::endl;

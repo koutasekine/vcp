@@ -62,6 +62,7 @@ struct CpuInfo {
 	long long l3_bytes;
 	int logical_threads;
 	int omp_max_threads;
+	int threads_per_core;
 };
 
 struct Blocking {
@@ -140,8 +141,39 @@ inline long long parse_cache_size(const std::string& value) {
 	return number;
 }
 
+// "0-1" や "0,8" 形式の cpu list から CPU 数を数える
+inline int parse_cpu_list_count(const std::string& text) {
+	int count = 0;
+	std::string::size_type pos = 0;
+	while (pos < text.size()) {
+		const std::string::size_type comma = text.find(',', pos);
+		const std::string token = text.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
+		const std::string::size_type dash = token.find('-');
+		if (dash == std::string::npos) {
+			if (!token.empty()) {
+				count++;
+			}
+		}
+		else {
+			const int first = std::atoi(token.substr(0, dash).c_str());
+			const int last = std::atoi(token.substr(dash + 1).c_str());
+			count += std::max(0, last - first + 1);
+		}
+		if (comma == std::string::npos) {
+			break;
+		}
+		pos = comma + 1;
+	}
+	return count > 0 ? count : 1;
+}
+
 inline CpuInfo detect_cpu_info() {
-	CpuInfo info = {0, 0, 0, std::max(1, omp_get_num_procs()), std::max(1, omp_get_max_threads())};
+	CpuInfo info = {0, 0, 0, std::max(1, omp_get_num_procs()), std::max(1, omp_get_max_threads()), 1};
+
+	std::string siblings;
+	if (read_first_line("/sys/devices/system/cpu/cpu0/topology/thread_siblings_list", siblings)) {
+		info.threads_per_core = parse_cpu_list_count(siblings);
+	}
 
 	for (int index = 0; index < 16; index++) {
 		const std::string base = "/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(index) + "/";
@@ -273,52 +305,38 @@ inline Blocking finish_blocking(Blocking b, const int m, const int k) {
 	return sanitize_blocking(b);
 }
 
-inline int cache_based_kc(const CpuInfo& info, const int fallback) {
-	if (info.l1d_bytes <= 0) {
-		return fallback;
-	}
-
-	const long long budget = info.l1d_bytes * 3LL / 4LL;
-	const long long fixed_c = static_cast<long long>(MR) * NR * MATRIX_BYTES;
-	const long long per_k = static_cast<long long>(MR + NR) * MATRIX_BYTES;
-	const long long raw = budget > fixed_c ? (budget - fixed_c) / per_k : fallback;
-	return clamp_rounded_block(static_cast<int>(raw), 64, 512, NR);
+// B micro-panel (kc*NR) が L1d の約 1/2 に収まるように kc を決める．
+// kc が大きいほど C への蓄積パス回数 (n/kc) が減り C のメモリ往復が減る．
+inline int cache_based_kc(const CpuInfo& info) {
+	const long long l1 = info.l1d_bytes > 0 ? info.l1d_bytes : 32LL * 1024LL;
+	const long long budget = l1 / 2LL;
+	const long long per_k = static_cast<long long>(NR) * MATRIX_BYTES;
+	return clamp_rounded_block(static_cast<int>(budget / per_k), 64, 512, NR);
 }
 
-inline int cache_based_column_tile(const CpuInfo& info, const int kc, const int fallback) {
-	if (info.l2_bytes <= 0 || kc <= 0) {
-		return fallback;
-	}
-
-	const int seed_mc = 128;
-	const long long budget_doubles = (info.l2_bytes * 3LL / 4LL) / MATRIX_BYTES;
-	const long long fixed_a = static_cast<long long>(seed_mc) * kc;
-	const long long raw = budget_doubles > fixed_a ? (budget_doubles - fixed_a) / (kc + seed_mc) : fallback;
-	return clamp_rounded_block(static_cast<int>(raw), 32, 512, NR);
+// packed A block (mc*kc) が L2 の約 1/2 に収まるように mc を決める
+// (残りは B column tile と C の通過分に充てる)
+inline int cache_based_mc(const CpuInfo& info, const int kc) {
+	const long long l2 = info.l2_bytes > 0 ? info.l2_bytes : 256LL * 1024LL;
+	// L1/L2 は同一 core 上の hyper-thread で共有されるため，core あたりの
+	// thread 数で budget を分割する
+	const long long budget_doubles = l2 / 2LL / MATRIX_BYTES / std::max(1, info.threads_per_core);
+	return clamp_rounded_block(static_cast<int>(budget_doubles / kc), MR, 1024, MR);
 }
 
-inline int cache_based_mc(const CpuInfo& info, const int kc, const int column_tile, const int fallback) {
-	if (info.l2_bytes <= 0 || kc <= 0 || column_tile <= 0) {
-		return fallback;
-	}
-
-	const long long budget_doubles = (info.l2_bytes * 3LL / 4LL) / MATRIX_BYTES;
-	const long long fixed_b = static_cast<long long>(kc) * column_tile;
-	const long long raw = budget_doubles > fixed_b ? (budget_doubles - fixed_b) / (kc + column_tile) : fallback;
-	return clamp_rounded_block(static_cast<int>(raw), 64, 512, MR);
+// B column tile (kc*column_tile) が L2 の約 1/4 に収まるように決める
+inline int cache_based_column_tile(const CpuInfo& info, const int kc) {
+	const long long l2 = info.l2_bytes > 0 ? info.l2_bytes : 256LL * 1024LL;
+	const long long budget_doubles = l2 / 4LL / MATRIX_BYTES;
+	return clamp_rounded_block(static_cast<int>(budget_doubles / kc), NR, 512, NR);
 }
 
-inline int cache_based_nc_group(const CpuInfo& info, const int kc, const int mc, const int threads, const int fallback) {
-	if (info.l3_bytes <= 0 || kc <= 0 || mc <= 0) {
-		return fallback;
-	}
-
-	const int active_threads = std::max(1, threads);
-	const long long budget_doubles = (info.l3_bytes * 2LL / 3LL) / MATRIX_BYTES;
-	const long long active_a = static_cast<long long>(active_threads) * mc * kc;
-	const long long per_column = kc;
-	const long long raw = budget_doubles > active_a ? (budget_doubles - active_a) / per_column : fallback;
-	return clamp_rounded_block(static_cast<int>(raw), 128, 4096, NR);
+// packed B group (kc*nc_group, 全 thread で共有) が L3 の約 1/2 に収まるように決める
+inline int cache_based_nc_group(const CpuInfo& info, const int kc, const int column_tile) {
+	const long long l3 = info.l3_bytes > 0 ? info.l3_bytes : 8LL * 1024LL * 1024LL;
+	const long long budget_doubles = l3 / 2LL / MATRIX_BYTES;
+	const int raw = static_cast<int>(budget_doubles / kc);
+	return clamp_rounded_block(std::max(column_tile, raw), 128, 8192, NR);
 }
 
 inline bool use_direct_path(const int m, const int n, const int k) {
@@ -342,38 +360,14 @@ inline Blocking select_blocking(const int m, const int n, const int k) {
 		return finish_blocking(Blocking{MR, std::max(NR, n), std::max(NR, k), NR, direct_threads, PARALLEL_2D, true}, m, k);
 	}
 
-	const int kc = cache_based_kc(info, 160);
-	int column_tile = cache_based_column_tile(info, kc, 128);
-	int mc = cache_based_mc(info, kc, column_tile, 128);
-	int nc_group = cache_based_nc_group(info, kc, mc, threads, 1024);
-	ParallelMode mode = ceil_div(m, std::max(MR, mc)) >= std::max(1, threads / 2) ? PARALLEL_M_ONLY : PARALLEL_2D;
+	// cache size と thread 数のみから block size を導出する (環境特化の分岐は置かない)
+	const int kc = cache_based_kc(info);
+	const int mc = cache_based_mc(info, kc);
+	const int column_tile = cache_based_column_tile(info, kc);
+	const int nc_group = cache_based_nc_group(info, kc, column_tile);
 
-	const int max_nk = std::max(n, k);
-	const int max_mn = std::max(m, n);
-	const int max_dim = std::max(m, max_nk);
-
-	if (m >= 4096 && m >= 4 * max_nk) {
-		mc = std::max(mc, 128);
-		column_tile = std::max(NR * 8, std::min(column_tile, 256));
-		mode = PARALLEL_M_ONLY;
-	}
-	else if (k >= 4096 && k >= 4 * max_mn) {
-		mc = std::min(mc, 160);
-		column_tile = std::min(column_tile, 128);
-		mode = PARALLEL_2D;
-	}
-	else if (n >= 4096 && n >= 4 * std::max(m, k)) {
-		mc = std::min(mc, 160);
-		column_tile = std::min(column_tile, 128);
-		mode = PARALLEL_2D;
-	}
-	else if (max_dim <= 1500) {
-		mc = std::min(mc, 128);
-		column_tile = std::min(column_tile, 128);
-		mode = ceil_div(m, std::max(MR, mc)) >= std::max(1, threads / 2) ? PARALLEL_M_ONLY : PARALLEL_2D;
-	}
-
-	nc_group = std::max(column_tile, nc_group);
+	// m 方向の block 数が thread 数以上なら m 方向のみの並列で負荷分散できる
+	const ParallelMode mode = ceil_div(m, std::max(MR, mc)) >= std::max(1, threads) ? PARALLEL_M_ONLY : PARALLEL_2D;
 	return finish_blocking(Blocking{mc, kc, nc_group, column_tile, threads, mode, false}, m, k);
 }
 
@@ -468,71 +462,157 @@ inline void kernel_mrx4_masked(
 	}
 }
 
+// packed micro-panel 用 kernel: A は stride MR, B は stride NR の完全連続アクセス
 template<int ROUNDING>
-inline void compute_block(
-	const int m,
-	const int n,
+inline void kernel_packed_mrx4(
 	const int pb,
-	const int ic,
-	const int mb,
-	const int pc,
-	const int jc,
-	const int nb,
 	const double* A,
 	const double* B,
 	double* CU,
+	const int ldc,
 	const bool init_zero
 ) {
-	for (int jr = 0; jr < nb; jr += NR) {
-		const int nr = std::min(NR, nb - jr);
-		for (int ir = 0; ir < mb; ir += MR) {
-			const int mr = std::min(MR, mb - ir);
-			const double* ap = A + (ic + ir) + static_cast<std::size_t>(m) * pc;
-			const double* bp = B + pc + static_cast<std::size_t>(n) * (jc + jr);
-			double* cup = CU + (ic + ir) + static_cast<std::size_t>(m) * (jc + jr);
-			if (mr == MR && nr == NR) {
-				kernel_mrx4<ROUNDING>(pb, ap, m, bp, n, cup, m, init_zero);
+	double cu[NR][MR];
+
+	for (int j = 0; j < NR; j++) {
+		for (int i = 0; i < MR; i++) {
+			cu[j][i] = init_zero ? 0.0 : CU[static_cast<std::size_t>(ldc) * j + i];
+		}
+	}
+
+	for (int p = 0; p < pb; p++) {
+		for (int j = 0; j < NR; j++) {
+			const double b = B[j];
+			for (int i = 0; i < MR; i++) {
+				cu[j][i] = rounded_madd<ROUNDING>(cu[j][i], A[i], b);
 			}
-			else {
-				kernel_mrx4_masked<ROUNDING>(pb, mr, nr, ap, m, bp, n, cup, m, init_zero);
-			}
+		}
+		A += MR;
+		B += NR;
+	}
+
+	for (int j = 0; j < NR; j++) {
+		for (int i = 0; i < MR; i++) {
+			CU[static_cast<std::size_t>(ldc) * j + i] = cu[j][i];
 		}
 	}
 }
 
-inline void pack_a_panel(
+// 端 tile 用: packed A/B を stride MR/NR で読み，有効な mr 行 nr 列のみ計算する
+template<int ROUNDING>
+inline void kernel_packed_mrx4_masked(
+	const int pb,
+	const int mr,
+	const int nr,
+	const double* A,
+	const double* B,
+	double* CU,
+	const int ldc,
+	const bool init_zero
+) {
+	double cu[NR][MR];
+
+	for (int j = 0; j < nr; j++) {
+		for (int i = 0; i < mr; i++) {
+			cu[j][i] = init_zero ? 0.0 : CU[static_cast<std::size_t>(ldc) * j + i];
+		}
+	}
+
+	for (int p = 0; p < pb; p++) {
+		for (int j = 0; j < nr; j++) {
+			const double b = B[j];
+			for (int i = 0; i < mr; i++) {
+				cu[j][i] = rounded_madd<ROUNDING>(cu[j][i], A[i], b);
+			}
+		}
+		A += MR;
+		B += NR;
+	}
+
+	for (int j = 0; j < nr; j++) {
+		for (int i = 0; i < mr; i++) {
+			CU[static_cast<std::size_t>(ldc) * j + i] = cu[j][i];
+		}
+	}
+}
+
+// A block (mb x pb) を MR 行の micro-panel 単位で連続配置に pack する．
+// layout: packed[(ir/MR)*(MR*pb) + p*MR + i]
+// kernel が A を stride MR の完全連続 load で読めるようにし，
+// 大きな leading dimension による L1 set 競合を避ける．端数行は 0 詰め．
+inline void pack_a_micro(
 	const int m,
 	const int mb,
 	const int pb,
-	const int mb_padded,
 	const double* A,
 	double* packed
 ) {
-	for (int p = 0; p < pb; p++) {
-		double* dst = packed + static_cast<std::size_t>(p) * mb_padded;
-		const double* src = A + static_cast<std::size_t>(m) * p;
-		for (int i = 0; i < mb; i++) {
-			dst[i] = src[i];
+	const int full_panels = mb / MR;
+	for (int q = 0; q < full_panels; q++) {
+		double* dst = packed + static_cast<std::size_t>(q) * MR * pb;
+		const double* src = A + static_cast<std::size_t>(q) * MR;
+		for (int p = 0; p < pb; p++) {
+			const double* s = src + static_cast<std::size_t>(m) * p;
+			double* d = dst + static_cast<std::size_t>(p) * MR;
+			for (int i = 0; i < MR; i++) {
+				d[i] = s[i];
+			}
 		}
-		for (int i = mb; i < mb_padded; i++) {
-			dst[i] = 0.0;
+	}
+
+	const int ir = full_panels * MR;
+	const int rows = mb - ir;
+	if (rows > 0) {
+		double* dst = packed + static_cast<std::size_t>(full_panels) * MR * pb;
+		const double* src = A + ir;
+		for (int p = 0; p < pb; p++) {
+			const double* s = src + static_cast<std::size_t>(m) * p;
+			double* d = dst + static_cast<std::size_t>(p) * MR;
+			for (int i = 0; i < rows; i++) {
+				d[i] = s[i];
+			}
+			for (int i = rows; i < MR; i++) {
+				d[i] = 0.0;
+			}
 		}
 	}
 }
 
-inline void pack_b_panel_parallel(
+// B panel (pb x nb) を NR 列の micro-panel 単位で連続配置に pack する．
+// layout: packed[(jr/NR)*(pb*NR) + p*NR + j]
+// kernel が B を stride NR の単一連続 stream で読めるようにする．端数列は 0 詰め．
+inline void pack_b_micro_parallel(
 	const int n,
 	const int pb,
 	const int nb,
 	const double* B,
 	double* packed
 ) {
+	const int panels = ceil_div(nb, NR);
 #pragma omp for schedule(static)
-	for (int j = 0; j < nb; j++) {
-		double* dst = packed + static_cast<std::size_t>(pb) * j;
-		const double* src = B + static_cast<std::size_t>(n) * j;
-		for (int p = 0; p < pb; p++) {
-			dst[p] = src[p];
+	for (int jp = 0; jp < panels; jp++) {
+		const int jr = jp * NR;
+		const int cols = std::min(NR, nb - jr);
+		double* dst = packed + static_cast<std::size_t>(jp) * pb * NR;
+		const double* src = B + static_cast<std::size_t>(n) * jr;
+		if (cols == NR) {
+			for (int p = 0; p < pb; p++) {
+				double* d = dst + static_cast<std::size_t>(p) * NR;
+				for (int j = 0; j < NR; j++) {
+					d[j] = src[p + static_cast<std::size_t>(n) * j];
+				}
+			}
+		}
+		else {
+			for (int p = 0; p < pb; p++) {
+				double* d = dst + static_cast<std::size_t>(p) * NR;
+				for (int j = 0; j < cols; j++) {
+					d[j] = src[p + static_cast<std::size_t>(n) * j];
+				}
+				for (int j = cols; j < NR; j++) {
+					d[j] = 0.0;
+				}
+			}
 		}
 	}
 }
@@ -553,23 +633,22 @@ inline void compute_packed_ic_block(
 	const bool init_zero
 ) {
 	const int mb = std::min(blocking.mc, m - ic);
-	const int mb_padded = round_up_to(mb, MR);
-	pack_a_panel(m, mb, pb, mb_padded, A + ic + static_cast<std::size_t>(m) * pc, packed_a);
+	pack_a_micro(m, mb, pb, A + ic + static_cast<std::size_t>(m) * pc, packed_a);
 
 	for (int jc_offset = 0; jc_offset < ng; jc_offset += blocking.column_tile) {
 		const int nb = std::min(blocking.column_tile, ng - jc_offset);
 		for (int jr = 0; jr < nb; jr += NR) {
 			const int nr = std::min(NR, nb - jr);
-			const double* bp = packed_b + static_cast<std::size_t>(pb) * (jc_offset + jr);
+			const double* bp = packed_b + static_cast<std::size_t>((jc_offset + jr) / NR) * pb * NR;
 			for (int ir = 0; ir < mb; ir += MR) {
 				const int mr = std::min(MR, mb - ir);
-				const double* ap = packed_a + ir;
+				const double* ap = packed_a + static_cast<std::size_t>(ir / MR) * MR * pb;
 				double* cup = CU + (ic + ir) + static_cast<std::size_t>(m) * (jcg + jc_offset + jr);
 				if (mr == MR && nr == NR) {
-					kernel_mrx4<ROUNDING>(pb, ap, mb_padded, bp, pb, cup, m, init_zero);
+					kernel_packed_mrx4<ROUNDING>(pb, ap, bp, cup, m, init_zero);
 				}
 				else {
-					kernel_mrx4_masked<ROUNDING>(pb, mr, nr, ap, mb_padded, bp, pb, cup, m, init_zero);
+					kernel_packed_mrx4_masked<ROUNDING>(pb, mr, nr, ap, bp, cup, m, init_zero);
 				}
 			}
 		}
@@ -592,21 +671,20 @@ inline void compute_packed_ic_column_tile(
 	const bool init_zero
 ) {
 	const int mb = std::min(blocking.mc, m - ic);
-	const int mb_padded = round_up_to(mb, MR);
-	pack_a_panel(m, mb, pb, mb_padded, A + ic + static_cast<std::size_t>(m) * pc, packed_a);
+	pack_a_micro(m, mb, pb, A + ic + static_cast<std::size_t>(m) * pc, packed_a);
 
 	for (int jr = 0; jr < nb; jr += NR) {
 		const int nr = std::min(NR, nb - jr);
-		const double* bp = packed_b_tile + static_cast<std::size_t>(pb) * jr;
+		const double* bp = packed_b_tile + static_cast<std::size_t>(jr / NR) * pb * NR;
 		for (int ir = 0; ir < mb; ir += MR) {
 			const int mr = std::min(MR, mb - ir);
-			const double* ap = packed_a + ir;
+			const double* ap = packed_a + static_cast<std::size_t>(ir / MR) * MR * pb;
 			double* cup = CU + (ic + ir) + static_cast<std::size_t>(m) * (j_base + jr);
 			if (mr == MR && nr == NR) {
-				kernel_mrx4<ROUNDING>(pb, ap, mb_padded, bp, pb, cup, m, init_zero);
+				kernel_packed_mrx4<ROUNDING>(pb, ap, bp, cup, m, init_zero);
 			}
 			else {
-				kernel_mrx4_masked<ROUNDING>(pb, mr, nr, ap, mb_padded, bp, pb, cup, m, init_zero);
+				kernel_packed_mrx4_masked<ROUNDING>(pb, mr, nr, ap, bp, cup, m, init_zero);
 			}
 		}
 	}
@@ -651,7 +729,7 @@ inline void rmatmul_blocked_m_only_nosimd(const int m, const int n, const int k,
 	const int max_mb_padded = round_up_to(std::min(blocking.mc, m), MR);
 	const int max_pb = std::min(blocking.kc, n);
 	std::vector<double> packed_b;
-	packed_b.reserve(static_cast<std::size_t>(max_pb) * std::min(blocking.nc_group, k));
+	packed_b.reserve(static_cast<std::size_t>(max_pb) * round_up_to(std::min(blocking.nc_group, k), NR));
 
 #pragma omp parallel num_threads(blocking.threads)
 	{
@@ -668,9 +746,9 @@ inline void rmatmul_blocked_m_only_nosimd(const int m, const int n, const int k,
 
 #pragma omp single
 				{
-					packed_b.resize(static_cast<std::size_t>(pb) * ng);
+					packed_b.resize(static_cast<std::size_t>(pb) * round_up_to(ng, NR));
 				}
-				pack_b_panel_parallel(n, pb, ng, B + pc + static_cast<std::size_t>(n) * jcg, packed_b.data());
+				pack_b_micro_parallel(n, pb, ng, B + pc + static_cast<std::size_t>(n) * jcg, packed_b.data());
 
 #pragma omp for schedule(static)
 				for (int ic = 0; ic < m; ic += blocking.mc) {
@@ -687,7 +765,7 @@ inline void rmatmul_blocked_2d_nosimd(const int m, const int n, const int k, con
 	const int max_mb_padded = round_up_to(std::min(blocking.mc, m), MR);
 	const int max_pb = std::min(blocking.kc, n);
 	std::vector<double> packed_b;
-	packed_b.reserve(static_cast<std::size_t>(max_pb) * std::min(blocking.nc_group, k));
+	packed_b.reserve(static_cast<std::size_t>(max_pb) * round_up_to(std::min(blocking.nc_group, k), NR));
 
 #pragma omp parallel num_threads(blocking.threads)
 	{
@@ -704,9 +782,9 @@ inline void rmatmul_blocked_2d_nosimd(const int m, const int n, const int k, con
 
 #pragma omp single
 				{
-					packed_b.resize(static_cast<std::size_t>(pb) * ng);
+					packed_b.resize(static_cast<std::size_t>(pb) * round_up_to(ng, NR));
 				}
-				pack_b_panel_parallel(n, pb, ng, B + pc + static_cast<std::size_t>(n) * jcg, packed_b.data());
+				pack_b_micro_parallel(n, pb, ng, B + pc + static_cast<std::size_t>(n) * jcg, packed_b.data());
 
 #pragma omp for collapse(2) schedule(static)
 				for (int jc_offset = 0; jc_offset < ng; jc_offset += blocking.column_tile) {
@@ -714,7 +792,7 @@ inline void rmatmul_blocked_2d_nosimd(const int m, const int n, const int k, con
 						const int nb = std::min(blocking.column_tile, ng - jc_offset);
 						compute_packed_ic_column_tile<ROUNDING>(
 							m, pb, nb, ic, pc, jcg + jc_offset,
-							blocking, A, packed_b.data() + static_cast<std::size_t>(pb) * jc_offset, packed_a.data(), CU, init_zero);
+							blocking, A, packed_b.data() + static_cast<std::size_t>(jc_offset / NR) * pb * NR, packed_a.data(), CU, init_zero);
 					}
 				}
 			}
