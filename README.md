@@ -41,6 +41,12 @@ PDE の例は手法や論文ごとにファイルが分かれており、
 `test_PDE/test_Emden_NOLTA2021.cpp` や
 `test_PDE/test_Emden_Numerische_Mathematik2020.cpp` のように論文と紐づいた
 構成の例もあります。
+これらの PDE の例の中心になるのが `vcp/ldbase.hpp` です。Legendre 多項式を
+変形して構成した H^1_0 の基底（Legendre 基底）により、単位立方体領域上の
+連立半線形楕円型 PDE について、近似解の計算（Newton 法用の行列生成）から
+誤差評価に必要な行列・積分値・各種定数の精度保証付き計算までを
+1 つのクラス `vcp::Legendre_Bases_Generator` で扱えます。詳しい使い方は
+[docs/ldbase.md](docs/ldbase.md) を参照してください。
 Newton 法を独自の非線形問題に使う場合は、[docs/newton.md](docs/newton.md) を
 参照してください。最小例は `test_PDE/test_newton1.cpp` です。
 行列クラスの基本的な使い方は、`test_matrix/test_matrix.cpp` が小さく読みやすい例です。
