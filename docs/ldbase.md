@@ -16,7 +16,9 @@
 
 基底の構成は
 
-> K. Sekine, et al., JSIAM Letters, vol. 1 (2009), pp. 21--24.
+> M. T. Nakao and T. Kinoshita, On very accurate verification of solutions
+> for boundary value problems by using spectral methods,
+> JSIAM Letters, vol. 1 (2009), pp. 21--24.
 > https://doi.org/10.14495/jsiaml.1.21
 
 に基づきます。また、本ヘッダの使い方の概要は
@@ -61,12 +63,23 @@ uh(x) = sum_i  uh_i  Phi_i(x)
 
 ```cpp
 #include <kv/interval.hpp>   // 事前に interval.hpp が必要
+#include <kv/rdouble.hpp>
+#include <kv/mpfr.hpp>       // kv の MPFR 型
+#include <kv/rmpfr.hpp>      // MPFR の丸め方向制御（rop 版）
 #include <vcp/matrix.hpp>
 #include <vcp/ldbase.hpp>
 ```
 
 `ldbase.hpp` は `interval.hpp` を include 済みであることを要求します
 （未 include の場合はコンパイルエラーになります）。
+
+後述の `_T` には実質的に `kv::interval< kv::mpfr<N> >` などの MPFR
+ベースの高精度区間型が必須です。基底（高次の Legendre 多項式）や
+Gauss-Legendre 積分点の生成では係数が極端に大きく・小さくなり、
+`double` 程度の精度・指数範囲ではオーバーフローや精度劣化が起こる
+ためです。そのため `kv/mpfr.hpp` と、区間演算で丸め方向を制御する
+`kv/rmpfr.hpp` の両方を include してください。リンク時には MPFR
+ライブラリ（`-lmpfr`）が必要です。
 
 ## クラステンプレート
 
@@ -76,7 +89,7 @@ vcp::Legendre_Bases_Generator< _T, _TM, _PM >
 
 | 引数 | 意味 |
 | --- | --- |
-| `_T` | 基底・積分点の生成に使う高精度型（例: `kv::interval< kv::mpfr<500> >`） |
+| `_T` | 基底・積分点の生成に使う高精度型。オーバーフロー防止のため MPFR ベースの区間型がほぼ必須（例: `kv::interval< kv::mpfr<500> >`） |
 | `_TM` | 行列・積分値の計算に使う型（例: `double`, `kv::dd`, `kv::interval<double>`） |
 | `_PM` | `vcp::matrix` の計算 policy（省略時 `vcp::mats<_TM>`） |
 
