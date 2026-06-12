@@ -83,8 +83,8 @@ namespace vcp {
 			else if (this->type == 'C' && B.type == 'R') {
 				c.type = 'M';
 				int k = 0;
-				for (int i = 0; i < this->n; i++) {
-					for (int j = 0; j < B.n; j++) {
+				for (int j = 0; j < B.n; j++) {
+					for (int i = 0; i < this->n; i++) {
 						c.v[k] = this->v[i] * B.v[j];
 						k++;
 					}
@@ -174,8 +174,8 @@ namespace vcp {
 			else if (B.type == 'C' && this->type == 'R') {
 				c.type = 'M';
 				int k = 0;
-				for (int i = 0; i < B.n; i++) {
-					for (int j = 0; j < this->n; j++) {
+				for (int j = 0; j < this->n; j++) {
+					for (int i = 0; i < B.n; i++) {
 						c.v[k] = B.v[i] * this->v[j];
 						k++;
 					}
