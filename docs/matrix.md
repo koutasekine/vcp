@@ -39,6 +39,16 @@ BLAS/LAPACK を使う近似計算:
 #include <vcp/matrix_assist.hpp>
 ```
 
+BLAS/LAPACK を使う `kv::dd` の高速近似計算:
+
+```cpp
+#include <kv/dd.hpp>
+
+#include <vcp/pddblas.hpp>
+#include <vcp/matrix.hpp>
+#include <vcp/matrix_assist.hpp>
+```
+
 汎用の区間行列:
 
 ```cpp
@@ -74,6 +84,7 @@ BLAS/LAPACK を利用する `kv::interval<double>` の区間行列:
 | `vcp::mats<T>` | `vcp::matrix<T, vcp::mats<T> >` | 汎用の密行列計算 |
 | `vcp::minimats<T>` | `vcp::matrix<T, vcp::minimats<T> >` | 機能を絞った軽量な密行列計算 |
 | `vcp::pdblas` | `vcp::matrix<double, vcp::pdblas>` | BLAS/LAPACK を使う高速な近似計算 |
+| `vcp::pddblas` | `vcp::matrix<kv::dd, vcp::pddblas>` | double の BLAS/LAPACK を使う `kv::dd` の高速な近似計算 |
 | `vcp::imats<T>` | `vcp::matrix<kv::interval<T>, vcp::imats<T> >` | 汎用の区間行列計算 |
 | `vcp::imats<T, P>` | `vcp::matrix<kv::interval<T>, vcp::imats<T, P> >` | 中点計算などに policy `P` を使う区間行列計算 |
 | `vcp::pidblas` | `vcp::matrix<kv::interval<double>, vcp::pidblas>` | BLAS/LAPACK と有向丸めを使う高速な区間 double 計算 |
@@ -101,6 +112,14 @@ vcp::matrix<double> A;
 
 ```cpp
 vcp::matrix<double, vcp::pdblas> A;
+```
+
+`kv::dd`（double-double、約 32 桁）で速度が必要な場合は `vcp::pddblas` を
+使います。アルゴリズムと制限は後述の
+「`vcp::pddblas` の詳細」を参照してください。
+
+```cpp
+vcp::matrix<kv::dd, vcp::pddblas> A;
 ```
 
 区間演算による包含が必要な場合は `vcp::imats<T>` を使います。
@@ -251,12 +270,13 @@ eigsymge(A, B, E);
 
 ## BLAS/LAPACK policy の注意
 
-`vcp::pdblas` と `vcp::pidblas` は、選択された演算で BLAS/LAPACK routine を
-呼びます。
+`vcp::pdblas`、`vcp::pddblas`、`vcp::pidblas` は、選択された演算で
+BLAS/LAPACK routine を呼びます。
 
 重要な点:
 
 - `pdblas` の要素型は `double` です。
+- `pddblas` の要素型は `kv::dd` です（次節参照）。
 - `pidblas` の要素型は `kv::interval<double>` です。
 - 利用プログラムは BLAS/LAPACK または MKL とリンクする必要があります。
 - LAPACK routine が非ゼロの `info` を返した場合、`vcp::lapack_error` を投げます。
@@ -271,6 +291,96 @@ OpenBLAS を使う設定例は [blas_build.md](blas_build.md) を参照してく
 Newton 法で非線形方程式を解く場合は、`matrix` で残差ベクトルと
 ヤコビ行列を作り、`vcp::Newton` に渡す形になります。詳しくは
 [newton.md](newton.md) を参照してください。
+
+## `vcp::pddblas` の詳細
+
+`vcp::pddblas` は、要素型 `kv::dd`（double-double、仮数部約 106 bit、
+約 32 桁）の行列計算を、double の BLAS/LAPACK routine を使って
+高速かつ高精度に行う近似計算 policy です。`vcp::mats<kv::dd>` を継承し、
+`vcp::pdblas` と同じメソッド（行列積、線形方程式、逆行列、Cholesky 分解、
+固有値問題、一般化固有値問題）を override しています。
+
+```cpp
+#include <kv/dd.hpp>
+
+#include <vcp/pddblas.hpp>
+#include <vcp/matrix.hpp>
+#include <vcp/matrix_assist.hpp>
+
+vcp::matrix<kv::dd, vcp::pddblas> A, b, x;
+```
+
+### 使用しているアルゴリズム
+
+| 演算 | アルゴリズム |
+| --- | --- |
+| 行列積 `A * B`, `ltransmul(A)` | 尾崎スキーム（error-free transformation による行列分割） |
+| 線形方程式 `lss(A, b)` | double の LU 分解（`dgetrf`/`dgetrs`）+ Newton 法型の残差反復 |
+| 逆行列 `inv(A)` | 単位行列を右辺とする上記の残差反復 |
+| Cholesky 分解 `Cholesky(A)` | double の `dpotrf` + 残差反復による Cholesky factor の改良 |
+| 対称固有値問題 `eigsym` | double の `dsyev` + 荻田-相島の反復改良法 |
+| 一般化対称固有値問題 `eigsymge` | double の `dsygv` + 荻田-相島の反復改良法（B 内積版） |
+
+行列積は尾崎スキーム
+（K. Ozaki, T. Ogita, S. Oishi, S. M. Rump,
+"Error-free transformations of matrix multiplication by using fast routines
+of matrix multiplication and its applications",
+Numerical Algorithms, Vol. 59, pp. 95-118, 2012）を `kv::dd` に
+適用したものです。dd 行列を行ごと・列ごとのスケーリングで複数の double
+行列（スライス）の和に分割し、スライス同士の積を `dgemm` で計算します。
+分割幅はスライス積の `dgemm` が丸め誤差なしで計算されるように選んであり、
+誤差ゼロの `dgemm` 結果を dd 演算で総和することで、ほぼ dd 精度の
+行列積が `dgemm` 数十回分のコストで得られます。
+
+線形方程式は、まず double に丸めた係数行列を `dgetrf` で LU 分解して
+double 精度の近似解を求め、その後 `b - A x` の残差（尾崎スキームで
+高精度に計算）を `dgetrs` で解いて解を修正する残差反復を、dd 精度に
+収束するまで繰り返します。LU 分解は最初の 1 回だけで、反復中は前進後退
+代入と残差計算のみを行います。
+
+固有値問題は、まず `dsyev`（一般化問題は `dsygv`）で double 精度の
+近似固有対を求め、荻田-相島の反復改良法
+（T. Ogita, K. Aishima, "Iterative refinement for symmetric eigenvalue
+decomposition", Japan Journal of Industrial and Applied Mathematics,
+Vol. 35, pp. 1007-1035, 2018,
+DOI: <https://doi.org/10.1007/s13160-018-0310-3>）で固有値と固有ベクトルを
+同時に高精度化します。1 回の反復で正しい桁数がほぼ倍増する
+（二次収束する）ため、標準では 2 回の反復で dd 精度に到達します。
+反復内の行列積はすべて尾崎スキームで計算します。一般化問題では
+B 内積（`transpose(X) * B * X = I` の正規化）を使う同じ形の反復を
+行います。`eigsym`/`eigsymge` の `itep` 引数は反復回数で、dd 精度を
+確保するため内部では最低 2 回反復します。
+
+### 注意点と制限
+
+- `pddblas` は近似計算 policy です。結果は高精度ですが、
+  精度保証（包含）は行いません。包含が必要な場合は区間演算の policy を
+  使ってください。
+- **初期近似を double で計算するため、double で解けない問題は解けません。**
+  たとえば線形方程式では、係数行列の条件数が約 `1e16` を超えると
+  double の LU 分解が数値的に破綻し、残差反復が収束せず、dd 精度どころか
+  解そのものが得られない（または `vcp::lapack_error` が投げられる）ことが
+  あります。残差反復で改善できるのは、おおよそ
+  `条件数 × 1e-16 < 1` を満たす問題に限られます。条件数がそれを超える
+  問題では、`vcp::mats<kv::dd>`（dd 精度のままの LU 分解）や
+  `kv::mpfr<N>` などの高精度型の利用を検討してください。
+- 同様に、固有値問題でも固有値の分離が double 精度で判別できない
+  （極端にクラスター化した）場合、荻田-相島反復は該当する固有ベクトルを
+  個別には分離できず、その部分の改良は制限されます。
+- 得られた解の精度は、`b - A x` などの残差を `pddblas` の高精度な
+  行列積で計算して確認することを推奨します。
+- 行列要素の絶対値が極端に大きい（`1e300` 程度を超える）場合、
+  尾崎スキームの分割で指数部が overflow するため正しく動作しません。
+- `pdblas` と同様、LAPACK routine が非ゼロの `info` を返した場合は
+  `vcp::lapack_error` を投げます。
+- 利用プログラムは BLAS/LAPACK または MKL とリンクする必要があり、
+  `kv::dd` を使うため kv ライブラリの include path も必要です。
+
+速度の目安として、`vcp::mats<kv::dd>` との比較で、線形方程式は
+n = 1000 で約 30 倍、対称固有値問題は n = 100 で約 1000 倍以上高速です。
+行列積は `dgemm` 数十回分のコストのため `vcp::pdblas`（double）より
+30〜40 倍程度遅くなりますが、`vcp::mats<kv::dd>` よりは高速で、
+かつ丸め誤差は大幅に小さくなります。
 
 ## ファイル入出力
 
