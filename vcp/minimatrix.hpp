@@ -268,8 +268,8 @@ namespace vcp{
 			else if (type == 'C' && B.type == 'R') {
 				c.type = 'M';
 				int k = 0;
-				for (int i = 0; i < n; i++) {
-					for (int j = 0; j < B.n; j++) {
+				for (int j = 0; j < B.n; j++) {
+					for (int i = 0; i < n; i++) {
 						c.v[k] = v[i] * B.v[j];
 						k++;
 					}
