@@ -41,6 +41,7 @@
 
 //#include <vcp/imats.hpp>
 //#include <vcp/pdblas.hpp>
+//#include <vcp/pddblas.hpp>
 //#include <vcp/pidblas.hpp>
 //#include <vcp/pidblas_fma.hpp>
 
@@ -65,6 +66,7 @@ int main(void) {
 
 /*---  3.Approximate Data type with BLAS and Lapack  ---*/
 //	vcp::matrix< double, vcp::pdblas > A, B, E, D, X, G, I;
+//	vcp::matrix< kv::dd, vcp::pddblas > A, B, E, D, X, G, I;
 
 // vcp::mats< T >
 /*---  4.Verification Data type with KV  ---*/
@@ -74,6 +76,7 @@ int main(void) {
 
 /*---  5.Verification Data type with KV (Approximate term is used pdblas which is not necessary to chenge the rounding mode on BLAS)  ---*/
 //	vcp::matrix< kv::interval< double >, vcp::imats< double, vcp::pdblas > > A, B, E, D, X, G, I;
+//  vcp::matrix< kv::interval< kv::dd >, vcp::imats< kv::dd, vcp::pddblas > > A, B, E, D, X, G, I;
 
 /*---  6.Verification Data type with KV, BLAS and Lapack (Please check to chenge the rounding mode on BLAS)  ---*/
 //	vcp::matrix< kv::interval< double >, vcp::pidblas > A, B, E, D, X, G, I;
