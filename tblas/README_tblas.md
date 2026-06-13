@@ -120,6 +120,22 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
 | `kv::mpfr<N>` | ✓ | ✓ | ✓ | ✓ | 同上 |
 | `kv::interval<U>` | ✓ | ✓ | △ | ✓ | 四則・`abs`・`sqrt` は包含保証付き．順序比較は区間が重なると分岐が数学的に不定なため，**R3/R4 を要する分岐系 routine (`itamax` `tnrm2` `trotg` `trotmg`) は区間型では非推奨** (R1/R2 のみの routine は安全に使用可) |
 
+区間型の対応状況 (テスト済み):
+
+- **`kv::interval<double>`** と **`kv::interval<kv::dd>`** の両方で，R1/R2 のみの
+  routine (`tgemm` `tgemv` `ttrsv` `ttrsm` `taxpy` `tdot` など) と `tasum`
+  (abs のみで分岐なし，1-norm の包含を返す) が動作することを
+  `sandbox/tests/test_tblas_types.cpp` で検証済み
+  (整数成分での幅 0 の exact 計算と，trsv/trsm の residual の 0 包含)．
+- `kv::interval<kv::dd>` を使う場合は `<kv/rdd.hpp>` (dd の方向丸め) の include
+  が必要 (`interval<double>` は `<kv/rdouble.hpp>`)．
+- 分岐系 4 routine (`itamax` `tnrm2` `trotg` `trotmg`) は区間型では使わないこと．
+  kv の区間比較は「確実に小さい」(`x.sup < y.inf`) の意味論なので重なった区間では
+  分岐が選別できず，`tnrm2` は scale が 0 を含む区間になると内部の除算で
+  `std::domain_error` を投げうる．
+- tlapack は区間型に**対応しない** (理由は tlapack/README_tlapack.md の
+  「区間型は対象外」を参照)．
+
 ## 設計上の注意 (要件から導かれる実装方針)
 
 1. **定数の構成**: `trotmg` の `gam = 4096`, `gamsq = gam * gam`,

@@ -144,6 +144,16 @@ LAPACK は pivot 選択・収束判定・shift 選択など，ほぼ全 routine 
 区間演算による精度保証は，tlapack の近似解を入力とする検証法 (vcp 本体の
 定式化) 側で行ってください．
 
+具体的には `kv::interval<double>` は **R5 を満たしません**: kv は
+`std::numeric_limits<kv::interval<T>>` を特殊化していないため primary template
+に fallback し，`epsilon()` 等が [0,0] を返します．その結果 `tlamch<itv>('S')`
+の内部の `1/max()` が区間の 0 除算となり，`tlamch` を使う全 routine (tgesv を
+含む) は実行時に `std::domain_error` を投げます (compile は通るが使えない)．
+仮に numeric_limits を自前で特殊化しても，kv の区間比較は「確実に小さい」
+(`x.sup < y.inf`) の意味論なので重なった区間では分岐が機能せず，反復法の
+収束判定は満たされず，deflation (要素への exact 0 代入) で包含も壊れるため，
+意味のある結果にはなりません．
+
 ## routine 群と必要要件の対応 (増分のみ)
 
 | routine 群 | R5 (tlamch) | R6 (NaN) | 備考 |
