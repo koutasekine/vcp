@@ -12,8 +12,12 @@ RoundingGuard を使わない)．丸めモード指定が必要な場合は `vcp
 #include <kv/dd.hpp>
 
 // C := alpha*A*B + beta*C を kv::dd で計算 (column-major, 0-based)
-tgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);   // T は引数から推論
-tgemm<kv::dd>('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc); // 明示も可
+vcp::tgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);   // T は引数から推論
+vcp::tgemm<kv::dd>('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc); // 明示も可
+
+// using namespace vcp; を使えば vcp:: を省略できる
+using namespace vcp;
+tgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 ```
 
 ## file 構成
@@ -152,8 +156,8 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
    rdblas 同様 0-based `int` (空のとき -1)．
 6. **OpenMP**: 並列化する場合，reduction は `T` の `+` のみで書ける形
    (手動 reduction) にする．`#pragma omp declare reduction` は使わない．
-7. **namespace / file 構成**: rdblas に合わせて関数は global scope，
-   補助は `tblas_detail` namespace．
+7. **namespace / file 構成**: 全公開関数は `namespace vcp` に属する．
+   補助関数は `tblas_detail` namespace (グローバルスコープ)．
    `vcp/tblas/tblas.hpp` を umbrella とし `tblas_common.hpp` /
    `tblas_level1.hpp` / `tblas_level2.hpp` / `tblas_level3.hpp` に分割．
 
@@ -199,8 +203,10 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
 
 ## 共通仕様
 
-- 全関数は `template <typename T>` の関数 template．`T` は引数から推論される
-  (`tgemm(...)` のように呼べばよい．`tgemm<kv::dd>(...)` と明示してもよい)．
+- 全関数は `namespace vcp` に属する `template <typename T>` の関数 template．
+  `T` は引数から推論される (`vcp::tgemm(...)` のように呼べばよい．
+  `vcp::tgemm<kv::dd>(...)` と明示してもよい)．`using namespace vcp;` を
+  使えば `vcp::` を省略できる．
 - **行列は column-major**: `A(i,j)` は `A[i + lda * j]`．leading dimension
   `lda` は列の先頭間隔で，`lda >= max(1, 行数)` が必要．
 - **index は 0-based**．`itamax` の返り値も 0-based (Fortran BLAS と異なる)．

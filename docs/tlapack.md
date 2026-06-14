@@ -11,8 +11,12 @@
 #include <kv/dd.hpp>
 
 // A*X = B を kv::dd で解く (column-major, ipiv は 0-based)
-int info = tgesv(n, nrhs, A, lda, ipiv, B, ldb);   // T は引数から推論される
-int info2 = tsyev('V', 'U', n, A, lda, w);          // 対称固有値 (kv::dd のまま高精度)
+int info = vcp::tgesv(n, nrhs, A, lda, ipiv, B, ldb);   // T は引数から推論される
+int info2 = vcp::tsyev('V', 'U', n, A, lda, w);          // 対称固有値 (kv::dd のまま高精度)
+
+// using namespace vcp; を使えば vcp:: を省略できる
+using namespace vcp;
+int info3 = tgesv(n, nrhs, A, lda, ipiv, B, ldb);
 ```
 
 ## file 構成
@@ -177,7 +181,7 @@ LAPACK は pivot 選択・収束判定・shift 選択など，ほぼ全 routine 
 2. **派生定数は遅延計算しない**: 各 routine の冒頭で `const T eps = ...` と
    して T の演算で構成する (rdlapack と同じ形)．
 3. **BLAS は全て tblas**: rdblas 呼び出し (`rdgemm(..., rm)`) を tblas
-   (`tgemm(...)`) に置き換える．`idamax` → `itamax` など命名も対応．
+   (`vcp::tgemm(...)`) に置き換える．`idamax` → `itamax` など命名も対応．
 4. **block size は rdlapack の `ilaenv` 既定値をそのまま使う** (GETRF/POTRF/
    SYTRF 64，QR/SYTRD/GEBRD/GEHRD 系 32)．多倍長型では演算 cost が支配的で
    block 化の意義は cache でなく BLAS3 化にあるため，同じ値で問題ない．
@@ -245,8 +249,9 @@ reference LAPACK 3.12.1 の同名 routine (`t` → `d`) に準ずる．
 
 ## 共通仕様
 
-- 全関数は `template <typename T>` の関数 template (`tlamch<T>` 以外は引数から
-  T が推論される)．
+- 全関数は `namespace vcp` に属する `template <typename T>` の関数 template
+  (`tlamch<T>` 以外は引数から T が推論される)．`using namespace vcp;` を
+  使えば `vcp::` を省略できる．
 - **行列は column-major**: `A(i,j)` は `A[i + lda * j]`，`lda >= max(1, 行数)`．
 - **返り値は LAPACK の INFO** (int)．`0`: 成功，`> 0`: LAPACK と同じ意味
   (位置・個数は **1-based**)．LAPACK で `INFO < 0` になる引数 error は返り値では
@@ -266,6 +271,7 @@ reference LAPACK 3.12.1 の同名 routine (`t` → `d`) に準ずる．
 - scalar 引数は `const T&`，出力 scalar は `T&` 渡し．
 - `namespace tlapack_detail` 内の関数 (`tabs` `tsqrt` `tisnan` `f_sign` `pow2i`
   `ilaenv` など) は内部実装用であり，この文書では公開 API のみ記載する．
+  (内部 detail 名前空間はグローバルスコープに置かれ，`namespace vcp` には属さない．)
 
 ### reference LAPACK との実装上の相違 (結果の意味は同じ)
 
@@ -284,7 +290,7 @@ reference LAPACK 3.12.1 の同名 routine (`t` → `d`) に準ずる．
 ### tlamch — machine parameter
 ```cpp
 template <typename T>
-T tlamch(const char cmach);   // 例: tlamch<kv::dd>('E')
+T vcp::tlamch(const char cmach);   // 例: vcp::tlamch<kv::dd>('E')
 ```
 `std::numeric_limits<T>` から machine parameter を構成して返す (要件 R5)．
 T は推論できないため明示する．
