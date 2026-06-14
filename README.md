@@ -129,7 +129,10 @@ macOS、Apple Silicon、AMD/Intel Linux、OpenBLAS、clang、Homebrew GCC の具
 
 外部 BLAS/LAPACK がない環境では、`-DUSE_VCP_BLAS` と `-DUSE_VCP_LAPACK` を
 指定することで、純 C++ 実装の BLAS/LAPACK（`vcp/vblas/dblas.hpp` と
-`vcp/vlapack/dlapack.hpp`）を代わりに使用できます。
+`vcp/vlapack/dlapack.hpp`）を代わりに使用できます。`vcp::pdblas`・
+`vcp::pidblas`・`vcp::pddblas` は内部では共通ヘッダー
+`vcp/dblas_dlapack.hpp` を通して、外部 BLAS/LAPACK を使うか、VCP 内部実装
+(`dblas.hpp` / `dlapack.hpp`) を使うかを切り替えます。
 
 ```bash
 g++ -std=c++11 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND \

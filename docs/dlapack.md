@@ -13,6 +13,9 @@ rmatmul ── vcp::rdblas ──┬── dblas    (BLAS  の Fortran 互換 wr
 `vcp::rdblas` / `vcp::rdlapack` は `vcp` 名前空間に収められた C++ 関数です．
 `dblas` / `dlapack` は Fortran 互換の `extern "C"` グローバルシンボルであり，
 名前空間には入っていません．
+`vcp::pdblas`・`vcp::pidblas`・`vcp::pddblas` から使う場合は，内部の共通ヘッダー
+`vcp/dblas_dlapack.hpp` が `USE_VCP_LAPACK` の有無に応じて `dlapack.hpp` と
+外部 LAPACK 宣言を切り替えます．
 
 ```cpp
 #include <vcp/vlapack/dlapack.hpp>

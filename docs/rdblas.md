@@ -107,6 +107,8 @@ std::fesetround(FE_TONEAREST);
 `vcp/vblas/dblas.hpp` を内部で使用します．これにより `vcp::pdblas`・
 `vcp::pidblas`・`vcp::pddblas` が外部 BLAS ライブラリを必要とせずに
 動作します (`-DUSE_VCP_LAPACK` と組み合わせれば LAPACK も不要になります)．
+実際の切り替えは `vcp/dblas_dlapack.hpp` に集約されており，`pdblas` 系 header は
+この共通ヘッダーを通して BLAS/LAPACK の宣言を受け取ります．
 
 VCP Library の精度保証付き計算 (`vcp::pidblas`) において，BLAS の
 有向丸め（上向き／下向き）が必要な演算は **`dgemm_` のみ**です．
