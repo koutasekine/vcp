@@ -35,10 +35,10 @@
 #include <vcp/mats.hpp>
 
 #ifdef USE_VCP_BLAS
-#  include "../vblas/dblas.hpp"
+#  include <vcp/vblas/dblas.hpp>
 #endif
 #ifdef USE_VCP_LAPACK
-#  include "../vlapack/dlapack.hpp"
+#  include <vcp/vlapack/dlapack.hpp>
 #endif
 #if !defined(USE_VCP_BLAS) || !defined(USE_VCP_LAPACK)
 extern "C" {

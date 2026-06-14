@@ -68,7 +68,7 @@
 #include <stdexcept>
 #include <vector>
 
-#include "../vblas/rdblas.hpp"
+#include <vcp/vblas/rdblas.hpp>
 
 #pragma STDC FENV_ACCESS ON
 

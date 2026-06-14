@@ -67,7 +67,7 @@
 #include <stdexcept>
 #include <vector>
 
-#include "../tblas/tblas.hpp"
+#include <vcp/tblas/tblas.hpp>
 
 namespace tlapack_detail {
 
