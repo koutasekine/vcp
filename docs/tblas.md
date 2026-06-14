@@ -29,6 +29,7 @@ tgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 | `tblas_level1.hpp` | Level 1 (`tcopy` `tswap` `itamax` `tscal` `taxpy` `tdot` `tasum` `tnrm2` `trot` `trotg` `trotm` `trotmg`) |
 | `tblas_level2.hpp` | Level 2 (`tgemv` `tgbmv` `tsymv` `tsbmv` `tspmv` `ttrmv` `ttbmv` `ttpmv` `ttrsv` `ttbsv` `ttpsv` `tger` `tsyr` `tspr` `tsyr2` `tspr2`) |
 | `tblas_level3.hpp` | Level 3 (`tgemm` `tgemmtr` `tsymm` `tsyrk` `tsyr2k` `ttrmm` `ttrsm`) |
+| `tblas_double.hpp` | `T=double` の明示的特殊化．`dblas_dlapack.hpp` 経由で BLAS (`dcopy_` `dgemm_` など) を呼ぶ |
 
 ## 提供予定 routine (rdblas と同一集合，d → t に読み替え)
 
@@ -42,6 +43,36 @@ tgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 引数順は rdblas から末尾の `rounding_mode` を除いたもの (= reference BLAS と同順)．
 column-major / 0-based / `int` index，不正引数は `std::invalid_argument`，
 scalar 引数は `const T&` 渡し (mpfr 等の copy cost 回避) とします．
+
+## T=double の BLAS 委譲特殊化
+
+`T=double` については `vcp/tblas/tblas_double.hpp` を include すると，全 routine が
+明示的特殊化され，`vcp/dblas_dlapack.hpp` 経由で double BLAS を直接呼びます．
+
+```cpp
+#include <vcp/tblas/tblas_double.hpp>
+
+vcp::tgemm<double>('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+```
+
+実装は `tgemm<double>(...) { dgemm_(...); }` と同じ方針です．`USE_VCP_BLAS` が
+定義されている場合は `dblas_dlapack.hpp` が `vcp/vblas/dblas.hpp` の wrapper を
+使い，定義されていない場合は外部 BLAS (MKL / OpenBLAS / reference BLAS) の
+Fortran symbol を `extern "C"` 宣言して呼びます．
+
+注意:
+
+- `tblas_double.hpp` は `t...<double>` を最初に使う前に include してください．
+  明示的特殊化は，対象 template が既にその翻訳単位で暗黙実体化された後には
+  追加できません．
+- `itamax<double>` は BLAS の `idamax_` (1-based) を呼んだあと，tblas の規約に
+  合わせて 0-based に変換します．`n <= 0` など BLAS 側の規約に従うため，
+  通常の tblas 実装と同じ使い方で構いません．
+- `tblas_double.hpp` は既存の汎用 template 実装を変更しません．double 以外の型は
+  従来どおり `tblas.hpp` の template 実装を使います．
+- `vcp/tlapack/tlapack_double.hpp` は内部で `tblas_double.hpp` も include します．
+  tlapack の double 特殊化を使う場合は `tlapack_double.hpp` だけ include すれば，
+  LAPACK から呼ばれる BLAS 部分も double BLAS へ委譲されます．
 
 ## T 型要件
 
@@ -191,6 +222,9 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
 - **T=double を rdblas と比較** (282 checks)：全 routine・全 option 組合せ・inc 正負・alpha/beta 特殊値．
 - **kv::dd / kv::mpfr<106>**：double との一致と residual の高精度性．
   **kv::interval<double>**：dd 参照値の包含と residual の 0 包含．
+- **T=double 特殊化の smoke test**:
+  `sandbox/tests/test_tblas_tlapack_double_specialization.cpp` で
+  `vcp/tblas/tblas_double.hpp` の include と `taxpy<double>` の BLAS 委譲を確認．
 
 
 ---
