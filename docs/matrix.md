@@ -344,6 +344,10 @@ g++ -std=c++11 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND \
 - `vblas/dblas.hpp` と `vlapack/dlapack.hpp` は `vcp/` と同じ親ディレクトリに
   `vblas/` と `vlapack/` が配置されている前提でインクルードされます。
   標準のディレクトリ構成（`vcp/`、`vblas/`、`vlapack/` が並ぶ）ではそのまま動きます。
+- VCP Library の精度保証付き計算（`vcp::pidblas`）において、有向丸めで呼ばれる
+  BLAS 関数は `dgemm_` のみです。`vblas/dblas.hpp` の `dgemm_` は呼び出し時点の
+  丸めモードを自動的に読み取るため、`kv::hwround::roundup()` / `rounddown()` で
+  丸めモードを設定してから呼び出す既存のコードと正しく連携します。
 
 ## `vcp::pddblas` の詳細
 

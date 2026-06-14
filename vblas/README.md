@@ -1,13 +1,16 @@
 # vblas
 
-`vblas/` は、丸め方向を指定して double 行列積を計算するための実験的な
-BLAS 風カーネル群です。外部 BLAS がハードウェア丸めモードの変更を
-精度保証付き数値計算に必要な形で反映しない場合に、代替 backend として
-使えるかを検討する目的で置かれています。
+`vblas/` は、丸め方向を指定して double 行列積および BLAS 全ルーティンを
+計算するカーネル群と、Fortran 互換ラッパー（`dblas`）です。
+外部 BLAS がハードウェア丸めモードの変更を精度保証付き数値計算に必要な
+形で反映しない環境に対して、代替 backend として使用できます。
 
-通常の VCP Library の安定 API ではありません。`vcp::matrix`、
-`vcp::pdblas`、`vcp::pidblas` から自動的に使われるものではなく、
-利用側が `vblas/rmatmul.hpp` などを明示的に include して呼び出します。
+`-DUSE_VCP_BLAS` をコンパイル時に指定すると、`vcp/pdblas.hpp`
+（`vcp::pdblas`・`vcp::pidblas`・`vcp::pddblas`）が `vblas/dblas.hpp` を
+内部で使用し、外部 BLAS ライブラリを必要とせずに動作します。
+詳細は `docs/matrix.md` の「外部 BLAS/LAPACK を使わない場合」を参照して
+ください。`rmatmul` / `rdblas` を直接利用したい場合は、利用側が
+`vblas/rmatmul.hpp` などを明示的に include して呼び出します。
 
 ## 主なファイル
 
@@ -227,7 +230,10 @@ MKL や OpenBLAS、MPFR を含む既存の VCP 検証コードと一緒にリン
 ## 注意
 
 - 対象は点 double 行列です。一般の区間行列 backend ではありません。
-- まだ実験段階のため、通常の VCP Library 利用では `vcp/` と `docs/` 以下の
-  文書を参照してください。
-- 将来 VCP の公開 API に昇格する場合は、CPU feature check、丸め方向付き計算の
-  正しさテスト、性能評価、policy としてのインターフェース設計が必要です。
+- VCP Library の精度保証付き計算（`vcp::pidblas`）において、BLAS の
+  有向丸め（上向き／下向き）が必要な演算は `dgemm_` のみです。
+  `ddot_`、`dsymm_`、`dgemv_`、`dsyrk_` などは最近点丸め（デフォルト）
+  で呼ばれます。LAPACK 関数（`dgetrf_`、`dsyev_` 等）も同様に最近点丸めで
+  使用されます。
+- `rmatmul` / `rdblas` の直接利用については、`vcp/` と `docs/` 以下の
+  文書も参照してください。

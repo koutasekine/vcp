@@ -101,6 +101,24 @@ std::fesetround(FE_TONEAREST);
 **並列領域の外で** (master thread に対して) 実行してください．
 並列領域の内側で設定した丸めモードは join 後の master には残りません．
 
+## vcp との統合 (`-DUSE_VCP_BLAS`)
+
+`-DUSE_VCP_BLAS` をコンパイル時に指定すると，`vcp/pdblas.hpp` が
+`vblas/dblas.hpp` を内部で使用します．これにより `vcp::pdblas`・
+`vcp::pidblas`・`vcp::pddblas` が外部 BLAS ライブラリを必要とせずに
+動作します (`-DUSE_VCP_LAPACK` と組み合わせれば LAPACK も不要になります)．
+
+VCP Library の精度保証付き計算 (`vcp::pidblas`) において，BLAS の
+有向丸め（上向き／下向き）が必要な演算は **`dgemm_` のみ**です．
+`vcp::pidblas` の区間行列積では，`kv::hwround::roundup()` または
+`kv::hwround::rounddown()` で丸めモードを切り替えてから
+`vcp::pdblas::mulmm()` を呼び出し，その内部で `dgemm_` が実行されます．
+`ddot_`・`dsymm_`・`dgemv_`・`dsyrk_` などは最近点丸め（デフォルト）で
+呼ばれます．LAPACK 関数（`dgetrf_`・`dsyev_` 等）も最近点丸めのみで
+使用されます．`dblas.hpp` の `dgemm_` は，呼び出し時点の丸めモードを
+読み取って `vcp::rdgemm` に渡すため，この呼び出しパターンで正しく
+有向丸めが適用されることを確認しています．
+
 ## ファイル構成
 
 - `rdblas.hpp` — 入口 (これだけ include すればよい)
