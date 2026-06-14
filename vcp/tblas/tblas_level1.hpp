@@ -59,6 +59,8 @@
 
 #include "tblas_common.hpp"
 
+namespace vcp {
+
 // ---- 演算なし ----
 
 // y := x
@@ -450,5 +452,7 @@ inline void trotmg(T* d1, T* d2, T* x1, const T& y1, T* param) {
 	}
 	param[0] = flag;
 }
+
+} // namespace vcp
 
 #endif // TBLAS_TBLAS_LEVEL1_HPP

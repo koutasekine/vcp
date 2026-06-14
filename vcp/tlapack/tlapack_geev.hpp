@@ -58,6 +58,7 @@
 
 #include "tlapack_svd.hpp"
 
+namespace vcp {
 
 // 行列の balancing (permute + scale)．ilo/ihi は 1-based で返る
 template <typename T>
@@ -1617,5 +1618,7 @@ inline int tgeev(const char jobvl, const char jobvr, const int n, T* A, const in
 	}
 	return info;
 }
+
+} // namespace vcp
 
 #endif // TLAPACK_TLAPACK_GEEV_HPP

@@ -54,6 +54,7 @@
 
 #include "tlapack_lu.hpp"
 
+namespace vcp {
 
 // QR 分解 (unblocked)
 template <typename T>
@@ -708,5 +709,7 @@ inline int tgels(const char trans, const int m, const int n, const int nrhs,
 	}
 	return 0;
 }
+
+} // namespace vcp
 
 #endif // TLAPACK_TLAPACK_QR_HPP

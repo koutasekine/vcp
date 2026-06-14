@@ -58,6 +58,7 @@
 
 #include "tlapack_geev.hpp"
 
+namespace vcp {
 
 // Bunch-Kaufman 分解 (unblocked)．ipiv は 1-based 符号付き
 template <typename T>
@@ -987,5 +988,7 @@ inline int tsygv(const int itype, const char jobz, const char uplo, const int n,
 	}
 	return info;
 }
+
+} // namespace vcp
 
 #endif // TLAPACK_TLAPACK_SY_HPP

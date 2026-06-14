@@ -55,6 +55,7 @@
 
 #include "tlapack_qr.hpp"
 
+namespace vcp {
 
 // 対称行列の三重対角化 (unblocked)
 template <typename T>
@@ -935,5 +936,7 @@ inline int tsyev(const char jobz, const char uplo, const int n, T* A, const int 
 	}
 	return info;
 }
+
+} // namespace vcp
 
 #endif // TLAPACK_TLAPACK_EIG_HPP

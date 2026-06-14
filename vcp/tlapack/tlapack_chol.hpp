@@ -52,6 +52,7 @@
 
 #include "tlapack_lu.hpp"
 
+namespace vcp {
 
 // Cholesky 分解 (unblocked)
 template <typename T>
@@ -264,5 +265,7 @@ inline int tpotri(const char uplo, const int n, T* A, const int lda) {
 	tlauum(uplo, n, A, lda);
 	return 0;
 }
+
+} // namespace vcp
 
 #endif // TLAPACK_TLAPACK_CHOL_HPP

@@ -55,6 +55,7 @@
 
 #include "tlapack_aux.hpp"
 
+namespace vcp {
 
 // LU 分解 (部分 pivot 付き, unblocked)
 template <typename T>
@@ -530,5 +531,7 @@ inline int tgetri(const int n, T* A, const int lda, const int* ipiv) {
 	}
 	return 0;
 }
+
+} // namespace vcp
 
 #endif // TLAPACK_TLAPACK_LU_HPP

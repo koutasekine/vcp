@@ -58,6 +58,7 @@
 
 #include "tlapack_eig.hpp"
 
+namespace vcp {
 
 // 二重対角化 (unblocked): A = Q * B * P^T
 template <typename T>
@@ -861,5 +862,7 @@ inline int tgesvd(const char jobu, const char jobvt, const int m, const int n,
 	}
 	return info;
 }
+
+} // namespace vcp
 
 #endif // TLAPACK_TLAPACK_SVD_HPP

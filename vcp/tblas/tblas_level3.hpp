@@ -65,6 +65,8 @@
 
 #include "tblas_common.hpp"
 
+namespace vcp {
+
 // C := alpha*op(A)*op(B) + beta*C
 // op(A): m x k, op(B): k x n, C: m x n
 template <typename T>
@@ -620,5 +622,7 @@ inline void tgemmtr(
 		}
 	}
 }
+
+} // namespace vcp
 
 #endif // TBLAS_TBLAS_LEVEL3_HPP

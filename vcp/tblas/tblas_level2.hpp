@@ -58,6 +58,8 @@
 
 #include "tblas_common.hpp"
 
+namespace vcp {
+
 // y := alpha*op(A)*x + beta*y, op(A) = A ('N') or A^T ('T','C'), A: m x n
 template <typename T>
 inline void tgemv(
@@ -1044,5 +1046,7 @@ inline void tspr2(
 		}
 	}
 }
+
+} // namespace vcp
 
 #endif // TBLAS_TBLAS_LEVEL2_HPP

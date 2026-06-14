@@ -195,6 +195,8 @@ inline int ilaenv(const int ispec, const char* name, const int n1, const int n2,
 
 } // namespace tlapack_detail
 
+namespace vcp {
+
 // LAPACK の DLAMCH の template 版: machine parameter を std::numeric_limits<T> から
 // 構成して返す (要件 R5)．
 //   'E' eps (丸め単位 = epsilon()/2)，'S' safe minimum (1/sfmin が overflow しない
@@ -244,5 +246,7 @@ inline T tlamch(const char cmach) {
 	tlapack_detail::tlapack_error("tlamch: invalid cmach");
 	return T(0);
 }
+
+} // namespace vcp
 
 #endif // TLAPACK_TLAPACK_COMMON_HPP

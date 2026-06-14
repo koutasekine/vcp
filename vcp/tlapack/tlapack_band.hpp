@@ -55,6 +55,7 @@
 
 #include "tlapack_sy.hpp"
 
+namespace vcp {
 
 // 帯行列の LU 分解 (unblocked)．ipiv は 0-based
 template <typename T>
@@ -541,5 +542,7 @@ inline int tpbsv(const char uplo, const int n, const int kd, const int nrhs,
 	}
 	return info;
 }
+
+} // namespace vcp
 
 #endif // TLAPACK_TLAPACK_BAND_HPP

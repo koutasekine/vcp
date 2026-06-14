@@ -57,6 +57,7 @@
 
 #include "tlapack_common.hpp"
 
+namespace vcp {
 
 // ---- 演算なし ----
 
@@ -287,6 +288,8 @@ inline T tlapy3(const T& x, const T& y, const T& z) {
 	return w * tlapack_detail::tsqrt((xabs / w) * (xabs / w) + (yabs / w) * (yabs / w) + (zabs / w) * (zabs / w));
 }
 
+} // namespace vcp
+
 namespace tlapack_detail {
 
 template <typename T>
@@ -310,6 +313,8 @@ inline void tladiv1(const T& a, const T& b, const T& c, const T& d, T& p, T& q) 
 }
 
 } // namespace tlapack_detail
+
+namespace vcp {
 
 // 複素数除算 p + iq := (a + ib) / (c + id) (overflow 回避付き, Baudin-Smith)
 template <typename T>
@@ -1071,6 +1076,8 @@ inline void tlasr(const char side, const char pivot, const char direct, const in
 	}
 }
 
+} // namespace vcp
+
 namespace tlapack_detail {
 
 // LAPACK の norm 系で使う max 更新 (NaN を伝播させる)
@@ -1082,6 +1089,8 @@ inline void norm_max(T& value, const T& sum) {
 }
 
 } // namespace tlapack_detail
+
+namespace vcp {
 
 // 一般行列の norm ('M' max|a_ij|, '1'/'O' 1-norm, 'I' inf-norm, 'F'/'E' Frobenius)
 template <typename T>
@@ -1818,5 +1827,7 @@ inline void tlarfb(const char side, const char trans, const char direct, const c
 		}
 	}
 }
+
+} // namespace vcp
 
 #endif // TLAPACK_TLAPACK_AUX_HPP
