@@ -59,6 +59,8 @@
 
 #pragma STDC FENV_ACCESS ON
 
+namespace vcp {
+
 // ---- 演算なし (丸めモード引数なし) ----
 
 // y := x
@@ -438,5 +440,7 @@ inline void rdrotmg(double* d1, double* d2, double* x1, const double y1, double*
 	}
 	param[0] = flag;
 }
+
+} // namespace vcp
 
 #endif // VBLAS_RDBLAS_LEVEL1_HPP

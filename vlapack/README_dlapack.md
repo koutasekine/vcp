@@ -1,14 +1,18 @@
 # dlapack — 通常の LAPACK interface (rdlapack の wrapper)
 
-`dlapack.hpp` は rdlapack を呼び出して構築した「通常の」double LAPACK です．
+`dlapack.hpp` は `vcp::rdlapack` を呼び出して構築した「通常の」double LAPACK です．
 関数名・引数は Fortran LAPACK の C からの呼び出し規約に一致します
 (末尾 underscore，全引数 pointer 渡し，INTEGER は 32bit `int` / LP64)．
 dblas (`vblas/dblas.hpp`) の LAPACK 版にあたり，階層は完全に対称です:
 
 ```text
-rmatmul ── rdblas ──┬── dblas    (BLAS  の Fortran 互換 wrapper，現在の丸めモードで計算)
-                    └── rdlapack ── dlapack (LAPACK の Fortran 互換 wrapper，現在の丸めモードで計算)
+rmatmul ── vcp::rdblas ──┬── dblas    (BLAS  の Fortran 互換 wrapper，現在の丸めモードで計算)
+                         └── vcp::rdlapack ── dlapack (LAPACK の Fortran 互換 wrapper，現在の丸めモードで計算)
 ```
+
+`vcp::rdblas` / `vcp::rdlapack` は `vcp` 名前空間に収められた C++ 関数です．
+`dblas` / `dlapack` は Fortran 互換の `extern "C"` グローバルシンボルであり，
+名前空間には入っていません．
 
 ```cpp
 #include "vlapack/dlapack.hpp"
@@ -21,18 +25,18 @@ std::fesetround(FE_TONEAREST);
 
 - 各関数は呼び出し時点の丸めモードを `std::fegetround()` で取得し，
   `FE_DOWNWARD` なら `-1`，`FE_UPWARD` なら `1`，それ以外なら `0` を
-  rdlapack の末尾引数 `rounding_mode` として渡します (dblas と同じ規約)．
-- rdlapack の保証がそのまま引き継がれます: 全浮動小数点演算 (四則演算と平方根，
+  `vcp::rdlapack` の末尾引数 `rounding_mode` として渡します (dblas と同じ規約)．
+- `vcp::rdlapack` の保証がそのまま引き継がれます: 全浮動小数点演算 (四則演算と平方根，
   BLAS 部分も scalar 部分も，OpenMP の全 worker thread も) が同じ丸めモードで
   実行され，終了後に各 thread の丸めモードは呼び出し前の状態へ復元されます．
-- rdlapack と同様，これは「全演算を同一丸めモードで計算する」だけであり，
+- `vcp::rdlapack` と同様，これは「全演算を同一丸めモードで計算する」だけであり，
   **精度保証付き数値計算ではありません** (`README_rdlapack.md` の注意を参照)．
 
 ## 既存の BLAS の取り扱い (重要)
 
 ### dlapack は既存の BLAS と干渉しない
 
-dlapack の内部は `dlapack → rdlapack → rdblas` という **C++ の直接呼び出し**
+dlapack の内部は `dlapack → vcp::rdlapack → vcp::rdblas` という **C++ の直接呼び出し**
 (マングルされた C++ 関数名，多くは inline 展開) で完結しており，`dgemm_` などの
 **BLAS シンボルを参照も提供もしません**．リンカのシンボル解決を経由する箇所が
 ないため:
@@ -44,10 +48,10 @@ dlapack の内部は `dlapack → rdlapack → rdblas` という **C++ の直接
   この共存は `test_dlapack` で検証済みです．
 
 ```text
-                 ┌─ dlapack (dgesv_ …) ─→ rdlapack ─→ rdblas   ← C++ 直接呼び出し (差し替え不能)
+                 ┌─ dlapack (dgesv_ …) ─→ vcp::rdlapack ─→ vcp::rdblas   ← C++ 直接呼び出し (差し替え不能)
 あなたのプログラム ┤
                  └─ dgemm_ などの直接呼び出し ─→ シンボル解決で決まる:
-                       ├─ dblas を emit していれば → dblas (→ rdblas)
+                       ├─ dblas を emit していれば → dblas (→ vcp::rdblas)
                        └─ していなければ → リンクした既存 BLAS (MKL 等)
 ```
 

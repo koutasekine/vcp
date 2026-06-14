@@ -52,7 +52,7 @@
 //
 // O(N^3) の核は rmatmul (AVX-512 / AVX2+FMA / NEON / no-SIMD を compile 時に
 // 自動選択) に集約する．rdsyrk / rdsyr2k / rdtrmm / rdtrsm は再帰 2 分割で
-// off-diagonal block を rdgemm に帰着させ，小さな対角 leaf のみ個別に処理する
+// off-diagonal block を vcp::rdgemm に帰着させ，小さな対角 leaf のみ個別に処理する
 // (余分な演算は O(N^2 * LEAF) で全体の数 % 以下)．
 //
 // 丸めモードの扱い:
@@ -77,7 +77,7 @@
 
 namespace vblas_rdblas_detail {
 
-// O(N^3) 系の再帰分割 leaf size (off-diagonal は rdgemm 経由で rmatmul に乗る)
+// O(N^3) 系の再帰分割 leaf size (off-diagonal は vcp::rdgemm 経由で rmatmul に乗る)
 #ifndef VBLAS_RDBLAS_L3_LEAF
 #define VBLAS_RDBLAS_L3_LEAF 128
 #endif
@@ -304,6 +304,8 @@ inline void expand_triangular(const bool upper, const bool nounit, const int n, 
 
 } // namespace vblas_rdblas_detail
 
+namespace vcp {
+
 // C := alpha*op(A)*op(B) + beta*C
 // op(A): m x k, op(B): k x n, C: m x n
 inline void rdgemm(
@@ -318,15 +320,15 @@ inline void rdgemm(
 	const bool ta = !det::option_is(transa, 'N');
 	const bool tb = !det::option_is(transb, 'N');
 	if (ta && !det::option_is(transa, 'T') && !det::option_is(transa, 'C')) {
-		det::rdblas_error("rdgemm: invalid transa");
+		det::rdblas_error("vcp::rdgemm: invalid transa");
 	}
 	if (tb && !det::option_is(transb, 'T') && !det::option_is(transb, 'C')) {
-		det::rdblas_error("rdgemm: invalid transb");
+		det::rdblas_error("vcp::rdgemm: invalid transb");
 	}
 	const int nrowa = ta ? k : m;
 	const int nrowb = tb ? n : k;
 	if (m < 0 || n < 0 || k < 0 || lda < std::max(1, nrowa) || ldb < std::max(1, nrowb) || ldc < std::max(1, m)) {
-		det::rdblas_error("rdgemm: invalid argument");
+		det::rdblas_error("vcp::rdgemm: invalid argument");
 	}
 	if (m == 0 || n == 0 || (k == 0 && beta == 1.0) || (alpha == 0.0 && beta == 1.0)) {
 		return;
@@ -383,12 +385,14 @@ inline void rdsymm(
 	std::vector<double> Afull(static_cast<std::size_t>(ka) * ka);
 	det::expand_symmetric(upper, ka, A, lda, Afull.data());
 	if (lside) {
-		rdgemm('N', 'N', m, n, m, alpha, Afull.data(), m, B, ldb, beta, C, ldc, rounding_mode);
+		vcp::rdgemm('N', 'N', m, n, m, alpha, Afull.data(), m, B, ldb, beta, C, ldc, rounding_mode);
 	}
 	else {
-		rdgemm('N', 'N', m, n, n, alpha, B, ldb, Afull.data(), n, beta, C, ldc, rounding_mode);
+		vcp::rdgemm('N', 'N', m, n, n, alpha, B, ldb, Afull.data(), n, beta, C, ldc, rounding_mode);
 	}
 }
+
+} // namespace vcp
 
 namespace vblas_rdblas_detail {
 
@@ -551,13 +555,13 @@ inline void trmm_recursive(
 		if (upper == ntrans) {
 			// upper&N: B1 := alpha*A11*B1 + alpha*A12*B2 / lower&T: B1 := alpha*A11^T*B1 + alpha*A21^T*B2
 			trmm_recursive(lside, upper, ntrans, nounit, n1, n, alpha, A11, lda, B1, ldb, rounding_mode);
-			rdgemm(ntrans ? 'N' : 'T', 'N', n1, n, n2, alpha, ntrans ? A12 : A21, lda, B2, ldb, 1.0, B1, ldb, rounding_mode);
+			vcp::rdgemm(ntrans ? 'N' : 'T', 'N', n1, n, n2, alpha, ntrans ? A12 : A21, lda, B2, ldb, 1.0, B1, ldb, rounding_mode);
 			trmm_recursive(lside, upper, ntrans, nounit, n2, n, alpha, A22, lda, B2, ldb, rounding_mode);
 		}
 		else {
 			// lower&N: B2 := alpha*A21*B1 + alpha*A22*B2 / upper&T: B2 := alpha*A12^T*B1 + alpha*A22^T*B2
 			trmm_recursive(lside, upper, ntrans, nounit, n2, n, alpha, A22, lda, B2, ldb, rounding_mode);
-			rdgemm(ntrans ? 'N' : 'T', 'N', n2, n, n1, alpha, ntrans ? A21 : A12, lda, B1, ldb, 1.0, B2, ldb, rounding_mode);
+			vcp::rdgemm(ntrans ? 'N' : 'T', 'N', n2, n, n1, alpha, ntrans ? A21 : A12, lda, B1, ldb, 1.0, B2, ldb, rounding_mode);
 			trmm_recursive(lside, upper, ntrans, nounit, n1, n, alpha, A11, lda, B1, ldb, rounding_mode);
 		}
 	}
@@ -567,13 +571,13 @@ inline void trmm_recursive(
 		if (upper == ntrans) {
 			// upper&N: B2 := alpha*B1*A12 + alpha*B2*A22 / lower&T: B2 := alpha*B1*A21^T + alpha*B2*A22^T
 			trmm_recursive(lside, upper, ntrans, nounit, m, n2, alpha, A22, lda, B2, ldb, rounding_mode);
-			rdgemm('N', ntrans ? 'N' : 'T', m, n2, n1, alpha, B1, ldb, ntrans ? A12 : A21, lda, 1.0, B2, ldb, rounding_mode);
+			vcp::rdgemm('N', ntrans ? 'N' : 'T', m, n2, n1, alpha, B1, ldb, ntrans ? A12 : A21, lda, 1.0, B2, ldb, rounding_mode);
 			trmm_recursive(lside, upper, ntrans, nounit, m, n1, alpha, A11, lda, B1, ldb, rounding_mode);
 		}
 		else {
 			// lower&N: B1 := alpha*B1*A11 + alpha*B2*A21 / upper&T: B1 := alpha*B1*A11^T + alpha*B2*A12^T
 			trmm_recursive(lside, upper, ntrans, nounit, m, n1, alpha, A11, lda, B1, ldb, rounding_mode);
-			rdgemm('N', ntrans ? 'N' : 'T', m, n1, n2, alpha, B2, ldb, ntrans ? A21 : A12, lda, 1.0, B1, ldb, rounding_mode);
+			vcp::rdgemm('N', ntrans ? 'N' : 'T', m, n1, n2, alpha, B2, ldb, ntrans ? A21 : A12, lda, 1.0, B1, ldb, rounding_mode);
 			trmm_recursive(lside, upper, ntrans, nounit, m, n2, alpha, A22, lda, B2, ldb, rounding_mode);
 		}
 	}
@@ -749,13 +753,13 @@ inline void trsm_recursive(
 		if (upper == ntrans) {
 			// upper&N / lower&T: 後退型 (B2 を先に solve)
 			trsm_recursive(lside, upper, ntrans, nounit, n2, n, alpha, A22, lda, B2, ldb, rounding_mode);
-			rdgemm(ntrans ? 'N' : 'T', 'N', n1, n, n2, -1.0, ntrans ? A12 : A21, lda, B2, ldb, alpha, B1, ldb, rounding_mode);
+			vcp::rdgemm(ntrans ? 'N' : 'T', 'N', n1, n, n2, -1.0, ntrans ? A12 : A21, lda, B2, ldb, alpha, B1, ldb, rounding_mode);
 			trsm_recursive(lside, upper, ntrans, nounit, n1, n, 1.0, A11, lda, B1, ldb, rounding_mode);
 		}
 		else {
 			// lower&N / upper&T: 前進型 (B1 を先に solve)
 			trsm_recursive(lside, upper, ntrans, nounit, n1, n, alpha, A11, lda, B1, ldb, rounding_mode);
-			rdgemm(ntrans ? 'N' : 'T', 'N', n2, n, n1, -1.0, ntrans ? A21 : A12, lda, B1, ldb, alpha, B2, ldb, rounding_mode);
+			vcp::rdgemm(ntrans ? 'N' : 'T', 'N', n2, n, n1, -1.0, ntrans ? A21 : A12, lda, B1, ldb, alpha, B2, ldb, rounding_mode);
 			trsm_recursive(lside, upper, ntrans, nounit, n2, n, 1.0, A22, lda, B2, ldb, rounding_mode);
 		}
 	}
@@ -765,19 +769,21 @@ inline void trsm_recursive(
 		if (upper == ntrans) {
 			// upper&N / lower&T: B1 を先に solve
 			trsm_recursive(lside, upper, ntrans, nounit, m, n1, alpha, A11, lda, B1, ldb, rounding_mode);
-			rdgemm('N', ntrans ? 'N' : 'T', m, n2, n1, -1.0, B1, ldb, ntrans ? A12 : A21, lda, alpha, B2, ldb, rounding_mode);
+			vcp::rdgemm('N', ntrans ? 'N' : 'T', m, n2, n1, -1.0, B1, ldb, ntrans ? A12 : A21, lda, alpha, B2, ldb, rounding_mode);
 			trsm_recursive(lside, upper, ntrans, nounit, m, n2, 1.0, A22, lda, B2, ldb, rounding_mode);
 		}
 		else {
 			// lower&N / upper&T: B2 を先に solve
 			trsm_recursive(lside, upper, ntrans, nounit, m, n2, alpha, A22, lda, B2, ldb, rounding_mode);
-			rdgemm('N', ntrans ? 'N' : 'T', m, n1, n2, -1.0, B2, ldb, ntrans ? A21 : A12, lda, alpha, B1, ldb, rounding_mode);
+			vcp::rdgemm('N', ntrans ? 'N' : 'T', m, n1, n2, -1.0, B2, ldb, ntrans ? A21 : A12, lda, alpha, B1, ldb, rounding_mode);
 			trsm_recursive(lside, upper, ntrans, nounit, m, n1, 1.0, A11, lda, B1, ldb, rounding_mode);
 		}
 	}
 }
 
 } // namespace vblas_rdblas_detail
+
+namespace vcp {
 
 // C := alpha*op(A)*op(A)^T + beta*C (uplo の三角のみ更新)
 // trans 'N': op(A) = A (n x k), trans 'T'/'C': op(A) = A^T (A は k x n)
@@ -925,6 +931,8 @@ inline void rdtrsm(
 	det::trsm_recursive(lside, upper, ntrans, nounit, m, n, alpha, A, lda, B, ldb, rounding_mode);
 }
 
+} // namespace vcp
+
 namespace vblas_rdblas_detail {
 
 // 対角 block (nb x nb) の三角部分のみ C := alpha*T + beta*C (gemmtr 用 epilogue)
@@ -973,9 +981,11 @@ inline void gemmtr_diag_update(
 
 } // namespace vblas_rdblas_detail
 
+namespace vcp {
+
 // C の uplo 三角部分のみ := alpha*op(A)*op(B) + beta*C (C: n x n, op(A): n x k,
 // op(B): k x n)．reference BLAS の GEMMTR (LAPACK 3.12.1 で追加) に対応する．
-// 列 block ごとに長方形部分を rdgemm，対角 block は temp に積を作って
+// 列 block ごとに長方形部分を vcp::rdgemm，対角 block は temp に積を作って
 // 三角部分のみ指定丸めの epilogue で更新する．
 inline void rdgemmtr(
 	const char uplo, const char transa, const char transb,
@@ -1019,7 +1029,7 @@ inline void rdgemmtr(
 		if (upper) {
 			// 長方形部分 C(0:j0, j0:j0+jb)
 			if (j0 > 0) {
-				rdgemm(transa, transb, j0, jb, k, alpha, A, lda, opb, ldb,
+				vcp::rdgemm(transa, transb, j0, jb, k, alpha, A, lda, opb, ldb,
 					beta, C + static_cast<std::size_t>(ldc) * j0, ldc, rounding_mode);
 			}
 		}
@@ -1028,7 +1038,7 @@ inline void rdgemmtr(
 			const int m2 = n - j0 - jb;
 			if (m2 > 0) {
 				const double* opa2 = ta ? A + static_cast<std::size_t>(lda) * (j0 + jb) : A + (j0 + jb);
-				rdgemm(transa, transb, m2, jb, k, alpha, opa2, lda, opb, ldb,
+				vcp::rdgemm(transa, transb, m2, jb, k, alpha, opa2, lda, opb, ldb,
 					beta, C + (j0 + jb) + static_cast<std::size_t>(ldc) * j0, ldc, rounding_mode);
 			}
 		}
@@ -1039,5 +1049,7 @@ inline void rdgemmtr(
 			C + j0 + static_cast<std::size_t>(ldc) * j0, ldc, fe);
 	}
 }
+
+} // namespace vcp
 
 #endif // VBLAS_RDBLAS_LEVEL3_HPP

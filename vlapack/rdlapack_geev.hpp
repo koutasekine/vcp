@@ -60,6 +60,8 @@
 
 #pragma STDC FENV_ACCESS ON
 
+namespace vcp {
+
 // 行列の balancing (permute + scale)．ilo/ihi は 1-based で返る
 inline int rdgebal(const char job, const int n, double* A, const int lda,
 	int& ilo, int& ihi, double* scale, const int rounding_mode) {
@@ -1623,5 +1625,7 @@ inline int rdgeev(const char jobvl, const char jobvr, const int n, double* A, co
 	}
 	return info;
 }
+
+} // namespace vcp
 
 #endif // VBLAS_RDLAPACK_GEEV_HPP

@@ -60,6 +60,8 @@
 
 #pragma STDC FENV_ACCESS ON
 
+namespace vcp {
+
 // Bunch-Kaufman 分解 (unblocked)．ipiv は 1-based 符号付き
 inline int rdsytf2(const char uplo, const int n, double* A, const int lda, int* ipiv, const int rounding_mode) {
 	namespace detail = vblas_rdlapack_detail;
@@ -991,5 +993,7 @@ inline int rdsygv(const int itype, const char jobz, const char uplo, const int n
 	}
 	return info;
 }
+
+} // namespace vcp
 
 #endif // VBLAS_RDLAPACK_SY_HPP

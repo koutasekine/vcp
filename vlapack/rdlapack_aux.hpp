@@ -61,6 +61,8 @@
 
 // ---- 演算なし ----
 
+namespace vcp {
+
 // 末尾の zero 行を除いた行数 (A の非 zero 要素を含む最終行 + 1)
 inline int iladlr(const int m, const int n, const double* A, const int lda) {
 	if (m == 0) {
@@ -348,6 +350,8 @@ inline double rdlapy3(const double x, const double y, const double z, const int 
 	return w * std::sqrt((xabs / w) * (xabs / w) + (yabs / w) * (yabs / w) + (zabs / w) * (zabs / w));
 }
 
+} // namespace vcp
+
 namespace vblas_rdlapack_detail {
 
 inline double dladiv2(const double a, const double b, const double c, const double d, const double r, const double t) {
@@ -369,6 +373,8 @@ inline void dladiv1(const double a, const double b, const double c, const double
 }
 
 } // namespace vblas_rdlapack_detail
+
+namespace vcp {
 
 // 複素数除算 p + iq := (a + ib) / (c + id) (overflow 回避付き, Baudin-Smith)
 inline void rdladiv(const double a, const double b, const double c, const double d, double& p, double& q, const int rounding_mode) {
@@ -1129,6 +1135,8 @@ inline void rdlasr(const char side, const char pivot, const char direct, const i
 	}
 }
 
+} // namespace vcp
+
 namespace vblas_rdlapack_detail {
 
 // LAPACK の norm 系で使う max 更新 (NaN を伝播させる)
@@ -1139,6 +1147,8 @@ inline void norm_max(double& value, const double sum) {
 }
 
 } // namespace vblas_rdlapack_detail
+
+namespace vcp {
 
 // 一般行列の norm ('M' max|a_ij|, '1'/'O' 1-norm, 'I' inf-norm, 'F'/'E' Frobenius)
 inline double rdlange(const char norm, const int m, const int n, const double* A, const int lda, const int rounding_mode) {
@@ -1876,5 +1886,7 @@ inline void rdlarfb(const char side, const char trans, const char direct, const 
 		}
 	}
 }
+
+} // namespace vcp
 
 #endif // VBLAS_RDLAPACK_AUX_HPP

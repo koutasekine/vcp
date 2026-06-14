@@ -96,6 +96,8 @@ inline std::size_t packed_offset_lower(const int n, const int j) {
 
 } // namespace vblas_rdblas_detail
 
+namespace vcp {
+
 // y := alpha*op(A)*x + beta*y, op(A) = A ('N') or A^T ('T','C'), A: m x n
 inline void rdgemv(
 	const char trans, const int m, const int n,
@@ -1113,5 +1115,7 @@ inline void rdspr2(
 		}
 	}
 }
+
+} // namespace vcp
 
 #endif // VBLAS_RDBLAS_LEVEL2_HPP

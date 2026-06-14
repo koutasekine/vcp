@@ -9,11 +9,33 @@
 #include "vlapack/rdlapack.hpp"
 
 // A*X = B を全演算上向き丸めで解く
+int info = vcp::rdgesv(n, nrhs, A, lda, ipiv, B, ldb, 1);
+```
+
+あるいはファイル先頭で `using namespace vcp;` を宣言すれば，
+`vcp::` 修飾なしで呼び出せます:
+
+```cpp
+#include "vlapack/rdlapack.hpp"
+using namespace vcp;
+
 int info = rdgesv(n, nrhs, A, lda, ipiv, B, ldb, 1);
 ```
 
 現在の丸めモードを読み込んで計算する Fortran 互換 wrapper (dlapack) は
 `vlapack/dlapack.hpp` にあります (`vlapack/README_dlapack.md` 参照)．
+
+## 名前空間
+
+**rdlapack の全関数は `vcp` 名前空間に収められています．**
+`vcp::rdgesv`, `vcp::rdsyev`, `vcp::dlamch` のように修飾するか，
+呼び出し側ファイルで `using namespace vcp;` を宣言してください．
+
+FP 演算を含まない補助関数 (`dlamch`, `dlaset`, `dlacpy`, `dlaswp`,
+`dlasrt`, `iladlr`, `iladlc`) も同様に `vcp` 名前空間内です．
+
+`dlapack.hpp` の Fortran 互換 wrapper (`dgesv_` など) は `extern "C"` の
+グローバルシンボルであり，名前空間に入っていません (変更なし)．
 
 ## 重要な注意
 
@@ -105,7 +127,8 @@ vlapack/   LAPACK 層 (本 library)
 - `rdlapack_eig.hpp` / `rdlapack_svd.hpp` / `rdlapack_geev.hpp` — 固有値 / SVD / 非対称固有値
 - `rdlapack_sy.hpp` / `rdlapack_band.hpp` — Bunch-Kaufman・一般化固有値 / 帯行列
 
-vblas 側の既存 `rmatmul*.hpp` / `rdblas*.hpp` には一切手を加えていません．
+vblas 側の `rdblas*.hpp` の公開関数はすべて `namespace vcp { }` で囲まれています
+(`rmatmul*.hpp` は内部実装であり名前空間の外に置かれています)．
 
 ## テスト
 

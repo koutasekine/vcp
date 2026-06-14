@@ -111,7 +111,7 @@ extern "C" {
 
 inline double dlamch_(const char* cmach) {
 	try {
-		return dlamch(*cmach);
+		return vcp::dlamch(*cmach);
 	}
 	catch (const std::invalid_argument&) {
 		return 0.0;
@@ -119,60 +119,60 @@ inline double dlamch_(const char* cmach) {
 }
 
 inline double dlapy2_(const double* x, const double* y) {
-	return rdlapy2(*x, *y, vlapack_dlapack_detail::current_rounding_mode());
+	return vcp::rdlapy2(*x, *y, vlapack_dlapack_detail::current_rounding_mode());
 }
 
 inline double dlapy3_(const double* x, const double* y, const double* z) {
-	return rdlapy3(*x, *y, *z, vlapack_dlapack_detail::current_rounding_mode());
+	return vcp::rdlapy3(*x, *y, *z, vlapack_dlapack_detail::current_rounding_mode());
 }
 
 inline void dlassq_(const int* n, const double* x, const int* incx, double* scale, double* sumsq) {
-	rdlassq(*n, x, *incx, *scale, *sumsq, vlapack_dlapack_detail::current_rounding_mode());
+	vcp::rdlassq(*n, x, *incx, *scale, *sumsq, vlapack_dlapack_detail::current_rounding_mode());
 }
 
 inline void dlartg_(const double* f, const double* g, double* cs, double* sn, double* r) {
-	rdlartg(*f, *g, *cs, *sn, *r, vlapack_dlapack_detail::current_rounding_mode());
+	vcp::rdlartg(*f, *g, *cs, *sn, *r, vlapack_dlapack_detail::current_rounding_mode());
 }
 
 inline void dlarfg_(const int* n, double* alpha, double* x, const int* incx, double* tau) {
-	rdlarfg(*n, *alpha, x, *incx, *tau, vlapack_dlapack_detail::current_rounding_mode());
+	vcp::rdlarfg(*n, *alpha, x, *incx, *tau, vlapack_dlapack_detail::current_rounding_mode());
 }
 
 inline void dlascl_(const char* type, const int* kl, const int* ku, const double* cfrom, const double* cto,
 	const int* m, const int* n, double* a, const int* lda, int* info) {
 	*info = 0;
 	VLAPACK_DLAPACK_TRY(
-		rdlascl(*type, *kl, *ku, *cfrom, *cto, *m, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
+		vcp::rdlascl(*type, *kl, *ku, *cfrom, *cto, *m, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dlaset_(const char* uplo, const int* m, const int* n, const double* alpha, const double* beta,
 	double* a, const int* lda) {
-	dlaset(*uplo, *m, *n, *alpha, *beta, a, *lda);
+	vcp::dlaset(*uplo, *m, *n, *alpha, *beta, a, *lda);
 }
 
 inline void dlacpy_(const char* uplo, const int* m, const int* n, const double* a, const int* lda,
 	double* b, const int* ldb) {
-	dlacpy(*uplo, *m, *n, a, *lda, b, *ldb);
+	vcp::dlacpy(*uplo, *m, *n, a, *lda, b, *ldb);
 }
 
 inline void dlasrt_(const char* id, const int* n, double* d, int* info) {
 	*info = 0;
-	VLAPACK_DLAPACK_TRY(dlasrt(*id, *n, d);)
+	VLAPACK_DLAPACK_TRY(vcp::dlasrt(*id, *n, d);)
 }
 
 // k1/k2/ipiv は LAPACK と同じ 1-based (incx = 1 / -1 のみ対応)
 inline void dlaswp_(const int* n, double* a, const int* lda, const int* k1, const int* k2,
 	const int* ipiv, const int* incx) {
 	const std::vector<int> ip0 = vlapack_dlapack_detail::ipiv_to_c(*k2, ipiv);
-	dlaswp(*n, a, *lda, *k1 - 1, *k2, ip0.data(), *incx);
+	vcp::dlaswp(*n, a, *lda, *k1 - 1, *k2, ip0.data(), *incx);
 }
 
 inline double dlange_(const char* norm, const int* m, const int* n, const double* a, const int* lda,
 	double* work) {
 	(void)work;
 	try {
-		return rdlange(*norm, *m, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
+		return vcp::rdlange(*norm, *m, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
 	}
 	catch (const std::invalid_argument&) {
 		return 0.0;
@@ -183,7 +183,7 @@ inline double dlangb_(const char* norm, const int* n, const int* kl, const int* 
 	const double* ab, const int* ldab, double* work) {
 	(void)work;
 	try {
-		return rdlangb(*norm, *n, *kl, *ku, ab, *ldab, vlapack_dlapack_detail::current_rounding_mode());
+		return vcp::rdlangb(*norm, *n, *kl, *ku, ab, *ldab, vlapack_dlapack_detail::current_rounding_mode());
 	}
 	catch (const std::invalid_argument&) {
 		return 0.0;
@@ -194,7 +194,7 @@ inline double dlansy_(const char* norm, const char* uplo, const int* n, const do
 	double* work) {
 	(void)work;
 	try {
-		return rdlansy(*norm, *uplo, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
+		return vcp::rdlansy(*norm, *uplo, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
 	}
 	catch (const std::invalid_argument&) {
 		return 0.0;
@@ -205,7 +205,7 @@ inline double dlansb_(const char* norm, const char* uplo, const int* n, const in
 	const double* ab, const int* ldab, double* work) {
 	(void)work;
 	try {
-		return rdlansb(*norm, *uplo, *n, *k, ab, *ldab, vlapack_dlapack_detail::current_rounding_mode());
+		return vcp::rdlansb(*norm, *uplo, *n, *k, ab, *ldab, vlapack_dlapack_detail::current_rounding_mode());
 	}
 	catch (const std::invalid_argument&) {
 		return 0.0;
@@ -214,7 +214,7 @@ inline double dlansb_(const char* norm, const char* uplo, const int* n, const in
 
 inline double dlanst_(const char* norm, const int* n, const double* d, const double* e) {
 	try {
-		return rdlanst(*norm, *n, d, e, vlapack_dlapack_detail::current_rounding_mode());
+		return vcp::rdlanst(*norm, *n, d, e, vlapack_dlapack_detail::current_rounding_mode());
 	}
 	catch (const std::invalid_argument&) {
 		return 0.0;
@@ -225,14 +225,14 @@ inline double dlanst_(const char* norm, const int* n, const double* d, const dou
 
 inline void dgetf2_(const int* m, const int* n, double* a, const int* lda, int* ipiv, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgetf2(*m, *n, a, *lda, ipiv, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgetf2(*m, *n, a, *lda, ipiv, vlapack_dlapack_detail::current_rounding_mode());
 		vlapack_dlapack_detail::ipiv_to_fortran(*m < *n ? *m : *n, ipiv);
 	)
 }
 
 inline void dgetrf_(const int* m, const int* n, double* a, const int* lda, int* ipiv, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgetrf(*m, *n, a, *lda, ipiv, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgetrf(*m, *n, a, *lda, ipiv, vlapack_dlapack_detail::current_rounding_mode());
 		vlapack_dlapack_detail::ipiv_to_fortran(*m < *n ? *m : *n, ipiv);
 	)
 }
@@ -241,7 +241,7 @@ inline void dgetrs_(const char* trans, const int* n, const int* nrhs, const doub
 	const int* ipiv, double* b, const int* ldb, int* info) {
 	VLAPACK_DLAPACK_TRY(
 		const std::vector<int> ip0 = vlapack_dlapack_detail::ipiv_to_c(*n, ipiv);
-		*info = rdgetrs(*trans, *n, *nrhs, a, *lda, ip0.data(), b, *ldb,
+		*info = vcp::rdgetrs(*trans, *n, *nrhs, a, *lda, ip0.data(), b, *ldb,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -249,7 +249,7 @@ inline void dgetrs_(const char* trans, const int* n, const int* nrhs, const doub
 inline void dgesv_(const int* n, const int* nrhs, double* a, const int* lda, int* ipiv,
 	double* b, const int* ldb, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgesv(*n, *nrhs, a, *lda, ipiv, b, *ldb, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgesv(*n, *nrhs, a, *lda, ipiv, b, *ldb, vlapack_dlapack_detail::current_rounding_mode());
 		vlapack_dlapack_detail::ipiv_to_fortran(*n, ipiv);
 	)
 }
@@ -264,39 +264,39 @@ inline void dgetri_(const int* n, double* a, const int* lda, const int* ipiv,
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
 		const std::vector<int> ip0 = vlapack_dlapack_detail::ipiv_to_c(*n, ipiv);
-		*info = rdgetri(*n, a, *lda, ip0.data(), vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgetri(*n, a, *lda, ip0.data(), vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dtrti2_(const char* uplo, const char* diag, const int* n, double* a, const int* lda, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdtrti2(*uplo, *diag, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdtrti2(*uplo, *diag, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dtrtri_(const char* uplo, const char* diag, const int* n, double* a, const int* lda, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdtrtri(*uplo, *diag, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdtrtri(*uplo, *diag, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dtrtrs_(const char* uplo, const char* trans, const char* diag, const int* n, const int* nrhs,
 	const double* a, const int* lda, double* b, const int* ldb, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdtrtrs(*uplo, *trans, *diag, *n, *nrhs, a, *lda, b, *ldb,
+		*info = vcp::rdtrtrs(*uplo, *trans, *diag, *n, *nrhs, a, *lda, b, *ldb,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dlauu2_(const char* uplo, const int* n, double* a, const int* lda, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdlauu2(*uplo, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdlauu2(*uplo, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dlauum_(const char* uplo, const int* n, double* a, const int* lda, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdlauum(*uplo, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdlauum(*uplo, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -304,33 +304,33 @@ inline void dlauum_(const char* uplo, const int* n, double* a, const int* lda, i
 
 inline void dpotf2_(const char* uplo, const int* n, double* a, const int* lda, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdpotf2(*uplo, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdpotf2(*uplo, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dpotrf_(const char* uplo, const int* n, double* a, const int* lda, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdpotrf(*uplo, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdpotrf(*uplo, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dpotrs_(const char* uplo, const int* n, const int* nrhs, const double* a, const int* lda,
 	double* b, const int* ldb, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdpotrs(*uplo, *n, *nrhs, a, *lda, b, *ldb, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdpotrs(*uplo, *n, *nrhs, a, *lda, b, *ldb, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dposv_(const char* uplo, const int* n, const int* nrhs, double* a, const int* lda,
 	double* b, const int* ldb, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdposv(*uplo, *n, *nrhs, a, *lda, b, *ldb, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdposv(*uplo, *n, *nrhs, a, *lda, b, *ldb, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dpotri_(const char* uplo, const int* n, double* a, const int* lda, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdpotri(*uplo, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdpotri(*uplo, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -338,7 +338,7 @@ inline void dpotri_(const char* uplo, const int* n, double* a, const int* lda, i
 
 inline void dsytf2_(const char* uplo, const int* n, double* a, const int* lda, int* ipiv, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdsytf2(*uplo, *n, a, *lda, ipiv, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdsytf2(*uplo, *n, a, *lda, ipiv, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -351,14 +351,14 @@ inline void dsytrf_(const char* uplo, const int* n, double* a, const int* lda, i
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdsytrf(*uplo, *n, a, *lda, ipiv, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdsytrf(*uplo, *n, a, *lda, ipiv, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dsytrs_(const char* uplo, const int* n, const int* nrhs, const double* a, const int* lda,
 	const int* ipiv, double* b, const int* ldb, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdsytrs(*uplo, *n, *nrhs, a, *lda, ipiv, b, *ldb,
+		*info = vcp::rdsytrs(*uplo, *n, *nrhs, a, *lda, ipiv, b, *ldb,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -372,7 +372,7 @@ inline void dsysv_(const char* uplo, const int* n, const int* nrhs, double* a, c
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdsysv(*uplo, *n, *nrhs, a, *lda, ipiv, b, *ldb,
+		*info = vcp::rdsysv(*uplo, *n, *nrhs, a, *lda, ipiv, b, *ldb,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -382,7 +382,7 @@ inline void dsysv_(const char* uplo, const int* n, const int* nrhs, double* a, c
 inline void dgbtf2_(const int* m, const int* n, const int* kl, const int* ku,
 	double* ab, const int* ldab, int* ipiv, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgbtf2(*m, *n, *kl, *ku, ab, *ldab, ipiv, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgbtf2(*m, *n, *kl, *ku, ab, *ldab, ipiv, vlapack_dlapack_detail::current_rounding_mode());
 		vlapack_dlapack_detail::ipiv_to_fortran(*m < *n ? *m : *n, ipiv);
 	)
 }
@@ -390,7 +390,7 @@ inline void dgbtf2_(const int* m, const int* n, const int* kl, const int* ku,
 inline void dgbtrf_(const int* m, const int* n, const int* kl, const int* ku,
 	double* ab, const int* ldab, int* ipiv, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgbtrf(*m, *n, *kl, *ku, ab, *ldab, ipiv, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgbtrf(*m, *n, *kl, *ku, ab, *ldab, ipiv, vlapack_dlapack_detail::current_rounding_mode());
 		vlapack_dlapack_detail::ipiv_to_fortran(*m < *n ? *m : *n, ipiv);
 	)
 }
@@ -399,7 +399,7 @@ inline void dgbtrs_(const char* trans, const int* n, const int* kl, const int* k
 	const double* ab, const int* ldab, const int* ipiv, double* b, const int* ldb, int* info) {
 	VLAPACK_DLAPACK_TRY(
 		const std::vector<int> ip0 = vlapack_dlapack_detail::ipiv_to_c(*n, ipiv);
-		*info = rdgbtrs(*trans, *n, *kl, *ku, *nrhs, ab, *ldab, ip0.data(), b, *ldb,
+		*info = vcp::rdgbtrs(*trans, *n, *kl, *ku, *nrhs, ab, *ldab, ip0.data(), b, *ldb,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -407,7 +407,7 @@ inline void dgbtrs_(const char* trans, const int* n, const int* kl, const int* k
 inline void dgbsv_(const int* n, const int* kl, const int* ku, const int* nrhs,
 	double* ab, const int* ldab, int* ipiv, double* b, const int* ldb, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgbsv(*n, *kl, *ku, *nrhs, ab, *ldab, ipiv, b, *ldb,
+		*info = vcp::rdgbsv(*n, *kl, *ku, *nrhs, ab, *ldab, ipiv, b, *ldb,
 			vlapack_dlapack_detail::current_rounding_mode());
 		vlapack_dlapack_detail::ipiv_to_fortran(*n, ipiv);
 	)
@@ -415,20 +415,20 @@ inline void dgbsv_(const int* n, const int* kl, const int* ku, const int* nrhs,
 
 inline void dpbtf2_(const char* uplo, const int* n, const int* kd, double* ab, const int* ldab, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdpbtf2(*uplo, *n, *kd, ab, *ldab, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdpbtf2(*uplo, *n, *kd, ab, *ldab, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dpbtrf_(const char* uplo, const int* n, const int* kd, double* ab, const int* ldab, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdpbtrf(*uplo, *n, *kd, ab, *ldab, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdpbtrf(*uplo, *n, *kd, ab, *ldab, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dpbtrs_(const char* uplo, const int* n, const int* kd, const int* nrhs,
 	const double* ab, const int* ldab, double* b, const int* ldb, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdpbtrs(*uplo, *n, *kd, *nrhs, ab, *ldab, b, *ldb,
+		*info = vcp::rdpbtrs(*uplo, *n, *kd, *nrhs, ab, *ldab, b, *ldb,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -436,7 +436,7 @@ inline void dpbtrs_(const char* uplo, const int* n, const int* kd, const int* nr
 inline void dpbsv_(const char* uplo, const int* n, const int* kd, const int* nrhs,
 	double* ab, const int* ldab, double* b, const int* ldb, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdpbsv(*uplo, *n, *kd, *nrhs, ab, *ldab, b, *ldb,
+		*info = vcp::rdpbsv(*uplo, *n, *kd, *nrhs, ab, *ldab, b, *ldb,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -447,7 +447,7 @@ inline void dgeqr2_(const int* m, const int* n, double* a, const int* lda, doubl
 	double* work, int* info) {
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgeqr2(*m, *n, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgeqr2(*m, *n, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -460,7 +460,7 @@ inline void dgeqrf_(const int* m, const int* n, double* a, const int* lda, doubl
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgeqrf(*m, *n, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgeqrf(*m, *n, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -468,7 +468,7 @@ inline void dgelq2_(const int* m, const int* n, double* a, const int* lda, doubl
 	double* work, int* info) {
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgelq2(*m, *n, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgelq2(*m, *n, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -481,7 +481,7 @@ inline void dgelqf_(const int* m, const int* n, double* a, const int* lda, doubl
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgelqf(*m, *n, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgelqf(*m, *n, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -494,7 +494,7 @@ inline void dorgqr_(const int* m, const int* n, const int* k, double* a, const i
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdorgqr(*m, *n, *k, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdorgqr(*m, *n, *k, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -507,7 +507,7 @@ inline void dorglq_(const int* m, const int* n, const int* k, double* a, const i
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdorglq(*m, *n, *k, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdorglq(*m, *n, *k, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -520,7 +520,7 @@ inline void dorgql_(const int* m, const int* n, const int* k, double* a, const i
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdorgql(*m, *n, *k, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdorgql(*m, *n, *k, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -534,7 +534,7 @@ inline void dormqr_(const char* side, const char* trans, const int* m, const int
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdormqr(*side, *trans, *m, *n, *k, a, *lda, tau, c, *ldc,
+		*info = vcp::rdormqr(*side, *trans, *m, *n, *k, a, *lda, tau, c, *ldc,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -549,7 +549,7 @@ inline void dormlq_(const char* side, const char* trans, const int* m, const int
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdormlq(*side, *trans, *m, *n, *k, a, *lda, tau, c, *ldc,
+		*info = vcp::rdormlq(*side, *trans, *m, *n, *k, a, *lda, tau, c, *ldc,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -564,7 +564,7 @@ inline void dormql_(const char* side, const char* trans, const int* m, const int
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdormql(*side, *trans, *m, *n, *k, a, *lda, tau, c, *ldc,
+		*info = vcp::rdormql(*side, *trans, *m, *n, *k, a, *lda, tau, c, *ldc,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -582,7 +582,7 @@ inline void dgels_(const char* trans, const int* m, const int* n, const int* nrh
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgels(*trans, *m, *n, *nrhs, a, *lda, b, *ldb,
+		*info = vcp::rdgels(*trans, *m, *n, *nrhs, a, *lda, b, *ldb,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -592,7 +592,7 @@ inline void dgels_(const char* trans, const int* m, const int* n, const int* nrh
 inline void dsytd2_(const char* uplo, const int* n, double* a, const int* lda,
 	double* d, double* e, double* tau, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdsytd2(*uplo, *n, a, *lda, d, e, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdsytd2(*uplo, *n, a, *lda, d, e, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -605,7 +605,7 @@ inline void dsytrd_(const char* uplo, const int* n, double* a, const int* lda,
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdsytrd(*uplo, *n, a, *lda, d, e, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdsytrd(*uplo, *n, a, *lda, d, e, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -618,7 +618,7 @@ inline void dorgtr_(const char* uplo, const int* n, double* a, const int* lda, c
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdorgtr(*uplo, *n, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdorgtr(*uplo, *n, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -632,14 +632,14 @@ inline void dormtr_(const char* side, const char* uplo, const char* trans, const
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdormtr(*side, *uplo, *trans, *m, *n, a, *lda, tau, c, *ldc,
+		*info = vcp::rdormtr(*side, *uplo, *trans, *m, *n, a, *lda, tau, c, *ldc,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dsterf_(const int* n, double* d, double* e, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdsterf(*n, d, e, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdsterf(*n, d, e, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -647,7 +647,7 @@ inline void dsteqr_(const char* compz, const int* n, double* d, double* e, doubl
 	double* work, int* info) {
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdsteqr(*compz, *n, d, e, z, *ldz, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdsteqr(*compz, *n, d, e, z, *ldz, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -660,21 +660,21 @@ inline void dsyev_(const char* jobz, const char* uplo, const int* n, double* a, 
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdsyev(*jobz, *uplo, *n, a, *lda, w, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdsyev(*jobz, *uplo, *n, a, *lda, w, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dsygs2_(const int* itype, const char* uplo, const int* n, double* a, const int* lda,
 	const double* b, const int* ldb, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdsygs2(*itype, *uplo, *n, a, *lda, b, *ldb, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdsygs2(*itype, *uplo, *n, a, *lda, b, *ldb, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dsygst_(const int* itype, const char* uplo, const int* n, double* a, const int* lda,
 	const double* b, const int* ldb, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdsygst(*itype, *uplo, *n, a, *lda, b, *ldb, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdsygst(*itype, *uplo, *n, a, *lda, b, *ldb, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -688,7 +688,7 @@ inline void dsygv_(const int* itype, const char* jobz, const char* uplo, const i
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdsygv(*itype, *jobz, *uplo, *n, a, *lda, b, *ldb, w,
+		*info = vcp::rdsygv(*itype, *jobz, *uplo, *n, a, *lda, b, *ldb, w,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -699,7 +699,7 @@ inline void dgebd2_(const int* m, const int* n, double* a, const int* lda,
 	double* d, double* e, double* tauq, double* taup, double* work, int* info) {
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgebd2(*m, *n, a, *lda, d, e, tauq, taup, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgebd2(*m, *n, a, *lda, d, e, tauq, taup, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -712,7 +712,7 @@ inline void dgebrd_(const int* m, const int* n, double* a, const int* lda,
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgebrd(*m, *n, a, *lda, d, e, tauq, taup, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgebrd(*m, *n, a, *lda, d, e, tauq, taup, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -725,7 +725,7 @@ inline void dorgbr_(const char* vect, const int* m, const int* n, const int* k, 
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdorgbr(*vect, *m, *n, *k, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdorgbr(*vect, *m, *n, *k, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -739,7 +739,7 @@ inline void dormbr_(const char* vect, const char* side, const char* trans, const
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdormbr(*vect, *side, *trans, *m, *n, *k, a, *lda, tau, c, *ldc,
+		*info = vcp::rdormbr(*vect, *side, *trans, *m, *n, *k, a, *lda, tau, c, *ldc,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -749,7 +749,7 @@ inline void dbdsqr_(const char* uplo, const int* n, const int* ncvt, const int* 
 	double* c, const int* ldc, double* work, int* info) {
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdbdsqr(*uplo, *n, *ncvt, *nru, *ncc, d, e, vt, *ldvt, u, *ldu, c, *ldc,
+		*info = vcp::rdbdsqr(*uplo, *n, *ncvt, *nru, *ncc, d, e, vt, *ldvt, u, *ldu, c, *ldc,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -768,7 +768,7 @@ inline void dgesvd_(const char* jobu, const char* jobvt, const int* m, const int
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgesvd(*jobu, *jobvt, *m, *n, a, *lda, s, u, *ldu, vt, *ldvt,
+		*info = vcp::rdgesvd(*jobu, *jobvt, *m, *n, a, *lda, s, u, *ldu, vt, *ldvt,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -778,14 +778,14 @@ inline void dgesvd_(const char* jobu, const char* jobvt, const int* m, const int
 inline void dgebal_(const char* job, const int* n, double* a, const int* lda,
 	int* ilo, int* ihi, double* scale, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgebal(*job, *n, a, *lda, *ilo, *ihi, scale, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgebal(*job, *n, a, *lda, *ilo, *ihi, scale, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
 inline void dgebak_(const char* job, const char* side, const int* n, const int* ilo, const int* ihi,
 	const double* scale, const int* m, double* v, const int* ldv, int* info) {
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgebak(*job, *side, *n, *ilo, *ihi, scale, *m, v, *ldv,
+		*info = vcp::rdgebak(*job, *side, *n, *ilo, *ihi, scale, *m, v, *ldv,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -794,7 +794,7 @@ inline void dgehd2_(const int* n, const int* ilo, const int* ihi, double* a, con
 	double* tau, double* work, int* info) {
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgehd2(*n, *ilo, *ihi, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgehd2(*n, *ilo, *ihi, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -807,7 +807,7 @@ inline void dgehrd_(const int* n, const int* ilo, const int* ihi, double* a, con
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgehrd(*n, *ilo, *ihi, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdgehrd(*n, *ilo, *ihi, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -820,7 +820,7 @@ inline void dorghr_(const int* n, const int* ilo, const int* ihi, double* a, con
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdorghr(*n, *ilo, *ihi, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
+		*info = vcp::rdorghr(*n, *ilo, *ihi, a, *lda, tau, vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
 
@@ -834,7 +834,7 @@ inline void dhseqr_(const char* job, const char* compz, const int* n, const int*
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdhseqr(*job, *compz, *n, *ilo, *ihi, h, *ldh, wr, wi, z, *ldz,
+		*info = vcp::rdhseqr(*job, *compz, *n, *ilo, *ihi, h, *ldh, wr, wi, z, *ldz,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -850,7 +850,7 @@ inline void dtrevc_(const char* side, const char* howmny, const int* select, con
 		return;
 	}
 	VLAPACK_DLAPACK_TRY(
-		*info = rdtrevc(*side, *howmny, *n, t, *ldt, vl, *ldvl, vr, *ldvr, *mm, *m,
+		*info = vcp::rdtrevc(*side, *howmny, *n, t, *ldt, vl, *ldvl, vr, *ldvr, *mm, *m,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -865,7 +865,7 @@ inline void dgeev_(const char* jobvl, const char* jobvr, const int* n, double* a
 	}
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
-		*info = rdgeev(*jobvl, *jobvr, *n, a, *lda, wr, wi, vl, *ldvl, vr, *ldvr,
+		*info = vcp::rdgeev(*jobvl, *jobvr, *n, a, *lda, wr, wi, vl, *ldvl, vr, *ldvr,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }

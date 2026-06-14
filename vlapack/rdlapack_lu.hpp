@@ -57,6 +57,8 @@
 
 #pragma STDC FENV_ACCESS ON
 
+namespace vcp {
+
 // LU 分解 (部分 pivot 付き, unblocked)
 inline int rdgetf2(const int m, const int n, double* A, const int lda, int* ipiv, const int rounding_mode) {
 	namespace detail = vblas_rdlapack_detail;
@@ -529,5 +531,7 @@ inline int rdgetri(const int n, double* A, const int lda, const int* ipiv, const
 	}
 	return 0;
 }
+
+} // namespace vcp
 
 #endif // VBLAS_RDLAPACK_LU_HPP

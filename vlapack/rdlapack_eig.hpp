@@ -57,6 +57,8 @@
 
 #pragma STDC FENV_ACCESS ON
 
+namespace vcp {
+
 // 対称行列の三重対角化 (unblocked)
 inline int rdsytd2(const char uplo, const int n, double* A, const int lda,
 	double* d, double* e, double* tau, const int rounding_mode) {
@@ -938,5 +940,7 @@ inline int rdsyev(const char jobz, const char uplo, const int n, double* A, cons
 	}
 	return info;
 }
+
+} // namespace vcp
 
 #endif // VBLAS_RDLAPACK_EIG_HPP

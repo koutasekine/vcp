@@ -56,6 +56,8 @@
 
 #pragma STDC FENV_ACCESS ON
 
+namespace vcp {
+
 // QR 分解 (unblocked)
 inline int rdgeqr2(const int m, const int n, double* A, const int lda, double* tau, const int rounding_mode) {
 	namespace detail = vblas_rdlapack_detail;
@@ -709,5 +711,7 @@ inline int rdgels(const char trans, const int m, const int n, const int nrhs,
 	}
 	return 0;
 }
+
+} // namespace vcp
 
 #endif // VBLAS_RDLAPACK_QR_HPP

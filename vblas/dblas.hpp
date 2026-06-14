@@ -85,52 +85,52 @@ extern "C" {
 // ---- Level 1 ----
 
 inline void dcopy_(const int* n, const double* x, const int* incx, double* y, const int* incy) {
-	dcopy(*n, x, *incx, y, *incy);
+	vcp::dcopy(*n, x, *incx, y, *incy);
 }
 
 inline void dswap_(const int* n, double* x, const int* incx, double* y, const int* incy) {
-	dswap(*n, x, *incx, y, *incy);
+	vcp::dswap(*n, x, *incx, y, *incy);
 }
 
 // Fortran BLAS と同じ 1-based index を返す (n<=0 や incx<=0 では 0)
 inline int idamax_(const int* n, const double* x, const int* incx) {
-	return idamax(*n, x, *incx) + 1;
+	return vcp::idamax(*n, x, *incx) + 1;
 }
 
 inline void dscal_(const int* n, const double* alpha, double* x, const int* incx) {
-	rdscal(*n, *alpha, x, *incx, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdscal(*n, *alpha, x, *incx, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void daxpy_(const int* n, const double* alpha, const double* x, const int* incx, double* y, const int* incy) {
-	rdaxpy(*n, *alpha, x, *incx, y, *incy, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdaxpy(*n, *alpha, x, *incx, y, *incy, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline double ddot_(const int* n, const double* x, const int* incx, const double* y, const int* incy) {
-	return rddot(*n, x, *incx, y, *incy, vblas_dblas_detail::current_rounding_mode());
+	return vcp::rddot(*n, x, *incx, y, *incy, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline double dasum_(const int* n, const double* x, const int* incx) {
-	return rdasum(*n, x, *incx, vblas_dblas_detail::current_rounding_mode());
+	return vcp::rdasum(*n, x, *incx, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline double dnrm2_(const int* n, const double* x, const int* incx) {
-	return rdnrm2(*n, x, *incx, vblas_dblas_detail::current_rounding_mode());
+	return vcp::rdnrm2(*n, x, *incx, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void drot_(const int* n, double* x, const int* incx, double* y, const int* incy, const double* c, const double* s) {
-	rdrot(*n, x, *incx, y, *incy, *c, *s, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdrot(*n, x, *incx, y, *incy, *c, *s, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void drotg_(double* a, double* b, double* c, double* s) {
-	rdrotg(a, b, c, s, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdrotg(a, b, c, s, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void drotm_(const int* n, double* x, const int* incx, double* y, const int* incy, const double* param) {
-	rdrotm(*n, x, *incx, y, *incy, param, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdrotm(*n, x, *incx, y, *incy, param, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void drotmg_(double* d1, double* d2, double* x1, const double* y1, double* param) {
-	rdrotmg(d1, d2, x1, *y1, param, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdrotmg(d1, d2, x1, *y1, param, vblas_dblas_detail::current_rounding_mode());
 }
 
 // ---- Level 2 ----
@@ -139,94 +139,94 @@ inline void dgemv_(const char* trans, const int* m, const int* n,
 	const double* alpha, const double* a, const int* lda,
 	const double* x, const int* incx,
 	const double* beta, double* y, const int* incy) {
-	rdgemv(*trans, *m, *n, *alpha, a, *lda, x, *incx, *beta, y, *incy, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdgemv(*trans, *m, *n, *alpha, a, *lda, x, *incx, *beta, y, *incy, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dgbmv_(const char* trans, const int* m, const int* n, const int* kl, const int* ku,
 	const double* alpha, const double* a, const int* lda,
 	const double* x, const int* incx,
 	const double* beta, double* y, const int* incy) {
-	rdgbmv(*trans, *m, *n, *kl, *ku, *alpha, a, *lda, x, *incx, *beta, y, *incy, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdgbmv(*trans, *m, *n, *kl, *ku, *alpha, a, *lda, x, *incx, *beta, y, *incy, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dsymv_(const char* uplo, const int* n,
 	const double* alpha, const double* a, const int* lda,
 	const double* x, const int* incx,
 	const double* beta, double* y, const int* incy) {
-	rdsymv(*uplo, *n, *alpha, a, *lda, x, *incx, *beta, y, *incy, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdsymv(*uplo, *n, *alpha, a, *lda, x, *incx, *beta, y, *incy, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dsbmv_(const char* uplo, const int* n, const int* k,
 	const double* alpha, const double* a, const int* lda,
 	const double* x, const int* incx,
 	const double* beta, double* y, const int* incy) {
-	rdsbmv(*uplo, *n, *k, *alpha, a, *lda, x, *incx, *beta, y, *incy, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdsbmv(*uplo, *n, *k, *alpha, a, *lda, x, *incx, *beta, y, *incy, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dspmv_(const char* uplo, const int* n,
 	const double* alpha, const double* ap,
 	const double* x, const int* incx,
 	const double* beta, double* y, const int* incy) {
-	rdspmv(*uplo, *n, *alpha, ap, x, *incx, *beta, y, *incy, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdspmv(*uplo, *n, *alpha, ap, x, *incx, *beta, y, *incy, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dtrmv_(const char* uplo, const char* trans, const char* diag, const int* n,
 	const double* a, const int* lda, double* x, const int* incx) {
-	rdtrmv(*uplo, *trans, *diag, *n, a, *lda, x, *incx, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdtrmv(*uplo, *trans, *diag, *n, a, *lda, x, *incx, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dtbmv_(const char* uplo, const char* trans, const char* diag, const int* n, const int* k,
 	const double* a, const int* lda, double* x, const int* incx) {
-	rdtbmv(*uplo, *trans, *diag, *n, *k, a, *lda, x, *incx, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdtbmv(*uplo, *trans, *diag, *n, *k, a, *lda, x, *incx, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dtpmv_(const char* uplo, const char* trans, const char* diag, const int* n,
 	const double* ap, double* x, const int* incx) {
-	rdtpmv(*uplo, *trans, *diag, *n, ap, x, *incx, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdtpmv(*uplo, *trans, *diag, *n, ap, x, *incx, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dtrsv_(const char* uplo, const char* trans, const char* diag, const int* n,
 	const double* a, const int* lda, double* x, const int* incx) {
-	rdtrsv(*uplo, *trans, *diag, *n, a, *lda, x, *incx, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdtrsv(*uplo, *trans, *diag, *n, a, *lda, x, *incx, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dtbsv_(const char* uplo, const char* trans, const char* diag, const int* n, const int* k,
 	const double* a, const int* lda, double* x, const int* incx) {
-	rdtbsv(*uplo, *trans, *diag, *n, *k, a, *lda, x, *incx, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdtbsv(*uplo, *trans, *diag, *n, *k, a, *lda, x, *incx, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dtpsv_(const char* uplo, const char* trans, const char* diag, const int* n,
 	const double* ap, double* x, const int* incx) {
-	rdtpsv(*uplo, *trans, *diag, *n, ap, x, *incx, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdtpsv(*uplo, *trans, *diag, *n, ap, x, *incx, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dger_(const int* m, const int* n,
 	const double* alpha, const double* x, const int* incx,
 	const double* y, const int* incy, double* a, const int* lda) {
-	rdger(*m, *n, *alpha, x, *incx, y, *incy, a, *lda, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdger(*m, *n, *alpha, x, *incx, y, *incy, a, *lda, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dsyr_(const char* uplo, const int* n,
 	const double* alpha, const double* x, const int* incx,
 	double* a, const int* lda) {
-	rdsyr(*uplo, *n, *alpha, x, *incx, a, *lda, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdsyr(*uplo, *n, *alpha, x, *incx, a, *lda, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dspr_(const char* uplo, const int* n,
 	const double* alpha, const double* x, const int* incx, double* ap) {
-	rdspr(*uplo, *n, *alpha, x, *incx, ap, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdspr(*uplo, *n, *alpha, x, *incx, ap, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dsyr2_(const char* uplo, const int* n,
 	const double* alpha, const double* x, const int* incx,
 	const double* y, const int* incy, double* a, const int* lda) {
-	rdsyr2(*uplo, *n, *alpha, x, *incx, y, *incy, a, *lda, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdsyr2(*uplo, *n, *alpha, x, *incx, y, *incy, a, *lda, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dspr2_(const char* uplo, const int* n,
 	const double* alpha, const double* x, const int* incx,
 	const double* y, const int* incy, double* ap) {
-	rdspr2(*uplo, *n, *alpha, x, *incx, y, *incy, ap, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdspr2(*uplo, *n, *alpha, x, *incx, y, *incy, ap, vblas_dblas_detail::current_rounding_mode());
 }
 
 // ---- Level 3 ----
@@ -236,7 +236,7 @@ inline void dgemm_(const char* transa, const char* transb,
 	const double* alpha, const double* a, const int* lda,
 	const double* b, const int* ldb,
 	const double* beta, double* c, const int* ldc) {
-	rdgemm(*transa, *transb, *m, *n, *k, *alpha, a, *lda, b, *ldb, *beta, c, *ldc, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdgemm(*transa, *transb, *m, *n, *k, *alpha, a, *lda, b, *ldb, *beta, c, *ldc, vblas_dblas_detail::current_rounding_mode());
 }
 
 // LAPACK 3.12.1 で追加された GEMMTR (C の uplo 三角部分のみ更新する GEMM)
@@ -245,7 +245,7 @@ inline void dgemmtr_(const char* uplo, const char* transa, const char* transb,
 	const double* alpha, const double* a, const int* lda,
 	const double* b, const int* ldb,
 	const double* beta, double* c, const int* ldc) {
-	rdgemmtr(*uplo, *transa, *transb, *n, *k, *alpha, a, *lda, b, *ldb, *beta, c, *ldc, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdgemmtr(*uplo, *transa, *transb, *n, *k, *alpha, a, *lda, b, *ldb, *beta, c, *ldc, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dsymm_(const char* side, const char* uplo,
@@ -253,14 +253,14 @@ inline void dsymm_(const char* side, const char* uplo,
 	const double* alpha, const double* a, const int* lda,
 	const double* b, const int* ldb,
 	const double* beta, double* c, const int* ldc) {
-	rdsymm(*side, *uplo, *m, *n, *alpha, a, *lda, b, *ldb, *beta, c, *ldc, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdsymm(*side, *uplo, *m, *n, *alpha, a, *lda, b, *ldb, *beta, c, *ldc, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dsyrk_(const char* uplo, const char* trans,
 	const int* n, const int* k,
 	const double* alpha, const double* a, const int* lda,
 	const double* beta, double* c, const int* ldc) {
-	rdsyrk(*uplo, *trans, *n, *k, *alpha, a, *lda, *beta, c, *ldc, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdsyrk(*uplo, *trans, *n, *k, *alpha, a, *lda, *beta, c, *ldc, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dsyr2k_(const char* uplo, const char* trans,
@@ -268,21 +268,21 @@ inline void dsyr2k_(const char* uplo, const char* trans,
 	const double* alpha, const double* a, const int* lda,
 	const double* b, const int* ldb,
 	const double* beta, double* c, const int* ldc) {
-	rdsyr2k(*uplo, *trans, *n, *k, *alpha, a, *lda, b, *ldb, *beta, c, *ldc, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdsyr2k(*uplo, *trans, *n, *k, *alpha, a, *lda, b, *ldb, *beta, c, *ldc, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dtrmm_(const char* side, const char* uplo, const char* transa, const char* diag,
 	const int* m, const int* n,
 	const double* alpha, const double* a, const int* lda,
 	double* b, const int* ldb) {
-	rdtrmm(*side, *uplo, *transa, *diag, *m, *n, *alpha, a, *lda, b, *ldb, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdtrmm(*side, *uplo, *transa, *diag, *m, *n, *alpha, a, *lda, b, *ldb, vblas_dblas_detail::current_rounding_mode());
 }
 
 inline void dtrsm_(const char* side, const char* uplo, const char* transa, const char* diag,
 	const int* m, const int* n,
 	const double* alpha, const double* a, const int* lda,
 	double* b, const int* ldb) {
-	rdtrsm(*side, *uplo, *transa, *diag, *m, *n, *alpha, a, *lda, b, *ldb, vblas_dblas_detail::current_rounding_mode());
+	vcp::rdtrsm(*side, *uplo, *transa, *diag, *m, *n, *alpha, a, *lda, b, *ldb, vblas_dblas_detail::current_rounding_mode());
 }
 
 } // extern "C"

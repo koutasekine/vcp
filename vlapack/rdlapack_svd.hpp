@@ -60,6 +60,8 @@
 
 #pragma STDC FENV_ACCESS ON
 
+namespace vcp {
+
 // 二重対角化 (unblocked): A = Q * B * P^T
 inline int rdgebd2(const int m, const int n, double* A, const int lda,
 	double* d, double* e, double* tauq, double* taup, const int rounding_mode) {
@@ -864,5 +866,7 @@ inline int rdgesvd(const char jobu, const char jobvt, const int m, const int n,
 	}
 	return info;
 }
+
+} // namespace vcp
 
 #endif // VBLAS_RDLAPACK_SVD_HPP

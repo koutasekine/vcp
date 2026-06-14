@@ -151,6 +151,8 @@ inline int ilaenv(const int ispec, const char* name, const int n1, const int n2,
 
 } // namespace vblas_rdlapack_detail
 
+namespace vcp {
+
 // LAPACK の DLAMCH: machine parameter を返す (定数のみで丸めモードに依存しない)
 //   'E' eps (相対 machine epsilon, 2^-53), 'S' safe minimum, 'B' base,
 //   'P' eps*base, 'N' 仮数部 bit 数, 'R' rounding (1.0), 'M' emin,
@@ -190,5 +192,7 @@ inline double dlamch(const char cmach) {
 	vblas_rdlapack_detail::rdlapack_error("dlamch: invalid cmach");
 	return 0.0;
 }
+
+} // namespace vcp
 
 #endif // VBLAS_RDLAPACK_COMMON_HPP

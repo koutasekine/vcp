@@ -10,8 +10,27 @@
 #include "vblas/rdblas.hpp"
 
 // C := alpha*A*B + beta*C を上向き丸めで計算
+vcp::rdgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, 1);
+```
+
+あるいはファイル先頭で `using namespace vcp;` を宣言すれば，
+`vcp::` 修飾なしで呼び出せます:
+
+```cpp
+#include "vblas/rdblas.hpp"
+using namespace vcp;
+
 rdgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, 1);
 ```
+
+## 名前空間
+
+**rdblas の全関数 (Level 1 / 2 / 3) は `vcp` 名前空間に収められています．**
+`vcp::rdgemm`, `vcp::rdscal`, `vcp::dcopy` のように修飾するか，
+呼び出し側ファイルで `using namespace vcp;` を宣言してください．
+
+`dblas.hpp` の Fortran 互換 wrapper (`dgemm_` など) は `extern "C"` の
+グローバルシンボルであり，名前空間に入っていません (変更なし)．
 
 ## 命名規約と引数
 
@@ -21,7 +40,7 @@ rdgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, 1);
   - `rounding_mode = -1`: 下向き丸め (`FE_DOWNWARD`)
   - それ以外 (`0` を推奨): 最近点丸め (`FE_TONEAREST`)
 - FP 演算を含まない routine は BLAS と同名のままです:
-  `dcopy`, `dswap`, `idamax` (丸めモード引数なし)．
+  `dcopy`, `dswap`, `idamax` (丸めモード引数なし)．いずれも `vcp` 名前空間内です．
 - 行列は column-major，index は 0-based です．
   `idamax` の返り値も 0-based index です (Fortran BLAS の 1-based と異なる
   ので注意．`n <= 0` などでは -1 を返します)．
@@ -43,7 +62,7 @@ LAPACK 3.12.1 以降の dsytrf 系 (dlasyf) が必要とします)．
 
 ## dblas — 通常の BLAS interface (rdblas の wrapper)
 
-`dblas.hpp` は rdblas を呼び出して構築した「通常の」double BLAS です．
+`dblas.hpp` は rdblas (`vcp` 名前空間) を呼び出して構築した「通常の」double BLAS です．
 関数名・引数は Fortran BLAS の C からの呼び出し規約に一致します
 (末尾 underscore，全引数 pointer 渡し，INTEGER は 32bit `int` / LP64)．
 
@@ -57,7 +76,7 @@ std::fesetround(FE_TONEAREST);
 
 - 各関数は呼び出し時点の丸めモードを `std::fegetround()` で取得し，
   `FE_DOWNWARD` なら `-1`，`FE_UPWARD` なら `1`，それ以外なら `0` を
-  rdblas の末尾引数 `rounding_mode` として渡します．
+  `vcp::rdblas` の末尾引数 `rounding_mode` として渡します．
   つまり**現在の丸めモードを尊重して計算する BLAS** になります．
 - 通常の BLAS と異なり，OpenMP の全 worker thread でも同じ丸めが保証され，
   計算後は各 thread の丸めモードが呼び出し前の状態へ復元されます．
@@ -87,6 +106,7 @@ std::fesetround(FE_TONEAREST);
 - `dblas.hpp` — 通常の BLAS interface (Fortran 互換 wrapper，上記参照)
 
 既存の `rmatmul*.hpp` には一切手を加えていません．
+`rdblas_level*.hpp` の公開関数は `namespace vcp { }` で囲まれています．
 
 ## 丸めモードの取り扱い (重要)
 

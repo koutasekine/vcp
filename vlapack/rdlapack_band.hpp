@@ -57,6 +57,8 @@
 
 #pragma STDC FENV_ACCESS ON
 
+namespace vcp {
+
 // 帯行列の LU 分解 (unblocked)．ipiv は 0-based
 inline int rdgbtf2(const int m, const int n, const int kl, const int ku,
 	double* AB, const int ldab, int* ipiv, const int rounding_mode) {
@@ -544,5 +546,7 @@ inline int rdpbsv(const char uplo, const int n, const int kd, const int nrhs,
 	}
 	return info;
 }
+
+} // namespace vcp
 
 #endif // VBLAS_RDLAPACK_BAND_HPP

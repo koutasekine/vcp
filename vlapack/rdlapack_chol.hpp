@@ -54,6 +54,8 @@
 
 #pragma STDC FENV_ACCESS ON
 
+namespace vcp {
+
 // Cholesky 分解 (unblocked)
 inline int rdpotf2(const char uplo, const int n, double* A, const int lda, const int rounding_mode) {
 	namespace detail = vblas_rdlapack_detail;
@@ -262,5 +264,7 @@ inline int rdpotri(const char uplo, const int n, double* A, const int lda, const
 	rdlauum(uplo, n, A, lda, rounding_mode);
 	return 0;
 }
+
+} // namespace vcp
 
 #endif // VBLAS_RDLAPACK_CHOL_HPP
