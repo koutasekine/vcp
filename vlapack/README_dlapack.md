@@ -23,9 +23,12 @@ dgesv_(&n, &nrhs, A, &lda, ipiv, B, &ldb, &info);
 std::fesetround(FE_TONEAREST);
 ```
 
-- 各関数は呼び出し時点の丸めモードを `std::fegetround()` で取得し，
+- 各関数は呼び出し時点の丸めモードを取得し，
   `FE_DOWNWARD` なら `-1`，`FE_UPWARD` なら `1`，それ以外なら `0` を
   `vcp::rdlapack` の末尾引数 `rounding_mode` として渡します (dblas と同じ規約)．
+- `KV_FASTROUND` 有効時は，`kv::hwround::roundup()` / `rounddown()` が直接変更する
+  制御レジスタ (x86 では MXCSR，AArch64/ARM では FPCR/FPSCR) から丸め方向を読みます．
+  `KV_FASTROUND` 無効時は通常の `std::fegetround()` を使います．
 - `vcp::rdlapack` の保証がそのまま引き継がれます: 全浮動小数点演算 (四則演算と平方根，
   BLAS 部分も scalar 部分も，OpenMP の全 worker thread も) が同じ丸めモードで
   実行され，終了後に各 thread の丸めモードは呼び出し前の状態へ復元されます．
@@ -86,7 +89,7 @@ liblapack の `dgecon_` が混在する**構成になり得ます．意図した
 
 wrapper は計算を持たず，次の変換のみを行います:
 
-1. **丸めモード**: `std::fegetround()` → rdlapack の `rounding_mode` (上記規約)
+1. **丸めモード**: 現在の丸めモード → rdlapack の `rounding_mode` (上記規約)
 2. **Fortran ABI**: 全引数 pointer 渡し，`INFO` は出力引数に格納
 3. **ipiv の 1-based 変換**: `dgetrf_`/`dgesv_`/`dgbtrf_`/`dgbsv_` 系は
    rdlapack の 0-based ipiv を wrapper が 1-based に変換して入出力する

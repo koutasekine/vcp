@@ -74,10 +74,13 @@ dgemm_(&transa, &transb, &m, &n, &k, &alpha, A, &lda, B, &ldb, &beta, C, &ldc);
 std::fesetround(FE_TONEAREST);
 ```
 
-- 各関数は呼び出し時点の丸めモードを `std::fegetround()` で取得し，
+- 各関数は呼び出し時点の丸めモードを取得し，
   `FE_DOWNWARD` なら `-1`，`FE_UPWARD` なら `1`，それ以外なら `0` を
   `vcp::rdblas` の末尾引数 `rounding_mode` として渡します．
   つまり**現在の丸めモードを尊重して計算する BLAS** になります．
+- `KV_FASTROUND` 有効時は，`kv::hwround::roundup()` / `rounddown()` が直接変更する
+  制御レジスタ (x86 では MXCSR，AArch64/ARM では FPCR/FPSCR) から丸め方向を読みます．
+  `KV_FASTROUND` 無効時は通常の `std::fegetround()` を使います．
 - 通常の BLAS と異なり，OpenMP の全 worker thread でも同じ丸めが保証され，
   計算後は各 thread の丸めモードが呼び出し前の状態へ復元されます．
 - 丸めモードの変更を行わない関数 (`dcopy_` `dswap_` `idamax_`) は
@@ -94,8 +97,9 @@ std::fesetround(FE_TONEAREST);
 注意 (libiomp5 の FP 制御継承): Intel OpenMP runtime は既定
 (`KMP_INHERIT_FP_CONTROL=true`) で，並列領域の入口に master の FP 制御状態を
 各 worker へ継承させ，join 時に master の状態を入口時点へ戻します．
-そのため `fesetround` は**並列領域の外で** (master thread に対して) 実行して
-ください．並列領域の内側で設定した丸めモードは join 後の master には残りません．
+そのため `std::fesetround()` や `kv::hwround::roundup()` / `rounddown()` は
+**並列領域の外で** (master thread に対して) 実行してください．
+並列領域の内側で設定した丸めモードは join 後の master には残りません．
 
 ## ファイル構成
 
@@ -105,7 +109,7 @@ std::fesetround(FE_TONEAREST);
 - `rdblas_level1.hpp` / `rdblas_level2.hpp` / `rdblas_level3.hpp` — 各 level の実装
 - `dblas.hpp` — 通常の BLAS interface (Fortran 互換 wrapper，上記参照)
 
-既存の `rmatmul*.hpp` には一切手を加えていません．
+`rmatmul_common.hpp` は rdblas/dblas と同じ丸めモード保存・復元 helper を提供します．
 `rdblas_level*.hpp` の公開関数は `namespace vcp { }` で囲まれています．
 
 ## 丸めモードの取り扱い (重要)
@@ -115,6 +119,7 @@ std::fesetround(FE_TONEAREST);
 1. **計算前に丸めモードを保存**: 呼び出し thread と，OpenMP parallel region に
    入った各 worker thread のそれぞれが，自分の現在の丸めモードを保存します
    (`RoundingGuard` による RAII)．
+   保存時の読み取りも dblas と同じく `KV_FASTROUND` 対応です．
 2. **全 thread で丸めモードを変更**: 丸めモードは thread ごとの状態
    (x86 では MXCSR / x87 CW) なので，並列計算する全ての worker thread が
    parallel region の内側で `fesetround` を実行します．AVX-512 backend の

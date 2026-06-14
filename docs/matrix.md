@@ -299,7 +299,7 @@ BLAS/LAPACK routine を呼びます。
 - `pdblas` の要素型は `double` です。
 - `pddblas` の要素型は `kv::dd` です（次節参照）。
 - `pidblas` の要素型は `kv::interval<double>` です。
-- 利用プログラムは BLAS/LAPACK または MKL とリンクする必要があります。
+- 利用プログラムは BLAS/LAPACK または MKL とリンクする必要があります。外部ライブラリを使わない場合は後述の「外部 BLAS/LAPACK を使わない場合」を参照してください。
 - LAPACK routine が非ゼロの `info` を返した場合、`vcp::lapack_error` を投げます。
 - 一部の演算は破壊的で、例外発生時に入力行列がすでに上書きされている場合があります。
 
@@ -312,6 +312,38 @@ OpenBLAS を使う設定例は [blas_build.md](blas_build.md) を参照してく
 Newton 法で非線形方程式を解く場合は、`matrix` で残差ベクトルと
 ヤコビ行列を作り、`vcp::Newton` に渡す形になります。詳しくは
 [newton.md](newton.md) を参照してください。
+
+## 外部 BLAS/LAPACK を使わない場合 (`-DUSE_VCP_BLAS` / `-DUSE_VCP_LAPACK`)
+
+`-DUSE_VCP_BLAS` または `-DUSE_VCP_LAPACK` をコンパイル時に指定すると、
+`vcp::pdblas`・`vcp::pidblas`・`vcp::pddblas` が外部 BLAS/LAPACK ライブラリを
+必要とせず、`vblas/dblas.hpp` と `vlapack/dlapack.hpp` の純 C++ 実装
+（丸めモード対応 BLAS/LAPACK）を内部で使用します。
+
+| フラグ | 効果 |
+| --- | --- |
+| `-DUSE_VCP_BLAS` | BLAS 関数（`dgemm_` 等）を `vblas/dblas.hpp` で提供。外部 BLAS リンク不要 |
+| `-DUSE_VCP_LAPACK` | LAPACK 関数（`dgesv_`、`dsyev_` 等）を `vlapack/dlapack.hpp` で提供。外部 LAPACK リンク不要 |
+| 両方 | 外部 BLAS/LAPACK のどちらも不要 |
+
+MKL や OpenBLAS がない環境でも次のようにコンパイルできます。
+
+```bash
+g++ -std=c++11 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND \
+    -DUSE_VCP_BLAS -DUSE_VCP_LAPACK \
+    example.cpp -lmpfr -fopenmp
+```
+
+`-DUSE_VCP_BLAS` のみで BLAS だけ、`-DUSE_VCP_LAPACK` のみで LAPACK だけを
+置き換えることもできます。
+
+注意点:
+
+- 両フラグを指定した状態で外部 BLAS/LAPACK もリンクすると、シンボルが重複して
+  リンカエラーになります。外部ライブラリとの混在はできません。
+- `vblas/dblas.hpp` と `vlapack/dlapack.hpp` は `vcp/` と同じ親ディレクトリに
+  `vblas/` と `vlapack/` が配置されている前提でインクルードされます。
+  標準のディレクトリ構成（`vcp/`、`vblas/`、`vlapack/` が並ぶ）ではそのまま動きます。
 
 ## `vcp::pddblas` の詳細
 
