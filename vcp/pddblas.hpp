@@ -40,10 +40,16 @@
 
 #include <vcp/pdblas.hpp>
 
+#if !defined(USE_VCP_BLAS) || !defined(USE_VCP_LAPACK)
 extern "C" {
+#  ifndef USE_VCP_LAPACK
 	void dgetrs_(char*, int*, int*, double*, int*, int*, double*, int*, int*);
+#  endif
+#  ifndef USE_VCP_BLAS
 	void dtrsm_(char*, char*, char*, char*, int*, int*, double*, double*, int*, double*, int*);
+#  endif
 }
+#endif
 
 namespace vcp {
 	// Helper functions for the Ozaki scheme:
