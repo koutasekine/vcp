@@ -4,10 +4,10 @@
 丸めモードを指定して計算できる形で提供する header-only library です．
 `rmatmul` と同様に実験的な位置付けで，`vcp::matrix` からは自動では使われません．
 この上に構築した丸めモード指定付き LAPACK (rdlapack) は兄弟 directory の
-`vlapack/` にあります (`vlapack/README_rdlapack.md` 参照)．
+`vcp/vlapack/` にあります (`docs/rdlapack.md` 参照)．
 
 ```cpp
-#include "vblas/rdblas.hpp"
+#include <vcp/vblas/rdblas.hpp>
 
 // C := alpha*A*B + beta*C を上向き丸めで計算
 vcp::rdgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, 1);
@@ -17,7 +17,7 @@ vcp::rdgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, 1);
 `vcp::` 修飾なしで呼び出せます:
 
 ```cpp
-#include "vblas/rdblas.hpp"
+#include <vcp/vblas/rdblas.hpp>
 using namespace vcp;
 
 rdgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, 1);
@@ -67,7 +67,7 @@ LAPACK 3.12.1 以降の dsytrf 系 (dlasyf) が必要とします)．
 (末尾 underscore，全引数 pointer 渡し，INTEGER は 32bit `int` / LP64)．
 
 ```cpp
-#include "vblas/dblas.hpp"
+#include <vcp/vblas/dblas.hpp>
 
 std::fesetround(FE_UPWARD); // 以後の dblas 呼び出しは上向き丸めで計算される
 dgemm_(&transa, &transb, &m, &n, &k, &alpha, A, &lda, B, &ldb, &beta, C, &ldc);
@@ -104,7 +104,7 @@ std::fesetround(FE_TONEAREST);
 ## vcp との統合 (`-DUSE_VCP_BLAS`)
 
 `-DUSE_VCP_BLAS` をコンパイル時に指定すると，`vcp/pdblas.hpp` が
-`vblas/dblas.hpp` を内部で使用します．これにより `vcp::pdblas`・
+`vcp/vblas/dblas.hpp` を内部で使用します．これにより `vcp::pdblas`・
 `vcp::pidblas`・`vcp::pddblas` が外部 BLAS ライブラリを必要とせずに
 動作します (`-DUSE_VCP_LAPACK` と組み合わせれば LAPACK も不要になります)．
 
@@ -206,58 +206,19 @@ rdgemm は丸めモード指定付きでも MKL dgemm より高速です．trmm/
 
 ## テストと benchmark
 
-```bash
-mkdir -p sandbox/bin
-
-# 検証 (AVX-512)
-g++ -I. -I${MKLROOT}/include -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 \
--mavx512f -DVCP_USE_AVX512 \
-sandbox/tests/test_rdblas.cpp \
--L${MKLROOT}/lib/intel64 -Wl,--no-as-needed \
--lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 \
--lpthread -lm -ldl -lmpfr -fopenmp \
--o sandbox/bin/test_rdblas
-
-./sandbox/bin/test_rdblas
-
-# 性能比較 (rdgemm/rdsyrk/rdtrsm/rdtrmm vs MKL)
-g++ -I. -I${MKLROOT}/include -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 \
--mavx512f -DVCP_USE_AVX512 \
-sandbox/tests/bench_rdblas.cpp \
--L${MKLROOT}/lib/intel64 -Wl,--no-as-needed \
--lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 \
--lpthread -lm -ldl -lmpfr -fopenmp \
--o sandbox/bin/bench_rdblas
-
-./sandbox/bin/bench_rdblas 2000
-```
-
 AVX2 backend は `-mavx512f -DVCP_USE_AVX512` の代わりに `-mavx2 -mfma`，
-no-SIMD fallback はどちらも付けずにコンパイルします (3 backend とも
-test_rdblas が PASS することを確認済み)．
+no-SIMD fallback はどちらも付けずにコンパイルします (AVX-512 / AVX2 / no-SIMD の
+3 backend すべてで動作確認済み)．
 
-dblas wrapper は `sandbox/tests/test_dblas.cpp` で検証します
-(全 34 関数について，4 つの丸めモード下で wrapper の結果が rdblas の
-直接呼び出しと bit 一致すること，丸めモードが保存されることを確認):
-
-```bash
-g++ -I. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 \
--mavx512f -DVCP_USE_AVX512 \
-sandbox/tests/test_dblas.cpp \
--L${MKLROOT}/lib/intel64 -Wl,--no-as-needed \
--lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 \
--lpthread -lm -ldl -lmpfr -fopenmp \
--o sandbox/bin/test_dblas
-
-./sandbox/bin/test_dblas
-```
+dblas wrapper は全 34 関数について，4 つの丸めモード下で wrapper の結果が rdblas の
+直接呼び出しと bit 一致すること，丸めモードが保存されることを確認済み．
 
 ## License
 
 `rdblas_level1.hpp` / `rdblas_level2.hpp` / `rdblas_level3.hpp` は
 reference LAPACK 3.12.1 配布物に含まれる reference BLAS
 (Copyright (c) The University of Tennessee 他, modified BSD license) の
-派生物です．license 全文と改変内容は `vlapack/LICENSE_LAPACK.txt` を，
+派生物です．license 全文と改変内容は `vcp/vlapack/LICENSE_LAPACK.txt` を，
 由来は各 header 冒頭の notice を参照してください．
 
 ## 注意

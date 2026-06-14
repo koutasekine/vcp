@@ -58,8 +58,8 @@ Fourier 級数を係数列として扱う `vcp::fourier_series` については
 | ディレクトリ | 内容 |
 | --- | --- |
 | `vcp/` | VCP Library 本体のヘッダ |
-| `vblas/` | 丸めモード対応 double BLAS（`rdblas`）と Fortran 互換ラッパー（`dblas`）。`-DUSE_VCP_BLAS` 使用時に `vcp/pdblas.hpp` 等から参照される |
-| `vlapack/` | 丸めモード対応 double LAPACK（`rdlapack`）と Fortran 互換ラッパー（`dlapack`）。`-DUSE_VCP_LAPACK` 使用時に `vcp/pdblas.hpp` 等から参照される |
+| `vcp/vblas/` | 丸めモード対応 double BLAS（`rdblas`）と Fortran 互換ラッパー（`dblas`）。`-DUSE_VCP_BLAS` 使用時に `vcp/pdblas.hpp` 等から参照される |
+| `vcp/vlapack/` | 丸めモード対応 double LAPACK（`rdlapack`）と Fortran 互換ラッパー（`dlapack`）。`-DUSE_VCP_LAPACK` 使用時に `vcp/pdblas.hpp` 等から参照される |
 | `test_matrix/` | 行列クラスの利用例と確認プログラム |
 | `test_PDE/` | PDE の精度保証付き数値計算例 |
 | `tools/` | ダウンロードや展開を補助する小さなツール |
@@ -128,8 +128,8 @@ macOS、Apple Silicon、AMD/Intel Linux、OpenBLAS、clang、Homebrew GCC の具
 [docs/blas_build.md](docs/blas_build.md) を参照してください。
 
 外部 BLAS/LAPACK がない環境では、`-DUSE_VCP_BLAS` と `-DUSE_VCP_LAPACK` を
-指定することで、純 C++ 実装の BLAS/LAPACK（`vblas/dblas.hpp` と
-`vlapack/dlapack.hpp`）を代わりに使用できます。
+指定することで、純 C++ 実装の BLAS/LAPACK（`vcp/vblas/dblas.hpp` と
+`vcp/vlapack/dlapack.hpp`）を代わりに使用できます。
 
 ```bash
 g++ -std=c++11 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND \

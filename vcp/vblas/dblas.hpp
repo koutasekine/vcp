@@ -52,7 +52,7 @@
 //
 //   // dblas_symbols.cpp
 //   #define VBLAS_DBLAS_EMIT_SYMBOLS
-//   #include "vblas/dblas.hpp"
+//   #include <vcp/vblas/dblas.hpp>
 //
 // このとき MKL 等の他の BLAS と同名 symbol が衝突しないよう，link する
 // library 構成に注意すること．

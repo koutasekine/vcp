@@ -1,16 +1,16 @@
 # vblas
 
-`vblas/` は、丸め方向を指定して double 行列積および BLAS 全ルーティンを
+`vcp/vblas/` は、丸め方向を指定して double 行列積および BLAS 全ルーティンを
 計算するカーネル群と、Fortran 互換ラッパー（`dblas`）です。
 外部 BLAS がハードウェア丸めモードの変更を精度保証付き数値計算に必要な
 形で反映しない環境に対して、代替 backend として使用できます。
 
 `-DUSE_VCP_BLAS` をコンパイル時に指定すると、`vcp/pdblas.hpp`
-（`vcp::pdblas`・`vcp::pidblas`・`vcp::pddblas`）が `vblas/dblas.hpp` を
+（`vcp::pdblas`・`vcp::pidblas`・`vcp::pddblas`）が `vcp/vblas/dblas.hpp` を
 内部で使用し、外部 BLAS ライブラリを必要とせずに動作します。
 詳細は `docs/matrix.md` の「外部 BLAS/LAPACK を使わない場合」を参照して
 ください。`rmatmul` / `rdblas` を直接利用したい場合は、利用側が
-`vblas/rmatmul.hpp` などを明示的に include して呼び出します。
+`vcp/vblas/rmatmul.hpp` などを明示的に include して呼び出します。
 
 ## 主なファイル
 
@@ -58,7 +58,7 @@
 `rmatmul` の呼び出し形式は次の通りです。
 
 ```cpp
-#include "rmatmul.hpp"
+#include <vcp/vblas/rmatmul.hpp>
 
 rmatmul(m, n, k, A, B, C, rounding_mode);
 ```
@@ -180,7 +180,7 @@ thread 数のみから決定します。環境 (特定の CPU 名や行列形状
 下向き丸め結果を同時に計算する実験用関数です。
 
 ```cpp
-#include "udmatmul.hpp"
+#include <vcp/vblas/udmatmul.hpp>
 
 udmatmul(m, n, k, A, B, CU, CD);
 ```
@@ -197,18 +197,16 @@ udmatmul(m, n, k, A, B, CU, CD);
 プロジェクトルートから実行する場合の AVX2 実装の確認例です。
 
 ```bash
-mkdir -p sandbox/bin
-
 g++ -I. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 \
 -mavx2 -mfma \
-vblas/Check_rmatmul_rounding.cpp \
+vcp/vblas/Check_rmatmul_rounding.cpp \
 -lpthread \
 -lm \
 -ldl \
 -fopenmp \
--o sandbox/bin/check_rmatmul_rounding
+-o check_rmatmul_rounding
 
-./sandbox/bin/check_rmatmul_rounding
+./check_rmatmul_rounding
 ```
 
 AVX-512 実装を使う場合は、AVX-512 用の compile option を追加します。
@@ -216,12 +214,12 @@ AVX-512 実装を使う場合は、AVX-512 用の compile option を追加しま
 ```bash
 g++ -I. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 \
 -mavx512f -DVCP_USE_AVX512 \
-vblas/Check_rmatmul_rounding.cpp \
+vcp/vblas/Check_rmatmul_rounding.cpp \
 -lpthread \
 -lm \
 -ldl \
 -fopenmp \
--o sandbox/bin/check_rmatmul_rounding_avx512
+-o check_rmatmul_rounding_avx512
 ```
 
 MKL や OpenBLAS、MPFR を含む既存の VCP 検証コードと一緒にリンクする場合は、
