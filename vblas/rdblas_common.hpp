@@ -79,11 +79,11 @@ inline int fe_rounding(const int rounding_mode) {
 // なので，全 worker thread について保存・変更・復元が行われる．
 class RoundingGuard {
 public:
-	explicit RoundingGuard(const int fe_mode) : previous_(std::fegetround()) {
-		std::fesetround(fe_mode);
+	explicit RoundingGuard(const int fe_mode) : previous_(vblas_rmatmul_common_detail::get_rounding_mode()) {
+		vblas_rmatmul_common_detail::set_rounding_mode(fe_mode);
 	}
 	~RoundingGuard() {
-		std::fesetround(previous_);
+		vblas_rmatmul_common_detail::reset_rounding_mode(previous_);
 	}
 
 private:

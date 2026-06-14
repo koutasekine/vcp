@@ -36,7 +36,7 @@
 //
 // - 関数名は Fortran BLAS に合わせて末尾 underscore (dgemm_ など)，
 //   引数は全て pointer 渡し (Fortran 互換 ABI，INTEGER は 32bit int / LP64)．
-// - 各関数は呼び出し時点の丸めモードを std::fegetround() で取得し，
+// - 各関数は呼び出し時点の丸めモードを取得し，
 //     FE_DOWNWARD -> -1, FE_UPWARD -> 1, それ以外 -> 0 (最近点)
 //   を rdblas の末尾引数 rounding_mode として渡す．
 //   つまり「現在の丸めモードを尊重して計算する BLAS」になる
@@ -68,7 +68,7 @@ namespace vblas_dblas_detail {
 // 現在の丸めモードを rdblas の rounding_mode へ変換する
 // (FE_DOWNWARD -> -1, FE_UPWARD -> 1, それ以外 -> 0)
 inline int current_rounding_mode() {
-	const int mode = std::fegetround();
+	const int mode = vblas_rmatmul_common_detail::get_rounding_mode();
 	if (mode == FE_DOWNWARD) {
 		return -1;
 	}

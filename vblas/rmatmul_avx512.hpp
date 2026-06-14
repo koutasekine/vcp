@@ -378,7 +378,7 @@ inline void rmatmul_direct_avx512(const int m, const int n, const int k, const d
 	{
 		// embedded rounding のため丸めモードは変更しないが，
 		// 各 thread で実行前の丸めモードを保存し実行後に復元することを保証する
-		const int previous_rounding = std::fegetround();
+		const int previous_rounding = get_rounding_mode();
 #pragma omp for collapse(2) schedule(static)
 		for (int jr = 0; jr < k; jr += NR) {
 			for (int ir = 0; ir < m; ir += MR) {
@@ -395,7 +395,7 @@ inline void rmatmul_direct_avx512(const int m, const int n, const int k, const d
 				}
 			}
 		}
-		std::fesetround(previous_rounding);
+		reset_rounding_mode(previous_rounding);
 	}
 }
 
@@ -409,7 +409,7 @@ inline void rmatmul_blocked_m_only_avx512(const int m, const int n, const int k,
 #pragma omp parallel num_threads(blocking.threads)
 	{
 		std::vector<double> packed_a(static_cast<std::size_t>(max_mb_padded) * max_pb);
-		const int previous_rounding = std::fegetround();
+		const int previous_rounding = get_rounding_mode();
 
 		for (int pc = 0; pc < n; pc += blocking.kc) {
 			const int pb = std::min(blocking.kc, n - pc);
@@ -430,7 +430,7 @@ inline void rmatmul_blocked_m_only_avx512(const int m, const int n, const int k,
 				}
 			}
 		}
-		std::fesetround(previous_rounding);
+		reset_rounding_mode(previous_rounding);
 	}
 }
 
@@ -444,7 +444,7 @@ inline void rmatmul_blocked_2d_avx512(const int m, const int n, const int k, con
 #pragma omp parallel num_threads(blocking.threads)
 	{
 		std::vector<double> packed_a(static_cast<std::size_t>(max_mb_padded) * max_pb);
-		const int previous_rounding = std::fegetround();
+		const int previous_rounding = get_rounding_mode();
 
 		for (int pc = 0; pc < n; pc += blocking.kc) {
 			const int pb = std::min(blocking.kc, n - pc);
@@ -470,7 +470,7 @@ inline void rmatmul_blocked_2d_avx512(const int m, const int n, const int k, con
 				}
 			}
 		}
-		std::fesetround(previous_rounding);
+		reset_rounding_mode(previous_rounding);
 	}
 }
 
@@ -506,7 +506,7 @@ inline void rmatmul_impl_avx512(int m, int n, int k, const double* A, const doub
 // CU is overwritten with A*B using rounding_mode: 1 upward, 0 nearest, -1 downward.
 inline void rmatmul_avx512(int m, int n, int k, const double* A, const double* B, double* CU, const int rounding_mode) {
 	// 呼び出し元 thread の丸めモードを保存し，終了後に復元する
-	const int previous_rounding = std::fegetround();
+	const int previous_rounding = vblas_rmatmul_avx512_detail::get_rounding_mode();
 	if (rounding_mode == 1) {
 		rmatmul_impl_avx512<_MM_FROUND_TO_POS_INF | _MM_FROUND_NO_EXC>(m, n, k, A, B, CU);
 	}
@@ -516,7 +516,7 @@ inline void rmatmul_avx512(int m, int n, int k, const double* A, const double* B
 	else {
 		rmatmul_impl_avx512<_MM_FROUND_TO_NEAREST_INT | _MM_FROUND_NO_EXC>(m, n, k, A, B, CU);
 	}
-	std::fesetround(previous_rounding);
+	vblas_rmatmul_avx512_detail::reset_rounding_mode(previous_rounding);
 }
 
 #endif // VBLAS_RMATMUL_AVX512_HPP

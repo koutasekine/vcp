@@ -45,6 +45,10 @@
 
 #include <omp.h>
 
+#if defined(KV_FASTROUND) && (defined(_WIN32) || defined(_WIN64) || defined(__i386__) || defined(__x86_64__))
+#include <emmintrin.h>
+#endif
+
 #if defined(__APPLE__)
 #include <sys/sysctl.h>
 // <sys/sysctl.h> が取り込む <sys/param.h> の関数形式マクロが
@@ -472,7 +476,49 @@ inline void set_rounding_mode(const int rounding) {
 }
 
 inline int get_rounding_mode() {
+#if defined(KV_FASTROUND) && (defined(_WIN32) || defined(_WIN64) || defined(__i386__) || defined(__x86_64__))
+	const unsigned int rc = (_mm_getcsr() >> 13) & 3u;
+	if (rc == 1u) {
+		return FE_DOWNWARD;
+	}
+	if (rc == 2u) {
+		return FE_UPWARD;
+	}
+	if (rc == 3u) {
+		return FE_TOWARDZERO;
+	}
+	return FE_TONEAREST;
+#elif defined(KV_FASTROUND) && defined(__aarch64__)
+	unsigned long long fpcr;
+	asm volatile ("mrs %0, fpcr" : "=r" (fpcr));
+	const unsigned int rc = static_cast<unsigned int>((fpcr >> 22) & 3u);
+	if (rc == 1u) {
+		return FE_UPWARD;
+	}
+	if (rc == 2u) {
+		return FE_DOWNWARD;
+	}
+	if (rc == 3u) {
+		return FE_TOWARDZERO;
+	}
+	return FE_TONEAREST;
+#elif defined(KV_FASTROUND) && defined(__arm__)
+	unsigned int fpscr;
+	asm volatile ("vmrs %0, fpscr" : "=r" (fpscr));
+	const unsigned int rc = (fpscr >> 22) & 3u;
+	if (rc == 1u) {
+		return FE_UPWARD;
+	}
+	if (rc == 2u) {
+		return FE_DOWNWARD;
+	}
+	if (rc == 3u) {
+		return FE_TOWARDZERO;
+	}
+	return FE_TONEAREST;
+#else
 	return std::fegetround();
+#endif
 }
 
 inline void reset_rounding_mode(const int rounding) {

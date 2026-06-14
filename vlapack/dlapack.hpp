@@ -36,7 +36,7 @@
 //
 // - 関数名は Fortran LAPACK に合わせて末尾 underscore (dgesv_ など)，
 //   引数は全て pointer 渡し (Fortran 互換 ABI，INTEGER は 32bit int / LP64)．
-// - 各関数は呼び出し時点の丸めモードを std::fegetround() で取得し，
+// - 各関数は呼び出し時点の丸めモードを取得し，
 //     FE_DOWNWARD -> -1, FE_UPWARD -> 1, それ以外 -> 0 (最近点)
 //   を rdlapack の末尾引数 rounding_mode として渡す (dblas と同じ規約)．
 //   つまり「現在の丸めモードを尊重して計算する LAPACK」になる．
@@ -73,7 +73,7 @@ namespace vlapack_dlapack_detail {
 // 現在の丸めモードを rdlapack の rounding_mode へ変換する
 // (FE_DOWNWARD -> -1, FE_UPWARD -> 1, それ以外 -> 0)
 inline int current_rounding_mode() {
-	const int mode = std::fegetround();
+	const int mode = vblas_rmatmul_common_detail::get_rounding_mode();
 	if (mode == FE_DOWNWARD) {
 		return -1;
 	}
