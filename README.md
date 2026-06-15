@@ -53,6 +53,11 @@ Newton 法を独自の非線形問題に使う場合は、[docs/newton.md](docs/
 Fourier 級数を係数列として扱う `vcp::fourier_series` については
 [docs/fourier_series.md](docs/fourier_series.md) を参照してください。
 
+テンプレート版 BLAS（`vcp/tblas/`）とテンプレート版 LAPACK（`vcp/tlapack/`）の
+詳細は [docs/tblas.md](docs/tblas.md) と [docs/tlapack.md](docs/tlapack.md) を
+参照してください。これらを下請けとして使う policy `vcp::mats2<T>` については
+[docs/matrix.md](docs/matrix.md) の「`mats2<T>` の詳細」節を参照してください。
+
 ## ディレクトリ構成
 
 | ディレクトリ | 内容 |
@@ -60,6 +65,8 @@ Fourier 級数を係数列として扱う `vcp::fourier_series` については
 | `vcp/` | VCP Library 本体のヘッダ |
 | `vcp/vblas/` | 丸めモード対応 double BLAS（`rdblas`）と Fortran 互換ラッパー（`dblas`）。`-DUSE_VCP_BLAS` 使用時に `vcp/pdblas.hpp` 等から参照される |
 | `vcp/vlapack/` | 丸めモード対応 double LAPACK（`rdlapack`）と Fortran 互換ラッパー（`dlapack`）。`-DUSE_VCP_LAPACK` 使用時に `vcp/pdblas.hpp` 等から参照される |
+| `vcp/tblas/` | テンプレート版 BLAS（`tblas`）。型 `T` に対する汎用 header-only 実装と `T=double`・`kv::dd` 用の明示的特殊化を提供。詳細は [docs/tblas.md](docs/tblas.md) |
+| `vcp/tlapack/` | テンプレート版 LAPACK（`tlapack`）。型 `T` に対する汎用 header-only 実装と `T=double`・`kv::dd` 用の明示的特殊化を提供。詳細は [docs/tlapack.md](docs/tlapack.md) |
 | `test_matrix/` | 行列クラスの利用例と確認プログラム |
 | `test_PDE/` | PDE の精度保証付き数値計算例 |
 | `tools/` | ダウンロードや展開を補助する小さなツール |
@@ -82,6 +89,9 @@ gcc と clang の両方で検証しています。Apple Silicon Mac や AMD 環�
 | --- | --- |
 | `vcp::pdblas`, `vcp::pidblas` | BLAS/LAPACK または Intel MKL（`-DUSE_VCP_BLAS -DUSE_VCP_LAPACK` 指定時は不要） |
 | `vcp::pddblas` | BLAS/LAPACK または Intel MKL（`-DUSE_VCP_BLAS -DUSE_VCP_LAPACK` 指定時は不要）、別途取得した kv ライブラリ（`kv::dd`） |
+| `vcp::mats2<T>`（汎用実装のみ） | 追加依存なし（C++11 のみ） |
+| `vcp::mats2<double>`（double 特殊化ヘッダ使用時） | BLAS/LAPACK または Intel MKL（`-DUSE_VCP_BLAS -DUSE_VCP_LAPACK` 指定時は不要） |
+| `vcp::mats2<kv::dd>`（kv::dd 特殊化ヘッダ使用時） | BLAS/LAPACK または Intel MKL（同上）と kv ライブラリ（`kv::dd`） |
 | OpenMP による内部並列化 | OpenMP 対応コンパイラ |
 | `kv::mpfr` | MPFR |
 | 区間演算 | 別途取得した kv ライブラリ |
@@ -195,6 +205,7 @@ vcp::matrix<double, vcp::mats<double> > B;
 | `kv::interval<double>` を高速に扱いたい | `vcp::matrix<kv::interval<double>, vcp::pidblas>` |
 | `kv::interval<kv::dd>` を高速に扱いたい | `vcp::matrix<kv::interval<kv::dd>, vcp::imats<kv::dd, vcp::pddblas> >` |
 | 依存を抑えた軽量 policy を使いたい | `vcp::matrix<T, vcp::minimats<T> >` |
+| tblas/tlapack を下請けとして使い、インクルード構成で特性を切り替えたい | `vcp::matrix<T, vcp::mats2<T> >` |
 
 policy ごとの include、向いている用途、注意点は
 [docs/matrix.md](docs/matrix.md) を参照してください。
