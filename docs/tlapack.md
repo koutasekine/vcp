@@ -122,12 +122,16 @@ int info2 = vcp::tsyev<kv::dd>('V', 'U', n, A, lda, w);
 
 | routine | 特殊化の方針 |
 |---|---|
-| `tgesv<kv::dd>` | `A` と `B` を `double` に変換し，`tgesv<double>` で初期解を求める．さらに `tgetri<double>` で得た double 逆行列を前処理として使い，`kv::dd` で計算した残差 `R = B - AX` から補正を加える |
-| `tgetrs<kv::dd>` | LU 分解済み行列に対し，まず `tgetrs<double>` で初期解を求める．`kv::dd` の LU 因子と pivot から元行列を再構成し，`kv::dd` 残差を作る．補正には `tgetri<double>` 由来の double 逆行列を使う |
+| `tgetrf<kv::dd>` | 分解前の `kv::dd` 行列を内部 cache に保存し，`double` へ変換して `tgetrf<double>` で LU 分解する．出力の LU 因子は `kv::dd` に戻す |
+| `tgetri<kv::dd>` | `tgetrf<kv::dd>` が保存した元行列を使い，単位行列を右辺にした `A X = I` を `tgesv<kv::dd>` で解いて逆行列を作る |
+| `tgesv<kv::dd>` | `A` と `B` を `double` に変換し，`tgesv<double>` で初期解を求める．さらに `kv::dd` で計算した残差 `R = B - AX` を，double LU 因子を再利用して反復補正する |
+| `tgetrs<kv::dd>` | LU 分解済み行列に対し，まず `tgetrs<double>` で初期解を求める．`tgetrf<kv::dd>` が保存した元行列があればそれを使い，なければ LU 因子から元行列を再構成して `kv::dd` 残差を作る．補正には double LU 因子を再利用する |
 | `ttrtrs<kv::dd>` | 三角行列方程式を `ttrtrs<double>` で一度解き，`kv::dd` で三角行列積に基づく残差を計算する．残差方程式を再び `ttrtrs<double>` で解いて補正する |
+| `tpotrf<kv::dd>` | `uplo` で指定された有効三角から元の対称正定値行列を full symmetric に保存し，`tpotrf<double>` の結果を初期 Cholesky 因子として `kv::dd` 残差補正を行う |
 | `tpotrs<kv::dd>` | Cholesky 分解済み行列に対し，`tpotrs<double>` で初期解を求める．`kv::dd` の Cholesky 因子から元の正定値行列を再構成し，`kv::dd` 残差を double Cholesky 因子で補正する |
 | `tposv<kv::dd>` | `tposv<double>` で Cholesky 分解と初期解を求める．元の `kv::dd` 行列で残差 `R = B - AX` を計算し，double Cholesky 因子を用いた `tpotrs<double>` で補正する |
-| `tsyev<kv::dd>` | `tsyev<double>` で初期固有値・固有ベクトルを求める．`jobz='V'` の場合，`kv::dd` で `S = X^TAX` と `R = I - X^TX` を計算し，対称固有値分解の残差反復により固有値・固有ベクトルを改善する |
+| `tsyev<kv::dd>` | `jobz` に関係なく内部では `tsyev<double>('V', ...)` で初期固有値・固有ベクトルを求める．`kv::dd` で `S = X^TAX` と `R = I - X^TX` を計算し，対称固有値分解の残差反復により固有値・固有ベクトルを改善する．`jobz='N'` の場合は精密化済み固有値だけを返す |
+| `tsygv<kv::dd>` | `itype=1` について，`uplo` で指定された有効三角から `A` と `B` を full symmetric に保存し，内部で `tsygv<double>(1, 'V', ...)` を初期値として一般化対称固有値問題 `A X = B X Lambda` を `kv::dd` 残差反復で改善する．`jobz='N'` の場合も内部では固有ベクトルを使って固有値を精密化する |
 
 `tlapack_dd.hpp` は内部で `vcp/tblas/tblas_double.hpp`，
 `vcp/tblas/tblas_dd.hpp`，`vcp/tlapack/tlapack_double.hpp`，`vcp/tlapack/tlapack.hpp`
@@ -152,12 +156,17 @@ int info2 = vcp::tsyev<kv::dd>('V', 'U', n, A, lda, w);
 
 ### `kv::dd` 特殊化の利点
 
-- `tgesv<kv::dd>` や `tposv<kv::dd>` の重い分解部分を double LAPACK に委譲するため，
+- `tgetrf<kv::dd>`，`tgesv<kv::dd>`，`tpotrf<kv::dd>`，`tposv<kv::dd>` などの
+  重い分解部分を double LAPACK に委譲するため，
   汎用 `kv::dd` 実装より高速になりやすい．
 - 残差計算は `kv::dd` で行うため，条件がよい問題では double 初期解から
   `kv::dd` 精度に近い解へ改善できる．
 - `tblas_dd.hpp` の `tgemm<kv::dd>` 特殊化が有効な場合，残差計算や固有値反復で使う
   行列積も尾崎スキーム経由で高速化・高精度化される．
+- `tsyev<kv::dd>` と `tsygv<kv::dd>` は，`jobz='N'` の場合でも内部で固有ベクトルを
+  計算して精密化するため，固有値のみの API でも `kv::dd` 精度を狙える．
+- 対称行列入力では `uplo` の有効三角だけを使って full symmetric 行列を構成するため，
+  反対三角の未定義値やゴミ値が精密化に混入しない．
 
 ### `kv::dd` 特殊化の制約
 
@@ -179,6 +188,16 @@ cond(A) * eps_double < 1
 double で得た初期固有空間の品質に依存します．`tsyev<kv::dd>` の特殊化は
 `S = X^TAX` と `R = I - X^TX` に基づく残差反復で改善しますが，double 初期解が
 十分な情報を失っている場合には改善が限定されます．
+
+`tsygv<kv::dd>` の特殊化は現在 `itype=1` のみを対象にします．
+`itype=2,3` は未対応であり，呼び出すと引数 error として扱います．
+`mats2::eigsymge()` は `itype=1` 固定で使うため，この用途では問題ありません．
+
+`tgetri<kv::dd>` は高精度化のため，通常は直前の `tgetrf<kv::dd>` が保存した
+分解前の元行列を使います．同じ配列に対して `tgetrf<kv::dd>` の直後に
+`tgetri<kv::dd>` を呼ぶ LAPACK 風の使い方を想定しています．保存済み元行列が
+見つからない場合は LU 因子と pivot から元行列の再構成を試みますが，精度面では
+保存済み元行列を使う経路が推奨です．
 
 高条件数問題や確実に `kv::dd` 精度の分解が必要な場合は，`tlapack_dd.hpp` を
 include せず，`tlapack.hpp` の汎用 `kv::dd` 実装を使ってください．
@@ -360,7 +379,7 @@ vlapack/rdlapack (約 9,600 行) を以下の規則で機械変換し，特殊�
 
 ## テスト
 
-2 本のテストで検証済み:
+以下のテストで検証済み:
 
 1. **T=double を rdlapack (rounding_mode=0) と比較** (86 checks PASS)．
    gesv/getri/posv/potri/sysv/gbsv/pbsv/trtrs/trtri/geqrf/orgqr/gels/syev/sygv/geev/gesvd
@@ -378,8 +397,11 @@ vlapack/rdlapack (約 9,600 行) を以下の規則で機械変換し，特殊�
    template<double> 実装へフォールバックして compile できることを確認．
 4. **T=kv::dd 特殊化の smoke test**:
    `tlapack_dd.hpp` 単独 include と，高速特殊化 header を先に include した場合の
-   両方で `tgetrs<kv::dd>`，`tgesv<kv::dd>`，`tposv<kv::dd>`，
-   `tsyev<kv::dd>` が実体化・実行できることを確認．
+   両方で `tgetrf<kv::dd>`，`tgetrs<kv::dd>`，`tgetri<kv::dd>`，
+   `tgesv<kv::dd>`，`tpotrf<kv::dd>`，`tposv<kv::dd>`，
+   `tsyev<kv::dd>`，`tsygv<kv::dd>` が実体化・実行できることを確認．
+   さらに `uplo` の反対三角にゴミ値を入れても `tpotrf<kv::dd>`，
+   `tsyev<kv::dd>`，`tsygv<kv::dd>` が有効三角だけを使うことを確認．
 
 ---
 
@@ -474,6 +496,11 @@ int tgetf2(const int m, const int n, T* A, const int lda, int* ipiv);   // unblo
 A = P\*L\*U (部分 pivot，L は単位下三角)．A を L (対角より下) と U (上三角) で
 上書きする．`ipiv` は 0-based (長さ min(m,n))．INFO > 0: U(i,i) = 0．
 
+`tlapack_dd.hpp` を include した `tgetrf<kv::dd>` は，後続の
+`tgetri<kv::dd>` の高精度化のため，分解前の元行列を内部に保存する．
+通常の LAPACK 風に，同じ配列へ `tgetrf<kv::dd>` の直後
+`tgetri<kv::dd>` を呼ぶ使い方を想定する．
+
 ### tgetrs — LU 分解による求解
 ```cpp
 template <typename T>
@@ -490,6 +517,11 @@ int tgetri(const int n, T* A, const int lda, const int* ipiv);
 ```
 tgetrf の出力 A, ipiv から inv(A) を計算し A を上書きする．INFO > 0: 特異．
 `ipiv` は `tgetrf` が返した 0-based pivot を渡す．
+
+`tlapack_dd.hpp` を include した `tgetri<kv::dd>` は，可能なら直前の
+`tgetrf<kv::dd>` が保存した元行列を用い，単位行列を右辺にした
+`A X = I` を `tgesv<kv::dd>` で解いて逆行列を作る．保存済み元行列がない場合は
+LU 因子と pivot から元行列の再構成を試みる．
 
 ---
 
@@ -542,6 +574,10 @@ int tpotf2(const char uplo, const int n, T* A, const int lda);   // unblocked
 ```
 A = U^T\*U / L\*L^T．uplo の三角を因子で上書き (反対側は変更しない)．
 INFO > 0: 正定値でない (対角が 0 以下，または NaN — 要件 R6 の `tisnan` で検出)．
+
+`tlapack_dd.hpp` を include した `tpotrf<kv::dd>` は，`uplo` の有効三角だけから
+full symmetric 行列を保存し，double Cholesky 因子を初期値にして
+`kv::dd` 残差補正を行う．反対三角の値は入力として読まない．
 
 ### tpotrs — Cholesky 分解による求解
 ```cpp
@@ -744,6 +780,11 @@ jobz='N': 固有値のみ (tsterf)，'V': 固有 vector も (tsteqr)．
 出力: `w` (長さ n) に固有値が**昇順**，jobz='V' なら A に正規直交固有 vector
 (列が w[j] に対応)．INFO > 0: 収束しなかった非対角要素の個数．
 
+`tlapack_dd.hpp` を include した `tsyev<kv::dd>` は，`jobz='N'` の場合でも内部では
+固有 vector を計算し，`kv::dd` 残差反復で固有値を改善する．`jobz='N'` では
+改善済み固有値だけを返し，固有 vector は返さない．`uplo` の反対三角は入力として
+読まない．
+
 ### tsygv — driver: 一般化対称固有値問題
 ```cpp
 template <typename T>
@@ -755,6 +796,12 @@ itype=1: A\*z = λ\*B\*z，2: A\*B\*z = λ\*z，3: B\*A\*z = λ\*z (B は対称�
 (itype=1,2: z^T\*B\*z = I，itype=3: z^T\*inv(B)\*z = I に正規化)，
 B は Cholesky 因子で上書き．INFO > 0: n 以下なら tsyev の失敗，
 n より大なら B が正定値でない (INFO - n が主小行列の位置)．
+
+`tlapack_dd.hpp` を include した `tsygv<kv::dd>` の特殊化は，現在 `itype=1`
+(`A*z = lambda*B*z`) のみを対象にする．`jobz='N'` の場合でも内部では固有 vector を
+計算して固有値を改善する．`uplo` の反対三角は入力として読まない．`itype=2,3`
+が必要な場合は，現時点では `tlapack_dd.hpp` を include しない汎用実装を使うか，
+別途特殊化を追加する必要がある．
 
 ### tsytrd / tsytd2 / tlatrd — 三重対角化
 ```cpp
