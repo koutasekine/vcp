@@ -24,12 +24,13 @@ tgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 
 | file | 内容 |
 |---|---|
-| `tblas.hpp` | umbrella header (これだけ include すればよい) |
+| `tblas.hpp` | 汎用 template 実装の umbrella header |
 | `tblas_common.hpp` | 共通基盤 (`tblas_detail`: 引数 check / scale / 展開 copy / OpenMP shim) |
 | `tblas_level1.hpp` | Level 1 (`tcopy` `tswap` `itamax` `tscal` `taxpy` `tdot` `tasum` `tnrm2` `trot` `trotg` `trotm` `trotmg`) |
 | `tblas_level2.hpp` | Level 2 (`tgemv` `tgbmv` `tsymv` `tsbmv` `tspmv` `ttrmv` `ttbmv` `ttpmv` `ttrsv` `ttbsv` `ttpsv` `tger` `tsyr` `tspr` `tsyr2` `tspr2`) |
 | `tblas_level3.hpp` | Level 3 (`tgemm` `tgemmtr` `tsymm` `tsyrk` `tsyr2k` `ttrmm` `ttrsm`) |
 | `tblas_double.hpp` | `T=double` の明示的特殊化．`dblas_dlapack.hpp` 経由で BLAS (`dcopy_` `dgemm_` など) を呼ぶ |
+| `tblas_dd.hpp` | `T=kv::dd` の Level 3 明示的特殊化．尾崎スキームにより `tgemm<double>` を用いて高精度な行列積系 routine を計算する |
 
 ## 提供予定 routine (rdblas と同一集合，d → t に読み替え)
 
@@ -73,6 +74,87 @@ Fortran symbol を `extern "C"` 宣言して呼びます．
 - `vcp/tlapack/tlapack_double.hpp` は内部で `tblas_double.hpp` も include します．
   tlapack の double 特殊化を使う場合は `tlapack_double.hpp` だけ include すれば，
   LAPACK から呼ばれる BLAS 部分も double BLAS へ委譲されます．
+
+## T=kv::dd の尾崎スキーム特殊化
+
+`T=kv::dd` については `vcp/tblas/tblas_dd.hpp` を include すると，Level 3 の
+行列積系 routine の一部が明示的特殊化され，double 型に対する尾崎スキームで
+計算されます．対象は以下です．
+
+- `tgemm<kv::dd>`
+- `tsymm<kv::dd>`
+- `tsyrk<kv::dd>`
+- `tsyr2k<kv::dd>`
+- `ttrmm<kv::dd>`
+- `tgemmtr<kv::dd>`
+
+```cpp
+#include <vcp/tblas/tblas_dd.hpp>
+
+vcp::tgemm<kv::dd>('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+```
+
+尾崎スキームを使うための専用 API や option はありません．`tblas_dd.hpp` を
+include した翻訳単位で対象 routine を `kv::dd` 型として呼ぶと，通常の
+`tgemm<kv::dd>` などが明示的特殊化へ解決され，内部で尾崎スキームが使われます．
+`kv::dd*` の配列，`lda`/`ldb`/`ldc`，`trans`/`uplo`/`side` 等の引数規約は
+汎用 `tblas` と同じです．
+
+`tblas_dd.hpp` は内部で `tblas.hpp` と `<kv/dd.hpp>` を include します．
+`tblas_double.hpp` には直接依存しません．slice 同士の積は必ず
+`tgemm<double>` を呼ぶため，`tblas_double.hpp` が先に include されていれば
+double BLAS へ委譲された高速な `tgemm<double>` が使われ，include されていない
+場合でも汎用 `tblas` の `tgemm<double>` で動作します．
+
+高速な double BLAS を利用したい場合の include 順:
+
+```cpp
+#include <vcp/tblas/tblas_double.hpp>
+#include <vcp/tblas/tblas_dd.hpp>
+```
+
+`tblas_double.hpp` を先に include しない場合:
+
+```cpp
+#include <vcp/tblas/tblas_dd.hpp>
+```
+
+この場合も尾崎スキーム自体は使われますが，slice 積の `tgemm<double>` は
+汎用 template 実装になります．つまり精度改善の方式は同じで，double BLAS への
+委譲による速度向上だけが無くなります．
+
+`tgemm<kv::dd>` は，`op(A)` を m×k，`op(B)` を k×n の連続領域へ pack した後，
+左因子を行方向，右因子を列方向に double slice 分解します．各 slice 積を
+`tgemm<double>` で計算し，その double 結果を `kv::dd` で加算します．最後に
+`C := alpha*P + beta*C` を `kv::dd` 演算で行います．
+
+特殊化した関数への影響:
+
+| routine | 尾崎スキームの適用方法 | 結果への影響 |
+|---|---|---|
+| `tgemm<kv::dd>` | `op(A)` と `op(B)` を double slice に分解し，slice 積を `tgemm<double>` で計算して `kv::dd` に蓄積する | 行列積の積和部分が通常の `kv::dd` 逐次積和より高精度化される．`alpha`/`beta` の合成は最後に `kv::dd` で行う |
+| `tsymm<kv::dd>` | 対称行列を full dense に展開して `tgemm<kv::dd>` に帰着する | 対称行列積部分が尾崎スキームの `tgemm<kv::dd>` の精度と速度特性を引き継ぐ |
+| `tsyrk<kv::dd>` | full の一時行列を `tgemm<kv::dd>` で計算し，指定された `uplo` 三角部分だけを出力へ反映する | rank-k 積部分が高精度化される．更新されない三角部分は参照・変更しない |
+| `tsyr2k<kv::dd>` | 2 つの積 `op(A)*op(B)^T` と `op(B)*op(A)^T` を `tgemm<kv::dd>` 経由で一時行列に加算し，`uplo` 三角部分だけを反映する | rank-2k 積部分が高精度化される．`beta*C` は指定三角部分にのみ適用される |
+| `ttrmm<kv::dd>` | 三角行列を 0 詰め full dense に展開して `tgemm<kv::dd>` に帰着し，結果で `B` を上書きする | 三角行列積部分が高精度化される．unit diag は exact `kv::dd(1)`，三角外は exact `kv::dd(0)` として扱う |
+| `tgemmtr<kv::dd>` | full の一時行列を `tgemm<kv::dd>` で計算し，指定された `uplo` 三角部分だけを出力へ反映する | 三角部分のみの GEMM 更新で，積和部分が高精度化される．更新対象外の三角部分は変更しない |
+
+この特殊化により，対象 routine の行列積部分は `tgemm<double>` の性能に依存します．
+したがって `tblas_double.hpp` が先に include されている場合は，`tgemm<double>` が
+MKL/OpenBLAS/reference BLAS などの double BLAS に委譲され，`kv::dd` 特殊化も
+同じ経路で高速化されます．一方，`tblas_double.hpp` が無い場合でも，汎用
+`tgemm<double>` を使って同じ尾崎スキームで計算されます．
+
+注意:
+
+- `tblas_dd.hpp` は `t...<kv::dd>` を最初に使う前に include してください．
+  明示的特殊化は，対象 template が既にその翻訳単位で暗黙実体化された後には
+  追加できません．
+- `ttrsm<kv::dd>` は特殊化しません．三角行列方程式の求解であり，尾崎スキームを
+  適用する行列積系 routine ではないため，従来どおり汎用 `tblas_level3.hpp` の
+  `kv::dd` 実装を使います．
+- 補助関数は `namespace vcp::tblas_dd_detail` に閉じ込めています．公開 API は
+  `namespace vcp` の明示的特殊化のみです．
 
 ## T 型要件
 
@@ -155,13 +237,12 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
 | `kv::mpfr<N>` | ✓ | ✓ | ✓ | ✓ | 同上 |
 | `kv::interval<U>` | ✓ | ✓ | △ | ✓ | 四則・`abs`・`sqrt` は包含保証付き．順序比較は区間が重なると分岐が数学的に不定なため，**R3/R4 を要する分岐系 routine (`itamax` `tnrm2` `trotg` `trotmg`) は区間型では非推奨** (R1/R2 のみの routine は安全に使用可) |
 
-区間型の対応状況 (テスト済み):
+区間型の対応状況:
 
 - **`kv::interval<double>`** と **`kv::interval<kv::dd>`** の両方で，R1/R2 のみの
   routine (`tgemm` `tgemv` `ttrsv` `ttrsm` `taxpy` `tdot` など) と `tasum`
-  (abs のみで分岐なし，1-norm の包含を返す) が動作することを
-  `sandbox/tests/test_tblas_types.cpp` で検証済み
-  (整数成分での幅 0 の exact 計算と，trsv/trsm の residual の 0 包含)．
+  (abs のみで分岐なし，1-norm の包含を返す) が動作対象．整数成分での幅 0 の
+  exact 計算と，trsv/trsm の residual の 0 包含を確認する．
 - `kv::interval<kv::dd>` を使う場合は `<kv/rdd.hpp>` (dd の方向丸め) の include
   が必要 (`interval<double>` は `<kv/rdouble.hpp>`)．
 - 分岐系 4 routine (`itamax` `tnrm2` `trotg` `trotmg`) は区間型では使わないこと．
@@ -188,7 +269,8 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
 6. **OpenMP**: 並列化する場合，reduction は `T` の `+` のみで書ける形
    (手動 reduction) にする．`#pragma omp declare reduction` は使わない．
 7. **namespace / file 構成**: 全公開関数は `namespace vcp` に属する．
-   補助関数は `tblas_detail` namespace (グローバルスコープ)．
+   汎用実装の補助関数は `tblas_detail` namespace (グローバルスコープ)，
+   `kv::dd` 特殊化の補助関数は `vcp::tblas_dd_detail` namespace．
    `vcp/tblas/tblas.hpp` を umbrella とし `tblas_common.hpp` /
    `tblas_level1.hpp` / `tblas_level2.hpp` / `tblas_level3.hpp` に分割．
 
@@ -207,6 +289,13 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
   - `tsyrk` / `tsyr2k` / `tgemmtr` は uplo 三角部分のみを dot 形式で直接計算．
   - `ttrsm` は rdblas の leaf solver (left: 列ごとの独立 solve，right: 列 sweep)
     の非再帰移植．
+- **T=kv::dd 特殊化**:
+  - `tblas_dd.hpp` の対象 routine は double slice 分解と `tgemm<double>` による
+    尾崎スキームで行列積を計算する．
+  - `tblas_double.hpp` が先に include されている翻訳単位では，slice 積の
+    `tgemm<double>` が double BLAS 委譲版になり，`kv::dd` 特殊化も高速化される．
+  - `tblas_double.hpp` が include されていない翻訳単位でも，汎用
+    `tgemm<double>` により同じ API で動作する．
 - **OpenMP**: 列方向に独立な loop のみ `if` 句付きで並列化する
   (`tgemv` `tsymv` `tger` `tsyr` `tsyr2` と Level 3 全 routine の主 loop，
   `ttrsm` right side は列間に依存があるため逐次)．閾値はスカラー演算回数で
@@ -215,16 +304,18 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
   `const T&` 渡し，column-major / 0-based / `int` index，不正引数は
   `std::invalid_argument` (例外無効時は `abort`)．
 
-## テスト
+## 検証方針
 
-以下の 2 点で検証済み:
+以下の観点で検証する:
 
-- **T=double を rdblas と比較** (282 checks)：全 routine・全 option 組合せ・inc 正負・alpha/beta 特殊値．
+- **T=double を rdblas と比較**: 全 routine・全 option 組合せ・inc 正負・alpha/beta 特殊値．
 - **kv::dd / kv::mpfr<106>**：double との一致と residual の高精度性．
   **kv::interval<double>**：dd 参照値の包含と residual の 0 包含．
-- **T=double 特殊化の smoke test**:
-  `sandbox/tests/test_tblas_tlapack_double_specialization.cpp` で
-  `vcp/tblas/tblas_double.hpp` の include と `taxpy<double>` の BLAS 委譲を確認．
+- **T=double 特殊化**:
+  `vcp/tblas/tblas_double.hpp` の include と double BLAS 委譲を確認する．
+- **T=kv::dd 特殊化**:
+  `tblas_double.hpp` なしの経路と，`tblas_double.hpp` を先に include した経路の
+  両方を確認する．
 
 
 ---
