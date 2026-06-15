@@ -193,6 +193,7 @@ vcp::matrix<double, vcp::mats<double> > B;
 | `kv::dd`（double-double、約 32 桁）を高速に扱いたい | `vcp::matrix<kv::dd, vcp::pddblas>` |
 | 汎用の区間行列を使いたい | `vcp::matrix<kv::interval<T>, vcp::imats<T> >` |
 | `kv::interval<double>` を高速に扱いたい | `vcp::matrix<kv::interval<double>, vcp::pidblas>` |
+| `kv::interval<kv::dd>` を高速に扱いたい | `vcp::matrix<kv::interval<kv::dd>, vcp::imats<kv::dd, vcp::pddblas> >` |
 | 依存を抑えた軽量 policy を使いたい | `vcp::matrix<T, vcp::minimats<T> >` |
 
 policy ごとの include、向いている用途、注意点は
