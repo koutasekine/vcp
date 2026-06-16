@@ -827,6 +827,13 @@ namespace vcp {
 			this->type = A.type;
 			this->v = A.v;
 		}
+		matrix(mbool&& A) {
+			this->row = A.row;
+			this->column = A.column;
+			this->n = A.n;
+			this->type = A.type;
+			this->v = std::move(A.v);
+		}
 		~matrix() = default;
 		matrix(const matrix&) = default;
 		matrix(matrix&&) = default;
