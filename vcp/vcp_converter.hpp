@@ -151,7 +151,7 @@ namespace vcp {
 #endif
 
 #if defined(DD_HPP) && defined(RDD_HPP) && defined(RDOUBLE_HPP)
-	void convert(const kv::dd& x, double& y, int rnd = 0)
+	inline void convert(const kv::dd& x, double& y, int rnd = 0)
 	{
 		if (rnd == 1) {
 			kv::rop<double>::begin();
@@ -167,18 +167,18 @@ namespace vcp {
 			y = x.a1 + x.a2;
 		}
 	}
-	void convert(const double& x, kv::dd& y) {
+	inline void convert(const double& x, kv::dd& y) {
 		y = x;
 	}
 #endif
 
 #if defined(INTERVAL_HPP) && defined(DD_HPP) && defined(RDD_HPP) && defined(RDOUBLE_HPP)
-	void convert(const kv::interval< kv::dd >& x, kv::interval<double>& y)
+	inline void convert(const kv::interval< kv::dd >& x, kv::interval<double>& y)
 	{
 		convert(x.lower(), y.lower(), -1);
 		convert(x.upper(), y.upper(), 1);
 	}
-	void convert(const kv::interval<double>& x, kv::interval< kv::dd >& y)
+	inline void convert(const kv::interval<double>& x, kv::interval< kv::dd >& y)
 	{
 		y.lower() = x.lower();
 		y.upper() = x.upper();
@@ -219,7 +219,7 @@ namespace vcp {
 	}
 #endif
 
-	void convert(const int& x, double& y) {
+	inline void convert(const int& x, double& y) {
 		y = x;
 	}
 
@@ -231,7 +231,7 @@ namespace vcp {
 		kv::interval< double > yy = kv::interval< double >(x);
 		convert(yy, y);
 	}
-	void convert(const int& x, kv::interval< double >& y) {
+	inline void convert(const int& x, kv::interval< double >& y) {
 		y = x;
 	}
 #endif
@@ -243,10 +243,10 @@ namespace vcp {
 		kv::interval< kv::dd > yy = kv::interval< kv::dd >(x);
 		convert(yy, y);
 	}
-	void convert(const int& x, kv::dd& y) {
+	inline void convert(const int& x, kv::dd& y) {
 		y = x;
 	}
-	void convert(const int& x, kv::interval< kv::dd >& y) {
+	inline void convert(const int& x, kv::interval< kv::dd >& y) {
 		y = x;
 	}
 #endif
