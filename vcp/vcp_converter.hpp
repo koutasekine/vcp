@@ -148,6 +148,11 @@ namespace vcp {
 
 		mpfr_set(y.a, x.a, mode);
 	}
+	// N==N: identity — resolves ambiguity with template<T> convert(const T&, T&) when N==M
+	template <int N>
+	inline void convert(const kv::mpfr<N>& x, kv::mpfr<N>& y, int /*rnd*/ = 0) {
+		y = x;
+	}
 #endif
 
 #if defined(DD_HPP) && defined(RDD_HPP) && defined(RDOUBLE_HPP)
@@ -216,6 +221,11 @@ namespace vcp {
 	{
 		convert(x.lower(), y.lower(), -1);
 		convert(x.upper(), y.upper(), 1);
+	}
+	// N==N: identity — resolves ambiguity with template<T> convert(const T&, T&) when N==M
+	template <int N>
+	inline void convert(const kv::interval< kv::mpfr<N> >& x, kv::interval< kv::mpfr<N> >& y) {
+		y = x;
 	}
 #endif
 
