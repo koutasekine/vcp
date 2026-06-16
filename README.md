@@ -179,6 +179,34 @@ int main() {
 }
 ```
 
+## 比較演算子の例
+
+`vcp::matrix<T,P>` は要素ごとの比較演算子（`>`、`>=`、`<`、`<=`、`==`、`!=`）を
+持ちます。戻り値は `vcp::mbool` です。`vcp::mbool` は比較結果を一時的に保持する
+中間型であり、`all`、`any`、`none` で集約したり、`&&`、`||`、`!` で組み合わせたり
+できます。`vcp::matrix<bool>` へ暗黙に変換することもできます。
+
+```cpp
+#include <iostream>
+#include <vcp/matrix.hpp>
+
+int main() {
+    vcp::matrix<double> A, B;
+    A.zeros(2, 2); B.zeros(2, 2);
+    A(0,0)=1.0; A(1,0)=4.0; A(0,1)=2.0; A(1,1)=3.0;
+    B(0,0)=2.0; B(1,0)=3.0; B(0,1)=1.0; B(1,1)=3.0;
+
+    vcp::mbool R = (A > B);
+    std::cout << "any: " << any(R) << "\n";   // 1
+
+    vcp::matrix<bool> M = (A == B);
+    std::cout << M << "\n";
+}
+```
+
+全 policy で利用できます。詳細は
+[docs/matrix.md の「比較演算子と bool 行列」](docs/matrix.md) を参照してください。
+
 ## Matrix policy の選び方
 
 `vcp::matrix` は次の形で使います。

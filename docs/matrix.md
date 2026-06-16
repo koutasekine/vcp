@@ -257,6 +257,146 @@ const std::vector<double>& v = A.vecpointer();
 行いません。添字範囲を確認したい場合は、呼び出し側で明示的に確認して
 ください。
 
+## 比較演算子と bool 行列
+
+`vcp::matrix<T,P>` は要素ごとの比較演算子を 6 種類提供します。
+いずれも `vcp::mbool` を返します。
+
+| 演算子 | 意味 | 戻り値 |
+| --- | --- | --- |
+| `A > B` | 要素ごとに `A(i,j) > B(i,j)` | `vcp::mbool` |
+| `A >= B` | 要素ごとに `A(i,j) >= B(i,j)` | `vcp::mbool` |
+| `A < B` | 要素ごとに `A(i,j) < B(i,j)` | `vcp::mbool` |
+| `A <= B` | 要素ごとに `A(i,j) <= B(i,j)` | `vcp::mbool` |
+| `A == B` | 要素ごとに `A(i,j) == B(i,j)` | `vcp::mbool` |
+| `A != B` | 要素ごとに `A(i,j) != B(i,j)` | `vcp::mbool` |
+
+全 policy（`mats<T>`、`pdblas`、`pddblas`、`imats<T>`、`pidblas`、`piddblas`、`mats2<T>`）で利用できます。
+
+### vcp::mbool
+
+`vcp::mbool` は比較演算子の戻り値型です。`vcp::matrix<T,P>` と `vcp::matrix<bool>`
+の**中間に位置する型**であり、比較結果を一時的に保持することを目的としています。
+`vcp::matrix` の公開 API として外部から直接構築して使うことは想定されていません。
+
+`vcp/mbool.hpp` で定義されており、`vcp/matrix.hpp` を include するだけで使えます。
+
+集約関数:
+
+| 関数 | 意味 |
+| --- | --- |
+| `all(R)` | 全要素が `true` なら `true` |
+| `any(R)` | 1 つ以上の要素が `true` なら `true` |
+| `none(R)` | 全要素が `false` なら `true` |
+
+論理演算子（rvalue 最適化あり）:
+
+| 式 | 意味 |
+| --- | --- |
+| `R1 && R2` | 要素ごとの論理積 → `mbool` |
+| `R1 \|\| R2` | 要素ごとの論理和 → `mbool` |
+| `!R` | 要素ごとの論理否定 → `mbool` |
+
+形状の取得:
+
+| 関数 | 意味 |
+| --- | --- |
+| `R.matstype()` | `'S'`（スカラ）/ `'R'`（行ベクトル）/ `'C'`（列ベクトル）/ `'M'`（行列） |
+| `R.rowsize()` | 行数 |
+| `R.columnsize()` | 列数 |
+| `R.elementsize()` | 要素数 |
+
+要素アクセス:
+
+```cpp
+bool b00 = R(0, 0);  // (i, j) でアクセス
+bool b0  = R(0);     // 1 引数インデックスでもアクセス可能
+```
+
+```cpp
+vcp::matrix<double> A, B;
+A.zeros(2, 2); B.zeros(2, 2);
+A(0,0)=1.0; A(1,0)=4.0; A(0,1)=2.0; A(1,1)=3.0;
+B(0,0)=2.0; B(1,0)=3.0; B(0,1)=1.0; B(1,1)=3.0;
+
+vcp::mbool R = (A > B);
+
+if (all(R))  { /* A の全要素が B より大きい */ }
+if (any(R))  { /* 少なくとも 1 要素は B より大きい */ }
+if (none(R)) { /* A の全要素が B 以下 */ }
+
+vcp::mbool S = (A == B);
+vcp::mbool T = R && S;   // 複合条件
+```
+
+### vcp::matrix<bool> への変換
+
+`vcp::mbool` は `vcp::matrix<bool>` へ暗黙に変換できます。
+比較結果を公開 API の bool 行列として扱いたい場合に使います。
+rvalue の `mbool`（比較演算子の直接の戻り値）からは move で取得されます。
+
+```cpp
+vcp::matrix<bool> M = (A > B);  // mbool → matrix<bool>（move で取得）
+
+vcp::mbool R = (A > B);
+vcp::matrix<bool> M2 = R;       // mbool → matrix<bool>（copy で取得）
+```
+
+### vcp::matrix<bool>
+
+`vcp::matrix<bool>` は bool 値の行列を保持する公開 API 型です。
+`vcp::matrix<T,P>` とは独立した特殊化として `vcp/matrix.hpp` で定義されており、
+policy を持ちません。
+
+初期化:
+
+| 関数 | 意味 |
+| --- | --- |
+| `M.alltrue(n)` | n×n 全 `true` で初期化 |
+| `M.alltrue(r, c)` | r×c 全 `true` で初期化 |
+| `M.allfalse(n)` | n×n 全 `false` で初期化 |
+| `M.allfalse(r, c)` | r×c 全 `false` で初期化 |
+
+集約・論理演算（`vcp::mbool` と同一のインターフェース）:
+
+| 関数/演算子 | 意味 |
+| --- | --- |
+| `all(M)` | 全要素が `true` |
+| `any(M)` | 1 要素以上が `true` |
+| `none(M)` | 全要素が `false` |
+| `M1 && M2` | 要素ごとの論理積 → `matrix<bool>` |
+| `M1 \|\| M2` | 要素ごとの論理和 → `matrix<bool>` |
+| `!M` | 要素ごとの論理否定 → `matrix<bool>` |
+
+その他:
+
+| 関数 | 意味 |
+| --- | --- |
+| `M.flip()` | 全要素の論理反転 |
+| `M.resize(r, c)` | サイズ拡大（縮小は不可） |
+| `M.clear()` | 内容を解放 |
+
+```cpp
+vcp::matrix<bool> M = (A > B);
+
+vcp::matrix<bool> N = !M;
+vcp::matrix<bool> L = M && N;  // 全 false
+vcp::matrix<bool> U = M || N;  // 全 true
+
+if (all(U)) { /* ... */ }
+```
+
+### 区間型での比較演算
+
+`kv::interval<T>` を要素型とする行列に対して比較演算子を使う場合、
+要素ごとの比較は `kv::interval<T>` の `operator>` 等がそのまま呼ばれます。
+`kv::interval<T>` は VCP Library とは別の **kv ライブラリ**（外部ライブラリ）で
+定義された型であり、その比較演算の意味論は **kv ライブラリの仕様**に従います。
+
+浮動小数点型と意味論が異なる場合があるため、区間型を使う場合は kv ライブラリの
+ドキュメントを参照してください。`vcp::mbool` と `vcp::matrix<bool>` は比較結果を
+格納するコンテナであり、区間の比較ロジック自体には関与しません。
+
 ## 線形方程式
 
 `lss(A, b)` は `A x = b` を解きます。
@@ -763,6 +903,7 @@ Matrix、Fourier、Legendre など、部分的に無効化する場合:
 | ファイル | 内容 |
 | --- | --- |
 | `test_matrix/test_matrix.cpp` | 基本的な行列操作 |
+| `test_matrix/test_matrixbool.cpp` | `vcp::matrix<bool>` と比較演算子の確認 |
 | `test_matrix/test_interval_matrix.cpp` | 区間行列の例 |
 | `test_matrix/Check_OpenMP.cpp` | OpenMP 関連の確認 |
 | `test_matrix/Check_pdblas_rounding.cpp` | `pdblas` と丸めの確認 |
