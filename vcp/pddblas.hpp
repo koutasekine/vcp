@@ -40,11 +40,6 @@
 
 #include <vcp/pdblas.hpp>
 
-extern "C" {
-	void dgetrs_(char*, int*, int*, double*, int*, int*, double*, int*, int*);
-	void dtrsm_(char*, char*, char*, char*, int*, int*, double*, double*, int*, double*, int*);
-}
-
 namespace vcp {
 	// Helper functions for the Ozaki scheme:
 	// A dd matrix is split into a sum of double matrices ("slices") such that

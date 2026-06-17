@@ -49,6 +49,39 @@ BLAS/LAPACK を使う `kv::dd` の高速近似計算:
 #include <vcp/matrix_assist.hpp>
 ```
 
+`vcp::mats2<T>`（tblas/tlapack 汎用実装。追加依存なし）:
+
+```cpp
+#include <vcp/mats2.hpp>
+#include <vcp/matrix.hpp>
+#include <vcp/matrix_assist.hpp>
+```
+
+`vcp::mats2<double>`（double BLAS/LAPACK 特殊化を有効にした場合）:
+
+```cpp
+// tlapack_double.hpp は内部で tblas_double.hpp も include する
+#include <vcp/tlapack/tlapack_double.hpp>
+
+#include <vcp/mats2.hpp>
+#include <vcp/matrix.hpp>
+#include <vcp/matrix_assist.hpp>
+```
+
+`vcp::mats2<kv::dd>`（kv::dd 特殊化を有効にした場合）:
+
+```cpp
+#include <kv/dd.hpp>
+
+// tlapack_dd.hpp は内部で tblas_double.hpp, tblas_dd.hpp,
+// tlapack_double.hpp も include するため、これだけで十分
+#include <vcp/tlapack/tlapack_dd.hpp>
+
+#include <vcp/mats2.hpp>
+#include <vcp/matrix.hpp>
+#include <vcp/matrix_assist.hpp>
+```
+
 汎用の区間行列:
 
 ```cpp
@@ -85,12 +118,19 @@ BLAS/LAPACK を利用する `kv::interval<double>` の区間行列:
 | `vcp::minimats<T>` | `vcp::matrix<T, vcp::minimats<T> >` | 機能を絞った軽量な密行列計算 |
 | `vcp::pdblas` | `vcp::matrix<double, vcp::pdblas>` | BLAS/LAPACK を使う高速な近似計算 |
 | `vcp::pddblas` | `vcp::matrix<kv::dd, vcp::pddblas>` | double の BLAS/LAPACK を使う `kv::dd` の高速な近似計算 |
+| `vcp::mats2<T>` | `vcp::matrix<T, vcp::mats2<T> >` | tblas/tlapack を下請けとして使う近似計算。インクルード構成で特性が変わる |
 | `vcp::imats<T>` | `vcp::matrix<kv::interval<T>, vcp::imats<T> >` | 汎用の区間行列計算 |
 | `vcp::imats<T, P>` | `vcp::matrix<kv::interval<T>, vcp::imats<T, P> >` | 中点計算などに policy `P` を使う区間行列計算 |
 | `vcp::pidblas` | `vcp::matrix<kv::interval<double>, vcp::pidblas>` | BLAS/LAPACK と有向丸めを使う高速な区間 double 計算 |
 | `vcp::pidblas_fma` | `vcp::matrix<kv::interval<double>, vcp::pidblas_fma>` | FMA を利用する実験的な区間行列積 |
 
 `vcp::matrix<T>` の default policy は `vcp::mats<T>` です。
+
+`vcp::mats2<T>` は tblas/tlapack を下請けとして使う近似計算 policy で、
+`vcp::mats<T>` を継承し、行列積・線形方程式・逆行列・Cholesky 分解・
+対称固有値問題・一般化対称固有値問題をオーバーライドしています。
+インクルードする特殊化ヘッダによって `mats<T>` 相当から `pdblas`・`pddblas`
+相当まで動作が切り替わります。詳細は後述の「`mats2<T>` の詳細」節を参照してください。
 
 ```cpp
 vcp::matrix<double> A;
@@ -161,6 +201,14 @@ vcp::matrix<I, vcp::pidblas> A;
 ハードウェア丸めモードを直接変更します。VCP 側ではその範囲を
 `hwround_guard` で保護し、演算後に round-to-nearest へ戻します。
 
+tblas/tlapack ベースの `vcp::mats2<T>` は、インクルードする特殊化ヘッダに
+よって挙動が変わる点が特徴です。特殊化ヘッダなしでは追加の依存ライブラリ
+なしに `mats<T>` 相当の計算ができ、特殊化ヘッダを追加することで
+`pdblas`・`pddblas` 相当の高速計算に切り替わります。
+`kv::mpfr<N>` など `double`・`kv::dd` 以外の型でも同じ policy インターフェース
+を使える点も `pdblas`・`pddblas` との違いです。詳細は後述の
+「`mats2<T>` の詳細」を参照してください。
+
 ## 行列の基本
 
 行列要素は 0 始まりの添字でアクセスします。
@@ -208,6 +256,146 @@ const std::vector<double>& v = A.vecpointer();
 高速化のため、`operator()` による直接要素アクセスは境界チェックを
 行いません。添字範囲を確認したい場合は、呼び出し側で明示的に確認して
 ください。
+
+## 比較演算子と bool 行列
+
+`vcp::matrix<T,P>` は要素ごとの比較演算子を 6 種類提供します。
+いずれも `vcp::mbool` を返します。
+
+| 演算子 | 意味 | 戻り値 |
+| --- | --- | --- |
+| `A > B` | 要素ごとに `A(i,j) > B(i,j)` | `vcp::mbool` |
+| `A >= B` | 要素ごとに `A(i,j) >= B(i,j)` | `vcp::mbool` |
+| `A < B` | 要素ごとに `A(i,j) < B(i,j)` | `vcp::mbool` |
+| `A <= B` | 要素ごとに `A(i,j) <= B(i,j)` | `vcp::mbool` |
+| `A == B` | 要素ごとに `A(i,j) == B(i,j)` | `vcp::mbool` |
+| `A != B` | 要素ごとに `A(i,j) != B(i,j)` | `vcp::mbool` |
+
+全 policy（`mats<T>`、`pdblas`、`pddblas`、`imats<T>`、`pidblas`、`piddblas`、`mats2<T>`）で利用できます。
+
+### vcp::mbool
+
+`vcp::mbool` は比較演算子の戻り値型です。`vcp::matrix<T,P>` と `vcp::matrix<bool>`
+の**中間に位置する型**であり、比較結果を一時的に保持することを目的としています。
+`vcp::matrix` の公開 API として外部から直接構築して使うことは想定されていません。
+
+`vcp/mbool.hpp` で定義されており、`vcp/matrix.hpp` を include するだけで使えます。
+
+集約関数:
+
+| 関数 | 意味 |
+| --- | --- |
+| `all(R)` | 全要素が `true` なら `true` |
+| `any(R)` | 1 つ以上の要素が `true` なら `true` |
+| `none(R)` | 全要素が `false` なら `true` |
+
+論理演算子（rvalue 最適化あり）:
+
+| 式 | 意味 |
+| --- | --- |
+| `R1 && R2` | 要素ごとの論理積 → `mbool` |
+| `R1 \|\| R2` | 要素ごとの論理和 → `mbool` |
+| `!R` | 要素ごとの論理否定 → `mbool` |
+
+形状の取得:
+
+| 関数 | 意味 |
+| --- | --- |
+| `R.matstype()` | `'S'`（スカラ）/ `'R'`（行ベクトル）/ `'C'`（列ベクトル）/ `'M'`（行列） |
+| `R.rowsize()` | 行数 |
+| `R.columnsize()` | 列数 |
+| `R.elementsize()` | 要素数 |
+
+要素アクセス:
+
+```cpp
+bool b00 = R(0, 0);  // (i, j) でアクセス
+bool b0  = R(0);     // 1 引数インデックスでもアクセス可能
+```
+
+```cpp
+vcp::matrix<double> A, B;
+A.zeros(2, 2); B.zeros(2, 2);
+A(0,0)=1.0; A(1,0)=4.0; A(0,1)=2.0; A(1,1)=3.0;
+B(0,0)=2.0; B(1,0)=3.0; B(0,1)=1.0; B(1,1)=3.0;
+
+vcp::mbool R = (A > B);
+
+if (all(R))  { /* A の全要素が B より大きい */ }
+if (any(R))  { /* 少なくとも 1 要素は B より大きい */ }
+if (none(R)) { /* A の全要素が B 以下 */ }
+
+vcp::mbool S = (A == B);
+vcp::mbool T = R && S;   // 複合条件
+```
+
+### vcp::matrix<bool> への変換
+
+`vcp::mbool` は `vcp::matrix<bool>` へ暗黙に変換できます。
+比較結果を公開 API の bool 行列として扱いたい場合に使います。
+rvalue の `mbool`（比較演算子の直接の戻り値）からは move で取得されます。
+
+```cpp
+vcp::matrix<bool> M = (A > B);  // mbool → matrix<bool>（move で取得）
+
+vcp::mbool R = (A > B);
+vcp::matrix<bool> M2 = R;       // mbool → matrix<bool>（copy で取得）
+```
+
+### vcp::matrix<bool>
+
+`vcp::matrix<bool>` は bool 値の行列を保持する公開 API 型です。
+`vcp::matrix<T,P>` とは独立した特殊化として `vcp/matrix.hpp` で定義されており、
+policy を持ちません。
+
+初期化:
+
+| 関数 | 意味 |
+| --- | --- |
+| `M.alltrue(n)` | n×n 全 `true` で初期化 |
+| `M.alltrue(r, c)` | r×c 全 `true` で初期化 |
+| `M.allfalse(n)` | n×n 全 `false` で初期化 |
+| `M.allfalse(r, c)` | r×c 全 `false` で初期化 |
+
+集約・論理演算（`vcp::mbool` と同一のインターフェース）:
+
+| 関数/演算子 | 意味 |
+| --- | --- |
+| `all(M)` | 全要素が `true` |
+| `any(M)` | 1 要素以上が `true` |
+| `none(M)` | 全要素が `false` |
+| `M1 && M2` | 要素ごとの論理積 → `matrix<bool>` |
+| `M1 \|\| M2` | 要素ごとの論理和 → `matrix<bool>` |
+| `!M` | 要素ごとの論理否定 → `matrix<bool>` |
+
+その他:
+
+| 関数 | 意味 |
+| --- | --- |
+| `M.flip()` | 全要素の論理反転 |
+| `M.resize(r, c)` | サイズ拡大（縮小は不可） |
+| `M.clear()` | 内容を解放 |
+
+```cpp
+vcp::matrix<bool> M = (A > B);
+
+vcp::matrix<bool> N = !M;
+vcp::matrix<bool> L = M && N;  // 全 false
+vcp::matrix<bool> U = M || N;  // 全 true
+
+if (all(U)) { /* ... */ }
+```
+
+### 区間型での比較演算
+
+`kv::interval<T>` を要素型とする行列に対して比較演算子を使う場合、
+要素ごとの比較は `kv::interval<T>` の `operator>` 等がそのまま呼ばれます。
+`kv::interval<T>` は VCP Library とは別の **kv ライブラリ**（外部ライブラリ）で
+定義された型であり、その比較演算の意味論は **kv ライブラリの仕様**に従います。
+
+浮動小数点型と意味論が異なる場合があるため、区間型を使う場合は kv ライブラリの
+ドキュメントを参照してください。`vcp::mbool` と `vcp::matrix<bool>` は比較結果を
+格納するコンテナであり、区間の比較ロジック自体には関与しません。
 
 ## 線形方程式
 
@@ -299,7 +487,7 @@ BLAS/LAPACK routine を呼びます。
 - `pdblas` の要素型は `double` です。
 - `pddblas` の要素型は `kv::dd` です（次節参照）。
 - `pidblas` の要素型は `kv::interval<double>` です。
-- 利用プログラムは BLAS/LAPACK または MKL とリンクする必要があります。
+- 利用プログラムは BLAS/LAPACK または MKL とリンクする必要があります。外部ライブラリを使わない場合は後述の「外部 BLAS/LAPACK を使わない場合」を参照してください。
 - LAPACK routine が非ゼロの `info` を返した場合、`vcp::lapack_error` を投げます。
 - 一部の演算は破壊的で、例外発生時に入力行列がすでに上書きされている場合があります。
 
@@ -312,6 +500,47 @@ OpenBLAS を使う設定例は [blas_build.md](blas_build.md) を参照してく
 Newton 法で非線形方程式を解く場合は、`matrix` で残差ベクトルと
 ヤコビ行列を作り、`vcp::Newton` に渡す形になります。詳しくは
 [newton.md](newton.md) を参照してください。
+
+## 外部 BLAS/LAPACK を使わない場合 (`-DUSE_VCP_BLAS` / `-DUSE_VCP_LAPACK`)
+
+`-DUSE_VCP_BLAS` または `-DUSE_VCP_LAPACK` をコンパイル時に指定すると、
+`vcp::pdblas`・`vcp::pidblas`・`vcp::pddblas` が外部 BLAS/LAPACK ライブラリを
+必要とせず、`vcp/vblas/dblas.hpp` と `vcp/vlapack/dlapack.hpp` の純 C++ 実装
+（丸めモード対応 BLAS/LAPACK）を内部で使用します。これらの policy は
+共通ヘッダー `vcp/dblas_dlapack.hpp` を経由して、BLAS/LAPACK 宣言と
+backend 選択を共有しています。
+
+| フラグ | 効果 |
+| --- | --- |
+| `-DUSE_VCP_BLAS` | BLAS 関数（`dgemm_` 等）を `vcp/vblas/dblas.hpp` で提供。外部 BLAS リンク不要 |
+| `-DUSE_VCP_LAPACK` | LAPACK 関数（`dgesv_`、`dsyev_` 等）を `vcp/vlapack/dlapack.hpp` で提供。外部 LAPACK リンク不要 |
+| 両方 | 外部 BLAS/LAPACK のどちらも不要 |
+
+MKL や OpenBLAS がない環境でも次のようにコンパイルできます。
+
+```bash
+g++ -std=c++11 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND \
+    -DUSE_VCP_BLAS -DUSE_VCP_LAPACK \
+    example.cpp -lmpfr -fopenmp
+```
+
+`-DUSE_VCP_BLAS` のみで BLAS だけ、`-DUSE_VCP_LAPACK` のみで LAPACK だけを
+置き換えることもできます。
+
+注意点:
+
+- 両フラグを指定した状態で外部 BLAS/LAPACK もリンクすると、シンボルが重複して
+  リンカエラーになります。外部ライブラリとの混在はできません。
+- `vcp/vblas/dblas.hpp` と `vcp/vlapack/dlapack.hpp` は `vcp/` 内の `vblas/`、`vlapack/`
+  サブディレクトリに配置されています。`-I` で親ディレクトリを指定すれば
+  `<vcp/vblas/dblas.hpp>` としてインクルードできます。
+- `vcp/dblas_dlapack.hpp` は `pdblas` / `pidblas` / `pddblas` の内部実装用の
+  共通ヘッダーです。通常の利用では `vcp/pdblas.hpp`、`vcp/pidblas.hpp`、
+  `vcp/pddblas.hpp` をインクルードしてください。
+- VCP Library の精度保証付き計算（`vcp::pidblas`）において、有向丸めで呼ばれる
+  BLAS 関数は `dgemm_` のみです。`vcp/vblas/dblas.hpp` の `dgemm_` は呼び出し時点の
+  丸めモードを自動的に読み取るため、`kv::hwround::roundup()` / `rounddown()` で
+  丸めモードを設定してから呼び出す既存のコードと正しく連携します。
 
 ## `vcp::pddblas` の詳細
 
@@ -447,6 +676,161 @@ n = 1000 で約 30 倍、対称固有値問題は n = 100 で約 1000 倍以上�
 30〜40 倍程度遅くなりますが、`vcp::mats<kv::dd>` よりは高速で、
 かつ丸め誤差は大幅に小さくなります。
 
+## mats2<T> の詳細
+
+`vcp::mats2<T>` は、tblas（テンプレート版 BLAS、`vcp/tblas/`）と
+tlapack（テンプレート版 LAPACK、`vcp/tlapack/`）を下請けとして使う
+近似計算 policy です。`vcp::mats<T>` を継承し、行列積・線形方程式・逆行列・
+Cholesky 分解・対称固有値問題・一般化対称固有値問題をオーバーライドしています。
+その他の演算（要素ごとの演算、生成、整形、集約など）は `mats<T>` から継承します。
+
+```cpp
+#include <vcp/mats2.hpp>
+#include <vcp/matrix.hpp>
+#include <vcp/matrix_assist.hpp>
+
+vcp::matrix<double, vcp::mats2<double> > A, b, x;
+
+A.rand(100);
+b.rand(100, 1);
+x = lss(A, b);
+```
+
+### インクルード構成と動作モード
+
+`mats2<T>` の最大の特徴は、**どの特殊化ヘッダをインクルードするかによって
+計算の実装が変わる**点です。`mats2.hpp` 自体は特殊化ヘッダをインクルード
+しないため、利用者が明示的に選択します。
+
+#### モード 1: 汎用実装（追加依存なし）
+
+```cpp
+#include <vcp/mats2.hpp>
+#include <vcp/matrix.hpp>
+#include <vcp/matrix_assist.hpp>
+```
+
+外部 BLAS/LAPACK は不要です。`vcp/tblas/tblas.hpp` と
+`vcp/tlapack/tlapack.hpp` の汎用 C++ 実装が使われ、精度・速度とも
+`vcp::mats<T>` と同等です。`double` だけでなく `kv::dd`、`kv::mpfr<N>` など
+`tlapack` が対象とする任意の型 `T` で利用できます。
+
+#### モード 2: double BLAS/LAPACK 特殊化（`T=double` のとき `pdblas` 相当）
+
+```cpp
+// tlapack_double.hpp は内部で tblas_double.hpp も include する
+#include <vcp/tlapack/tlapack_double.hpp>
+
+#include <vcp/mats2.hpp>
+#include <vcp/matrix.hpp>
+#include <vcp/matrix_assist.hpp>
+```
+
+`T=double` のとき、`vcp::pdblas` と同等の動作になります。
+外部 BLAS/LAPACK または Intel MKL とのリンクが必要です
+（`-DUSE_VCP_BLAS -DUSE_VCP_LAPACK` 指定時は不要）。
+
+#### モード 3: kv::dd 特殊化（`T=kv::dd` のとき `pddblas` 相当）
+
+```cpp
+#include <kv/dd.hpp>
+
+// tlapack_dd.hpp は内部で tblas_double.hpp, tblas_dd.hpp,
+// tlapack_double.hpp も include するため、これだけで十分
+#include <vcp/tlapack/tlapack_dd.hpp>
+
+#include <vcp/mats2.hpp>
+#include <vcp/matrix.hpp>
+#include <vcp/matrix_assist.hpp>
+```
+
+モード 2 の内容を含んだ上で、さらに `T=kv::dd` のとき
+`vcp::pddblas` と同等の動作になります。外部 BLAS/LAPACK または Intel MKL、
+および kv ライブラリが必要です。
+
+`tlapack_dd.hpp` のインクルード順は `mats2.hpp` より前であれば任意ですが、
+明示的特殊化は対象 template の暗黙実体化より前に参照される必要があるため、
+**`mats2.hpp` より先にインクルードしてください**。
+
+### 使用するアルゴリズム
+
+`mats2<T>` が tblas/tlapack を通じて呼び出す演算は以下の通りです。
+
+| 演算 | 汎用実装（モード 1） | double 特殊化（モード 2） | kv::dd 特殊化（モード 3） |
+| --- | --- | --- | --- |
+| 行列積 `A * B` | tblas 汎用 `tgemm<T>` | BLAS `dgemm_` | 尾崎スキーム（`tgemm<kv::dd>`）|
+| `transpose(A)*A` | tblas 汎用 `tsyrk<T>` | BLAS `dsyrk_` | 尾崎スキーム（`tsyrk<kv::dd>`）|
+| 線形方程式 `lss(A, b)` | tlapack 汎用 `tgesv<T>` | LAPACK `dgesv_` | double 初期解 + kv::dd 残差反復 |
+| 逆行列 `inv(A)` | tlapack 汎用 `tgetrf/tgetri<T>` | LAPACK `dgetrf_/dgetri_` | double LU + kv::dd 残差反復 |
+| Cholesky 分解 | tlapack 汎用 `tpotrf<T>` | LAPACK `dpotrf_` | double Cholesky + kv::dd 残差補正 |
+| 対称固有値 `eigsym` | tlapack 汎用 `tsyev<T>` | LAPACK `dsyev_` | double 初期固有対 + kv::dd 残差反復 |
+| 一般化対称固有値 `eigsymge` | tlapack 汎用 `tsygv<T>` | LAPACK `dsygv_` | double 初期固有対 + kv::dd 残差反復 |
+
+### 精度保証付き数値計算での利用
+
+`vcp::mats2<T>` 自体は近似計算 policy ですが、`vcp::imats<T, P>` の
+第 2 テンプレート引数に指定することで、区間演算による精度保証付き数値計算に
+利用できます。
+
+モード 2（double 特殊化有効）の `mats2<double>` は `vcp::pidblas` と同等に
+なります。
+
+```cpp
+#include <kv/interval.hpp>
+#include <kv/rdouble.hpp>
+
+#include <vcp/tlapack/tlapack_double.hpp>
+
+#include <vcp/imats.hpp>
+#include <vcp/mats2.hpp>
+#include <vcp/matrix.hpp>
+#include <vcp/matrix_assist.hpp>
+
+typedef kv::interval<double> I;
+vcp::matrix<I, vcp::imats<double, vcp::mats2<double> > > A, b, x;
+```
+
+モード 3（kv::dd 特殊化有効）の `mats2<kv::dd>` は
+`vcp::imats<kv::dd, vcp::pddblas>` と同等になります。
+
+```cpp
+#include <kv/interval.hpp>
+#include <kv/rdouble.hpp>
+#include <kv/dd.hpp>
+#include <kv/rdd.hpp>
+
+#include <vcp/tlapack/tlapack_dd.hpp>
+
+#include <vcp/imats.hpp>
+#include <vcp/mats2.hpp>
+#include <vcp/matrix.hpp>
+#include <vcp/matrix_assist.hpp>
+
+typedef kv::interval<kv::dd> I;
+vcp::matrix<I, vcp::imats<kv::dd, vcp::mats2<kv::dd> > > A, b, x;
+```
+
+### pdblas・pddblas との比較
+
+| | `vcp::pdblas` / `vcp::pddblas` | `vcp::mats2<T>` |
+| --- | --- | --- |
+| 内部実装 | `vcp/vblas/`・`vcp/vlapack/` | `vcp/tblas/`・`vcp/tlapack/` |
+| 高速化の切り替え方法 | コンパイルフラグ（`-DUSE_VCP_BLAS` 等）または外部 BLAS/LAPACK リンク | インクルードする特殊化ヘッダで切り替え |
+| 外部依存（デフォルト） | BLAS/LAPACK またはその代替 | なし（汎用モード） |
+| 対象型 | `double` 固定（pdblas）/ `kv::dd` 固定（pddblas） | 任意の `T`（特殊化は `double` と `kv::dd`） |
+| 動作等価性 | — | モード 2 で `pdblas`、モード 3 で `pddblas` と同等 |
+
+### 注意点と制限
+
+- `mats2<bool>` は利用できません（`static_assert` でコンパイルエラーになります）。
+- 区間型（`kv::interval<T>`）を `T` として直接使うことはできません。
+  区間演算には `vcp::imats<T, vcp::mats2<T> >` を使ってください。
+- `tlapack` は `kv::interval<T>` を対象としないため、`T` は `double`、
+  `kv::dd`、`kv::mpfr<N>` などの点の型に限定されます。
+- モード 3（kv::dd 特殊化）の制限は `vcp::pddblas` と同様です。
+  初期近似を double で計算するため、条件数が約 `1e16` を超える問題では
+  残差反復が停滞することがあります。
+
 ## ファイル入出力
 
 行列の保存と読み込みには、従来形式の `save/load` と、環境間移行向けの
@@ -519,6 +903,7 @@ Matrix、Fourier、Legendre など、部分的に無効化する場合:
 | ファイル | 内容 |
 | --- | --- |
 | `test_matrix/test_matrix.cpp` | 基本的な行列操作 |
+| `test_matrix/test_matrixbool.cpp` | `vcp::matrix<bool>` と比較演算子の確認 |
 | `test_matrix/test_interval_matrix.cpp` | 区間行列の例 |
 | `test_matrix/Check_OpenMP.cpp` | OpenMP 関連の確認 |
 | `test_matrix/Check_pdblas_rounding.cpp` | `pdblas` と丸めの確認 |

@@ -37,6 +37,7 @@
 #include <utility>
 
 #include <vcp/mats.hpp>
+#include <vcp/vcp_converter.hpp>
 
 namespace vcp {
 	template <typename _T, class _P = mats< _T >> class matrix : protected _P {
@@ -52,6 +53,50 @@ namespace vcp {
 		matrix(matrix&&) = default;
 		matrix& operator=(const matrix& A) = default;
 		matrix& operator=(matrix&& A) = default;
+
+		// (1) Policy conversion constructor: T same, P different
+		template <class _P2,
+		          typename std::enable_if<!std::is_same<_P, _P2>::value, int>::type = 0>
+		matrix(const matrix<_T, _P2>& A) {
+			this->row = 0; this->column = 0; this->n = 0; this->type = 'N';
+			this->zeros(A.rowsize(), A.columnsize());
+			for (int i = 0; i < A.rowsize(); i++)
+				for (int j = 0; j < A.columnsize(); j++)
+					(*this)(i, j) = A(i, j);
+		}
+
+		// (2) Type conversion constructor: T different, P arbitrary
+		template <typename _T2, class _P2,
+		          typename std::enable_if<!std::is_same<_T, _T2>::value, int>::type = 0>
+		matrix(const matrix<_T2, _P2>& A) {
+			this->row = 0; this->column = 0; this->n = 0; this->type = 'N';
+			this->zeros(A.rowsize(), A.columnsize());
+			for (int i = 0; i < A.rowsize(); i++)
+				for (int j = 0; j < A.columnsize(); j++)
+					vcp::convert(A(i, j), (*this)(i, j));
+		}
+
+		// (3) Policy conversion assignment: T same, P different
+		template <class _P2,
+		          typename std::enable_if<!std::is_same<_P, _P2>::value, int>::type = 0>
+		matrix<_T, _P>& operator=(const matrix<_T, _P2>& A) {
+			this->zeros(A.rowsize(), A.columnsize());
+			for (int i = 0; i < A.rowsize(); i++)
+				for (int j = 0; j < A.columnsize(); j++)
+					(*this)(i, j) = A(i, j);
+			return *this;
+		}
+
+		// (4) Type conversion assignment: T different, P arbitrary
+		template <typename _T2, class _P2,
+		          typename std::enable_if<!std::is_same<_T, _T2>::value, int>::type = 0>
+		matrix<_T, _P>& operator=(const matrix<_T2, _P2>& A) {
+			this->zeros(A.rowsize(), A.columnsize());
+			for (int i = 0; i < A.rowsize(); i++)
+				for (int j = 0; j < A.columnsize(); j++)
+					vcp::convert(A(i, j), (*this)(i, j));
+			return *this;
+		}
 
 		_T& operator () (const int i) {
 			return this->v[i];
@@ -826,6 +871,13 @@ namespace vcp {
 			this->n = A.n;
 			this->type = A.type;
 			this->v = A.v;
+		}
+		matrix(mbool&& A) {
+			this->row = A.row;
+			this->column = A.column;
+			this->n = A.n;
+			this->type = A.type;
+			this->v = std::move(A.v);
 		}
 		~matrix() = default;
 		matrix(const matrix&) = default;

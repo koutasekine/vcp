@@ -33,21 +33,7 @@
 #define VCP_PDBLAS_HPP
 
 #include <vcp/mats.hpp>
-
-extern "C" {
-	double ddot_(int*, const double*, int*, const double*, int*);
-	void dgemm_(char*, char*, int*, int*, int*, double*, const double*, int*, const double*, int*, double*, double*, int*);
-	void dsymm_(char*, char*, int*, int*, double*, const double*, int*, const double*, int*, double*, double*, int*);
-	void dgemv_(char*, int*, int*, double*, const double*, int*, const double*, int*, double*, double*, int*);
-	void dsyrk_(char*, char*, int*, int*, double*, const double*, int*, double*, double*, int*);
-
-	void dgetrf_(int*, int*, double*, int*, int*, int*);
-	void dgetri_(int*, double*, int*, int*, double*, int*, int*);
-	void dsyev_(char*, char*, int*, double*, int*, double*, double*, int*, int*);
-	void dgesv_(int*, int*, double*, int*, int*, double*, int*, int*);
-	void dsygv_(int*, char*, char*, int*, double*, int*, double*, int*, double*, double*, int*, int*);
-	void dpotrf_(char*, int*, double*, int*, int*);
-}
+#include <vcp/dblas_dlapack.hpp>
 
 namespace vcp {
 	class pdblas : public mats< double > {
