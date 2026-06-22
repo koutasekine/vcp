@@ -332,6 +332,33 @@ namespace vcp {
 		}
 
 		template <typename T>
+		std::vector<T> dense_eigenvector_inverse_iteration_from(
+			const std::vector<std::vector<T> >& A,
+			const T& lambda,
+			const std::vector<T>& y_init)
+		{
+			typedef typename tsparse_scalar::real_type<T>::type real_type;
+			const std::size_t n = A.size();
+			std::vector<T> y = y_init;
+			if (y.size() != n) y.assign(n, T(1));
+			const T shift = lambda + T(tsparse_scalar::decimal_power_negative<real_type>(10));
+			for (std::size_t iter = 0; iter < 8; iter++) {
+				std::vector<std::vector<T> > M = A;
+				for (std::size_t i = 0; i < n; i++) M[i][i] -= shift;
+				try {
+					y = solve_dense_gaussian(M, y);
+				}
+				catch (const std::exception&) {
+					break;
+				}
+				const real_type ny = tsparse_scalar::real_norm_value(y);
+				if (ny <= (std::numeric_limits<real_type>::epsilon)()) break;
+				for (std::size_t i = 0; i < n; i++) y[i] /= T(ny);
+			}
+			return y;
+		}
+
+		template <typename T>
 		std::vector<T> small_real_eigenvalues(const std::vector<std::vector<T> >& A) {
 			typedef typename tsparse_scalar::real_type<T>::type real_type;
 			const std::size_t n = A.size();

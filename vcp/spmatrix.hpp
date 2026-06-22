@@ -1383,8 +1383,9 @@ namespace vcp {
 				void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { y = mat->mul_vec(x); }
 			} apply = { &A };
 
+			const std::size_t max_restarts_l = (sdim > 0) ? (options.max_iter / sdim + k + 1) : options.max_iter;
 			auto pkg = vcp::tsparse_lanczos::lanczos_eigs_standard<_T, apply_fn>(
-				n, k, sdim, options.max_iter, options.tol,
+				n, k, sdim, max_restarts_l, options.tol,
 				options.random_seed, options.random_start,
 				options.target, shift_val, options.compute_residual_history, apply);
 
@@ -1500,8 +1501,9 @@ namespace vcp {
 				&inner_failure_count, &inner_iteration_count, &inner_residual_norm };
 
 			const std::size_t sdim = (options.subspace_dim == 0) ? std::max(k + 5, std::min(n, std::size_t(30))) : options.subspace_dim;
+			const std::size_t max_restarts_si = (sdim > 0) ? (options.max_iter / sdim + k + 1) : options.max_iter;
 			auto pkg = vcp::tsparse_lanczos::lanczos_eigs_standard<_T, apply_fn>(
-				n, k, sdim, options.max_iter, options.tol,
+				n, k, sdim, max_restarts_si, options.tol,
 				options.random_seed, options.random_start,
 				eig_target::largest_magnitude, scalar_real_type(0), options.compute_residual_history, apply_si);
 
