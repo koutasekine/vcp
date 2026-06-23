@@ -22,6 +22,7 @@
 #include <vcp/tsparse/tsparse_arnoldi.hpp>
 #include <vcp/tsparse/tsparse_factorization.hpp>
 #include <vcp/tsparse/tsparse_eigen_selection.hpp>
+#include <vcp/tsparse/tsparse_generalized_shift_invert.hpp>
 
 namespace vcp {
 
@@ -855,15 +856,24 @@ namespace vcp {
 			if (is_diagonal_matrix(*this) && is_diagonal_matrix(B)) {
 				return generalized_diagonal_eigs(B, k, options);
 			}
+			// Non-diagonal generalized: check if shift-invert was requested
+			const bool wants_shift_invert =
+				(options.method == eig_solver_method::shift_invert_lanczos)
+				|| (options.method == eig_solver_method::shift_invert_arnoldi)
+				|| (options.use_shift && options.method == eig_solver_method::lanczos)
+				|| (options.use_shift && options.method == eig_solver_method::arnoldi);
+			if (wants_shift_invert) {
+				return generalized_shift_invert_arnoldi_eigs(B, k, options);
+			}
 			eig_result<_T> result;
 			result.requested_count = k;
-						result.converged = false;
+			result.converged = false;
 			result.status = "unsupported_generalized_non_diagonal";
 			result.used_generalized_operator = true;
 			result.used_dense_fallback = false;
 			result.method = options.method;
 			result.used_method = eig_method_to_string(options.method);
-			result.failure_reason = "non-diagonal generalized sparse eigs is outside the merge API; use diagonal generalized path or future generalized shift-invert";
+			result.failure_reason = "non-diagonal generalized sparse eigs without shift-invert is not supported; use shift_invert_arnoldi, shift_invert_lanczos, or set use_shift=true";
 			result.message = result.failure_reason;
 			set_result_counts(result, k);
 			return result;
@@ -1734,6 +1744,174 @@ namespace vcp {
 			else {
 				set_eig_diagnostics(result, eig_solver_method::shift_invert_arnoldi, sdim,
 					result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
+			}
+			set_result_counts(result, k);
+			return result;
+		}
+
+		// ------------------------------------------------------------------
+		// Generalized shift-invert Arnoldi:  (A - sigma B)^{-1} B  operator
+		// Handles both shift_invert_lanczos (promoted to Arnoldi) and
+		// shift_invert_arnoldi, as well as use_shift promotion from lanczos/arnoldi.
+		// ------------------------------------------------------------------
+		eig_result<_T> generalized_shift_invert_arnoldi_eigs(
+		    const spmatrix& B,
+		    const std::size_t k,
+		    const eig_options_type& options) const
+		{
+			const std::size_t n = static_cast<std::size_t>(rowsize());
+			const scalar_real_type sigma = options.shift;
+
+			// Determine the "real" method and record promotion
+			eig_solver_method actual_method = options.method;
+			bool promoted_from_lanczos = false;
+			if (options.method == eig_solver_method::shift_invert_lanczos) {
+				// Lanczos is for symmetric A; generalized non-diagonal → promote to Arnoldi
+				actual_method = eig_solver_method::shift_invert_arnoldi;
+				promoted_from_lanczos = true;
+			}
+			else if (options.use_shift && options.method == eig_solver_method::lanczos) {
+				actual_method = eig_solver_method::shift_invert_arnoldi;
+				promoted_from_lanczos = true;
+			}
+			else if (options.use_shift && options.method == eig_solver_method::arnoldi) {
+				actual_method = eig_solver_method::shift_invert_arnoldi;
+			}
+			// else: shift_invert_arnoldi already
+
+			// Build operator
+			const std::size_t inner_max_iter = std::min(n, std::size_t(100));
+			const scalar_real_type inner_tol = options.tol / scalar_real_type(1000);
+			const std::size_t inner_restart = std::min(n, std::size_t(30));
+
+			typedef vcp::tsparse::generalized_shift_invert_operator<spmatrix> GSIOperator;
+			GSIOperator gsi_op(*this, B, _T(sigma), inner_max_iter, inner_tol, inner_restart);
+
+			if (!gsi_op.factorization_ok()) {
+				eig_result<_T> result;
+				result.requested_count = k;
+				result.method = actual_method;
+				result.used_method = promoted_from_lanczos
+					? "shift_invert_arnoldi(promoted_from_lanczos)"
+					: eig_method_to_string(actual_method);
+				result.used_shift_invert = true;
+				result.used_generalized_operator = true;
+				result.used_dense_fallback = false;
+				result.status = "factorization_failed";
+				result.failure_reason = "ILU zero or near-zero pivot in (A - sigma*B)";
+				result.message = result.failure_reason;
+				result.factorization_diagnostics = gsi_op.factorization_diagnostics();
+				result.factorization_zero_pivots = gsi_op.factorization_zero_pivots();
+				set_result_counts(result, k);
+				return result;
+			}
+
+			// Build apply functor
+			struct ApplyFn {
+				GSIOperator* op;
+				void operator()(const std::vector<_T>& x, std::vector<_T>& y) const {
+					op->apply(x, y);
+				}
+			} apply_fn = { &gsi_op };
+
+			const std::size_t sdim = (options.subspace_dim == 0)
+				? std::max(k + 5, std::min(n, std::size_t(30)))
+				: options.subspace_dim;
+			const std::size_t max_restarts = options.max_iter + options.max_iter * k;
+
+			const vcp::tsparse_arnoldi::arnoldi_result_package<_T> pkg =
+				vcp::tsparse_arnoldi::arnoldi_eigs_standard<_T>(
+					n, k, sdim, max_restarts,
+					options.tol,
+					options.orthogonalization,
+					true, true,
+					options.random_seed, options.random_start,
+					eig_target::largest_magnitude, scalar_real_type(0),
+					options.compute_residual_history,
+					apply_fn);
+
+			// Transform Ritz values: lambda = sigma + 1/mu
+			std::vector<_T> eigenvalues = pkg.eigenvalues;
+			for (std::size_t i = 0; i < eigenvalues.size(); i++) {
+				const scalar_real_type mu = tsparse_scalar::real_part(eigenvalues[i]);
+				if (tsparse_scalar::abs_value(mu) > scalar_real_type(0)) {
+					eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
+				}
+			}
+
+			// Assemble result
+			eig_result<_T> result;
+			result.requested_count = k;
+			result.method = actual_method;
+			result.used_method = promoted_from_lanczos
+				? "shift_invert_arnoldi(promoted_from_lanczos)"
+				: eig_method_to_string(actual_method);
+			result.used_orthogonalization = orthogonalization_to_string(options.orthogonalization);
+			result.iterations = pkg.iterations;
+			result.matrix_vector_products = pkg.mv_count;
+			result.linear_solves = gsi_op.linear_solves();
+			result.inner_iterations = gsi_op.inner_iterations();
+			result.inner_failure_count = gsi_op.inner_failure_count();
+			result.inner_residual_norm = gsi_op.inner_residual_norm();
+			result.factorization_diagnostics = gsi_op.factorization_diagnostics();
+			result.factorization_zero_pivots = gsi_op.factorization_zero_pivots();
+			result.used_subspace_dim = sdim;
+			result.breakdown_reason = pkg.breakdown_reason;
+			result.failure_reason = pkg.failure_reason;
+			result.converged_count = pkg.converged_count;
+			result.residual_history_absolute = pkg.history_abs;
+			result.residual_history_relative = pkg.history_rel;
+			result.used_shift_invert = true;
+			result.used_generalized_operator = true;
+			result.used_dense_fallback = false;
+			result.eigenvalues = eigenvalues;
+			result.eigenvectors = pkg.eigenvectors;
+
+			// Compute generalized residuals  ||A v - lambda B v||
+			if (!result.eigenvectors.empty()) {
+				result.residuals_absolute = generalized_eigenpair_residuals(
+					*this, B, result.eigenvalues, result.eigenvectors);
+				result.residuals_relative = generalized_eigenpair_relative_residuals(
+					*this, B, result.eigenvalues, result.eigenvectors);
+				const scalar_real_type res_val =
+					max_generalized_eigenpair_residual_value(
+						*this, B, result.eigenvalues, result.eigenvectors);
+				result.residual_norm_absolute = res_val;
+			}
+
+			// Complex eigenvalues from Arnoldi
+			for (std::size_t i = 0; i < pkg.complex_eigenvalues.size(); i++) {
+				result.complex_eigenvalues.push_back(
+					typename eig_result<_T>::eigenvalue_type(
+						pkg.complex_eigenvalues[i].first,
+						pkg.complex_eigenvalues[i].second));
+			}
+
+			const bool has_complex = pkg.has_complex;
+			const bool inner_ok = (gsi_op.inner_failure_count() == 0);
+			result.converged = pkg.converged && !has_complex
+			                   && (result.eigenvalues.size() >= k) && inner_ok;
+
+			if (!inner_ok) {
+				result.status = "inner_solve_failed";
+				result.failure_reason = "inner GMRES solve failed in generalized shift-invert";
+				result.inner_failure_reason = result.failure_reason;
+				result.message = result.failure_reason;
+			}
+			else if (has_complex) {
+				result.status = "complex_ritz_values";
+				result.message = "complex Ritz values detected in generalized shift-invert";
+				if (result.failure_reason.empty())
+					result.failure_reason = "complex Ritz values in requested subset";
+			}
+			else {
+				set_eig_diagnostics(result, actual_method, sdim,
+					result.matrix_vector_products,
+					result.breakdown_reason, result.failure_reason);
+				// Restore custom used_method tag if promoted from Lanczos
+				if (promoted_from_lanczos) {
+					result.used_method = "shift_invert_arnoldi(promoted_from_lanczos)";
+				}
 			}
 			set_result_counts(result, k);
 			return result;
