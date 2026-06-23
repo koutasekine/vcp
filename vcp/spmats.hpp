@@ -584,6 +584,7 @@ namespace vcp {
 		std::vector<_T> policy_mul_vec(const spmats<_T,_Index>& A, const std::vector<_T>& x) const;
 		std::vector<_T> policy_left_mul_vec(const std::vector<_T>& x, const spmats<_T,_Index>& A) const;
 		spmats<_T,_Index> policy_scalar_mul(const spmats<_T,_Index>& A, const _T& alpha) const;
+		spmats<_T,_Index> policy_scalar_div(const spmats<_T,_Index>& A, const _T& alpha) const;
 		spmats<_T,_Index> policy_neg(const spmats<_T,_Index>& A) const;
 
 		// ------------------------------------------------------------------

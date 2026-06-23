@@ -139,6 +139,34 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_scalar_mul(
 }
 
 // ---------------------------------------------------------------------------
+// policy_scalar_div: B = A / alpha  (divide each non-zero by alpha)
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+spmats<_T, _Index> spmats<_T, _Index>::policy_scalar_div(
+	const spmats<_T, _Index>& A,
+	const _T& alpha) const
+{
+	spmats<_T, _Index> Ac = A.as_csr();
+	spmats<_T, _Index> C;
+	C.resize(Ac.rowsize(), Ac.columnsize());
+	const std::vector<_Index>& outer = Ac.outer_index();
+	const std::vector<_Index>& inner = Ac.inner_index();
+	const std::vector<_T>& val = Ac.values();
+	C.reserve(Ac.stored_nnz());
+	for (_Index i = 0; i < Ac.rowsize(); i++) {
+		for (_Index p = outer[static_cast<std::size_t>(i)];
+		     p < outer[static_cast<std::size_t>(i + 1)]; p++) {
+			const _T v = val[static_cast<std::size_t>(p)] / alpha;
+			if (!(v == _T(0))) {
+				C.add(i, inner[static_cast<std::size_t>(p)], v);
+			}
+		}
+	}
+	C.finalize();
+	return C;
+}
+
+// ---------------------------------------------------------------------------
 // policy_neg: B = -A
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>

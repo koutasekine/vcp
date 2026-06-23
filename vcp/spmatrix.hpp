@@ -127,12 +127,10 @@ namespace vcp {
 		}
 
 		// ---------------------------------------------------------------
-		// Matrix arithmetic operators — all delegate to policy
+		// Named arithmetic methods — all delegate to policy
+		// These remain for backward compatibility and as building blocks
+		// for the friend operators below.
 		// ---------------------------------------------------------------
-		spmatrix operator+(const spmatrix& rhs) const { return add(rhs); }
-		spmatrix operator-(const spmatrix& rhs) const { return sub(rhs); }
-		spmatrix operator*(const spmatrix& rhs) const { return matmul(rhs); }
-
 		spmatrix add(const spmatrix& rhs) const {
 			if (rowsize() != rhs.rowsize() || columnsize() != rhs.columnsize())
 				vcp::throw_error<vcp::dimension_error>("spmatrix::add: dimension mismatch");
@@ -158,6 +156,187 @@ namespace vcp {
 			static_cast<_P&>(C) = this->policy_mul(
 				static_cast<const _P&>(*this), static_cast<const _P&>(rhs));
 			return C;
+		}
+
+		// ---------------------------------------------------------------
+		// In-place arithmetic — delegate to policy; aligned with matrix<T,P>
+		// naming (addmm, subsmmA, subsmmB, mulmm, mulsm, mulms, divms, minusm)
+		// ---------------------------------------------------------------
+
+		// *this = *this + B
+		void addmm(const spmatrix& B) {
+			if (rowsize() != B.rowsize() || columnsize() != B.columnsize())
+				vcp::throw_error<vcp::dimension_error>("spmatrix::addmm: dimension mismatch");
+			static_cast<_P&>(*this) = this->policy_add(
+				static_cast<const _P&>(*this), static_cast<const _P&>(B));
+		}
+
+		// *this = *this - B
+		void subsmmA(const spmatrix& B) {
+			if (rowsize() != B.rowsize() || columnsize() != B.columnsize())
+				vcp::throw_error<vcp::dimension_error>("spmatrix::subsmmA: dimension mismatch");
+			static_cast<_P&>(*this) = this->policy_sub(
+				static_cast<const _P&>(*this), static_cast<const _P&>(B));
+		}
+
+		// *this = A - *this
+		void subsmmB(const spmatrix& A) {
+			if (A.rowsize() != rowsize() || A.columnsize() != columnsize())
+				vcp::throw_error<vcp::dimension_error>("spmatrix::subsmmB: dimension mismatch");
+			static_cast<_P&>(*this) = this->policy_sub(
+				static_cast<const _P&>(A), static_cast<const _P&>(*this));
+		}
+
+		// C = *this * B  (out-of-place; avoids aliasing issues)
+		void mulmm(const spmatrix& B, spmatrix& C) const {
+			if (columnsize() != B.rowsize())
+				vcp::throw_error<vcp::dimension_error>("spmatrix::mulmm: dimension mismatch");
+			static_cast<_P&>(C) = this->policy_mul(
+				static_cast<const _P&>(*this), static_cast<const _P&>(B));
+		}
+
+		// *this = alpha * *this
+		void mulsm(const _T& alpha) {
+			static_cast<_P&>(*this) = this->policy_scalar_mul(
+				static_cast<const _P&>(*this), alpha);
+		}
+
+		// *this = *this * alpha  (commutativity: same as mulsm)
+		void mulms(const _T& alpha) { mulsm(alpha); }
+
+		// *this = *this / alpha
+		void divms(const _T& alpha) {
+			static_cast<_P&>(*this) = this->policy_scalar_div(
+				static_cast<const _P&>(*this), alpha);
+		}
+
+		// *this = -*this
+		void minusm() {
+			static_cast<_P&>(*this) = this->policy_neg(
+				static_cast<const _P&>(*this));
+		}
+
+		// ---------------------------------------------------------------
+		// MATLAB-like friend operators — A+B, A-B, A*B with rvalue overloads
+		// All computation is delegated to the named methods above, which
+		// in turn call policy methods.  Verified policy can override any
+		// policy_* method to change the arithmetic semantics.
+		// ---------------------------------------------------------------
+
+		// --- A + B ---
+		friend spmatrix operator+(const spmatrix& A, const spmatrix& B) {
+			return A.add(B);
+		}
+		friend spmatrix operator+(spmatrix&& A, const spmatrix& B) {
+			A.addmm(B);
+			return std::move(A);
+		}
+		friend spmatrix operator+(const spmatrix& A, spmatrix&& B) {
+			B.addmm(A);
+			return std::move(B);
+		}
+		friend spmatrix operator+(spmatrix&& A, spmatrix&& B) {
+			A.addmm(B);
+			return std::move(A);
+		}
+
+		// --- A - B ---
+		friend spmatrix operator-(const spmatrix& A, const spmatrix& B) {
+			return A.sub(B);
+		}
+		friend spmatrix operator-(spmatrix&& A, const spmatrix& B) {
+			A.subsmmA(B);
+			return std::move(A);
+		}
+		friend spmatrix operator-(const spmatrix& A, spmatrix&& B) {
+			B.subsmmB(A);
+			return std::move(B);
+		}
+		friend spmatrix operator-(spmatrix&& A, spmatrix&& B) {
+			A.subsmmA(B);
+			return std::move(A);
+		}
+
+		// --- A * B (matrix-matrix) ---
+		// Sparse matrix product cannot safely reuse either operand's storage
+		// (output pattern differs), so rvalue overloads just call matmul.
+		friend spmatrix operator*(const spmatrix& A, const spmatrix& B) {
+			return A.matmul(B);
+		}
+		friend spmatrix operator*(spmatrix&& A, const spmatrix& B) {
+			return A.matmul(B);
+		}
+		friend spmatrix operator*(const spmatrix& A, spmatrix&& B) {
+			return A.matmul(B);
+		}
+		friend spmatrix operator*(spmatrix&& A, spmatrix&& B) {
+			return A.matmul(B);
+		}
+
+		// --- scalar * A, A * scalar ---
+		friend spmatrix operator*(const _T& alpha, const spmatrix& A) {
+			spmatrix C = A;
+			C.mulsm(alpha);
+			return C;
+		}
+		friend spmatrix operator*(const _T& alpha, spmatrix&& A) {
+			A.mulsm(alpha);
+			return std::move(A);
+		}
+		friend spmatrix operator*(const spmatrix& A, const _T& alpha) {
+			spmatrix C = A;
+			C.mulsm(alpha);
+			return C;
+		}
+		friend spmatrix operator*(spmatrix&& A, const _T& alpha) {
+			A.mulsm(alpha);
+			return std::move(A);
+		}
+
+		// --- A / scalar ---
+		friend spmatrix operator/(const spmatrix& A, const _T& alpha) {
+			spmatrix C = A;
+			C.divms(alpha);
+			return C;
+		}
+		friend spmatrix operator/(spmatrix&& A, const _T& alpha) {
+			A.divms(alpha);
+			return std::move(A);
+		}
+
+		// --- unary - ---
+		friend spmatrix operator-(const spmatrix& A) {
+			spmatrix C = A;
+			C.minusm();
+			return C;
+		}
+		friend spmatrix operator-(spmatrix&& A) {
+			A.minusm();
+			return std::move(A);
+		}
+
+		// --- compound assignment ---
+		friend spmatrix& operator+=(spmatrix& A, const spmatrix& B) {
+			A.addmm(B);
+			return A;
+		}
+		friend spmatrix& operator-=(spmatrix& A, const spmatrix& B) {
+			A.subsmmA(B);
+			return A;
+		}
+		friend spmatrix& operator*=(spmatrix& A, const spmatrix& B) {
+			spmatrix C;
+			A.mulmm(B, C);
+			A = std::move(C);
+			return A;
+		}
+		friend spmatrix& operator*=(spmatrix& A, const _T& alpha) {
+			A.mulsm(alpha);
+			return A;
+		}
+		friend spmatrix& operator/=(spmatrix& A, const _T& alpha) {
+			A.divms(alpha);
+			return A;
 		}
 
 		// ---------------------------------------------------------------
@@ -451,6 +630,38 @@ namespace vcp {
 		}
 	};
 
+
+	// -----------------------------------------------------------------------
+	// MATLAB-like free functions: lss / lss_with_info
+	// MATLAB: x = A \ b  →  C++: x = lss(A, b)
+	// These delegate to A.solve() / A.solve_with_info(), which delegate to
+	// the policy methods policy_lss / policy_lss_with_info.
+	// Verified policy can override those methods for enclosure semantics.
+	// -----------------------------------------------------------------------
+
+	template <typename _T, class _P>
+	std::vector<_T> lss(const spmatrix<_T, _P>& A, const std::vector<_T>& b) {
+		return A.solve(b);
+	}
+
+	template <typename _T, class _P>
+	std::vector<_T> lss(const spmatrix<_T, _P>& A, const std::vector<_T>& b,
+	                    const linear_solve_options<_T>& opt) {
+		return A.solve(b, opt);
+	}
+
+	template <typename _T, class _P>
+	linear_solve_result<_T> lss_with_info(const spmatrix<_T, _P>& A,
+	                                      const std::vector<_T>& b) {
+		return A.solve_with_info(b);
+	}
+
+	template <typename _T, class _P>
+	linear_solve_result<_T> lss_with_info(const spmatrix<_T, _P>& A,
+	                                      const std::vector<_T>& b,
+	                                      const linear_solve_options<_T>& opt) {
+		return A.solve_with_info(b, opt);
+	}
 
 	template <typename _T, typename _Index = int> class spmatrix_builder {
 	public:
