@@ -21,6 +21,7 @@
 #include <vcp/tsparse/tsparse_lanczos.hpp>
 #include <vcp/tsparse/tsparse_arnoldi.hpp>
 #include <vcp/tsparse/tsparse_factorization.hpp>
+#include <vcp/tsparse/tsparse_preconditioner.hpp>
 #include <vcp/tsparse/tsparse_eigen_selection.hpp>
 #include <vcp/tsparse/tsparse_generalized_shift_invert.hpp>
 #include <vcp/tsparse/tsparse_b_inner_lanczos.hpp>
@@ -947,6 +948,169 @@ namespace vcp {
 			result.used_method = eig_method_to_string(options.method);
 			result.failure_reason = "non-diagonal generalized sparse eigs without shift-invert is not supported; use shift_invert_arnoldi, shift_invert_lanczos, or set use_shift=true with symmetric structure";
 			result.message = result.failure_reason;
+			set_result_counts(result, k);
+			return result;
+		}
+
+		// ------------------------------------------------------------------
+		// Phase 6: preconditioner overloads for eigs / eigs_with_info
+		// ------------------------------------------------------------------
+
+		template <class Preconditioner>
+		std::vector<_T> eigs(const std::size_t k, const eig_options_type& options,
+		                     const Preconditioner& M) const {
+			require_real_scalar("spmatrix::eigs(with preconditioner)");
+			eig_result<_T> result = eigs_with_info(k, options, M);
+			if (!result.converged)
+				vcp::throw_error<vcp::state_error>("spmatrix::eigs(with preconditioner): eigensolver did not converge");
+			if (result.returned_real_count < k)
+				vcp::throw_error<vcp::state_error>("spmatrix::eigs(with preconditioner): insufficient real eigenvalues returned");
+			return result.eigenvalues;
+		}
+
+		template <class Preconditioner>
+		eig_result<_T> eigs_with_info(const std::size_t k, const eig_options_type& options,
+		                              const Preconditioner& M) const {
+			require_real_scalar("spmatrix::eigs_with_info(with preconditioner)");
+			eig_options_type active = resolve_eigs_options(options);
+			validate_eigs_input(k, "spmatrix::eigs_with_info(with preconditioner)", active.method);
+			if (active.max_iter == 0 || active.tol <= scalar_real_type(0)) {
+				vcp::throw_error<vcp::invalid_argument>(
+					"spmatrix::eigs_with_info(with preconditioner): invalid iteration option");
+			}
+			const scalar_real_type sigma = active.shift;
+			const bool is_shift_invert =
+				(active.method == eig_solver_method::shift_invert_lanczos)
+				|| (active.method == eig_solver_method::shift_invert_arnoldi)
+				|| (active.use_shift && active.method == eig_solver_method::lanczos)
+				|| (active.use_shift && active.method == eig_solver_method::arnoldi);
+
+			if (!is_shift_invert) {
+				eig_result<_T> result;
+				result.requested_count = k;
+				result.converged = false;
+				result.status = "unsupported_preconditioner_for_method";
+				result.failure_reason =
+					"preconditioner overload is supported only for shift-invert methods"
+					" (shift_invert_lanczos, shift_invert_arnoldi, or use_shift=true);"
+					" for non-shift Lanczos/Arnoldi, pass no preconditioner";
+				result.message = result.failure_reason;
+				result.method = active.method;
+				result.used_method = eig_method_to_string(active.method);
+				result.used_shift_invert = false;
+				result.used_dense_fallback = false;
+				set_result_counts(result, k);
+				return result;
+			}
+
+			const bool use_lanczos =
+				(active.method == eig_solver_method::shift_invert_lanczos)
+				|| (active.use_shift && active.method == eig_solver_method::lanczos);
+
+			eig_result<_T> result;
+			if (use_lanczos)
+				result = shift_invert_lanczos_eigs_with_prec(k, active, sigma, M);
+			else
+				result = shift_invert_arnoldi_eigs_with_prec(k, active, sigma, M);
+			set_result_counts(result, k);
+			return result;
+		}
+
+		template <class Preconditioner>
+		std::vector<_T> eigs(const spmatrix& B, const std::size_t k,
+		                     const eig_options_type& options, const Preconditioner& M) const {
+			require_real_scalar("spmatrix::eigs(A,B,with preconditioner)");
+			eig_result<_T> result = eigs_with_info(B, k, options, M);
+			if (!result.converged)
+				vcp::throw_error<vcp::state_error>(
+					"spmatrix::eigs(A,B,with preconditioner): eigensolver did not converge");
+			const std::size_t n_actual = static_cast<std::size_t>(rowsize());
+			const std::size_t k_eff = (k < n_actual) ? k : n_actual;
+			if (result.returned_real_count < k_eff)
+				vcp::throw_error<vcp::state_error>(
+					"spmatrix::eigs(A,B,with preconditioner): insufficient real eigenvalues returned");
+			return result.eigenvalues;
+		}
+
+		template <class Preconditioner>
+		eig_result<_T> eigs_with_info(const spmatrix& B, const std::size_t k,
+		                              const eig_options_type& options,
+		                              const Preconditioner& M) const {
+			require_real_scalar("spmatrix::eigs_with_info(A,B,with preconditioner)");
+			validate_generalized_eig_input(B, "spmatrix::eigs_with_info(A,B,with preconditioner)");
+
+			const std::size_t n = static_cast<std::size_t>(rowsize());
+
+			if (k == 0) {
+				eig_result<_T> result;
+				result.requested_count = 0;
+				result.converged = true;
+				result.status = "converged";
+				result.message = "converged";
+				result.used_generalized_operator = true;
+				result.used_dense_fallback = false;
+				result.used_shift_invert = false;
+				result.method = options.method;
+				result.used_method = eig_method_to_string(options.method);
+				set_result_counts(result, 0);
+				return result;
+			}
+
+			if (n == 0) {
+				eig_result<_T> result;
+				result.requested_count = k;
+				result.converged = false;
+				result.status = "not_converged";
+				result.failure_reason = "matrix is empty (n == 0) but k > 0";
+				result.message = result.failure_reason;
+				result.used_generalized_operator = true;
+				set_result_counts(result, k);
+				return result;
+			}
+
+			const std::size_t k_eff = (k < n) ? k : n;
+
+			if (options.tol <= scalar_real_type(0)) {
+				vcp::throw_error<vcp::invalid_argument>(
+					"spmatrix::eigs_with_info(A,B,with preconditioner): tol must be positive");
+			}
+
+			// Check if shift-invert is requested
+			const bool wants_shift_invert =
+				(options.method == eig_solver_method::shift_invert_lanczos)
+				|| (options.method == eig_solver_method::shift_invert_arnoldi)
+				|| (options.use_shift && options.method == eig_solver_method::lanczos)
+				|| (options.use_shift && options.method == eig_solver_method::arnoldi);
+
+			if (!wants_shift_invert) {
+				// B-inner Lanczos path or other non-shift path:
+				// preconditioner is unsupported here.
+				eig_result<_T> result;
+				result.requested_count = k;
+				result.converged = false;
+				result.status = "unsupported_preconditioner_for_method";
+				result.failure_reason =
+					"preconditioner overload for generalized eigs is supported only"
+					" for shift-invert methods; B-inner Lanczos and non-shift paths"
+					" do not support external preconditioners in Phase 6";
+				result.message = result.failure_reason;
+				result.method = options.method;
+				result.used_method = eig_method_to_string(options.method);
+				result.used_generalized_operator = true;
+				result.used_shift_invert = false;
+				result.used_dense_fallback = false;
+				set_result_counts(result, k);
+				return result;
+			}
+
+			if (options.max_iter == 0) {
+				vcp::throw_error<vcp::invalid_argument>(
+					"spmatrix::eigs_with_info(A,B,with preconditioner): max_iter must be positive");
+			}
+
+			eig_result<_T> result =
+				generalized_shift_invert_arnoldi_eigs_with_prec(B, k_eff, options, M);
+			result.requested_count = k;
 			set_result_counts(result, k);
 			return result;
 		}
@@ -2093,6 +2257,626 @@ namespace vcp {
 				if (result.failure_reason.empty())
 					result.failure_reason = "B-inner Lanczos did not converge";
 				result.message = result.failure_reason;
+			}
+			set_result_counts(result, k);
+			return result;
+		}
+
+		// ------------------------------------------------------------------
+		// Phase 6: shift-invert Lanczos with user preconditioner
+		// ------------------------------------------------------------------
+		template <class Preconditioner>
+		eig_result<_T> shift_invert_lanczos_eigs_with_prec(
+		    const std::size_t k,
+		    const eig_options_type& options,
+		    const scalar_real_type& sigma,
+		    const Preconditioner& M) const
+		{
+			spmatrix A = this->as_csr();
+			const std::size_t n = static_cast<std::size_t>(rowsize());
+
+			// Build K = A - sigma I
+			spmatrix K_shifted = A;
+			for (std::size_t i = 0; i < n; i++) {
+				const _T cur = K_shifted.get(static_cast<index_type>(i),
+				                              static_cast<index_type>(i));
+				K_shifted.set(static_cast<index_type>(i), static_cast<index_type>(i),
+				              cur - _T(sigma));
+			}
+			K_shifted.finalize();
+			spmatrix K_csr = K_shifted.as_csr();
+
+			// Upfront validity check (SFINAE path for jacobi / ilu0)
+			if (!vcp::tsparse_prec_traits::get_valid(M)) {
+				eig_result<_T> result;
+				result.requested_count = k;
+				result.method = eig_solver_method::shift_invert_lanczos;
+				result.used_method = "shift_invert_lanczos+user_preconditioner";
+				result.used_shift_invert = true;
+				result.used_dense_fallback = false;
+				result.converged = false;
+				result.status = "preconditioner_failed";
+				result.factorization_diagnostics =
+					vcp::tsparse_prec_traits::get_diagnostics(M);
+				result.factorization_zero_pivots =
+					vcp::tsparse_prec_traits::get_zero_pivots(M);
+				result.failure_reason =
+					"preconditioner is invalid: " + result.factorization_diagnostics;
+				result.inner_failure_reason = result.failure_reason;
+				result.inner_failure_count = 1;
+				result.message = result.failure_reason;
+				set_result_counts(result, k);
+				return result;
+			}
+
+			const std::size_t inner_max = std::min(n, std::size_t(100));
+			const scalar_real_type inner_tol = options.tol / scalar_real_type(1000);
+			std::size_t linear_solve_count = 0;
+			std::size_t inner_failure_count = 0;
+			std::size_t inner_iteration_count = 0;
+			scalar_real_type inner_residual_norm = scalar_real_type(0);
+			std::string prec_failure_reason;
+
+			struct SIApply {
+				const spmatrix* K_ptr;
+				const Preconditioner* prec_ptr;
+				std::size_t imax;
+				scalar_real_type itol;
+				std::size_t* sc;
+				std::size_t* fc;
+				std::size_t* ic;
+				scalar_real_type* mr;
+				std::string* fm;
+
+				void operator()(const std::vector<_T>& x, std::vector<_T>& y) const {
+					const std::size_t nn = x.size();
+					struct AV {
+						const spmatrix* K;
+						void operator()(const std::vector<_T>& u,
+						                std::vector<_T>& v) const {
+							v = K->mul_vec(u);
+						}
+					} av_fn = { K_ptr };
+
+					bool pf = false;
+					std::string pm;
+					struct PV {
+						const Preconditioner* M;
+						bool* failed;
+						std::string* msg;
+						void operator()(const std::vector<_T>& r,
+						                std::vector<_T>& z) const {
+							if (*failed) { z = r; return; }
+							try {
+								M->apply(r, z);
+								if (z.size() != r.size()) {
+									*failed = true;
+									*msg = "preconditioner output size mismatch";
+									z = r;
+								}
+							} catch (const vcp::error& e) {
+								*failed = true;
+								*msg = std::string("preconditioner failed: ")
+								     + e.what();
+								z = r;
+							}
+						}
+					} pv_fn = { prec_ptr, &pf, &pm };
+
+					typedef vcp::tsparse_factorization::gmres_result<_T, AV, PV> GR;
+					GR gr = vcp::tsparse_factorization::gmres_solve<_T, AV, PV>(
+						av_fn, pv_fn, x,
+						imax / 10 + 1, itol, std::min(nn, imax));
+
+					(*sc)++;
+					(*ic) += gr.iterations;
+					if (gr.residual_norm > *mr) *mr = gr.residual_norm;
+					if (pf) {
+						(*fc)++;
+						if (fm->empty()) *fm = pm;
+					} else if (!gr.converged) {
+						(*fc)++;
+					}
+					y = gr.x;
+				}
+			} apply_si = { &K_csr, &M, inner_max, inner_tol,
+			               &linear_solve_count, &inner_failure_count,
+			               &inner_iteration_count, &inner_residual_norm,
+			               &prec_failure_reason };
+
+			const std::size_t sdim = (options.subspace_dim == 0)
+				? std::max(k + 5, std::min(n, std::size_t(30)))
+				: options.subspace_dim;
+			const std::size_t max_restarts_si =
+				(sdim > 0) ? (options.max_iter / sdim + k + 1) : options.max_iter;
+
+			typedef vcp::tsparse_lanczos::lanczos_result_package<_T, SIApply> LPkg;
+			LPkg pkg = vcp::tsparse_lanczos::lanczos_eigs_standard<_T, SIApply>(
+				n, k, sdim, max_restarts_si, options.tol,
+				options.random_seed, options.random_start,
+				eig_target::largest_magnitude, scalar_real_type(0),
+				options.compute_residual_history, apply_si);
+
+			for (std::size_t i = 0; i < pkg.eigenvalues.size(); i++) {
+				const scalar_real_type mu = tsparse_scalar::real_part(pkg.eigenvalues[i]);
+				if (tsparse_scalar::abs_value(mu) > scalar_real_type(0))
+					pkg.eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
+			}
+
+			eig_result<_T> result = lanczos_package_to_result(
+				pkg, k, eig_solver_method::shift_invert_lanczos);
+			result.used_method = "shift_invert_lanczos+user_preconditioner";
+			result.linear_solves = linear_solve_count;
+			result.inner_iterations = inner_iteration_count;
+			result.inner_failure_count = inner_failure_count;
+			result.inner_residual_norm = inner_residual_norm;
+			result.factorization_diagnostics =
+				vcp::tsparse_prec_traits::get_diagnostics(M);
+			result.factorization_zero_pivots =
+				vcp::tsparse_prec_traits::get_zero_pivots(M);
+			result.used_shift_invert = true;
+
+			if (inner_failure_count != 0) {
+				result.converged = false;
+				result.eigenvalues.clear();
+				result.eigenvectors.clear();
+				result.status = "inner_solve_failed";
+				result.failure_reason = prec_failure_reason.empty()
+					? "inner GMRES solve failed"
+					: prec_failure_reason;
+				result.inner_failure_reason = result.failure_reason;
+				result.message = result.failure_reason;
+			}
+			set_result_counts(result, k);
+			return result;
+		}
+
+		// ------------------------------------------------------------------
+		// Phase 6: shift-invert Arnoldi with user preconditioner
+		// ------------------------------------------------------------------
+		template <class Preconditioner>
+		eig_result<_T> shift_invert_arnoldi_eigs_with_prec(
+		    const std::size_t k,
+		    const eig_options_type& options,
+		    const scalar_real_type& sigma,
+		    const Preconditioner& M) const
+		{
+			spmatrix A = this->as_csr();
+			const std::size_t n = static_cast<std::size_t>(rowsize());
+
+			// Build K = A - sigma I
+			spmatrix K_shifted = A;
+			for (std::size_t i = 0; i < n; i++) {
+				const _T cur = K_shifted.get(static_cast<index_type>(i),
+				                              static_cast<index_type>(i));
+				K_shifted.set(static_cast<index_type>(i), static_cast<index_type>(i),
+				              cur - _T(sigma));
+			}
+			K_shifted.finalize();
+			spmatrix K_csr = K_shifted.as_csr();
+
+			// Upfront validity check
+			if (!vcp::tsparse_prec_traits::get_valid(M)) {
+				eig_result<_T> result;
+				result.requested_count = k;
+				result.method = eig_solver_method::shift_invert_arnoldi;
+				result.used_method = "shift_invert_arnoldi+user_preconditioner";
+				result.used_orthogonalization =
+					orthogonalization_to_string(options.orthogonalization);
+				result.used_shift_invert = true;
+				result.used_dense_fallback = false;
+				result.converged = false;
+				result.status = "preconditioner_failed";
+				result.factorization_diagnostics =
+					vcp::tsparse_prec_traits::get_diagnostics(M);
+				result.factorization_zero_pivots =
+					vcp::tsparse_prec_traits::get_zero_pivots(M);
+				result.failure_reason =
+					"preconditioner is invalid: " + result.factorization_diagnostics;
+				result.inner_failure_reason = result.failure_reason;
+				result.inner_failure_count = 1;
+				result.message = result.failure_reason;
+				set_result_counts(result, k);
+				return result;
+			}
+
+			const std::size_t inner_max = std::min(n, std::size_t(100));
+			const scalar_real_type inner_tol = options.tol / scalar_real_type(1000);
+			std::size_t linear_solve_count = 0;
+			std::size_t inner_failure_count = 0;
+			std::size_t inner_iteration_count = 0;
+			scalar_real_type inner_residual_norm = scalar_real_type(0);
+			std::string prec_failure_reason;
+
+			struct SIApply {
+				const spmatrix* K_ptr;
+				const Preconditioner* prec_ptr;
+				std::size_t imax;
+				scalar_real_type itol;
+				std::size_t* sc;
+				std::size_t* fc;
+				std::size_t* ic;
+				scalar_real_type* mr;
+				std::string* fm;
+
+				void operator()(const std::vector<_T>& x, std::vector<_T>& y) const {
+					const std::size_t nn = x.size();
+					struct AV {
+						const spmatrix* K;
+						void operator()(const std::vector<_T>& u,
+						                std::vector<_T>& v) const {
+							v = K->mul_vec(u);
+						}
+					} av_fn = { K_ptr };
+
+					bool pf = false;
+					std::string pm;
+					struct PV {
+						const Preconditioner* M;
+						bool* failed;
+						std::string* msg;
+						void operator()(const std::vector<_T>& r,
+						                std::vector<_T>& z) const {
+							if (*failed) { z = r; return; }
+							try {
+								M->apply(r, z);
+								if (z.size() != r.size()) {
+									*failed = true;
+									*msg = "preconditioner output size mismatch";
+									z = r;
+								}
+							} catch (const vcp::error& e) {
+								*failed = true;
+								*msg = std::string("preconditioner failed: ")
+								     + e.what();
+								z = r;
+							}
+						}
+					} pv_fn = { prec_ptr, &pf, &pm };
+
+					typedef vcp::tsparse_factorization::gmres_result<_T, AV, PV> GR;
+					GR gr = vcp::tsparse_factorization::gmres_solve<_T, AV, PV>(
+						av_fn, pv_fn, x,
+						imax / 10 + 1, itol, std::min(nn, imax));
+
+					(*sc)++;
+					(*ic) += gr.iterations;
+					if (gr.residual_norm > *mr) *mr = gr.residual_norm;
+					if (pf) {
+						(*fc)++;
+						if (fm->empty()) *fm = pm;
+					} else if (!gr.converged) {
+						(*fc)++;
+					}
+					y = gr.x;
+				}
+			} apply_si = { &K_csr, &M, inner_max, inner_tol,
+			               &linear_solve_count, &inner_failure_count,
+			               &inner_iteration_count, &inner_residual_norm,
+			               &prec_failure_reason };
+
+			const std::size_t sdim = (options.subspace_dim == 0)
+				? std::max(k + 5, std::min(n, std::size_t(30)))
+				: options.subspace_dim;
+			const vcp::tsparse_arnoldi::arnoldi_result_package<_T> pkg =
+				vcp::tsparse_arnoldi::arnoldi_eigs_standard<_T>(
+					n, k, sdim,
+					options.max_iter + options.max_iter * k,
+					options.tol, options.orthogonalization,
+					true, true,
+					options.random_seed, options.random_start,
+					eig_target::largest_magnitude, scalar_real_type(0),
+					options.compute_residual_history, apply_si);
+
+			eig_result<_T> result;
+			result.requested_count = k;
+			result.method = eig_solver_method::shift_invert_arnoldi;
+			result.used_method = "shift_invert_arnoldi+user_preconditioner";
+			result.used_orthogonalization =
+				orthogonalization_to_string(options.orthogonalization);
+			result.iterations = pkg.iterations;
+			result.matrix_vector_products = pkg.mv_count;
+			result.linear_solves = linear_solve_count;
+			result.inner_iterations = inner_iteration_count;
+			result.inner_failure_count = inner_failure_count;
+			result.inner_residual_norm = inner_residual_norm;
+			result.factorization_diagnostics =
+				vcp::tsparse_prec_traits::get_diagnostics(M);
+			result.factorization_zero_pivots =
+				vcp::tsparse_prec_traits::get_zero_pivots(M);
+			result.used_subspace_dim = sdim;
+			result.breakdown_reason = pkg.breakdown_reason;
+			result.failure_reason = pkg.failure_reason;
+			result.converged_count = pkg.converged_count;
+			result.residual_history_absolute = pkg.history_abs;
+			result.residual_history_relative = pkg.history_rel;
+			result.used_shift_invert = true;
+			result.used_dense_fallback = false;
+			result.eigenvalues = pkg.eigenvalues;
+			for (std::size_t i = 0; i < result.eigenvalues.size(); i++) {
+				const scalar_real_type mu =
+					tsparse_scalar::real_part(result.eigenvalues[i]);
+				if (tsparse_scalar::abs_value(mu) > scalar_real_type(0))
+					result.eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
+			}
+			result.eigenvectors = pkg.eigenvectors;
+
+			if (inner_failure_count != 0) {
+				result.converged = false;
+				result.eigenvalues.clear();
+				result.eigenvectors.clear();
+				result.status = "inner_solve_failed";
+				result.failure_reason = prec_failure_reason.empty()
+					? "inner GMRES solve failed"
+					: prec_failure_reason;
+				result.inner_failure_reason = result.failure_reason;
+				result.message = result.failure_reason;
+				set_result_counts(result, k);
+				return result;
+			}
+
+			if (!result.eigenvectors.empty()) {
+				result.residuals_absolute =
+					eigenpair_residuals(A, result.eigenvalues, result.eigenvectors);
+				result.residuals_relative =
+					eigenpair_relative_residuals(A, result.eigenvalues, result.eigenvectors);
+			}
+			result.converged = pkg.converged
+				&& result.eigenvalues.size() >= k;
+			if (result.converged) {
+				result.status = "converged";
+				result.message = "converged";
+			} else {
+				result.status = "not_converged";
+				if (result.failure_reason.empty())
+					result.failure_reason = "Arnoldi shift-invert did not converge";
+				result.message = result.failure_reason;
+			}
+			set_result_counts(result, k);
+			return result;
+		}
+
+		// ------------------------------------------------------------------
+		// Phase 6: generalized shift-invert Arnoldi with user preconditioner
+		// ------------------------------------------------------------------
+		template <class Preconditioner>
+		eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec(
+		    const spmatrix& B,
+		    const std::size_t k,
+		    const eig_options_type& options,
+		    const Preconditioner& M) const
+		{
+			const std::size_t n = static_cast<std::size_t>(rowsize());
+			const scalar_real_type sigma = options.shift;
+
+			eig_solver_method actual_method = options.method;
+			bool promoted_from_lanczos = false;
+			if (options.method == eig_solver_method::shift_invert_lanczos
+			    || (options.use_shift
+			        && options.method == eig_solver_method::lanczos)) {
+				actual_method = eig_solver_method::shift_invert_arnoldi;
+				promoted_from_lanczos = true;
+			} else if (options.use_shift
+			           && options.method == eig_solver_method::arnoldi) {
+				actual_method = eig_solver_method::shift_invert_arnoldi;
+			}
+
+			const std::string base_name = promoted_from_lanczos
+				? "shift_invert_arnoldi(promoted_from_lanczos)"
+				: "shift_invert_arnoldi";
+			const std::string used_method_str = base_name + "+user_preconditioner";
+
+			// Upfront validity check
+			if (!vcp::tsparse_prec_traits::get_valid(M)) {
+				eig_result<_T> result;
+				result.requested_count = k;
+				result.method = actual_method;
+				result.used_method = used_method_str;
+				result.used_shift_invert = true;
+				result.used_generalized_operator = true;
+				result.used_dense_fallback = false;
+				result.converged = false;
+				result.status = "preconditioner_failed";
+				result.factorization_diagnostics =
+					vcp::tsparse_prec_traits::get_diagnostics(M);
+				result.factorization_zero_pivots =
+					vcp::tsparse_prec_traits::get_zero_pivots(M);
+				result.failure_reason =
+					"preconditioner is invalid: " + result.factorization_diagnostics;
+				result.inner_failure_reason = result.failure_reason;
+				result.inner_failure_count = 1;
+				result.message = result.failure_reason;
+				set_result_counts(result, k);
+				return result;
+			}
+
+			// Build K = A - sigma * B
+			spmatrix K = vcp::tsparse::subtract_scaled_sparse(*this, B, _T(sigma));
+			spmatrix K_csr = K.as_csr();
+			spmatrix B_csr = B.as_csr();
+
+			const std::size_t inner_max = std::min(n, std::size_t(100));
+			const scalar_real_type inner_tol = options.tol / scalar_real_type(1000);
+			const std::size_t inner_restart = std::min(n, std::size_t(30));
+			std::size_t linear_solve_count = 0;
+			std::size_t inner_failure_count = 0;
+			std::size_t inner_iteration_count = 0;
+			scalar_real_type inner_residual_norm = scalar_real_type(0);
+			std::string prec_failure_reason;
+
+			struct GSIApply {
+				const spmatrix* K_ptr;
+				const spmatrix* B_ptr;
+				const Preconditioner* prec_ptr;
+				std::size_t imax;
+				scalar_real_type itol;
+				std::size_t irestart;
+				std::size_t* sc;
+				std::size_t* fc;
+				std::size_t* ic;
+				scalar_real_type* mr;
+				std::string* fm;
+
+				void operator()(const std::vector<_T>& x, std::vector<_T>& y) const {
+					const std::size_t nn = x.size();
+					std::vector<_T> rhs = B_ptr->mul_vec(x);
+
+					struct AV {
+						const spmatrix* K;
+						void operator()(const std::vector<_T>& u,
+						                std::vector<_T>& v) const {
+							v = K->mul_vec(u);
+						}
+					} av_fn = { K_ptr };
+
+					bool pf = false;
+					std::string pm;
+					struct PV {
+						const Preconditioner* M;
+						bool* failed;
+						std::string* msg;
+						void operator()(const std::vector<_T>& r,
+						                std::vector<_T>& z) const {
+							if (*failed) { z = r; return; }
+							try {
+								M->apply(r, z);
+								if (z.size() != r.size()) {
+									*failed = true;
+									*msg = "preconditioner output size mismatch";
+									z = r;
+								}
+							} catch (const vcp::error& e) {
+								*failed = true;
+								*msg = std::string("preconditioner failed: ")
+								     + e.what();
+								z = r;
+							}
+						}
+					} pv_fn = { prec_ptr, &pf, &pm };
+
+					const std::size_t act_restart =
+						(irestart == 0) ? std::min(nn, std::size_t(30)) : irestart;
+					const std::size_t act_max =
+						(imax == 0) ? (act_restart + 1) : imax;
+
+					typedef vcp::tsparse_factorization::gmres_result<_T, AV, PV> GR;
+					GR gr = vcp::tsparse_factorization::gmres_solve<_T, AV, PV>(
+						av_fn, pv_fn, rhs, act_max, itol, act_restart);
+
+					(*sc)++;
+					(*ic) += gr.iterations;
+					if (gr.residual_norm > *mr) *mr = gr.residual_norm;
+					if (pf) {
+						(*fc)++;
+						if (fm->empty()) *fm = pm;
+					} else if (!gr.converged) {
+						(*fc)++;
+					}
+					y = gr.x;
+				}
+			} apply_gsi = { &K_csr, &B_csr, &M,
+			                inner_max, inner_tol, inner_restart,
+			                &linear_solve_count, &inner_failure_count,
+			                &inner_iteration_count, &inner_residual_norm,
+			                &prec_failure_reason };
+
+			const std::size_t sdim = (options.subspace_dim == 0)
+				? std::max(k + 5, std::min(n, std::size_t(30)))
+				: options.subspace_dim;
+			const std::size_t max_restarts = options.max_iter + options.max_iter * k;
+
+			const vcp::tsparse_arnoldi::arnoldi_result_package<_T> pkg =
+				vcp::tsparse_arnoldi::arnoldi_eigs_standard<_T>(
+					n, k, sdim, max_restarts,
+					options.tol, options.orthogonalization,
+					true, true,
+					options.random_seed, options.random_start,
+					eig_target::largest_magnitude, scalar_real_type(0),
+					options.compute_residual_history, apply_gsi);
+
+			std::vector<_T> eigenvalues = pkg.eigenvalues;
+			for (std::size_t i = 0; i < eigenvalues.size(); i++) {
+				const scalar_real_type mu = tsparse_scalar::real_part(eigenvalues[i]);
+				if (tsparse_scalar::abs_value(mu) > scalar_real_type(0))
+					eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
+			}
+
+			eig_result<_T> result;
+			result.requested_count = k;
+			result.method = actual_method;
+			result.used_method = used_method_str;
+			result.used_orthogonalization =
+				orthogonalization_to_string(options.orthogonalization);
+			result.iterations = pkg.iterations;
+			result.matrix_vector_products = pkg.mv_count;
+			result.linear_solves = linear_solve_count;
+			result.inner_iterations = inner_iteration_count;
+			result.inner_failure_count = inner_failure_count;
+			result.inner_residual_norm = inner_residual_norm;
+			result.factorization_diagnostics =
+				vcp::tsparse_prec_traits::get_diagnostics(M);
+			result.factorization_zero_pivots =
+				vcp::tsparse_prec_traits::get_zero_pivots(M);
+			result.used_subspace_dim = sdim;
+			result.breakdown_reason = pkg.breakdown_reason;
+			result.failure_reason = pkg.failure_reason;
+			result.converged_count = pkg.converged_count;
+			result.residual_history_absolute = pkg.history_abs;
+			result.residual_history_relative = pkg.history_rel;
+			result.used_shift_invert = true;
+			result.used_generalized_operator = true;
+			result.used_dense_fallback = false;
+			result.eigenvalues = eigenvalues;
+			result.eigenvectors = pkg.eigenvectors;
+
+			if (inner_failure_count != 0) {
+				result.converged = false;
+				result.eigenvalues.clear();
+				result.eigenvectors.clear();
+				result.status = "inner_solve_failed";
+				result.failure_reason = prec_failure_reason.empty()
+					? "inner GMRES solve failed in generalized shift-invert"
+					  " with user preconditioner"
+					: prec_failure_reason;
+				result.inner_failure_reason = result.failure_reason;
+				result.message = result.failure_reason;
+				set_result_counts(result, k);
+				return result;
+			}
+
+			if (!result.eigenvectors.empty()) {
+				result.residuals_absolute = generalized_eigenpair_residuals(
+					*this, B, result.eigenvalues, result.eigenvectors);
+				result.residuals_relative = generalized_eigenpair_relative_residuals(
+					*this, B, result.eigenvalues, result.eigenvectors);
+				const scalar_real_type res_val =
+					max_generalized_eigenpair_residual_value(
+						*this, B, result.eigenvalues, result.eigenvectors);
+				result.residual_norm_absolute = res_val;
+			}
+
+			for (std::size_t i = 0; i < pkg.complex_eigenvalues.size(); i++) {
+				result.complex_eigenvalues.push_back(
+					typename eig_result<_T>::eigenvalue_type(
+						pkg.complex_eigenvalues[i].first,
+						pkg.complex_eigenvalues[i].second));
+			}
+
+			const bool has_complex = pkg.has_complex;
+			const bool inner_ok = (inner_failure_count == 0);
+			result.converged = pkg.converged && !has_complex
+			                   && (result.eigenvalues.size() >= k) && inner_ok;
+
+			if (has_complex) {
+				result.status = "complex_ritz_values";
+				result.message = "complex Ritz values detected";
+				if (result.failure_reason.empty())
+					result.failure_reason = "complex Ritz values in requested subset";
+			} else {
+				set_eig_diagnostics(result, actual_method, sdim,
+					result.matrix_vector_products,
+					result.breakdown_reason, result.failure_reason);
+				result.used_method = used_method_str;
 			}
 			set_result_counts(result, k);
 			return result;
