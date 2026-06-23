@@ -43,7 +43,8 @@ SparseMatrix subtract_scaled_sparse(
 
     SparseMatrix Ac = A.as_csr();
     SparseMatrix Bc = B.as_csr();
-    SparseMatrix C(Ac.rowsize(), Ac.columnsize());
+    SparseMatrix C;
+    C.resize(Ac.rowsize(), Ac.columnsize());
     C.reserve(Ac.nnz() + Bc.nnz());
 
     // C = 1*A + (-sigma)*B  via  csr_csr_linear_combination

@@ -9,12 +9,15 @@
 #define VCP_SPMATS_HPP
 
 #include <algorithm>
+#include <cstddef>
 #include <limits>
 #include <type_traits>
 #include <vector>
 
 #include <vcp/error.hpp>
 #include <vcp/tsparse/tsparse.hpp>
+#include <vcp/spmats_eigs_types.hpp>
+#include <vcp/spmats_policy_traits.hpp>
 
 namespace vcp {
 
@@ -508,7 +511,147 @@ namespace vcp {
 				}
 			}
 		}
+		// ------------------------------------------------------------------
+		// Symmetry check (used by eigs dispatch and lss)
+		// ------------------------------------------------------------------
+	public:
+		typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+
+		bool is_symmetric() const {
+			return is_symmetric(vcp::tsparse_scalar::decimal_power_negative<scalar_real_type>(12));
+		}
+
+		bool is_symmetric(const scalar_real_type& tol) const {
+			if (tol <= scalar_real_type(0))
+				vcp::throw_error<vcp::invalid_argument>("spmats::is_symmetric: tol must be positive");
+			if (row != column) return false;
+			spmats A = this->as_csr();
+			const std::vector<_Index>& outer = A.outer;
+			const std::vector<_Index>& inner = A.inner;
+			const std::vector<_T>& val = A.value;
+			for (_Index i = 0; i < A.row; i++) {
+				for (_Index p = outer[static_cast<std::size_t>(i)];
+				     p < outer[static_cast<std::size_t>(i + 1)]; p++) {
+					const _Index j = inner[static_cast<std::size_t>(p)];
+					if (i == j) continue;
+					const _Index first = outer[static_cast<std::size_t>(j)];
+					const _Index last = outer[static_cast<std::size_t>(j + 1)];
+					const typename std::vector<_Index>::const_iterator begin = inner.begin() + first;
+					const typename std::vector<_Index>::const_iterator end = inner.begin() + last;
+					typename std::vector<_Index>::const_iterator it = std::lower_bound(begin, end, i);
+					_T mirrored = _T(0);
+					if (it != end && *it == i)
+						mirrored = val[static_cast<std::size_t>(it - inner.begin())];
+					const scalar_real_type diff = vcp::tsparse_scalar::abs_value(
+						val[static_cast<std::size_t>(p)] - mirrored);
+					if (diff > tol) return false;
+				}
+			}
+			return true;
+		}
+
+		// ------------------------------------------------------------------
+		// Private helpers for policy methods
+		// ------------------------------------------------------------------
+	private:
+		// solve_* private helpers (called from policy_lss_with_info)
+		linear_solve_result<_T> policy_solve_jacobi_with_info_(
+			const spmats<_T,_Index>& A, const std::vector<_T>& b,
+			std::size_t max_iter, const scalar_real_type& tol, bool use_relative) const;
+		linear_solve_result<_T> policy_solve_gauss_seidel_with_info_(
+			const spmats<_T,_Index>& A, const std::vector<_T>& b,
+			std::size_t max_iter, const scalar_real_type& tol, bool use_relative) const;
+		linear_solve_result<_T> policy_solve_cg_with_info_(
+			const spmats<_T,_Index>& A, const std::vector<_T>& b,
+			std::size_t max_iter, const scalar_real_type& tol,
+			bool check_symmetric, preconditioner_type prec, bool use_relative) const;
+		linear_solve_result<_T> policy_solve_bicgstab_with_info_(
+			const spmats<_T,_Index>& A, const std::vector<_T>& b,
+			std::size_t max_iter, const scalar_real_type& tol,
+			bool use_relative, preconditioner_type prec) const;
+		linear_solve_result<_T> policy_solve_gmres_with_info_(
+			const spmats<_T,_Index>& A, const std::vector<_T>& b,
+			std::size_t max_iter, const scalar_real_type& tol,
+			std::size_t restart, bool use_relative, preconditioner_type prec) const;
+
+	public:
+		// ------------------------------------------------------------------
+		// Policy methods: arithmetic
+		// ------------------------------------------------------------------
+		spmats<_T,_Index> policy_add(const spmats<_T,_Index>& A, const spmats<_T,_Index>& B) const;
+		spmats<_T,_Index> policy_sub(const spmats<_T,_Index>& A, const spmats<_T,_Index>& B) const;
+		spmats<_T,_Index> policy_mul(const spmats<_T,_Index>& A, const spmats<_T,_Index>& B) const;
+		std::vector<_T> policy_mul_vec(const spmats<_T,_Index>& A, const std::vector<_T>& x) const;
+		std::vector<_T> policy_left_mul_vec(const std::vector<_T>& x, const spmats<_T,_Index>& A) const;
+		spmats<_T,_Index> policy_scalar_mul(const spmats<_T,_Index>& A, const _T& alpha) const;
+		spmats<_T,_Index> policy_neg(const spmats<_T,_Index>& A) const;
+
+		// ------------------------------------------------------------------
+		// Policy methods: linear system solve
+		// ------------------------------------------------------------------
+		linear_solve_result<_T> policy_lss_with_info(
+			const spmats<_T,_Index>& A, const std::vector<_T>& b,
+			const linear_solve_options<_T>& opt) const;
+		std::vector<_T> policy_lss(
+			const spmats<_T,_Index>& A, const std::vector<_T>& b,
+			const linear_solve_options<_T>& opt) const;
+
+		// ------------------------------------------------------------------
+		// Policy methods: eigenvalue _with_info (non-throwing, definitions in spmats_eigs.hpp)
+		// ------------------------------------------------------------------
+		eig_result<_T> policy_eigs_with_info(
+			const spmats<_T,_Index>& A, std::size_t k,
+			const eig_options<_T>& opt) const;
+
+		template <class Prec>
+		eig_result<_T> policy_eigs_with_info(
+			const spmats<_T,_Index>& A, std::size_t k,
+			const eig_options<_T>& opt, const Prec& M) const;
+
+		eig_result<_T> policy_generalized_eigs_with_info(
+			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			std::size_t k, const eig_options<_T>& opt) const;
+
+		template <class Prec>
+		eig_result<_T> policy_generalized_eigs_with_info(
+			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			std::size_t k, const eig_options<_T>& opt, const Prec& M) const;
+
+		// ------------------------------------------------------------------
+		// Policy methods: eigenvalue strict (throwing on failure)
+		// These own all convergence/count checking; spmatrix.hpp does none.
+		// ------------------------------------------------------------------
+		eig_result<_T> policy_eig(
+			const spmats<_T,_Index>& A,
+			const eig_options<_T>& opt) const;
+
+		std::vector<_T> policy_eigs(
+			const spmats<_T,_Index>& A, std::size_t k,
+			const eig_options<_T>& opt) const;
+
+		template <class Prec>
+		std::vector<_T> policy_eigs(
+			const spmats<_T,_Index>& A, std::size_t k,
+			const eig_options<_T>& opt, const Prec& M) const;
+
+		eig_result<_T> policy_generalized_eig(
+			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			std::size_t k, const eig_options<_T>& opt) const;
+
+		std::vector<_T> policy_generalized_eigs(
+			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			std::size_t k, const eig_options<_T>& opt) const;
+
+		template <class Prec>
+		std::vector<_T> policy_generalized_eigs(
+			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			std::size_t k, const eig_options<_T>& opt, const Prec& M) const;
 	};
 }
+
+// Include policy method implementations (out-of-line definitions)
+#include <vcp/spmats_product.hpp>
+#include <vcp/spmats_lss.hpp>
+#include <vcp/spmats_eigs.hpp>
 
 #endif

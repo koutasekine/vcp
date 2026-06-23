@@ -1,0 +1,209 @@
+// VCP Library
+// http ://verified.computation.jp
+//
+// VCP Library is licensed under the BSD 3 - clause "New" or "Revised" License
+
+#pragma once
+
+#ifndef VCP_SPMATS_EIGS_TYPES_HPP
+#define VCP_SPMATS_EIGS_TYPES_HPP
+
+#include <complex>
+#include <limits>
+#include <string>
+#include <type_traits>
+#include <vector>
+
+#include <vcp/tsparse/tsparse_scalar.hpp>
+#include <vcp/tsparse/tsparse_eigs.hpp>
+#include <vcp/tsparse/tsparse_solvers.hpp>
+
+namespace vcp {
+
+	// -----------------------------------------------------------------------
+	// Type traits for scalar classification
+	// -----------------------------------------------------------------------
+
+	template <typename T> struct spmatrix_is_complex : vcp::tsparse_scalar::is_complex<T> {};
+
+	template <typename T> struct spmatrix_real_type {
+		typedef typename vcp::tsparse_scalar::real_type<T>::type type;
+	};
+	template <typename T> struct spmatrix_real_type<std::complex<T> > {
+		typedef typename vcp::tsparse_scalar::real_type<std::complex<T> >::type type;
+	};
+
+	template <typename T> struct eig_value_traits {
+		typedef T real_type;
+		typedef std::complex<T> complex_type;
+	};
+
+	template <typename T> struct eig_value_traits<std::complex<T> > {
+		typedef T real_type;
+		typedef std::complex<T> complex_type;
+	};
+
+	// -----------------------------------------------------------------------
+	// Linear solver method / preconditioner type
+	// -----------------------------------------------------------------------
+
+	enum class linear_solver_method {
+		jacobi,
+		gauss_seidel,
+		conjugate_gradient,
+		bicgstab,
+		gmres
+	};
+
+	enum class preconditioner_type {
+		none,
+		jacobi
+	};
+
+	// eig_method, eigs_target, generalized_eig_method, matrix_structure_hint,
+	// orthogonalization_method, eig_solver_method, eig_target
+	// are all defined in <vcp/tsparse/tsparse_eigs.hpp> (included above).
+
+	// -----------------------------------------------------------------------
+	// linear_solve_options<T>
+	// -----------------------------------------------------------------------
+
+	template <typename T>
+	struct linear_solve_options {
+		typedef typename vcp::tsparse_scalar::real_type<T>::type real_type;
+		linear_solver_method method;
+		std::size_t max_iter;
+		real_type tol;
+		bool check_symmetric;
+		bool use_relative_residual;
+		std::size_t restart;
+		preconditioner_type preconditioner;
+
+		linear_solve_options()
+			: method(linear_solver_method::conjugate_gradient), max_iter(1000),
+			  tol(vcp::tsparse_scalar::decimal_power_negative<real_type>(12)),
+			  check_symmetric(true), use_relative_residual(true), restart(30),
+			  preconditioner(preconditioner_type::none) {}
+	};
+
+	// -----------------------------------------------------------------------
+	// eig_options<T>
+	// -----------------------------------------------------------------------
+
+	template <typename T>
+	struct eig_options {
+		typedef typename vcp::tsparse_scalar::real_type<T>::type real_type;
+		eig_solver_method method;
+		matrix_structure_hint structure;
+		eig_target target;
+		real_type tol;
+		real_type shift;
+		bool use_shift;
+		std::size_t max_iter;
+		std::size_t subspace_dim;
+		bool allow_dense_conversion;
+		std::size_t max_dense_size;
+		orthogonalization_method orthogonalization;
+		unsigned int random_seed;
+		bool random_start;
+		bool compute_residual_history;
+
+		eig_options()
+			: method(eig_solver_method::lanczos),
+			  structure(matrix_structure_hint::auto_detect),
+			  target(eig_target::smallest_algebraic),
+			  tol(vcp::tsparse_scalar::decimal_power_negative<real_type>(12)),
+			  shift(real_type(0)), use_shift(false),
+			  max_iter(1000), subspace_dim(0),
+			  allow_dense_conversion(true), max_dense_size(1000000),
+			  orthogonalization(orthogonalization_method::modified_gram_schmidt),
+			  random_seed(0), random_start(false),
+			  compute_residual_history(false) {}
+	};
+
+	// -----------------------------------------------------------------------
+	// linear_solve_result<T>
+	// -----------------------------------------------------------------------
+
+	template <class T> struct linear_solve_result {
+		typedef typename vcp::tsparse_scalar::real_type<T>::type real_type;
+		std::vector<T> x;
+		std::vector<T> solution;
+		bool converged;
+		std::size_t iterations;
+		real_type residual_norm;
+		real_type absolute_residual_norm;
+		real_type relative_residual_norm;
+		real_type initial_residual_norm;
+		linear_solver_method method;
+
+		linear_solve_result()
+			: converged(false), iterations(0), residual_norm((std::numeric_limits<real_type>::infinity)()),
+			  absolute_residual_norm((std::numeric_limits<real_type>::infinity)()),
+			  relative_residual_norm((std::numeric_limits<real_type>::infinity)()),
+			  initial_residual_norm(real_type(0)), method(linear_solver_method::conjugate_gradient) {}
+	};
+
+	// -----------------------------------------------------------------------
+	// eig_result<T>
+	// -----------------------------------------------------------------------
+
+	template <class T> struct eig_result {
+		typedef typename vcp::tsparse_scalar::real_type<T>::type real_type;
+		typedef typename eig_value_traits<T>::complex_type eigenvalue_type;
+		std::vector<T> eigenvalues;
+		std::vector<eigenvalue_type> complex_eigenvalues;
+		std::vector<std::vector<T> > eigenvectors;
+		bool converged;
+		std::size_t requested_count;
+		std::size_t returned_count;
+		std::size_t returned_real_count;
+		std::size_t returned_complex_count;
+		std::size_t converged_count;
+		std::size_t iterations;
+		std::size_t matrix_vector_products;
+		std::size_t linear_solves;
+		std::vector<real_type> residuals_absolute;
+		std::vector<real_type> residuals_relative;
+		real_type residual_norm_absolute;
+		real_type residual_norm_relative;
+		std::vector<real_type> residual_history_absolute;
+		std::vector<real_type> residual_history_relative;
+		eig_solver_method method;             // eig_method (backward compat) field
+		std::string status;
+		std::string message;
+		std::string failure_reason;
+		std::string breakdown_reason;
+		std::string used_method;              // string version (changed from eig_method)
+		std::string used_orthogonalization;
+		bool used_dense_fallback;
+		bool used_shift_invert;
+		bool used_generalized_operator;
+		std::size_t used_subspace_dim;
+		std::size_t inner_iterations;
+		std::size_t inner_failure_count;
+		real_type inner_residual_norm;
+		std::string inner_failure_reason;
+		std::string factorization_diagnostics;
+		std::size_t factorization_zero_pivots;
+
+		eig_result()
+			: eigenvalues(), complex_eigenvalues(), eigenvectors(),
+			  converged(false), requested_count(0), returned_count(0),
+			  returned_real_count(0), returned_complex_count(0), converged_count(0),
+			  iterations(0), matrix_vector_products(0), linear_solves(0),
+			  residuals_absolute(), residuals_relative(),
+			  residual_norm_absolute((std::numeric_limits<real_type>::infinity)()),
+			  residual_norm_relative((std::numeric_limits<real_type>::infinity)()),
+			  residual_history_absolute(), residual_history_relative(),
+			  method(eig_solver_method::lanczos), status(), message(), failure_reason(),
+			  breakdown_reason(), used_method(), used_orthogonalization(),
+			  used_dense_fallback(false), used_shift_invert(false), used_generalized_operator(false),
+			  used_subspace_dim(0), inner_iterations(0), inner_failure_count(0),
+			  inner_residual_norm(real_type(0)), inner_failure_reason(),
+			  factorization_diagnostics(), factorization_zero_pivots(0) {}
+	};
+
+} // namespace vcp
+
+#endif // VCP_SPMATS_EIGS_TYPES_HPP
