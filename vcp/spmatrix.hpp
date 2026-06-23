@@ -23,6 +23,7 @@
 #include <vcp/tsparse/tsparse_factorization.hpp>
 #include <vcp/tsparse/tsparse_eigen_selection.hpp>
 #include <vcp/tsparse/tsparse_generalized_shift_invert.hpp>
+#include <vcp/tsparse/tsparse_b_inner_lanczos.hpp>
 
 namespace vcp {
 
@@ -840,22 +841,72 @@ namespace vcp {
 			require_real_scalar("spmatrix::eigs(A,B)");
 			eig_result<_T> result = eigs_with_info(B, k, options);
 			if (!result.converged) vcp::throw_error<vcp::state_error>("spmatrix::eigs(A,B): eigensolver did not converge");
-			if (result.returned_real_count < k) vcp::throw_error<vcp::state_error>("spmatrix::eigs(A,B): insufficient real eigenvalues returned");
+			// For k > n, only n eigenvalues can be returned; check against min(k, n).
+			const std::size_t n_actual = static_cast<std::size_t>(rowsize());
+			const std::size_t k_eff    = (k < n_actual) ? k : n_actual;
+			if (result.returned_real_count < k_eff)
+				vcp::throw_error<vcp::state_error>("spmatrix::eigs(A,B): insufficient real eigenvalues returned");
 			return result.eigenvalues;
 		}
 
 		eig_result<_T> eigs_with_info(const spmatrix& B, const std::size_t k, const eig_options_type& options = eig_options_type()) const {
 			require_real_scalar("spmatrix::eigs(A,B)");
 			validate_generalized_eig_input(B, "spmatrix::eigs(A,B)");
-			if (k == 0 || k > static_cast<std::size_t>(rowsize())) {
-				vcp::throw_error<vcp::invalid_argument>("spmatrix::eigs(A,B): invalid k");
+
+			const std::size_t n = static_cast<std::size_t>(rowsize());
+
+			// k == 0: return empty converged result (no throw)
+			if (k == 0) {
+				eig_result<_T> result;
+				result.requested_count = 0;
+				result.converged = true;
+				result.status = "converged";
+				result.message = "converged";
+				result.used_generalized_operator = true;
+				result.used_dense_fallback = false;
+				result.used_shift_invert = false;
+				result.method = options.method;
+				if (options.method == eig_solver_method::lanczos
+				    && options.structure == matrix_structure_hint::symmetric) {
+					result.used_method = "b_inner_lanczos";
+				} else {
+					result.used_method = eig_method_to_string(options.method);
+				}
+				set_result_counts(result, 0);
+				return result;
 			}
-			if (options.max_iter == 0 || options.tol <= scalar_real_type(0)) {
-				vcp::throw_error<vcp::invalid_argument>("spmatrix::eigs(A,B): invalid iteration option");
+
+			// n == 0 with k > 0: diagnostic failure
+			if (n == 0) {
+				eig_result<_T> result;
+				result.requested_count = k;
+				result.converged = false;
+				result.status = "not_converged";
+				result.failure_reason = "matrix is empty (n == 0) but k > 0";
+				result.message = result.failure_reason;
+				result.used_generalized_operator = true;
+				set_result_counts(result, k);
+				return result;
 			}
+
+			// k > n: clamp internally; requested_count keeps original k
+			const std::size_t k_eff = (k < n) ? k : n;
+
+			// tol must be positive (shared across all paths)
+			if (options.tol <= scalar_real_type(0)) {
+				vcp::throw_error<vcp::invalid_argument>("spmatrix::eigs(A,B): tol must be positive");
+			}
+
 			if (is_diagonal_matrix(*this) && is_diagonal_matrix(B)) {
-				return generalized_diagonal_eigs(B, k, options);
+				if (options.max_iter == 0) {
+					vcp::throw_error<vcp::invalid_argument>("spmatrix::eigs(A,B): max_iter must be positive");
+				}
+				eig_result<_T> result = generalized_diagonal_eigs(B, k_eff, options);
+				result.requested_count = k;
+				set_result_counts(result, k);
+				return result;
 			}
+
 			// Non-diagonal generalized: check if shift-invert was requested
 			const bool wants_shift_invert =
 				(options.method == eig_solver_method::shift_invert_lanczos)
@@ -863,7 +914,28 @@ namespace vcp {
 				|| (options.use_shift && options.method == eig_solver_method::lanczos)
 				|| (options.use_shift && options.method == eig_solver_method::arnoldi);
 			if (wants_shift_invert) {
-				return generalized_shift_invert_arnoldi_eigs(B, k, options);
+				if (options.max_iter == 0) {
+					vcp::throw_error<vcp::invalid_argument>("spmatrix::eigs(A,B): max_iter must be positive");
+				}
+				eig_result<_T> result = generalized_shift_invert_arnoldi_eigs(B, k_eff, options);
+				result.requested_count = k;
+				set_result_counts(result, k);
+				return result;
+			}
+
+			// Phase 5: B-inner Lanczos for symmetric A / SPD B (no shift-invert)
+			// max_iter == 0 is allowed here and handled as mv_budget=0 => diagnostic failure
+			if (options.method == eig_solver_method::lanczos
+			    && options.structure == matrix_structure_hint::symmetric) {
+				eig_result<_T> result = b_inner_lanczos_generalized_eigs(B, k_eff, options);
+				result.requested_count = k;
+				set_result_counts(result, k);
+				return result;
+			}
+
+			// Unsupported non-diagonal generalized path
+			if (options.max_iter == 0) {
+				vcp::throw_error<vcp::invalid_argument>("spmatrix::eigs(A,B): max_iter must be positive");
 			}
 			eig_result<_T> result;
 			result.requested_count = k;
@@ -873,7 +945,7 @@ namespace vcp {
 			result.used_dense_fallback = false;
 			result.method = options.method;
 			result.used_method = eig_method_to_string(options.method);
-			result.failure_reason = "non-diagonal generalized sparse eigs without shift-invert is not supported; use shift_invert_arnoldi, shift_invert_lanczos, or set use_shift=true";
+			result.failure_reason = "non-diagonal generalized sparse eigs without shift-invert is not supported; use shift_invert_arnoldi, shift_invert_lanczos, or set use_shift=true with symmetric structure";
 			result.message = result.failure_reason;
 			set_result_counts(result, k);
 			return result;
@@ -1912,6 +1984,115 @@ namespace vcp {
 				if (promoted_from_lanczos) {
 					result.used_method = "shift_invert_arnoldi(promoted_from_lanczos)";
 				}
+			}
+			set_result_counts(result, k);
+			return result;
+		}
+
+		// ------------------------------------------------------------------
+		// Phase 5: B-inner Lanczos for generalized symmetric SPD problem
+		//   A x = lambda B x,  A symmetric,  B SPD,  no shift-invert
+		//
+		// dispatch: method=lanczos, structure=symmetric, !wants_shift_invert
+		// ------------------------------------------------------------------
+		eig_result<_T> b_inner_lanczos_generalized_eigs(
+		    const spmatrix& B,
+		    const std::size_t k,
+		    const eig_options_type& options) const
+		{
+			const std::size_t n = static_cast<std::size_t>(rowsize());
+
+			eig_result<_T> result;
+			result.requested_count = k;
+			result.method = eig_solver_method::lanczos;
+			result.used_method = "b_inner_lanczos";
+			result.used_generalized_operator = true;
+			result.used_shift_invert = false;
+			result.used_dense_fallback = false;
+
+			// --- SPD pre-check: B must be symmetric ---
+			const scalar_real_type sym_tol = vcp::tsparse_scalar::decimal_power_negative<scalar_real_type>(10);
+			if (!B.is_symmetric(sym_tol)) {
+				result.converged = false;
+				result.status = "spd_check_failed";
+				result.failure_reason = "B is not symmetric; cannot be SPD";
+				result.message = result.failure_reason;
+				set_result_counts(result, k);
+				return result;
+			}
+
+			// --- Frobenius norms for relative residual ---
+			const scalar_real_type norm_A_val = frobenius_norm_value(*this);
+			const scalar_real_type norm_B_val = frobenius_norm_value(B);
+
+			// --- Solver parameters ---
+			const std::size_t sdim = (options.subspace_dim == 0)
+				? std::max(k + 5, std::min(n, std::size_t(30)))
+				: options.subspace_dim;
+			// max_iter is used directly as the MV budget (total A+B matrix-vector products).
+			const std::size_t mv_budget = options.max_iter;
+
+			// --- Run B-inner Lanczos ---
+			typedef vcp::tsparse_b_inner_lanczos::b_lanczos_result<_T> BLResult;
+			BLResult pkg = vcp::tsparse_b_inner_lanczos::b_inner_lanczos_eigs(
+				*this, B, n, k,
+				sdim, mv_budget,
+				options.tol,
+				options.random_seed,
+				options.random_start,
+				options.target,
+				norm_A_val, norm_B_val,
+				options.compute_residual_history);
+
+			// --- Handle SPD failure ---
+			if (pkg.spd_check_failed) {
+				result.converged = false;
+				result.status = "spd_check_failed";
+				result.failure_reason = pkg.failure_reason.empty()
+					? "SPD check failed during B-inner Lanczos"
+					: pkg.failure_reason;
+				result.message = result.failure_reason;
+				set_result_counts(result, k);
+				return result;
+			}
+
+			// --- Assemble result ---
+			result.iterations = pkg.iterations;
+			result.matrix_vector_products = pkg.mv_count;
+			result.used_subspace_dim = sdim;
+			result.breakdown_reason = pkg.breakdown_reason;
+			result.failure_reason = pkg.failure_reason;
+			result.converged_count = pkg.converged_count;
+			result.eigenvalues = pkg.eigenvalues;
+			result.eigenvectors = pkg.eigenvectors;
+			result.residuals_absolute = pkg.residuals_abs;
+			result.residuals_relative = pkg.residuals_rel;
+			result.converged = pkg.converged;
+
+			// Residual history (absolute and relative are separate; never copied)
+			if (options.compute_residual_history) {
+				result.residual_history_absolute = pkg.history_abs;
+				result.residual_history_relative = pkg.history_rel;
+			}
+
+			// --- Populate complex eigenvalue mirror and set status ---
+			populate_real_complex_eigenvalues(result);
+			if (result.converged) {
+				result.status = "converged";
+				result.message = pkg.breakdown_reason.empty() ? "converged" : pkg.breakdown_reason;
+				result.failure_reason.clear();
+			}
+			else if (pkg.budget_exhausted) {
+				result.status = "max_iter_exhausted";
+				if (result.failure_reason.empty())
+					result.failure_reason = "MV budget (max_iter) exhausted before convergence";
+				result.message = result.failure_reason;
+			}
+			else {
+				result.status = "not_converged";
+				if (result.failure_reason.empty())
+					result.failure_reason = "B-inner Lanczos did not converge";
+				result.message = result.failure_reason;
 			}
 			set_result_counts(result, k);
 			return result;

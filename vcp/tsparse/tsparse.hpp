@@ -25,6 +25,7 @@
 #include <vcp/tsparse/tsparse_factorization.hpp>
 #include <vcp/tsparse/tsparse_lanczos.hpp>
 #include <vcp/tsparse/tsparse_arnoldi.hpp>
+#include <vcp/tsparse/tsparse_b_inner_lanczos.hpp>
 #include <vcp/tsparse/tsparse_experimental.hpp>
 
 #endif
