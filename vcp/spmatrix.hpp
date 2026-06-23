@@ -25,6 +25,7 @@
 #include <vcp/tsparse/tsparse_eigen_selection.hpp>
 #include <vcp/tsparse/tsparse_generalized_shift_invert.hpp>
 #include <vcp/tsparse/tsparse_b_inner_lanczos.hpp>
+#include <vcp/tsparse/tsparse_hermitian_lanczos.hpp>
 
 namespace vcp {
 
@@ -787,24 +788,39 @@ namespace vcp {
 		}
 
 		std::vector<_T> eigs(const std::size_t k) const {
+			if (spmatrix_is_complex<_T>::value) return eigs(k, default_eigs_options());
 			require_real_scalar("spmatrix::eigs");
 			return eigs(k, default_eigs_options());
 		}
 
 		std::vector<_T> eigs(const std::size_t k, const eig_options_type& options) const {
+			if (spmatrix_is_complex<_T>::value) {
+				eig_result<_T> result = eigs_with_info(k, options);
+				if (!result.converged) vcp::throw_error<vcp::state_error>("spmatrix::eigs: eigensolver did not converge");
+				// k > n: complex Hermitian path clamps to n; compare against min(k, n).
+				const std::size_t n_cx = static_cast<std::size_t>(rowsize());
+				const std::size_t k_needed_cx = (k < n_cx) ? k : n_cx;
+				if (result.returned_real_count < k_needed_cx) vcp::throw_error<vcp::state_error>("spmatrix::eigs: insufficient real eigenvalues returned");
+				return result.eigenvalues;
+			}
 			require_real_scalar("spmatrix::eigs");
 			eig_result<_T> result = eigs_with_info(k, options);
 			if (!result.converged) vcp::throw_error<vcp::state_error>("spmatrix::eigs: eigensolver did not converge");
-			if (result.returned_real_count < k) vcp::throw_error<vcp::state_error>("spmatrix::eigs: insufficient real eigenvalues returned");
+			// k > n: iterative path clamps to n; compare against min(k, n).
+			const std::size_t n_re = static_cast<std::size_t>(rowsize());
+			const std::size_t k_needed_re = (k < n_re) ? k : n_re;
+			if (result.returned_real_count < k_needed_re) vcp::throw_error<vcp::state_error>("spmatrix::eigs: insufficient real eigenvalues returned");
 			return result.eigenvalues;
 		}
 
 		eig_result<_T> eigs_with_info(const std::size_t k) const {
+			if (spmatrix_is_complex<_T>::value) return eigs_with_info(k, default_eigs_options());
 			require_real_scalar("spmatrix::eigs");
 			return eigs_with_info(k, default_eigs_options());
 		}
 
 		eig_result<_T> eigs_with_info(const std::size_t k, const eig_options_type& options) const {
+			if (spmatrix_is_complex<_T>::value) return complex_standard_eigs_with_info(k, options);
 			require_real_scalar("spmatrix::eigs");
 			eig_options_type active = resolve_eigs_options(options);
 			validate_eigs_input(k, "spmatrix::eigs", active.method);
@@ -839,6 +855,11 @@ namespace vcp {
 		}
 
 		std::vector<_T> eigs(const spmatrix& B, const std::size_t k, const eig_options_type& options = eig_options_type()) const {
+			if (spmatrix_is_complex<_T>::value) {
+				eig_result<_T> result = complex_generalized_eigs_unsupported(k, options);
+				if (!result.converged) vcp::throw_error<vcp::state_error>("spmatrix::eigs(A,B): not supported for complex scalar types");
+				return result.eigenvalues;
+			}
 			require_real_scalar("spmatrix::eigs(A,B)");
 			eig_result<_T> result = eigs_with_info(B, k, options);
 			if (!result.converged) vcp::throw_error<vcp::state_error>("spmatrix::eigs(A,B): eigensolver did not converge");
@@ -851,6 +872,7 @@ namespace vcp {
 		}
 
 		eig_result<_T> eigs_with_info(const spmatrix& B, const std::size_t k, const eig_options_type& options = eig_options_type()) const {
+			if (spmatrix_is_complex<_T>::value) return complex_generalized_eigs_unsupported(k, options);
 			require_real_scalar("spmatrix::eigs(A,B)");
 			validate_generalized_eig_input(B, "spmatrix::eigs(A,B)");
 
@@ -959,6 +981,11 @@ namespace vcp {
 		template <class Preconditioner>
 		std::vector<_T> eigs(const std::size_t k, const eig_options_type& options,
 		                     const Preconditioner& M) const {
+			if (spmatrix_is_complex<_T>::value) {
+				eig_result<_T> result = complex_preconditioned_eigs_unsupported(k, options);
+				if (!result.converged) vcp::throw_error<vcp::state_error>("spmatrix::eigs(with preconditioner): not supported for complex scalar types");
+				return result.eigenvalues;
+			}
 			require_real_scalar("spmatrix::eigs(with preconditioner)");
 			eig_result<_T> result = eigs_with_info(k, options, M);
 			if (!result.converged)
@@ -971,6 +998,7 @@ namespace vcp {
 		template <class Preconditioner>
 		eig_result<_T> eigs_with_info(const std::size_t k, const eig_options_type& options,
 		                              const Preconditioner& M) const {
+			if (spmatrix_is_complex<_T>::value) return complex_preconditioned_eigs_unsupported(k, options);
 			require_real_scalar("spmatrix::eigs_with_info(with preconditioner)");
 			eig_options_type active = resolve_eigs_options(options);
 			validate_eigs_input(k, "spmatrix::eigs_with_info(with preconditioner)", active.method);
@@ -1019,6 +1047,11 @@ namespace vcp {
 		template <class Preconditioner>
 		std::vector<_T> eigs(const spmatrix& B, const std::size_t k,
 		                     const eig_options_type& options, const Preconditioner& M) const {
+			if (spmatrix_is_complex<_T>::value) {
+				eig_result<_T> result = complex_generalized_eigs_unsupported(k, options);
+				if (!result.converged) vcp::throw_error<vcp::state_error>("spmatrix::eigs(A,B,with preconditioner): not supported for complex scalar types");
+				return result.eigenvalues;
+			}
 			require_real_scalar("spmatrix::eigs(A,B,with preconditioner)");
 			eig_result<_T> result = eigs_with_info(B, k, options, M);
 			if (!result.converged)
@@ -1036,6 +1069,7 @@ namespace vcp {
 		eig_result<_T> eigs_with_info(const spmatrix& B, const std::size_t k,
 		                              const eig_options_type& options,
 		                              const Preconditioner& M) const {
+			if (spmatrix_is_complex<_T>::value) return complex_generalized_eigs_unsupported(k, options);
 			require_real_scalar("spmatrix::eigs_with_info(A,B,with preconditioner)");
 			validate_generalized_eig_input(B, "spmatrix::eigs_with_info(A,B,with preconditioner)");
 
@@ -2158,11 +2192,37 @@ namespace vcp {
 		//   A x = lambda B x,  A symmetric,  B SPD,  no shift-invert
 		//
 		// dispatch: method=lanczos, structure=symmetric, !wants_shift_invert
+		//
+		// Tag dispatch is used to prevent instantiation of b_inner_lanczos_eigs
+		// (which uses real inner products) when _T is a complex type.
 		// ------------------------------------------------------------------
+		struct b_inner_real_tag_ {};
+		struct b_inner_complex_tag_ {};
+
 		eig_result<_T> b_inner_lanczos_generalized_eigs(
 		    const spmatrix& B,
 		    const std::size_t k,
 		    const eig_options_type& options) const
+		{
+			typedef typename std::conditional<
+				spmatrix_is_complex<_T>::value,
+				b_inner_complex_tag_,
+				b_inner_real_tag_>::type dispatch_tag;
+			return b_inner_lanczos_generalized_eigs_impl_(B, k, options, dispatch_tag{});
+		}
+
+		// Complex path: unreachable at runtime, but must compile without errors.
+		eig_result<_T> b_inner_lanczos_generalized_eigs_impl_(
+		    const spmatrix&, const std::size_t k, const eig_options_type& options,
+		    b_inner_complex_tag_) const
+		{
+			return complex_generalized_eigs_unsupported(k, options);
+		}
+
+		// Real path: the actual B-inner Lanczos implementation.
+		eig_result<_T> b_inner_lanczos_generalized_eigs_impl_(
+		    const spmatrix& B, const std::size_t k, const eig_options_type& options,
+		    b_inner_real_tag_) const
 		{
 			const std::size_t n = static_cast<std::size_t>(rowsize());
 
@@ -3122,6 +3182,343 @@ namespace vcp {
 
 		static std::vector<_T> solve_dense_gaussian(std::vector<std::vector<_T> > A, std::vector<_T> b) {
 			return vcp::tsparse_dense_linalg::solve_dense_gaussian(A, b);
+		}
+
+		// ------------------------------------------------------------------
+		// Phase 7: complex Hermitian eigs helpers
+		// ------------------------------------------------------------------
+
+		// Hermitian check (sparse pattern, no dense conversion).
+		// Returns "" if Hermitian within tol, else a description of the failure.
+		std::string check_hermitian_sparse(const scalar_real_type& tol) const {
+			if (rowsize() != columnsize()) return "non-square matrix";
+			spmatrix A = this->as_csr();
+			const std::vector<index_type>& outer = A.outer_index();
+			const std::vector<index_type>& inner = A.inner_index();
+			const std::vector<_T>& val = A.values();
+			for (index_type i = 0; i < A.rowsize(); i++) {
+				for (index_type p = outer[static_cast<std::size_t>(i)];
+				     p < outer[static_cast<std::size_t>(i + 1)]; p++) {
+					const index_type j = inner[static_cast<std::size_t>(p)];
+					const _T v = val[static_cast<std::size_t>(p)];
+					if (i == j) {
+						// diagonal must be real: z == conj(z)
+						const _T diff = v - vcp::tsparse_scalar::conjugate_if_needed(v);
+						if (tsparse_scalar::abs_value(diff) > tol)
+							return "non-real diagonal element";
+						continue;
+					}
+					// find (j, i) entry
+					const index_type first = outer[static_cast<std::size_t>(j)];
+					const index_type last  = outer[static_cast<std::size_t>(j + 1)];
+					const typename std::vector<index_type>::const_iterator begin =
+						inner.begin() + first;
+					const typename std::vector<index_type>::const_iterator end =
+						inner.begin() + last;
+					typename std::vector<index_type>::const_iterator it =
+						std::lower_bound(begin, end, i);
+					_T mirrored = _T(0);
+					if (it != end && *it == i)
+						mirrored = val[static_cast<std::size_t>(it - inner.begin())];
+					// A[i][j] should equal conj(A[j][i])
+					const _T expected = vcp::tsparse_scalar::conjugate_if_needed(mirrored);
+					if (tsparse_scalar::abs_value(v - expected) > tol)
+						return "non-Hermitian entry found";
+				}
+			}
+			return "";
+		}
+
+		// Hermitian residual: ||Av - lambda*v|| using Hermitian (conjugate) norm
+		static scalar_real_type hermitian_eigenpair_residual_norm_value(
+			const spmatrix& A, const _T& lambda, const std::vector<_T>& v)
+		{
+			std::vector<_T> r = A.mul_vec(v);
+			for (std::size_t i = 0; i < r.size(); i++) r[i] -= lambda * v[i];
+			return vcp::tsparse_hermitian_lanczos::hermitian_norm(r);
+		}
+
+		static std::vector<scalar_real_type> hermitian_eigenpair_residuals(
+			const spmatrix& A, const std::vector<_T>& eigenvalues,
+			const std::vector<std::vector<_T> >& eigenvectors)
+		{
+			std::vector<scalar_real_type> residuals;
+			if (eigenvalues.empty() || eigenvectors.size() != eigenvalues.size()) return residuals;
+			residuals.reserve(eigenvalues.size());
+			for (std::size_t i = 0; i < eigenvalues.size(); i++)
+				residuals.push_back(hermitian_eigenpair_residual_norm_value(A, eigenvalues[i], eigenvectors[i]));
+			return residuals;
+		}
+
+		static scalar_real_type hermitian_eigenpair_relative_residual_norm_value(
+			const spmatrix& A, const _T& lambda, const std::vector<_T>& v)
+		{
+			const scalar_real_type abs_res = hermitian_eigenpair_residual_norm_value(A, lambda, v);
+			const scalar_real_type vn = vcp::tsparse_hermitian_lanczos::hermitian_norm(v);
+			const scalar_real_type denom = frobenius_norm_value(A) * vn
+				+ tsparse_scalar::abs_value(lambda) * vn
+				+ std::numeric_limits<scalar_real_type>::epsilon();
+			return abs_res / denom;
+		}
+
+		static std::vector<scalar_real_type> hermitian_eigenpair_relative_residuals(
+			const spmatrix& A, const std::vector<_T>& eigenvalues,
+			const std::vector<std::vector<_T> >& eigenvectors)
+		{
+			std::vector<scalar_real_type> residuals;
+			if (eigenvalues.empty() || eigenvectors.size() != eigenvalues.size()) return residuals;
+			residuals.reserve(eigenvalues.size());
+			for (std::size_t i = 0; i < eigenvalues.size(); i++)
+				residuals.push_back(hermitian_eigenpair_relative_residual_norm_value(A, eigenvalues[i], eigenvectors[i]));
+			return residuals;
+		}
+
+		// Convert hermitian_lanczos_result to eig_result
+		eig_result<_T> hermitian_package_to_result(
+			const vcp::tsparse_hermitian_lanczos::hermitian_lanczos_result<_T>& pkg,
+			const std::size_t k) const
+		{
+			eig_result<_T> result;
+			result.eigenvalues = pkg.eigenvalues;
+			result.eigenvectors = pkg.eigenvectors;
+			result.converged = pkg.converged;
+			result.iterations = pkg.iterations;
+			result.converged_count = pkg.converged_count;
+			result.returned_count = pkg.returned_count;
+			result.matrix_vector_products = pkg.mv_count;
+			result.residuals_absolute = pkg.residuals_abs;
+			result.residuals_relative = pkg.residuals_rel;
+			result.residual_history_absolute = pkg.history_abs;
+			result.residual_history_relative = pkg.history_rel;
+			result.breakdown_reason = pkg.breakdown_reason;
+			result.failure_reason = pkg.failure_reason;
+			result.used_method = pkg.used_method;
+			result.method = eig_solver_method::lanczos;
+			result.used_shift_invert = false;
+			result.used_dense_fallback = false;
+			result.used_generalized_operator = false;
+			result.requested_count = k;
+			populate_real_complex_eigenvalues(result);
+			// Recompute final residuals via SpMV
+			if (!result.eigenvectors.empty()) {
+				spmatrix A = this->as_csr();
+				result.residuals_absolute = hermitian_eigenpair_residuals(A, result.eigenvalues, result.eigenvectors);
+				result.residuals_relative = hermitian_eigenpair_relative_residuals(A, result.eigenvalues, result.eigenvectors);
+			}
+			if (!result.residuals_absolute.empty())
+				result.residual_norm_absolute = *std::max_element(result.residuals_absolute.begin(), result.residuals_absolute.end());
+			if (!result.residuals_relative.empty())
+				result.residual_norm_relative = *std::max_element(result.residuals_relative.begin(), result.residuals_relative.end());
+			if (result.converged) {
+				result.status = "converged";
+				result.message = result.breakdown_reason.empty() ? "converged" : result.breakdown_reason;
+			} else {
+				result.status = "not_converged";
+				result.message = result.failure_reason.empty() ? "not converged" : result.failure_reason;
+			}
+			set_result_counts(result, k);
+			return result;
+		}
+
+		// Call Hermitian Lanczos for complex T
+		eig_result<_T> hermitian_lanczos_eigs_impl(const std::size_t k, const eig_options_type& options) const {
+			typedef typename vcp::tsparse_scalar::real_type<_T>::type R;
+			spmatrix A = this->as_csr();
+			const std::size_t n = static_cast<std::size_t>(rowsize());
+			const R normA_fro = frobenius_norm_value(A);
+			const std::size_t sdim = (options.subspace_dim == 0)
+				? std::max(k + std::size_t(5), std::min(n, std::size_t(30)))
+				: options.subspace_dim;
+			struct apply_fn {
+				const spmatrix* mat;
+				void operator()(const std::vector<_T>& x, std::vector<_T>& y) const {
+					y = mat->mul_vec(x);
+				}
+			} apply_op = { &A };
+			const std::size_t max_restarts_l = (sdim > 0) ? (options.max_iter / sdim + k + 1) : options.max_iter;
+			vcp::tsparse_hermitian_lanczos::hermitian_lanczos_result<_T> pkg =
+				vcp::tsparse_hermitian_lanczos::hermitian_lanczos_eigs<_T, apply_fn>(
+					n, k, sdim, max_restarts_l, options.tol,
+					options.random_seed, options.random_start,
+					options.target, R(options.shift),
+					normA_fro,
+					options.compute_residual_history, apply_op);
+			return hermitian_package_to_result(pkg, k);
+		}
+
+		// Reject generalized eigs for complex T
+		eig_result<_T> complex_generalized_eigs_unsupported(const std::size_t k, const eig_options_type& options) const {
+			eig_result<_T> result;
+			result.requested_count = k;
+			result.converged = false;
+			result.status = "unsupported_complex_generalized";
+			result.failure_reason = "generalized eigenproblem (A,B) is not supported for complex scalar types in Phase 7";
+			result.message = result.failure_reason;
+			result.method = options.method;
+			result.used_method = eig_method_to_string(options.method);
+			result.used_generalized_operator = true;
+			set_result_counts(result, k);
+			return result;
+		}
+
+		// Reject preconditioned eigs for complex T
+		eig_result<_T> complex_preconditioned_eigs_unsupported(const std::size_t k, const eig_options_type& options) const {
+			eig_result<_T> result;
+			result.requested_count = k;
+			result.converged = false;
+			result.method = options.method;
+			result.used_method = eig_method_to_string(options.method);
+			const bool wants_shift_invert =
+				(options.method == eig_solver_method::shift_invert_lanczos)
+				|| (options.method == eig_solver_method::shift_invert_arnoldi)
+				|| options.use_shift;
+			if (wants_shift_invert) {
+				result.status = "unsupported_complex_shift_invert";
+				result.failure_reason = "shift-invert with preconditioner is not supported for complex scalar types";
+				result.used_shift_invert = true;
+			} else {
+				result.status = "unsupported_preconditioner_for_method";
+				result.failure_reason = "preconditioner overload is not supported for complex scalar types in Phase 7";
+			}
+			result.message = result.failure_reason;
+			set_result_counts(result, k);
+			return result;
+		}
+
+		// Main complex dispatch: standard (non-generalized, non-preconditioned) eigs for complex T
+		eig_result<_T> complex_standard_eigs_with_info(const std::size_t k, const eig_options_type& options) const {
+			// k == 0 → empty converged result
+			if (k == 0) {
+				eig_result<_T> result;
+				result.requested_count = 0;
+				result.converged = true;
+				result.status = "converged";
+				result.message = "converged";
+				result.method = eig_solver_method::lanczos;
+				result.used_method = "hermitian_lanczos";
+				set_result_counts(result, 0);
+				return result;
+			}
+			// Square check
+			if (rowsize() != columnsize())
+				vcp::throw_error<vcp::dimension_error>("spmatrix::eigs(complex): matrix must be square");
+			const std::size_t n = static_cast<std::size_t>(rowsize());
+			// n == 0, k > 0 → diagnostic failure
+			if (n == 0) {
+				eig_result<_T> result;
+				result.requested_count = k;
+				result.converged = false;
+				result.status = "not_converged";
+				result.failure_reason = "matrix is empty (n == 0) but k > 0";
+				result.message = result.failure_reason;
+				result.method = options.method;
+				result.used_method = eig_method_to_string(options.method);
+				set_result_counts(result, k);
+				return result;
+			}
+			// Shift-invert → unsupported
+			const bool wants_shift_invert =
+				(options.method == eig_solver_method::shift_invert_lanczos)
+				|| (options.method == eig_solver_method::shift_invert_arnoldi)
+				|| ((options.use_shift)
+				    && (options.method == eig_solver_method::lanczos
+				        || options.method == eig_solver_method::arnoldi));
+			if (wants_shift_invert) {
+				eig_result<_T> result;
+				result.requested_count = k;
+				result.converged = false;
+				result.status = "unsupported_complex_shift_invert";
+				result.failure_reason = "shift-invert is not supported for complex scalar types in Phase 7";
+				result.message = result.failure_reason;
+				result.method = options.method;
+				result.used_method = eig_method_to_string(options.method);
+				result.used_shift_invert = true;
+				set_result_counts(result, k);
+				return result;
+			}
+			// Arnoldi → unsupported
+			if (options.method == eig_solver_method::arnoldi) {
+				eig_result<_T> result;
+				result.requested_count = k;
+				result.converged = false;
+				result.status = "unsupported_complex_non_hermitian";
+				result.failure_reason = "Arnoldi method is not supported for complex scalar types; use Lanczos with hermitian structure hint";
+				result.message = result.failure_reason;
+				result.method = options.method;
+				result.used_method = "arnoldi";
+				set_result_counts(result, k);
+				return result;
+			}
+			// General structure hint → unsupported
+			if (options.structure == matrix_structure_hint::general) {
+				eig_result<_T> result;
+				result.requested_count = k;
+				result.converged = false;
+				result.status = "unsupported_complex_non_hermitian";
+				result.failure_reason = "general matrix structure is not supported for complex scalar types; Phase 7 supports only complex Hermitian";
+				result.message = result.failure_reason;
+				result.method = options.method;
+				result.used_method = eig_method_to_string(options.method);
+				set_result_counts(result, k);
+				return result;
+			}
+			// Dense fallback explicit
+			if (options.method == eig_solver_method::dense_fallback_explicit) {
+				if (options.max_iter == 0 || options.tol <= scalar_real_type(0))
+					vcp::throw_error<vcp::invalid_argument>("spmatrix::eigs(complex, dense): invalid iteration option");
+				check_dense_allowed(options, "spmatrix::eigs(complex)");
+				std::vector<std::vector<_T> > dense = to_dense();
+				eig_result<_T> result = dense_eig(dense, options);
+				result.used_dense_fallback = true;
+				result.requested_count = k;
+				select_eigenpairs(result, k, options.target, options.shift);
+				set_result_counts(result, k);
+				return result;
+			}
+			// Validate for iterative (Lanczos) path
+			if (options.max_iter == 0)
+				vcp::throw_error<vcp::invalid_argument>("spmatrix::eigs(complex): max_iter must be positive");
+			if (options.tol <= scalar_real_type(0))
+				vcp::throw_error<vcp::invalid_argument>("spmatrix::eigs(complex): tol must be positive");
+			// Hermitian check
+			const scalar_real_type herm_tol_candidate = options.tol * scalar_real_type(100);
+			const scalar_real_type herm_tol = (herm_tol_candidate > scalar_real_type(0))
+				? herm_tol_candidate
+				: vcp::tsparse_scalar::decimal_power_negative<scalar_real_type>(10);
+			const std::string herm_check = check_hermitian_sparse(herm_tol);
+			const bool is_herm = herm_check.empty();
+			if (!is_herm) {
+				if (options.structure == matrix_structure_hint::hermitian
+				 || options.structure == matrix_structure_hint::symmetric) {
+					eig_result<_T> result;
+					result.requested_count = k;
+					result.converged = false;
+					result.status = "non_hermitian";
+					result.failure_reason = "Hermitian structure asserted but check failed: " + herm_check;
+					result.message = result.failure_reason;
+					result.method = options.method;
+					result.used_method = "hermitian_lanczos";
+					set_result_counts(result, k);
+					return result;
+				}
+				// auto_detect → non-Hermitian complex not supported
+				eig_result<_T> result;
+				result.requested_count = k;
+				result.converged = false;
+				result.status = "unsupported_complex_non_hermitian";
+				result.failure_reason = "complex matrix is not Hermitian; non-Hermitian complex eigs not supported in Phase 7";
+				result.message = result.failure_reason;
+				result.method = options.method;
+				result.used_method = "hermitian_lanczos";
+				set_result_counts(result, k);
+				return result;
+			}
+			// Hermitian confirmed: clamp k and run
+			const std::size_t k_eff = (k < n) ? k : n;
+			eig_result<_T> result = hermitian_lanczos_eigs_impl(k_eff, options);
+			result.requested_count = k;
+			set_result_counts(result, k);
+			return result;
 		}
 
 	};
