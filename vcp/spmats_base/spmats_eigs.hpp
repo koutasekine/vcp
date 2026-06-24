@@ -668,8 +668,8 @@ template <typename _T, typename _Index>
 static void validate_eigs_input_(const spmats<_T,_Index>& A, const std::size_t k,
                                   const char* routine, const eig_solver_method = eig_solver_method::lanczos)
 {
+    (void)k;
     validate_eig_input_<_T,_Index>(A, routine);
-    if (k == 0) vcp::throw_error<vcp::invalid_argument>(routine, ": k must be positive");
 }
 
 // ---------------------------------------------------------------------------
@@ -2254,6 +2254,36 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// make_empty_eigs_success_ - k==0 empty request: no solver launched
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static eig_result<_T> make_empty_eigs_success_(const spmats<_T,_Index>&,
+                                                const eig_options<_T>& options)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    eig_result<_T> result;
+    result.converged                = true;
+    result.requested_count          = 0;
+    result.returned_count           = 0;
+    result.returned_real_count      = 0;
+    result.returned_complex_count   = 0;
+    result.converged_count          = 0;
+    result.iterations               = 0;
+    result.matrix_vector_products   = 0;
+    result.linear_solves            = 0;
+    result.residual_norm_absolute   = scalar_real_type(0);
+    result.residual_norm_relative   = scalar_real_type(0);
+    result.status                   = "empty_success";
+    result.message                  = "requested zero eigenvalues";
+    result.used_dense_fallback      = false;
+    result.used_shift_invert        = false;
+    result.used_generalized_operator = false;
+    result.method                   = options.method;
+    result.used_method              = eig_method_to_string_<_T,_Index>(options.method);
+    return result;
+}
+
 // ===========================================================================
 // PUBLIC POLICY METHODS  (non-member free functions operating on spmats)
 // These mirror spmatrix::eigs_with_info / spmatrix::eigs_with_info(B,...).
@@ -2268,6 +2298,7 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
                                       const eig_options<_T>& options)
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    if (k == 0) return make_empty_eigs_success_<_T,_Index>(A, options);
     if (spmatrix_is_complex<_T>::value)
         return complex_standard_eigs_with_info_<_T,_Index>(A, k, options);
     eig_options<_T> active = resolve_eigs_options_<_T,_Index>(A, options);
@@ -2308,6 +2339,7 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
                                       const Preconditioner& M)
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    if (k == 0) { (void)M; return make_empty_eigs_success_<_T,_Index>(A, options); }
     if (spmatrix_is_complex<_T>::value)
         return complex_preconditioned_eigs_unsupported_<_T,_Index>(k, options);
     eig_options<_T> active = resolve_eigs_options_<_T,_Index>(A, options);
@@ -2364,31 +2396,12 @@ eig_result<_T> policy_generalized_eigs_with_info(const spmats<_T,_Index>& A,
                                                    const eig_options<_T>& options)
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    if (k == 0) return make_empty_eigs_success_<_T,_Index>(A, options);
     if (spmatrix_is_complex<_T>::value)
         return complex_generalized_eigs_unsupported_<_T,_Index>(k, options);
     validate_generalized_eig_input_<_T,_Index>(A, B, "spmats::eigs(A,B)");
 
     const std::size_t n = static_cast<std::size_t>(A.rowsize());
-
-    if (k == 0) {
-        eig_result<_T> result;
-        result.requested_count = 0;
-        result.converged = true;
-        result.status = "converged";
-        result.message = "converged";
-        result.used_generalized_operator = true;
-        result.used_dense_fallback = false;
-        result.used_shift_invert = false;
-        result.method = options.method;
-        if (options.method == eig_solver_method::lanczos
-            && options.structure == matrix_structure_hint::symmetric) {
-            result.used_method = "b_inner_lanczos";
-        } else {
-            result.used_method = eig_method_to_string_<_T,_Index>(options.method);
-        }
-        set_result_counts_<_T,_Index>(result, 0);
-        return result;
-    }
 
     if (n == 0) {
         eig_result<_T> result;
@@ -2470,26 +2483,12 @@ eig_result<_T> policy_generalized_eigs_with_info(const spmats<_T,_Index>& A,
                                                    const Preconditioner& M)
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    if (k == 0) { (void)B; (void)M; return make_empty_eigs_success_<_T,_Index>(A, options); }
     if (spmatrix_is_complex<_T>::value)
         return complex_generalized_eigs_unsupported_<_T,_Index>(k, options);
     validate_generalized_eig_input_<_T,_Index>(A, B, "spmats::eigs_with_info(A,B,with preconditioner)");
 
     const std::size_t n = static_cast<std::size_t>(A.rowsize());
-
-    if (k == 0) {
-        eig_result<_T> result;
-        result.requested_count = 0;
-        result.converged = true;
-        result.status = "converged";
-        result.message = "converged";
-        result.used_generalized_operator = true;
-        result.used_dense_fallback = false;
-        result.used_shift_invert = false;
-        result.method = options.method;
-        result.used_method = eig_method_to_string_<_T,_Index>(options.method);
-        set_result_counts_<_T,_Index>(result, 0);
-        return result;
-    }
 
     if (n == 0) {
         eig_result<_T> result;
