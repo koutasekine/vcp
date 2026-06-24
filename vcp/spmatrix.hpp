@@ -245,34 +245,78 @@ namespace vcp {
 			return A.matmul(B);
 		}
 
-		// --- scalar * A, A * scalar ---
-		friend spmatrix operator*(const _T& alpha, const spmatrix& A) {
+		// --- scalar * A, A * scalar (Phase 7.8: constructible scalar template) ---
+		// _Sm must be constructible to _T (std::is_constructible, not is_convertible).
+		// This allows explicit constructors such as kv::dd(int) or kv::mpfr<N>(int).
+		// The !std::is_same exclusion prevents collision with spmatrix * spmatrix overloads.
+		// Internal conversion _T(_Sm) is explicit and performed exactly once.
+		template <typename _Sm>
+		friend typename std::enable_if<
+			std::is_constructible<_T, _Sm>::value &&
+			!std::is_same<typename std::decay<_Sm>::type, spmatrix>::value,
+			spmatrix
+		>::type
+		operator*(const _Sm& alpha, const spmatrix& A) {
+			_T Ta = _T(alpha);
 			spmatrix C = A;
-			C.mulsm(alpha);
+			C.mulsm(Ta);
 			return C;
 		}
-		friend spmatrix operator*(const _T& alpha, spmatrix&& A) {
-			A.mulsm(alpha);
+		template <typename _Sm>
+		friend typename std::enable_if<
+			std::is_constructible<_T, _Sm>::value &&
+			!std::is_same<typename std::decay<_Sm>::type, spmatrix>::value,
+			spmatrix
+		>::type
+		operator*(const _Sm& alpha, spmatrix&& A) {
+			_T Ta = _T(alpha);
+			A.mulsm(Ta);
 			return std::move(A);
 		}
-		friend spmatrix operator*(const spmatrix& A, const _T& alpha) {
+		template <typename _Sm>
+		friend typename std::enable_if<
+			std::is_constructible<_T, _Sm>::value &&
+			!std::is_same<typename std::decay<_Sm>::type, spmatrix>::value,
+			spmatrix
+		>::type
+		operator*(const spmatrix& A, const _Sm& alpha) {
+			_T Ta = _T(alpha);
 			spmatrix C = A;
-			C.mulsm(alpha);
+			C.mulsm(Ta);
 			return C;
 		}
-		friend spmatrix operator*(spmatrix&& A, const _T& alpha) {
-			A.mulsm(alpha);
+		template <typename _Sm>
+		friend typename std::enable_if<
+			std::is_constructible<_T, _Sm>::value &&
+			!std::is_same<typename std::decay<_Sm>::type, spmatrix>::value,
+			spmatrix
+		>::type
+		operator*(spmatrix&& A, const _Sm& alpha) {
+			_T Ta = _T(alpha);
+			A.mulsm(Ta);
 			return std::move(A);
 		}
 
 		// --- A / scalar ---
-		friend spmatrix operator/(const spmatrix& A, const _T& alpha) {
+		template <typename _Sm>
+		friend typename std::enable_if<
+			std::is_constructible<_T, _Sm>::value,
+			spmatrix
+		>::type
+		operator/(const spmatrix& A, const _Sm& alpha) {
+			_T Ta = _T(alpha);
 			spmatrix C = A;
-			C.divms(alpha);
+			C.divms(Ta);
 			return C;
 		}
-		friend spmatrix operator/(spmatrix&& A, const _T& alpha) {
-			A.divms(alpha);
+		template <typename _Sm>
+		friend typename std::enable_if<
+			std::is_constructible<_T, _Sm>::value,
+			spmatrix
+		>::type
+		operator/(spmatrix&& A, const _Sm& alpha) {
+			_T Ta = _T(alpha);
+			A.divms(Ta);
 			return std::move(A);
 		}
 
@@ -302,12 +346,25 @@ namespace vcp {
 			A = std::move(C);
 			return A;
 		}
-		friend spmatrix& operator*=(spmatrix& A, const _T& alpha) {
-			A.mulsm(alpha);
+		template <typename _Sm>
+		friend typename std::enable_if<
+			std::is_constructible<_T, _Sm>::value &&
+			!std::is_same<typename std::decay<_Sm>::type, spmatrix>::value,
+			spmatrix&
+		>::type
+		operator*=(spmatrix& A, const _Sm& alpha) {
+			_T Ta = _T(alpha);
+			A.mulsm(Ta);
 			return A;
 		}
-		friend spmatrix& operator/=(spmatrix& A, const _T& alpha) {
-			A.divms(alpha);
+		template <typename _Sm>
+		friend typename std::enable_if<
+			std::is_constructible<_T, _Sm>::value,
+			spmatrix&
+		>::type
+		operator/=(spmatrix& A, const _Sm& alpha) {
+			_T Ta = _T(alpha);
+			A.divms(Ta);
 			return A;
 		}
 
