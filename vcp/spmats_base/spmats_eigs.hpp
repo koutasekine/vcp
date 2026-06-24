@@ -670,8 +670,6 @@ static void validate_eigs_input_(const spmats<_T,_Index>& A, const std::size_t k
 {
     validate_eig_input_<_T,_Index>(A, routine);
     if (k == 0) vcp::throw_error<vcp::invalid_argument>(routine, ": k must be positive");
-    if (k > static_cast<std::size_t>(A.rowsize()))
-        vcp::throw_error<vcp::invalid_argument>(routine, ": k is larger than matrix size");
 }
 
 // ---------------------------------------------------------------------------
