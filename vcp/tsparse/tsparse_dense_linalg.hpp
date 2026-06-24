@@ -615,6 +615,41 @@ namespace vcp {
 			}
 			return vectors;
 		}
+
+		// lift_ritz_vectors_checked: dimension-safe variant.
+		// Throws vcp::dimension_error if any basis vector has wrong size or if
+		// coefficient count != V.size().
+		// Throws vcp::numerical_error if the resulting Ritz vector has near-zero norm.
+		// Used by Phase 8 projected eigensolver.
+		template <typename T>
+		std::vector<T> lift_ritz_vector_checked(const std::vector<std::vector<T> >& V,
+		                                        const std::vector<T>& y,
+		                                        const std::size_t n,
+		                                        const typename tsparse_scalar::real_type<T>::type& zero_tol) {
+			typedef typename tsparse_scalar::real_type<T>::type real_type;
+			if (y.size() != V.size()) {
+				vcp::throw_error<vcp::dimension_error>(
+					"tsparse_dense_linalg::lift_ritz_vector_checked: "
+					"coefficient size does not match basis size");
+			}
+			std::vector<T> v(n, T(0));
+			for (std::size_t j = 0; j < V.size(); j++) {
+				if (V[j].size() != n) {
+					vcp::throw_error<vcp::dimension_error>(
+						"tsparse_dense_linalg::lift_ritz_vector_checked: "
+						"basis vector dimension does not match n");
+				}
+				for (std::size_t i = 0; i < n; i++) v[i] += V[j][i] * y[j];
+			}
+			const real_type nv = tsparse_scalar::real_norm_value(v);
+			if (nv <= zero_tol) {
+				vcp::throw_error<vcp::numerical_error>(
+					"tsparse_dense_linalg::lift_ritz_vector_checked: "
+					"Ritz vector has near-zero norm");
+			}
+			for (std::size_t i = 0; i < n; i++) v[i] /= T(nv);
+			return v;
+		}
 	}
 }
 
