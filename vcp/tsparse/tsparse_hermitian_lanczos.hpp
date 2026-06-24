@@ -18,6 +18,7 @@
 #include <vcp/tsparse/tsparse_dense_linalg.hpp>
 #include <vcp/tsparse/tsparse_eigs.hpp>
 #include <vcp/tsparse/tsparse_eigensolvers.hpp>
+#include <vcp/tsparse/tsparse_projected_eigensolver.hpp>
 #include <vcp/tsparse/tsparse_scalar.hpp>
 
 namespace vcp {
@@ -257,7 +258,7 @@ hermitian_lanczos_result<T> hermitian_lanczos_eigs(
 			break;
 		}
 
-		// Solve real symmetric tridiagonal projected problem
+		// Solve real symmetric tridiagonal projected problem via solve_real_symmetric_projected
 		const std::size_t m = alpha_vec.size();
 		std::vector<std::vector<R> > Tm(m, std::vector<R>(m, R(0)));
 		for (std::size_t i = 0; i < m; i++) {
@@ -268,28 +269,29 @@ hermitian_lanczos_result<T> hermitian_lanczos_eigs(
 			}
 		}
 		const std::size_t proj_iter = std::max(m * m * std::size_t(100), std::size_t(1000));
-		vcp::tsparse_dense_linalg::dense_eigen_result<R> small =
-			vcp::tsparse_dense_linalg::jacobi_eig_dense(Tm, proj_iter, small_tol);
+		vcp::tsparse_projected::projected_eigensolver_result<R> proj =
+			vcp::tsparse_projected::solve_real_symmetric_projected<R>(Tm, proj_iter, small_tol);
 
-		if (small.eigenvalues.empty()) {
-			res.breakdown_reason = "projected eigensolver failed";
+		if (!proj.success) {
+			res.breakdown_reason = proj.status.empty() ? "projected_eigensolver_failed" : proj.status;
+			res.failure_reason = proj.message.empty() ? "projected eigensolver failed" : proj.message;
+			break;
+		}
+		if (proj.pairs.empty()) {
+			res.breakdown_reason = "projected_eigensolver_empty_result";
+			res.failure_reason = "projected eigensolver returned empty result";
 			break;
 		}
 
-		std::vector<std::complex<R> > ceigs;
-		ceigs.reserve(small.eigenvalues.size());
-		for (std::size_t i = 0; i < small.eigenvalues.size(); i++) {
-			ceigs.push_back(std::complex<R>(small.eigenvalues[i], R(0)));
-		}
 		const std::size_t k_remaining = k - locked_vals.size();
-		std::vector<std::size_t> sel = vcp::tsparse_eigensolvers::select_ritz_indices<R>(
-			ceigs, std::min(m, k_remaining + m), target, shift_val);
+		std::vector<std::size_t> sel = vcp::tsparse_projected::select_projected_indices(
+			proj.pairs, std::min(m, k_remaining + m), target, shift_val);
 
 		for (std::size_t si = 0; si < sel.size() && locked_vals.size() < k; si++) {
 			const std::size_t idx = sel[si];
-			if (idx >= small.eigenvectors.size()) continue;
+			if (idx >= proj.pairs.size()) continue;
 
-			const std::vector<R>& y = small.eigenvectors[idx];
+			const std::vector<R>& y = proj.pairs[idx].vector;
 			std::vector<T> ritz_vec(n, T(0));
 			for (std::size_t j = 0; j < y.size() && j < basis.size(); j++) {
 				for (std::size_t i = 0; i < n; i++) ritz_vec[i] += basis[j][i] * T(y[j]);
@@ -308,7 +310,7 @@ hermitian_lanczos_result<T> hermitian_lanczos_eigs(
 			apply(ritz_vec, Av);
 			res.mv_count++;
 
-			const R lambda_r = small.eigenvalues[idx];
+			const R lambda_r = vcp::tsparse_scalar::real_part(proj.pairs[idx].value);
 			std::vector<T> r(n);
 			for (std::size_t i = 0; i < n; i++) r[i] = Av[i] - T(lambda_r) * ritz_vec[i];
 			const R res_abs = hermitian_norm(r);

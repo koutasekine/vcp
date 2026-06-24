@@ -18,6 +18,7 @@
 #include <vcp/tsparse/tsparse_dense_linalg.hpp>
 #include <vcp/tsparse/tsparse_eigs.hpp>
 #include <vcp/tsparse/tsparse_eigensolvers.hpp>
+#include <vcp/tsparse/tsparse_projected_eigensolver.hpp>
 #include <vcp/tsparse/tsparse_scalar.hpp>
 
 namespace vcp {
@@ -72,6 +73,8 @@ bool orthogonalize_against(std::vector<T>& v,
 // ---------------------------------------------------------------------------
 // Symmetric tridiagonal eigensolver (Jacobi-based, small m)
 // Returns eigenvalues and eigenvectors of tridiagonal T(alpha, beta)
+// Phase 8.1: now routes through solve_real_symmetric_projected for
+// validated, dimension-safe projected solve.
 // ---------------------------------------------------------------------------
 template <typename T>
 tsparse_dense_linalg::dense_eigen_result<T> solve_tridiag(
@@ -86,7 +89,21 @@ tsparse_dense_linalg::dense_eigen_result<T> solve_tridiag(
 		Tm[i][i] = alpha[i];
 		if (i + 1 < m) { Tm[i][i+1] = beta[i]; Tm[i+1][i] = beta[i]; }
 	}
-	return tsparse_dense_linalg::jacobi_eig_dense(Tm, max_iter, tol);
+	vcp::tsparse_projected::projected_eigensolver_result<T> proj =
+		vcp::tsparse_projected::solve_real_symmetric_projected(Tm, max_iter, tol);
+	tsparse_dense_linalg::dense_eigen_result<T> result;
+	result.converged = proj.success && proj.converged;
+	result.iterations = proj.iterations;
+	if (!proj.success) {
+		return result;
+	}
+	result.eigenvalues.reserve(proj.pairs.size());
+	result.eigenvectors.reserve(proj.pairs.size());
+	for (std::size_t i = 0; i < proj.pairs.size(); i++) {
+		result.eigenvalues.push_back(proj.pairs[i].value);
+		result.eigenvectors.push_back(proj.pairs[i].vector);
+	}
+	return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -244,7 +261,16 @@ lanczos_result_package<T, ApplyA> lanczos_eigs(
 		tsparse_dense_linalg::dense_eigen_result<T> small =
 			solve_tridiag(alpha_vec, beta_vec, proj_iter, small_tol);
 
-		if (small.eigenvalues.empty()) { res.breakdown_reason = "projected eigensolver failed"; break; }
+		if (!small.converged) {
+			res.breakdown_reason = "projected_eigensolver_failed";
+			res.failure_reason = "projected eigensolver failed or did not converge";
+			break;
+		}
+		if (small.eigenvalues.empty()) {
+			res.breakdown_reason = "projected_eigensolver_empty_result";
+			res.failure_reason = "projected eigensolver returned empty result";
+			break;
+		}
 
 		// Select target eigenvalues
 		std::vector<std::complex<R> > ceigs;

@@ -156,6 +156,18 @@ projected_eigensolver_result<T> solve_real_symmetric_projected(
         return result;
     }
 
+    // --- Validate square matrix: every row must have exactly n elements ---
+    for (std::size_t i = 0; i < n; i++) {
+        if (H[i].size() != n) {
+            result.success = false;
+            result.converged = false;
+            result.status = "invalid_projected_matrix";
+            result.message = "projected matrix must be square";
+            result.iterations = 0;
+            return result;
+        }
+    }
+
     // --- n == 1 ---
     if (n == 1) {
         projected_eigenpair<T> pair;

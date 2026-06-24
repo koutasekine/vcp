@@ -19,6 +19,7 @@
 #include <vcp/tsparse/tsparse_dense_linalg.hpp>
 #include <vcp/tsparse/tsparse_eigs.hpp>
 #include <vcp/tsparse/tsparse_eigen_selection.hpp>
+#include <vcp/tsparse/tsparse_projected_eigensolver.hpp>
 #include <vcp/tsparse/tsparse_scalar.hpp>
 
 namespace vcp {
@@ -400,33 +401,34 @@ b_inner_lanczos_eigs(
             }
         }
         const std::size_t proj_max_iter = std::max(m * m * 100, std::size_t(1000));
-        tsparse_dense_linalg::dense_eigen_result<T> small =
-            tsparse_dense_linalg::jacobi_eig_dense(Tm, proj_max_iter, small_tol);
+        vcp::tsparse_projected::projected_eigensolver_result<T> proj =
+            vcp::tsparse_projected::solve_real_symmetric_projected(Tm, proj_max_iter, small_tol);
 
-        if (small.eigenvalues.empty()) {
-            res.breakdown_reason = "projected eigensolver failed";
+        if (!proj.success) {
+            res.breakdown_reason = proj.status.empty() ? "projected_eigensolver_failed" : proj.status;
+            res.failure_reason = proj.message.empty() ? "projected eigensolver failed" : proj.message;
+            break;
+        }
+        if (proj.pairs.empty()) {
+            res.breakdown_reason = "projected_eigensolver_empty_result";
+            res.failure_reason = "projected eigensolver returned empty result";
             break;
         }
 
         // ---- Select target Ritz pairs ----
-        std::vector<std::complex<R> > ceigs;
-        ceigs.reserve(small.eigenvalues.size());
-        for (std::size_t i = 0; i < small.eigenvalues.size(); i++) {
-            ceigs.push_back(std::complex<R>(
-                vcp::tsparse_scalar::real_part(small.eigenvalues[i]), R(0)));
-        }
         const std::size_t k_remaining = k_actual - locked_vals.size();
-        const std::vector<std::size_t> sel = tsparse_eigen_selection::select_eigen_indices(
-            ceigs, std::min(m, k_remaining + m), target, R(0));
+        const std::vector<std::size_t> sel =
+            vcp::tsparse_projected::select_projected_indices(
+                proj.pairs, std::min(m, k_remaining + m), target, R(0));
 
         // ---- Check convergence; lock one pair per restart ----
         bool ritz_budget_exhausted = false;
         for (std::size_t si = 0; si < sel.size() && locked_vals.size() < k_actual; si++) {
             const std::size_t idx = sel[si];
-            if (idx >= small.eigenvectors.size()) continue;
+            if (idx >= proj.pairs.size()) continue;
 
             // Lift Ritz vector: u = V * y
-            const std::vector<T>& y = small.eigenvectors[idx];
+            const std::vector<T>& y = proj.pairs[idx].vector;
             std::vector<T> u(n, T(0));
             for (std::size_t ji = 0; ji < y.size() && ji < basis.size(); ji++) {
                 for (std::size_t i = 0; i < n; i++) u[i] += basis[ji][i] * y[ji];
@@ -459,7 +461,7 @@ b_inner_lanczos_eigs(
             for (std::size_t i = 0; i < n; i++) u[i] /= T(u_bnorm);
 
             // Compute generalized residual:  r = A u - mu * B u
-            const T mu = small.eigenvalues[idx];
+            const T mu = proj.pairs[idx].value;
             if (mv_total >= mv_budget) { ritz_budget_exhausted = true; break; }
             const std::vector<T> Au = A.mul_vec(u);
             mv_total++;

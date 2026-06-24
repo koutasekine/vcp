@@ -34,6 +34,7 @@
 #include <vcp/tsparse/tsparse_dense_linalg.hpp>
 #include <vcp/tsparse/tsparse_eigensolvers.hpp>
 #include <vcp/tsparse/tsparse_lanczos.hpp>
+#include <vcp/tsparse/tsparse_projected_eigensolver.hpp>
 #include <vcp/spmatrix.hpp>
 
 namespace vcp {
@@ -432,11 +433,16 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
         const std::size_t proj_iter =
             std::max<std::size_t>(m_actual * m_actual * 300, std::size_t(3000));
 
-        const vcp::tsparse_dense_linalg::dense_eigen_result<T> proj =
-            vcp::tsparse_dense_linalg::jacobi_eig_dense(
+        vcp::tsparse_projected::projected_eigensolver_result<T> proj_sym =
+            vcp::tsparse_projected::solve_real_symmetric_projected(
                 T_proj, proj_iter, small_tol);
 
-        if (proj.eigenvalues.empty()) {
+        if (!proj_sym.success) {
+            result.failure_reason = proj_sym.message.empty()
+                ? "projected eigensolver failed" : proj_sym.message;
+            break;
+        }
+        if (proj_sym.pairs.empty()) {
             result.failure_reason = "projected eigensolver returned empty result";
             break;
         }
@@ -449,20 +455,14 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
         // Ritz vectors are lifted to full space and orthogonalized against
         // locked vectors using the Phase 1 helper orthogonalize_against_locked.
         // -------------------------------------------------------------------
-        const std::size_t n_ritz = proj.eigenvalues.size();
+        const std::size_t n_ritz = proj_sym.pairs.size();
         const std::size_t k_extra =
             std::max<std::size_t>(k / 2, std::size_t(2));
         const std::size_t k_want = std::min(n_ritz, k + k_extra);
 
-        std::vector<std::complex<R> > ceigs;
-        ceigs.reserve(n_ritz);
-        for (std::size_t i = 0; i < n_ritz; i++) {
-            ceigs.push_back(std::complex<R>(
-                vcp::tsparse_scalar::real_part(proj.eigenvalues[i]), R(0)));
-        }
         const std::vector<std::size_t> sel_order =
-            vcp::tsparse_eigensolvers::select_ritz_indices<T>(
-                ceigs, k_want, target, shift);
+            vcp::tsparse_projected::select_projected_indices(
+                proj_sym.pairs, k_want, target, shift);
 
         struct ritz_data_t {
             T              value;
@@ -477,21 +477,21 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
 
         for (std::size_t si = 0; si < sel_order.size(); si++) {
             const std::size_t idx = sel_order[si];
-            if (idx >= proj.eigenvectors.size()) continue;
+            if (idx >= proj_sym.pairs.size()) continue;
 
-            const T proj_last = proj.eigenvectors[idx].empty()
-                ? T(0) : proj.eigenvectors[idx].back();
+            const T proj_last = proj_sym.pairs[idx].vector.empty()
+                ? T(0) : proj_sym.pairs[idx].vector.back();
             const R res_abs_val =
                 beta_overflow * vcp::tsparse_scalar::abs_value(
                     vcp::tsparse_scalar::real_part(proj_last));
 
-            const T theta = proj.eigenvalues[idx];
+            const T theta = proj_sym.pairs[idx].value;
             const R abs_theta = vcp::tsparse_scalar::abs_value(
                 vcp::tsparse_scalar::real_part(theta));
             const R res_rel_val = res_abs_val / (R(1) + abs_theta);
 
             // Lift and orthogonalize against locked using Phase 1 helper
-            std::vector<T> u = trl_detail::lift_ritz(basis, proj.eigenvectors[idx], n);
+            std::vector<T> u = trl_detail::lift_ritz(basis, proj_sym.pairs[idx].vector, n);
             const R unrm = vcp::tsparse::orthogonalize_against_locked(u, locked, false);
             if (unrm <= small_tol) continue;
             for (std::size_t i = 0; i < n; i++) u[i] /= T(unrm);
