@@ -551,6 +551,75 @@ namespace vcp {
 		}
 
 		// ------------------------------------------------------------------
+		// Phase 7.7: policy methods for to_dense / is_symmetric forwarding
+		// spmatrix<T,P> delegates A.to_dense() / A.is_symmetric() here.
+		// Custom policy P can override these to change dense conversion or
+		// symmetry-check semantics (e.g. verified / interval enclosure).
+		// ------------------------------------------------------------------
+		typedef std::vector<std::vector<_T> > dense_matrix_type;
+
+		// policy_to_dense: CSR traversal → row-major dense 2-D vector.
+		// Missing entries become T(0).  Behaviour matches the pre-7.7
+		// spmatrix::to_dense() implementation.
+		template <class Matrix>
+		dense_matrix_type policy_to_dense(const Matrix& A) const {
+			dense_matrix_type dense(
+				static_cast<std::size_t>(A.rowsize()),
+				std::vector<_T>(static_cast<std::size_t>(A.columnsize()), _T(0)));
+			Matrix Acsr = A.as_csr();
+			const std::vector<_Index>& outerv = Acsr.outer_index();
+			const std::vector<_Index>& innerv = Acsr.inner_index();
+			const std::vector<_T>& val = Acsr.values();
+			for (_Index i = 0; i < Acsr.rowsize(); i++) {
+				for (_Index p = outerv[static_cast<std::size_t>(i)];
+				     p < outerv[static_cast<std::size_t>(i + 1)]; p++) {
+					dense[static_cast<std::size_t>(i)][static_cast<std::size_t>(innerv[static_cast<std::size_t>(p)])] =
+						val[static_cast<std::size_t>(p)];
+				}
+			}
+			return dense;
+		}
+
+		// policy_is_symmetric (no-tol): delegates to tolerance overload.
+		template <class Matrix>
+		bool policy_is_symmetric(const Matrix& A) const {
+			return policy_is_symmetric(A, vcp::tsparse_scalar::decimal_power_negative<scalar_real_type>(12));
+		}
+
+		// policy_is_symmetric (with tol): complex-symmetric check, NOT Hermitian.
+		// For complex T, compares A(i,j) with A(j,i), not conj(A(j,i)).
+		// Behaviour matches the pre-7.7 spmatrix::is_symmetric(tol) implementation.
+		template <class Matrix>
+		bool policy_is_symmetric(const Matrix& A, const scalar_real_type& tol) const {
+			if (tol <= scalar_real_type(0))
+				vcp::throw_error<vcp::invalid_argument>("spmats::policy_is_symmetric: tol must be positive");
+			if (A.rowsize() != A.columnsize()) return false;
+			Matrix Acsr = A.as_csr();
+			const std::vector<_Index>& outerv = Acsr.outer_index();
+			const std::vector<_Index>& innerv = Acsr.inner_index();
+			const std::vector<_T>& val = Acsr.values();
+			for (_Index i = 0; i < Acsr.rowsize(); i++) {
+				for (_Index p = outerv[static_cast<std::size_t>(i)];
+				     p < outerv[static_cast<std::size_t>(i + 1)]; p++) {
+					const _Index j = innerv[static_cast<std::size_t>(p)];
+					if (i == j) continue;
+					const _Index first = outerv[static_cast<std::size_t>(j)];
+					const _Index last  = outerv[static_cast<std::size_t>(j + 1)];
+					const typename std::vector<_Index>::const_iterator begin = innerv.begin() + first;
+					const typename std::vector<_Index>::const_iterator end   = innerv.begin() + last;
+					typename std::vector<_Index>::const_iterator it = std::lower_bound(begin, end, i);
+					_T mirrored = _T(0);
+					if (it != end && *it == i)
+						mirrored = val[static_cast<std::size_t>(it - innerv.begin())];
+					const scalar_real_type diff = vcp::tsparse_scalar::abs_value(
+						val[static_cast<std::size_t>(p)] - mirrored);
+					if (diff > tol) return false;
+				}
+			}
+			return true;
+		}
+
+		// ------------------------------------------------------------------
 		// Private helpers for policy methods
 		// ------------------------------------------------------------------
 	private:

@@ -103,6 +103,30 @@ namespace vcp {
 	//
 	//   bool is_symmetric(const real_type& tol) const;
 	//   bool is_symmetric() const;
+	//
+	// Phase 7.7: policy methods for to_dense / is_symmetric forwarding.
+	// spmatrix<T,P> calls these instead of implementing the logic itself.
+	// A custom policy P may override them to change semantics
+	// (e.g. verified dense enclosure, inconclusive symmetry check).
+	//
+	//   typedef std::vector<std::vector<T>> dense_matrix_type;
+	//
+	//   template <class Matrix>
+	//   dense_matrix_type policy_to_dense(const Matrix& A) const;
+	//     - Convert sparse matrix to row-major dense 2-D vector.
+	//     - Missing entries become T(0).
+	//     - Default: same CSR-traversal behaviour as pre-7.7 spmatrix::to_dense().
+	//
+	//   template <class Matrix>
+	//   bool policy_is_symmetric(const Matrix& A) const;
+	//     - Complex-symmetric check (NOT Hermitian).
+	//     - Uses default tolerance decimal_power_negative<real_type>(12).
+	//
+	//   template <class Matrix>
+	//   bool policy_is_symmetric(const Matrix& A, const real_type& tol) const;
+	//     - Complex-symmetric check with explicit tolerance.
+	//     - For complex T: compares A(i,j) with A(j,i), NOT conj(A(j,i)).
+	//     - Default: same behaviour as pre-7.7 spmatrix::is_symmetric(tol).
 	// -----------------------------------------------------------------------
 
 	// C++11 static_assert check: verifies that P has the required typedefs.

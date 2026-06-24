@@ -31,6 +31,7 @@ namespace vcp {
 		typedef typename _P::index_type index_type;
 		typedef typename _P::format_type format_type;
 		typedef typename spmatrix_real_type<_T>::type scalar_real_type;
+		typedef typename _P::dense_matrix_type dense_matrix_type;
 		typedef vcp::linear_solve_options<_T> linear_solve_options_type;
 		typedef vcp::eig_options<_T> eig_options_type;
 
@@ -82,48 +83,19 @@ namespace vcp {
 		std::vector<_T> trans_mul_vec(const std::vector<_T>& x) const { return _P::trans_mul_vec(x); }
 		void trans_mul_vec(const _T* x, _T* y) const { _P::trans_mul_vec(x, y); }
 
-		std::vector<std::vector<_T> > to_dense() const {
-			std::vector<std::vector<_T> > dense(static_cast<std::size_t>(rowsize()), std::vector<_T>(static_cast<std::size_t>(columnsize()), _T(0)));
-			spmatrix A = this->as_csr();
-			const std::vector<index_type>& outer = A.outer_index();
-			const std::vector<index_type>& inner = A.inner_index();
-			const std::vector<_T>& val = A.values();
-			for (index_type i = 0; i < A.rowsize(); i++) {
-				for (index_type p = outer[static_cast<std::size_t>(i)]; p < outer[static_cast<std::size_t>(i + 1)]; p++) {
-					dense[static_cast<std::size_t>(i)][static_cast<std::size_t>(inner[static_cast<std::size_t>(p)])] = val[static_cast<std::size_t>(p)];
-				}
-			}
-			return dense;
+		// Phase 7.7: to_dense / is_symmetric are public API; implementation is
+		// delegated to policy_to_dense / policy_is_symmetric so that a custom
+		// policy P can override the semantics (e.g. verified dense enclosure).
+		dense_matrix_type to_dense() const {
+			return this->policy_to_dense(*this);
 		}
 
 		bool is_symmetric() const {
-			return is_symmetric(vcp::tsparse_scalar::decimal_power_negative<scalar_real_type>(12));
+			return this->policy_is_symmetric(*this);
 		}
 
 		bool is_symmetric(const scalar_real_type& tol) const {
-			if (tol <= scalar_real_type(0)) vcp::throw_error<vcp::invalid_argument>("spmatrix::is_symmetric: tol must be positive");
-			if (rowsize() != columnsize()) return false;
-			spmatrix A = this->as_csr();
-			const std::vector<index_type>& outer = A.outer_index();
-			const std::vector<index_type>& inner = A.inner_index();
-			const std::vector<_T>& val = A.values();
-			for (index_type i = 0; i < A.rowsize(); i++) {
-				for (index_type p = outer[static_cast<std::size_t>(i)]; p < outer[static_cast<std::size_t>(i + 1)]; p++) {
-					const index_type j = inner[static_cast<std::size_t>(p)];
-					if (i == j) continue;
-					const index_type first = outer[static_cast<std::size_t>(j)];
-					const index_type last = outer[static_cast<std::size_t>(j + 1)];
-					const typename std::vector<index_type>::const_iterator begin = inner.begin() + first;
-					const typename std::vector<index_type>::const_iterator end = inner.begin() + last;
-					typename std::vector<index_type>::const_iterator it = std::lower_bound(begin, end, i);
-					_T mirrored = _T(0);
-					if (it != end && *it == i) {
-						mirrored = val[static_cast<std::size_t>(it - inner.begin())];
-					}
-					if (abs_value(val[static_cast<std::size_t>(p)] - mirrored) > tol) return false;
-				}
-			}
-			return true;
+			return this->policy_is_symmetric(*this, tol);
 		}
 
 		// ---------------------------------------------------------------
@@ -621,10 +593,6 @@ namespace vcp {
 		}
 
 	private:
-		static scalar_real_type abs_value(const _T& x) {
-			return vcp::tsparse_scalar::abs_value(x);
-		}
-
 		void validate_eig_input(const char* routine) const {
 			if (rowsize() != columnsize()) vcp::throw_error<vcp::dimension_error>(routine, ": matrix must be square");
 		}
