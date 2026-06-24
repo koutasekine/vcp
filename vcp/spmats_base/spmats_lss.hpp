@@ -19,7 +19,7 @@
 
 #include <vcp/tsparse/tsparse_scalar.hpp>
 #include <vcp/tsparse/tsparse_solvers.hpp>
-#include <vcp/spmats_eigs_types.hpp>
+#include <vcp/spmats_base/spmats_eigs_types.hpp>
 
 namespace vcp {
 

@@ -16,8 +16,8 @@
 
 #include <vcp/error.hpp>
 #include <vcp/tsparse/tsparse.hpp>
-#include <vcp/spmats_eigs_types.hpp>
-#include <vcp/spmats_policy_traits.hpp>
+#include <vcp/spmats_base/spmats_eigs_types.hpp>
+#include <vcp/spmats_base/spmats_policy_traits.hpp>
 
 namespace vcp {
 
@@ -720,8 +720,8 @@ namespace vcp {
 }
 
 // Include policy method implementations (out-of-line definitions)
-#include <vcp/spmats_product.hpp>
-#include <vcp/spmats_lss.hpp>
-#include <vcp/spmats_eigs.hpp>
+#include <vcp/spmats_base/spmats_product.hpp>
+#include <vcp/spmats_base/spmats_lss.hpp>
+#include <vcp/spmats_base/spmats_eigs.hpp>
 
 #endif

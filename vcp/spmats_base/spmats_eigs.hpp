@@ -13,7 +13,7 @@
 #include <limits>
 #include <string>
 #include <vector>
-#include <vcp/spmats_eigs_types.hpp>
+#include <vcp/spmats_base/spmats_eigs_types.hpp>
 #include <vcp/tsparse/tsparse_lanczos.hpp>
 #include <vcp/tsparse/tsparse_arnoldi.hpp>
 #include <vcp/tsparse/tsparse_factorization.hpp>
