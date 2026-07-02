@@ -5,6 +5,16 @@
 // Conforms to: L3 external design v0.2 (sections 5) and
 //              L3 internal design v0.2 (sections 4, 5, 6, 7).
 //
+// D = 3 enablement (phase 5b, D5B-1/D5B-2 of
+// sandbox/docs/plans/bfem_d3b_plan.md): fe_space is generalized over D
+// instead of being duplicated -- the ONLY dimension-dependent pieces are the
+// topology type and the dofmap builder, both selected at compile time by
+// detail::fe_space_backend<D> below. The external API, the SP lazy
+// instantiation, the thread model and the determinism contract are identical
+// for D = 2 and D = 3. fe_space<D>::dofs(m) is the single public
+// construction entry of dofmap<D> (the 2D A-2 discipline, lifted to 3D:
+// detail::dofmap_builder3 stays detail).
+//
 // spmatrix reconciliation (external design 11.1, resolved 2026-07-02, see
 // sandbox/docs/reviews/bfem_api_reconciliation_review.md):
 //  (i)  sequential (i, j, value) insertion exists: spmatrix::add(i, j, v);
@@ -45,6 +55,7 @@
 
 #include <vcp/bfem/mesh.hpp>
 #include <vcp/bfem/dofmap.hpp>
+#include <vcp/bfem/d3/dofmap3.hpp>
 #include <vcp/bfem/fe_function.hpp>
 #include <vcp/bfem/bpoly.hpp>
 #include <vcp/bfem/poly1.hpp>
@@ -186,6 +197,30 @@ struct spm_adapter {
     }
 };
 
+// ---------------------------------------------------------------------------
+// fe_space_backend<D> (D5B-1/D5B-2): the single dimension dispatch of the
+// assembly layer. Everything else in fe_space is D-generic; only the
+// topology type and the dofmap builder differ between D = 2 and D = 3.
+// ---------------------------------------------------------------------------
+template <int D>
+struct fe_space_backend;
+
+template <>
+struct fe_space_backend<2> {
+    typedef mesh_topology2 topology_type;
+    static dofmap<2> build_dofmap(const topology_type& tp, int m) {
+        return dofmap_builder::build(tp, m);
+    }
+};
+
+template <>
+struct fe_space_backend<3> {
+    typedef mesh_topology3 topology_type;
+    static dofmap<3> build_dofmap(const topology_type& tp, int m) {
+        return dofmap_builder3::build(tp, m);
+    }
+};
+
 } // namespace detail
 
 // ---------------------------------------------------------------------------
@@ -195,7 +230,7 @@ struct spm_adapter {
 // ---------------------------------------------------------------------------
 template <int D, typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
 class fe_space {
-    static_assert(D == 2, "bfem::fe_space: initial version supports D == 2 only");
+    static_assert(D == 2 || D == 3, "bfem::fe_space: only D == 2 or D == 3");
 public:
     typedef vcp::spmatrix<T, SP> spmatrix_t;
     typedef fe_function<D, T, P> function_type;
@@ -208,7 +243,7 @@ public:
           buf_(), uloc_(), vloc_(), wloc_(), cws_(), loc_() {
         if (n < 1)
             throw std::invalid_argument("bfem::fe_space: base degree must be >= 1");
-        topo_ = detail::mesh_topology2::build(msh);
+        topo_ = detail::fe_space_backend<D>::topology_type::build(msh);
         geom_.reserve(static_cast<std::size_t>(topo_.nt));
         for (int e = 0; e < topo_.nt; ++e) {
             std::array<std::array<T, D>, D + 1> vv;
@@ -226,7 +261,8 @@ public:
             throw std::invalid_argument("bfem::fe_space::dofs: m must be >= 1");
         typename std::map<int, dofmap<D> >::iterator it = dmaps_.find(m);
         if (it != dmaps_.end()) return it->second;
-        return dmaps_.insert(std::make_pair(m, detail::dofmap_builder::build(topo_, m)))
+        return dmaps_.insert(
+                   std::make_pair(m, detail::fe_space_backend<D>::build_dofmap(topo_, m)))
             .first->second;
     }
     int num_elements() const { return topo_.nt; }
@@ -428,7 +464,7 @@ public:
 private:
     mesh<D, T> mesh_;
     int n_;
-    detail::mesh_topology2 topo_;
+    typename detail::fe_space_backend<D>::topology_type topo_;
     std::map<int, dofmap<D> > dmaps_;
     std::vector<element_geometry<D, T> > geom_;
     element_op<D, T, P> op_;
