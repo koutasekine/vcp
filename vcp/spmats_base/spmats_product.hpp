@@ -23,6 +23,8 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_add(
 	const spmats<_T, _Index>& A,
 	const spmats<_T, _Index>& B) const
 {
+	if (!A.is_finalized()) A.finalize();
+	if (!B.is_finalized()) B.finalize();
 	spmats<_T, _Index> Ac = A.as_csr();
 	spmats<_T, _Index> Bc = B.as_csr();
 	spmats<_T, _Index> C;
@@ -48,6 +50,8 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_sub(
 	const spmats<_T, _Index>& A,
 	const spmats<_T, _Index>& B) const
 {
+	if (!A.is_finalized()) A.finalize();
+	if (!B.is_finalized()) B.finalize();
 	spmats<_T, _Index> Ac = A.as_csr();
 	spmats<_T, _Index> Bc = B.as_csr();
 	spmats<_T, _Index> C;
@@ -67,9 +71,25 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_sub(
 
 // ---------------------------------------------------------------------------
 // policy_mul: C = A * B  (sparse matrix-matrix multiply)
+// NVI outer: non-virtual, finalizes A and B, then delegates to the virtual
+// policy_mul_impl. Must never be overridden — override policy_mul_impl.
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 spmats<_T, _Index> spmats<_T, _Index>::policy_mul(
+	const spmats<_T, _Index>& A,
+	const spmats<_T, _Index>& B) const
+{
+	if (!A.is_finalized()) A.finalize();
+	if (!B.is_finalized()) B.finalize();
+	return policy_mul_impl(A, B);
+}
+
+// ---------------------------------------------------------------------------
+// policy_mul_impl: virtual algorithm body (spgemm). Custom policies override
+// this, not policy_mul.
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+spmats<_T, _Index> spmats<_T, _Index>::policy_mul_impl(
 	const spmats<_T, _Index>& A,
 	const spmats<_T, _Index>& B) const
 {
@@ -90,28 +110,41 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_mul(
 
 // ---------------------------------------------------------------------------
 // policy_mul_vec: y = A * x
+// Auto-finalizes A at the policy layer entry. The low-level A.mul_vec()
+// itself keeps its require_finalized() throwing behavior unchanged (see
+// spmats_finalize_policy.md §5); only this policy-layer entry point gains
+// auto-finalize.
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 std::vector<_T> spmats<_T, _Index>::policy_mul_vec(
 	const spmats<_T, _Index>& A,
 	const std::vector<_T>& x) const
 {
+	if (!A.is_finalized()) A.finalize();
 	return A.mul_vec(x);
 }
 
 // ---------------------------------------------------------------------------
 // policy_left_mul_vec: y = x^T * A  (= A^T * x)
+// Same auto-finalize policy as policy_mul_vec; A.trans_mul_vec() itself
+// keeps its require_finalized() throwing behavior unchanged.
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 std::vector<_T> spmats<_T, _Index>::policy_left_mul_vec(
 	const std::vector<_T>& x,
 	const spmats<_T, _Index>& A) const
 {
+	if (!A.is_finalized()) A.finalize();
 	return A.trans_mul_vec(x);
 }
 
 // ---------------------------------------------------------------------------
 // policy_scalar_mul: B = alpha * A
+// finalize investigation (C-2): unchanged. Operates on A.as_csr(), a
+// throwaway copy that is converted correctly regardless of A's current
+// finalize state; A itself is never read via require_finalized()-guarded
+// APIs. Category 4 (self-contained), like transpose/policy_to_dense/
+// policy_is_symmetric — no auto-finalize needed.
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 spmats<_T, _Index> spmats<_T, _Index>::policy_scalar_mul(

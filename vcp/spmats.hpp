@@ -85,6 +85,7 @@ namespace vcp {
 			coo_row.reserve(m);
 			coo_col.reserve(m);
 			coo_value.reserve(m);
+			coo_is_set.reserve(m);
 			inner.reserve(m);
 			value.reserve(m);
 		}
@@ -95,48 +96,47 @@ namespace vcp {
 			coo_row.push_back(i);
 			coo_col.push_back(j);
 			coo_value.push_back(a);
+			coo_is_set.push_back(0);
 			finalized = false;
 			fmt = vcp::sparse_coo;
 			sorted = false;
 			unique = false;
 		}
 
+		// Option A (see sandbox/docs/design/spmats_finalize_policy.md and
+		// SLU-C3-ELEMENT-ACCESSOR): set() is just as light as add() (O(1)
+		// amortized push, no COO rescan). It tags the pushed entry as
+		// is_set=true; the actual "discard everything before this at (i,j)"
+		// semantics are applied later by the tagged merge in normalize_coo()
+		// (or, before finalize, by get()'s own tagged scan below).
 		void set(const index_type i, const index_type j, const _T& a) {
 			check_index(i, j, "spmats::set");
 			ensure_coo_buffer();
-			std::vector<index_type> nr;
-			std::vector<index_type> nc;
-			std::vector<_T> nv;
-			nr.reserve(coo_value.size() + 1);
-			nc.reserve(coo_value.size() + 1);
-			nv.reserve(coo_value.size() + 1);
-			for (std::size_t k = 0; k < coo_value.size(); k++) {
-				if (!(coo_row[k] == i && coo_col[k] == j)) {
-					nr.push_back(coo_row[k]);
-					nc.push_back(coo_col[k]);
-					nv.push_back(coo_value[k]);
-				}
-			}
-			if (!(a == _T(0))) {
-				nr.push_back(i);
-				nc.push_back(j);
-				nv.push_back(a);
-			}
-			coo_row.swap(nr);
-			coo_col.swap(nc);
-			coo_value.swap(nv);
+			coo_row.push_back(i);
+			coo_col.push_back(j);
+			coo_value.push_back(a);
+			coo_is_set.push_back(1);
 			finalized = false;
 			fmt = vcp::sparse_coo;
 			sorted = false;
-			unique = true;
+			unique = false;
 		}
 
 		_T get(const index_type i, const index_type j) const {
 			check_index(i, j, "spmats::get");
 			if (!finalized) {
+				// Scan in stored order (insertion order, unless sort_coo()/
+				// normalize_coo() reordered it -- either way entries sharing
+				// (i,j) keep their relative insertion order, see the tagged
+				// tcoo_sort overload). A set() resets the accumulator to its
+				// value; an add() accumulates. Byte-identical to the old
+				// unconditional sum when no set() ever touched (i,j).
 				_T sum = _T(0);
 				for (std::size_t k = 0; k < coo_value.size(); k++) {
-					if (coo_row[k] == i && coo_col[k] == j) sum += coo_value[k];
+					if (coo_row[k] == i && coo_col[k] == j) {
+						if (coo_is_set[k]) sum = coo_value[k];
+						else sum += coo_value[k];
+					}
 				}
 				return sum;
 			}
@@ -165,33 +165,51 @@ namespace vcp {
 			return _T(0);
 		}
 
-		void finalize() { to_csr(); }
+		void finalize() const { to_csr(); }
 
-		void sort_coo() {
+		// Calls ensure_coo_buffer() (see the warning above its declaration):
+		// on a finalized (CSR/CSC) matrix this silently reverts it to
+		// unfinalized COO, and sort_coo() has no path back to finalized
+		// state. Safe only from to_csr()/to_csc() (which always re-finalize
+		// afterward) or on a matrix that is already unfinalized. Do not call
+		// directly on a finalized matrix in new code -- use as_csr()/
+		// as_csc() instead (see
+		// sandbox/docs/misc/spmats_destructive_helpers_misc.md).
+		void sort_coo() const {
 			ensure_coo_buffer();
 			const index_type n = size_to_index(coo_value.size(), "spmats::sort_coo");
 			if (n > 0) {
-				vcp::tcoo_sort(n, coo_row.data(), coo_col.data(), coo_value.data());
+				vcp::tcoo_sort(n, coo_row.data(), coo_col.data(), coo_value.data(), coo_is_set.data());
 			}
 			sorted = true;
 		}
 
-		void normalize_coo() {
+		// Calls ensure_coo_buffer()/sort_coo() (same caveat as sort_coo()
+		// above): reverts a finalized matrix to unfinalized COO with no way
+		// back. Only safe from to_csr()/to_csc() or on an already-
+		// unfinalized matrix; do not call directly on a finalized matrix in
+		// new code -- use as_csr()/as_csc() instead.
+		void normalize_coo() const {
 			ensure_coo_buffer();
 			sort_coo();
 			index_type n = size_to_index(coo_value.size(), "spmats::normalize_coo");
 			if (n > 0) {
-				n = vcp::tcoo_sum_duplicates(n, coo_row.data(), coo_col.data(), coo_value.data());
+				n = vcp::tcoo_sum_duplicates_tagged(n, coo_row.data(), coo_col.data(), coo_value.data(), coo_is_set.data());
 				n = vcp::tcoo_remove_zeros(n, coo_row.data(), coo_col.data(), coo_value.data());
 			}
 			coo_row.resize(static_cast<std::size_t>(n));
 			coo_col.resize(static_cast<std::size_t>(n));
 			coo_value.resize(static_cast<std::size_t>(n));
+			// Each (row,col) is now unique, so the tag no longer matters
+			// (see get()'s reset-from-zero equivalence); keep the array in
+			// lockstep with the other three so indices always line up.
+			coo_is_set.resize(static_cast<std::size_t>(n));
 			sorted = true;
 			unique = true;
 		}
 
-		void to_csr() {
+		void to_csr() const {
+			if (finalized && fmt == vcp::sparse_csr) return;
 			ensure_coo_buffer();
 			normalize_coo();
 			const index_type n = size_to_index(coo_value.size(), "spmats::to_csr");
@@ -204,13 +222,15 @@ namespace vcp {
 			coo_row.clear();
 			coo_col.clear();
 			coo_value.clear();
+			coo_is_set.clear();
 			fmt = vcp::sparse_csr;
 			finalized = true;
 			sorted = true;
 			unique = true;
 		}
 
-		void to_csc() {
+		void to_csc() const {
+			if (finalized && fmt == vcp::sparse_csc) return;
 			ensure_coo_buffer();
 			normalize_coo();
 			const index_type n = size_to_index(coo_value.size(), "spmats::to_csc");
@@ -223,6 +243,7 @@ namespace vcp {
 			coo_row.clear();
 			coo_col.clear();
 			coo_value.clear();
+			coo_is_set.clear();
 			fmt = vcp::sparse_csc;
 			finalized = true;
 			sorted = true;
@@ -295,9 +316,107 @@ namespace vcp {
 				out.coo_row.push_back(tmp.coo_col[k]);
 				out.coo_col.push_back(tmp.coo_row[k]);
 				out.coo_value.push_back(tmp.coo_value[k]);
+				out.coo_is_set.push_back(tmp.coo_is_set[k]);
 			}
 			out.finalize();
 			return out;
+		}
+
+		// matlab C = [A,B] -- concatenate columns (row counts must match).
+		// Built directly from as_csr() copies of *this and B (see
+		// sandbox/docs/misc/spmats_destructive_helpers_misc.md): as_csr() never
+		// mutates *this/B, and is near-free when they are already CSR-finalized
+		// (SLU-C2-FIX-IDEMPOTENT-FINALIZE). Within each output row, B's shifted
+		// column indices (+= this->column) are all greater than A's, so the
+		// merged row stays sorted with no re-sort/dedup pass needed.
+		void horzcat(const spmats& B, spmats& C) const {
+			if (row != B.row) {
+				vcp::throw_error<vcp::dimension_error>("spmats::horzcat: row size mismatch: ", row, " != ", B.row);
+			}
+			const spmats Ac = this->as_csr();
+			const spmats Bc = B.as_csr();
+			const index_type out_rows = row;
+			const index_type out_cols = column + B.column;
+			const index_type nnzA = size_to_index(Ac.value.size(), "spmats::horzcat");
+			const index_type nnzB = size_to_index(Bc.value.size(), "spmats::horzcat");
+
+			C.row = out_rows;
+			C.column = out_cols;
+			C.outer.assign(index_to_size(checked_plus_one(out_rows, "spmats::horzcat"), "spmats::horzcat"), 0);
+			C.inner.assign(index_to_size(nnzA + nnzB, "spmats::horzcat"), 0);
+			C.value.assign(index_to_size(nnzA + nnzB, "spmats::horzcat"), _T(0));
+
+			index_type pos = 0;
+			for (index_type i = 0; i < out_rows; i++) {
+				C.outer[i] = pos;
+				for (index_type k = Ac.outer[i]; k < Ac.outer[i + 1]; k++) {
+					C.inner[pos] = Ac.inner[k];
+					C.value[pos] = Ac.value[k];
+					pos++;
+				}
+				for (index_type k = Bc.outer[i]; k < Bc.outer[i + 1]; k++) {
+					C.inner[pos] = Bc.inner[k] + column;
+					C.value[pos] = Bc.value[k];
+					pos++;
+				}
+			}
+			C.outer[out_rows] = pos;
+
+			C.coo_row.clear();
+			C.coo_col.clear();
+			C.coo_value.clear();
+			C.coo_is_set.clear();
+			C.fmt = vcp::sparse_csr;
+			C.finalized = true;
+			C.sorted = true;
+			C.unique = true;
+		}
+
+		// matlab C = [A;B] -- concatenate rows (column counts must match).
+		// Same as_csr()-copy approach as horzcat() above. Row pointers are
+		// concatenated directly (B's row pointers shifted by A's total nnz,
+		// i.e. Ac.outer[row]); column indices are untouched since rows don't
+		// interleave columns, so no re-sort/dedup pass is needed either.
+		void vercat(const spmats& B, spmats& C) const {
+			if (column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("spmats::vercat: column size mismatch: ", column, " != ", B.column);
+			}
+			const spmats Ac = this->as_csr();
+			const spmats Bc = B.as_csr();
+			const index_type out_rows = row + B.row;
+			const index_type out_cols = column;
+			const index_type nnzA = size_to_index(Ac.value.size(), "spmats::vercat");
+			const index_type nnzB = size_to_index(Bc.value.size(), "spmats::vercat");
+
+			C.row = out_rows;
+			C.column = out_cols;
+			C.outer.assign(index_to_size(checked_plus_one(out_rows, "spmats::vercat"), "spmats::vercat"), 0);
+			C.inner.assign(index_to_size(nnzA + nnzB, "spmats::vercat"), 0);
+			C.value.assign(index_to_size(nnzA + nnzB, "spmats::vercat"), _T(0));
+
+			for (index_type i = 0; i <= row; i++) {
+				C.outer[i] = Ac.outer[i];
+			}
+			for (index_type i = 1; i <= B.row; i++) {
+				C.outer[row + i] = Ac.outer[row] + Bc.outer[i];
+			}
+			for (index_type k = 0; k < nnzA; k++) {
+				C.inner[k] = Ac.inner[k];
+				C.value[k] = Ac.value[k];
+			}
+			for (index_type k = 0; k < nnzB; k++) {
+				C.inner[nnzA + k] = Bc.inner[k];
+				C.value[nnzA + k] = Bc.value[k];
+			}
+
+			C.coo_row.clear();
+			C.coo_col.clear();
+			C.coo_value.clear();
+			C.coo_is_set.clear();
+			C.fmt = vcp::sparse_csr;
+			C.finalized = true;
+			C.sorted = true;
+			C.unique = true;
 		}
 
 		void assign_csr(const index_type rows, const index_type cols,
@@ -348,18 +467,28 @@ namespace vcp {
 	protected:
 		index_type row;
 		index_type column;
-		format_type fmt;
-		bool finalized;
-		bool sorted;
-		bool unique;
+		// finalize()/to_csr()/to_csc() are logically const (they change the
+		// internal COO<->CSR/CSC representation but not the mathematical
+		// value of the matrix); mutable lets them run from const methods
+		// (see sandbox/docs/design/spmats_finalize_policy.md §4).
+		mutable format_type fmt;
+		mutable bool finalized;
+		mutable bool sorted;
+		mutable bool unique;
 
-		std::vector<index_type> outer;
-		std::vector<index_type> inner;
-		std::vector<_T> value;
+		mutable std::vector<index_type> outer;
+		mutable std::vector<index_type> inner;
+		mutable std::vector<_T> value;
 
-		std::vector<index_type> coo_row;
-		std::vector<index_type> coo_col;
-		std::vector<_T> coo_value;
+		mutable std::vector<index_type> coo_row;
+		mutable std::vector<index_type> coo_col;
+		mutable std::vector<_T> coo_value;
+		// Option A tag array (SLU-C3-ELEMENT-ACCESSOR): parallel to
+		// coo_row/coo_col/coo_value (always same size). 1 = pushed by
+		// set(), 0 = pushed by add(). unsigned char rather than
+		// std::vector<bool>, which has no contiguous .data() to hand to
+		// the tcoo_sort/tcoo_sum_duplicates_tagged C-style array API.
+		mutable std::vector<unsigned char> coo_is_set;
 
 		void clear_storage() {
 			outer.clear();
@@ -368,6 +497,7 @@ namespace vcp {
 			coo_row.clear();
 			coo_col.clear();
 			coo_value.clear();
+			coo_is_set.clear();
 		}
 
 		void check_index(const index_type i, const index_type j, const char* routine) const {
@@ -406,7 +536,16 @@ namespace vcp {
 			return static_cast<index_type>(n + 1);
 		}
 
-		void ensure_coo_buffer() {
+		// NOT read-only: this transitions a finalized (CSR/CSC) matrix into
+		// unfinalized COO as a side effect (clears outer/inner/value, sets
+		// finalized=false, fmt=sparse_coo). Safe to call from add()/set()/
+		// to_csr()/to_csc() (each restores its own target state
+		// afterward). For any other read-only need, do not call this
+		// directly on the target -- use as_csr()/as_csc() instead (a
+		// copy-based operation, near-free once the source is already
+		// finalized thanks to SLU-C2-FIX-IDEMPOTENT-FINALIZE). See
+		// sandbox/docs/misc/spmats_destructive_helpers_misc.md.
+		void ensure_coo_buffer() const {
 			if (!finalized && fmt == vcp::sparse_coo) return;
 
 			std::vector<index_type> nr;
@@ -416,6 +555,10 @@ namespace vcp {
 			nr.resize(index_to_size(n, "spmats::ensure_coo_buffer"));
 			nc.resize(index_to_size(n, "spmats::ensure_coo_buffer"));
 			nv.resize(index_to_size(n, "spmats::ensure_coo_buffer"));
+			// CSR/CSC values are already merged and unique, so the tag is
+			// irrelevant here (see get()'s reset-from-zero equivalence);
+			// zero-fill just to keep the array in lockstep.
+			std::vector<unsigned char> ni(index_to_size(n, "spmats::ensure_coo_buffer"), 0);
 
 			if (fmt == vcp::sparse_csr) {
 				vcp::tcsr_to_coo(row, column, n, outer.data(), inner.data(), value.data(), nr.data(), nc.data(), nv.data());
@@ -437,6 +580,7 @@ namespace vcp {
 			coo_row.swap(nr);
 			coo_col.swap(nc);
 			coo_value.swap(nv);
+			coo_is_set.swap(ni);
 			outer.clear();
 			inner.clear();
 			value.clear();
@@ -646,10 +790,24 @@ namespace vcp {
 	public:
 		// ------------------------------------------------------------------
 		// Policy methods: arithmetic
+		//
+		// finalize safety (see sandbox/docs/design/spmats_finalize_policy.md):
+		// policy_mul is NVI-split (non-virtual outer + virtual _impl) because
+		// spgemm is an algorithm future policies may want to replace wholesale.
+		// policy_add/policy_sub/policy_mul_vec/policy_left_mul_vec get a plain
+		// auto-finalize check at the entry point (no virtual split needed).
+		// policy_scalar_mul/policy_scalar_div/policy_neg are unchanged: they
+		// operate on an as_csr() copy and are correct regardless of the
+		// input's finalize state (self-contained, category 4).
 		// ------------------------------------------------------------------
 		spmats<_T,_Index> policy_add(const spmats<_T,_Index>& A, const spmats<_T,_Index>& B) const;
 		spmats<_T,_Index> policy_sub(const spmats<_T,_Index>& A, const spmats<_T,_Index>& B) const;
+
+		// policy_mul: non-virtual outer. Must never be overridden; override
+		// policy_mul_impl instead.
 		spmats<_T,_Index> policy_mul(const spmats<_T,_Index>& A, const spmats<_T,_Index>& B) const;
+		virtual spmats<_T,_Index> policy_mul_impl(const spmats<_T,_Index>& A, const spmats<_T,_Index>& B) const;
+
 		std::vector<_T> policy_mul_vec(const spmats<_T,_Index>& A, const std::vector<_T>& x) const;
 		std::vector<_T> policy_left_mul_vec(const std::vector<_T>& x, const spmats<_T,_Index>& A) const;
 		spmats<_T,_Index> policy_scalar_mul(const spmats<_T,_Index>& A, const _T& alpha) const;
@@ -658,8 +816,17 @@ namespace vcp {
 
 		// ------------------------------------------------------------------
 		// Policy methods: linear system solve
+		//
+		// policy_lss_with_info: non-virtual outer, NVI pattern (see design doc
+		// §3). Must never be overridden; override policy_lss_with_info_impl
+		// instead. solve_jacobi/gauss_seidel/cg/bicgstab/gmres (+_with_info)
+		// and policy_lss all route through policy_lss_with_info, so they
+		// inherit the finalize guarantee automatically.
 		// ------------------------------------------------------------------
 		linear_solve_result<_T> policy_lss_with_info(
+			const spmats<_T,_Index>& A, const std::vector<_T>& b,
+			const linear_solve_options<_T>& opt) const;
+		virtual linear_solve_result<_T> policy_lss_with_info_impl(
 			const spmats<_T,_Index>& A, const std::vector<_T>& b,
 			const linear_solve_options<_T>& opt) const;
 		std::vector<_T> policy_lss(
@@ -668,8 +835,18 @@ namespace vcp {
 
 		// ------------------------------------------------------------------
 		// Policy methods: eigenvalue _with_info (non-throwing, definitions in spmats_eigs.hpp)
+		//
+		// policy_eigs_with_info / policy_generalized_eigs_with_info (no
+		// Preconditioner): NVI pattern, non-virtual outer + virtual _impl.
+		// Must never override the outer; override the _impl instead.
+		// Preconditioner overloads (templates) cannot be virtual in C++; they
+		// get a plain auto-finalize check on A (and B) at the entry point
+		// instead of an _impl split.
 		// ------------------------------------------------------------------
 		eig_result<_T> policy_eigs_with_info(
+			const spmats<_T,_Index>& A, std::size_t k,
+			const eig_options<_T>& opt) const;
+		virtual eig_result<_T> policy_eigs_with_info_impl(
 			const spmats<_T,_Index>& A, std::size_t k,
 			const eig_options<_T>& opt) const;
 
@@ -679,6 +856,9 @@ namespace vcp {
 			const eig_options<_T>& opt, const Prec& M) const;
 
 		eig_result<_T> policy_generalized_eigs_with_info(
+			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			std::size_t k, const eig_options<_T>& opt) const;
+		virtual eig_result<_T> policy_generalized_eigs_with_info_impl(
 			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
 			std::size_t k, const eig_options<_T>& opt) const;
 
@@ -690,12 +870,22 @@ namespace vcp {
 		// ------------------------------------------------------------------
 		// Policy methods: eigenvalue strict (throwing on failure)
 		// These own all convergence/count checking; spmatrix.hpp does none.
+		//
+		// policy_eig / policy_eigs / policy_generalized_eig /
+		// policy_generalized_eigs (no Preconditioner): NVI pattern, same rule
+		// as above (outer never overridden, override the _impl).
 		// ------------------------------------------------------------------
 		eig_result<_T> policy_eig(
 			const spmats<_T,_Index>& A,
 			const eig_options<_T>& opt) const;
+		virtual eig_result<_T> policy_eig_impl(
+			const spmats<_T,_Index>& A,
+			const eig_options<_T>& opt) const;
 
 		std::vector<_T> policy_eigs(
+			const spmats<_T,_Index>& A, std::size_t k,
+			const eig_options<_T>& opt) const;
+		virtual std::vector<_T> policy_eigs_impl(
 			const spmats<_T,_Index>& A, std::size_t k,
 			const eig_options<_T>& opt) const;
 
@@ -707,8 +897,14 @@ namespace vcp {
 		eig_result<_T> policy_generalized_eig(
 			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
 			std::size_t k, const eig_options<_T>& opt) const;
+		virtual eig_result<_T> policy_generalized_eig_impl(
+			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			std::size_t k, const eig_options<_T>& opt) const;
 
 		std::vector<_T> policy_generalized_eigs(
+			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			std::size_t k, const eig_options<_T>& opt) const;
+		virtual std::vector<_T> policy_generalized_eigs_impl(
 			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
 			std::size_t k, const eig_options<_T>& opt) const;
 

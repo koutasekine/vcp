@@ -28,5 +28,6 @@
 #include <vcp/tsparse/tsparse_b_inner_lanczos.hpp>
 #include <vcp/tsparse/tsparse_hermitian_lanczos.hpp>
 #include <vcp/tsparse/tsparse_experimental.hpp>
+#include <vcp/tsparse/tsparse_sparse_lu.hpp>
 
 #endif

@@ -2549,11 +2549,33 @@ eig_result<_T> policy_generalized_eigs_with_info(const spmats<_T,_Index>& A,
 // ===========================================================================
 // spmats<_T,_Index> member function definitions for policy_eigs_with_info
 // and policy_generalized_eigs_with_info.
-// These delegate to the free function implementations above.
+//
+// NVI pattern (see sandbox/docs/design/spmats_finalize_policy.md §3):
+// the non-Preconditioner overloads are non-virtual outers that finalize
+// their spmats arguments and then delegate to a virtual _impl. Must never
+// be overridden themselves -- override the _impl instead. The
+// Preconditioner-templated overloads cannot be virtual (C++ forbids virtual
+// template member functions), so they get a plain auto-finalize check
+// instead of an _impl split; the Preconditioner M itself is never a bare
+// spmats/spmatrix (it must expose apply(r,z), which spmats does not), and
+// every concrete preconditioner (jacobi_preconditioner, ilu0_preconditioner,
+// identity_preconditioner, function_preconditioner) already consumes its
+// source matrix at construction time via get() or as_csr(), both of which
+// are finalize-state-agnostic -- so M needs no finalize handling here.
 // ===========================================================================
 
 template <typename _T, typename _Index>
 eig_result<_T> spmats<_T,_Index>::policy_eigs_with_info(
+    const spmats<_T,_Index>& A,
+    std::size_t k,
+    const eig_options<_T>& opt) const
+{
+    if (!A.is_finalized()) A.finalize();
+    return policy_eigs_with_info_impl(A, k, opt);
+}
+
+template <typename _T, typename _Index>
+eig_result<_T> spmats<_T,_Index>::policy_eigs_with_info_impl(
     const spmats<_T,_Index>& A,
     std::size_t k,
     const eig_options<_T>& opt) const
@@ -2569,11 +2591,24 @@ eig_result<_T> spmats<_T,_Index>::policy_eigs_with_info(
     const eig_options<_T>& opt,
     const Prec& M) const
 {
+    if (!A.is_finalized()) A.finalize();
     return vcp::policy_eigs_with_info<_T,_Index,Prec>(A, k, opt, M);
 }
 
 template <typename _T, typename _Index>
 eig_result<_T> spmats<_T,_Index>::policy_generalized_eigs_with_info(
+    const spmats<_T,_Index>& A,
+    const spmats<_T,_Index>& B,
+    std::size_t k,
+    const eig_options<_T>& opt) const
+{
+    if (!A.is_finalized()) A.finalize();
+    if (!B.is_finalized()) B.finalize();
+    return policy_generalized_eigs_with_info_impl(A, B, k, opt);
+}
+
+template <typename _T, typename _Index>
+eig_result<_T> spmats<_T,_Index>::policy_generalized_eigs_with_info_impl(
     const spmats<_T,_Index>& A,
     const spmats<_T,_Index>& B,
     std::size_t k,
@@ -2591,6 +2626,8 @@ eig_result<_T> spmats<_T,_Index>::policy_generalized_eigs_with_info(
     const eig_options<_T>& opt,
     const Prec& M) const
 {
+    if (!A.is_finalized()) A.finalize();
+    if (!B.is_finalized()) B.finalize();
     return vcp::policy_generalized_eigs_with_info<_T,_Index,Prec>(A, B, k, opt, M);
 }
 
@@ -2598,10 +2635,26 @@ eig_result<_T> spmats<_T,_Index>::policy_generalized_eigs_with_info(
 // Strict policy methods: policy_eig, policy_eigs, policy_generalized_eig,
 // policy_generalized_eigs (and preconditioner overloads).
 // All convergence/count checking lives here, not in spmatrix.hpp.
+//
+// policy_eig / policy_eigs / policy_generalized_eig / policy_generalized_eigs
+// (no Preconditioner) are NVI outers too: they finalize their spmats
+// arguments and delegate to a virtual _impl, even though their _impl bodies
+// only call back into policy_eigs_with_info / policy_generalized_eigs_with_info
+// (already finalize-safe on their own). This keeps all six eigs entry points
+// independently safe and overridable, per spmats_finalize_policy.md §3.
 // ===========================================================================
 
 template <typename _T, typename _Index>
 eig_result<_T> spmats<_T,_Index>::policy_eig(
+    const spmats<_T,_Index>& A,
+    const eig_options<_T>& opt) const
+{
+    if (!A.is_finalized()) A.finalize();
+    return policy_eig_impl(A, opt);
+}
+
+template <typename _T, typename _Index>
+eig_result<_T> spmats<_T,_Index>::policy_eig_impl(
     const spmats<_T,_Index>& A,
     const eig_options<_T>& opt) const
 {
@@ -2626,6 +2679,15 @@ std::vector<_T> spmats<_T,_Index>::policy_eigs(
     const spmats<_T,_Index>& A, std::size_t k,
     const eig_options<_T>& opt) const
 {
+    if (!A.is_finalized()) A.finalize();
+    return policy_eigs_impl(A, k, opt);
+}
+
+template <typename _T, typename _Index>
+std::vector<_T> spmats<_T,_Index>::policy_eigs_impl(
+    const spmats<_T,_Index>& A, std::size_t k,
+    const eig_options<_T>& opt) const
+{
     eig_result<_T> result = policy_eigs_with_info(A, k, opt);
     if (!result.converged)
         vcp::throw_error<vcp::state_error>("spmats::policy_eigs: eigensolver did not converge");
@@ -2642,6 +2704,7 @@ std::vector<_T> spmats<_T,_Index>::policy_eigs(
     const spmats<_T,_Index>& A, std::size_t k,
     const eig_options<_T>& opt, const Prec& M) const
 {
+    // policy_eigs_with_info(A,k,opt,M) below already auto-finalizes A.
     eig_result<_T> result = policy_eigs_with_info(A, k, opt, M);
     if (!result.converged)
         vcp::throw_error<vcp::state_error>("spmats::policy_eigs(with preconditioner): eigensolver did not converge");
@@ -2655,6 +2718,16 @@ eig_result<_T> spmats<_T,_Index>::policy_generalized_eig(
     const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
     std::size_t k, const eig_options<_T>& opt) const
 {
+    if (!A.is_finalized()) A.finalize();
+    if (!B.is_finalized()) B.finalize();
+    return policy_generalized_eig_impl(A, B, k, opt);
+}
+
+template <typename _T, typename _Index>
+eig_result<_T> spmats<_T,_Index>::policy_generalized_eig_impl(
+    const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+    std::size_t k, const eig_options<_T>& opt) const
+{
     eig_result<_T> result = policy_generalized_eigs_with_info(A, B, k, opt);
     if (!result.converged)
         vcp::throw_error<vcp::state_error>("spmats::policy_generalized_eig: eigensolver did not converge");
@@ -2663,6 +2736,16 @@ eig_result<_T> spmats<_T,_Index>::policy_generalized_eig(
 
 template <typename _T, typename _Index>
 std::vector<_T> spmats<_T,_Index>::policy_generalized_eigs(
+    const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+    std::size_t k, const eig_options<_T>& opt) const
+{
+    if (!A.is_finalized()) A.finalize();
+    if (!B.is_finalized()) B.finalize();
+    return policy_generalized_eigs_impl(A, B, k, opt);
+}
+
+template <typename _T, typename _Index>
+std::vector<_T> spmats<_T,_Index>::policy_generalized_eigs_impl(
     const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
     std::size_t k, const eig_options<_T>& opt) const
 {
@@ -2682,6 +2765,8 @@ std::vector<_T> spmats<_T,_Index>::policy_generalized_eigs(
     const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
     std::size_t k, const eig_options<_T>& opt, const Prec& M) const
 {
+    // policy_generalized_eigs_with_info(A,B,k,opt,M) below already
+    // auto-finalizes A and B.
     eig_result<_T> result = policy_generalized_eigs_with_info(A, B, k, opt, M);
     if (!result.converged)
         vcp::throw_error<vcp::state_error>("spmats::policy_generalized_eigs(with preconditioner): eigensolver did not converge");

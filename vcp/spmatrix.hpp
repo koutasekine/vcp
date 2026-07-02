@@ -23,6 +23,62 @@
 
 namespace vcp {
 
+	// SLU-C3-ELEMENT-ACCESSOR: lightweight proxy returned by the non-const
+	// spmatrix::operator()(i,j), so that `T c = A(i,j)`, `A(i,j) = v`,
+	// `A(i,j) += v`, `A(i,j) *= v` etc. read naturally while still routing
+	// through get()/set()/add() (Option A tagged merge, see
+	// sandbox/docs/design/spmats_finalize_policy.md and
+	// sandbox/docs/issues/VCP_task_list.md C-3). += routes straight to
+	// add(v); -= routes to add(-v) (subtraction is just signed addition, so
+	// it rides the same tagged-merge fast path -- SLU-C3-FIX-COMPOUND-MINUS).
+	// Neither needs a get() round trip. *= and /= have no such fast path
+	// (the current value must be known before the new value can be
+	// computed), so they stay on get -> compute -> set.
+	template <typename _T, class _Owner>
+	class spmats_element_proxy {
+	public:
+		typedef typename _Owner::index_type index_type;
+
+		spmats_element_proxy(_Owner& owner, const index_type i, const index_type j)
+			: owner_(owner), i_(i), j_(j) {}
+
+		operator _T() const { return owner_.get(i_, j_); }
+
+		// Explicit proxy-to-proxy assignment: without this, the compiler's
+		// implicitly-deleted copy-assignment (exact-match, no conversion
+		// needed since _Owner& has no copy assignment) beats the operator=
+		// (const _T&) template below in overload resolution and makes
+		// `A(i,j) = A(k,l)` ill-formed.
+		spmats_element_proxy& operator=(const spmats_element_proxy& other) {
+			owner_.set(i_, j_, static_cast<_T>(other));
+			return *this;
+		}
+		spmats_element_proxy& operator=(const _T& v) {
+			owner_.set(i_, j_, v);
+			return *this;
+		}
+		spmats_element_proxy& operator+=(const _T& v) {
+			owner_.add(i_, j_, v);
+			return *this;
+		}
+		spmats_element_proxy& operator-=(const _T& v) {
+			owner_.add(i_, j_, -v);
+			return *this;
+		}
+		spmats_element_proxy& operator*=(const _T& v) {
+			owner_.set(i_, j_, owner_.get(i_, j_) * v);
+			return *this;
+		}
+		spmats_element_proxy& operator/=(const _T& v) {
+			owner_.set(i_, j_, owner_.get(i_, j_) / v);
+			return *this;
+		}
+
+	private:
+		_Owner& owner_;
+		index_type i_;
+		index_type j_;
+	};
 
 	template <typename _T, class _P = spmats<_T> > class spmatrix : protected _P {
 	public:
@@ -59,6 +115,15 @@ namespace vcp {
 		void add(const index_type i, const index_type j, const _T& value) { _P::add(i, j, value); }
 		void set(const index_type i, const index_type j, const _T& value) { _P::set(i, j, value); }
 		_T get(const index_type i, const index_type j) const { return _P::get(i, j); }
+
+		// SLU-C3-ELEMENT-ACCESSOR: `T c = A(i,j)`, `A(i,j) = v`,
+		// `A(i,j) += v`, `A(i,j) *= v` (also -=, /=) via spmats_element_proxy.
+		// finalize() is never forced (same as get()).
+		typedef spmats_element_proxy<_T, spmatrix> element_proxy_type;
+		element_proxy_type operator()(const index_type i, const index_type j) {
+			return element_proxy_type(*this, i, j);
+		}
+		_T operator()(const index_type i, const index_type j) const { return get(i, j); }
 
 		void sort_coo() { _P::sort_coo(); }
 		void normalize_coo() { _P::normalize_coo(); }
@@ -614,6 +679,17 @@ namespace vcp {
 			return B;
 		}
 
+		// Matlab C = [A,B] -- thin forwarding to the policy's horzcat (CSR
+		// direct-merge, see spmats::horzcat).
+		void horzcat(const spmatrix& B, spmatrix& C) const {
+			_P::horzcat(static_cast<const _P&>(B), static_cast<_P&>(C));
+		}
+
+		// Matlab C = [A;B] -- thin forwarding to the policy's vercat.
+		void vercat(const spmatrix& B, spmatrix& C) const {
+			_P::vercat(static_cast<const _P&>(B), static_cast<_P&>(C));
+		}
+
 		void assign_csr(const index_type rows, const index_type cols,
 		                const std::vector<index_type>& row_ptr,
 		                const std::vector<index_type>& col_ind,
@@ -686,6 +762,56 @@ namespace vcp {
 	                                      const std::vector<_T>& b,
 	                                      const linear_solve_options<_T>& opt) {
 		return A.solve_with_info(b, opt);
+	}
+
+	// -----------------------------------------------------------------------
+	// MATLAB-like free functions: horzcat / vercat (variadic)
+	// MATLAB: C = [A,B]  ->  C++: C = horzcat(A, B)
+	// MATLAB: C = [A;B]  ->  C++: C = vercat(A, B)
+	// Ordinary namespace-scope templates (not friends, matching the lss/
+	// lss_with_info convention just above) so the recursive unqualified
+	// call in the variadic overload resolves to this overload set rather
+	// than being hidden by spmatrix::horzcat/vercat's own 2-arg member
+	// (a friend defined only inside the class is found solely via ADL,
+	// which the class's own member of the same name would shadow).
+	// -----------------------------------------------------------------------
+
+	template <typename _T, class _P>
+	spmatrix<_T, _P> horzcat(const spmatrix<_T, _P>& A) {
+		return A;
+	}
+
+	template <typename _T, class _P>
+	spmatrix<_T, _P> horzcat(const spmatrix<_T, _P>& A, const spmatrix<_T, _P>& B) {
+		spmatrix<_T, _P> C;
+		A.horzcat(B, C);
+		return C;
+	}
+
+	template <typename _T, class _P, typename... Args>
+	spmatrix<_T, _P> horzcat(const spmatrix<_T, _P>& A, const spmatrix<_T, _P>& B, const Args&... args) {
+		spmatrix<_T, _P> C;
+		A.horzcat(B, C);
+		return horzcat(C, args...);
+	}
+
+	template <typename _T, class _P>
+	spmatrix<_T, _P> vercat(const spmatrix<_T, _P>& A) {
+		return A;
+	}
+
+	template <typename _T, class _P>
+	spmatrix<_T, _P> vercat(const spmatrix<_T, _P>& A, const spmatrix<_T, _P>& B) {
+		spmatrix<_T, _P> C;
+		A.vercat(B, C);
+		return C;
+	}
+
+	template <typename _T, class _P, typename... Args>
+	spmatrix<_T, _P> vercat(const spmatrix<_T, _P>& A, const spmatrix<_T, _P>& B, const Args&... args) {
+		spmatrix<_T, _P> C;
+		A.vercat(B, C);
+		return vercat(C, args...);
 	}
 
 	template <typename _T, typename _Index = int> class spmatrix_builder {

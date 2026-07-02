@@ -113,6 +113,73 @@ namespace spmats_lss_detail {
 		return y;
 	}
 
+	// ---------------------------------------------------------------------------
+	// dispatch_sparse_lu_: SFINAE-guarded helper to avoid static_assert
+	// instantiation for unsigned Index when sparse_lu case is compiled.
+	// ---------------------------------------------------------------------------
+
+	// signed Index path: calls sparse_lu_factorize_with_info
+	template <typename _T, typename _Index>
+	inline typename std::enable_if<std::is_signed<_Index>::value,
+	                               linear_solve_result<_T> >::type
+	dispatch_sparse_lu_(
+	    const spmats<_T,_Index>& A,
+	    const std::vector<_T>& b,
+	    const linear_solve_options<_T>& opt)
+	{
+	    typedef typename vcp::tsparse_scalar::real_type<_T>::type real_type;
+	    const std::size_t n = static_cast<std::size_t>(A.rowsize());
+	    vcp::sparse_lu_factorization<_T, _Index> fac =
+	        vcp::sparse_lu_factorize_with_info(A, opt.sparse_lu);
+
+	    linear_solve_result<_T> result;
+	    result.method = linear_solver_method::sparse_lu;
+	    result.iterations = 0;
+
+	    if (fac.info().success) {
+	        if (opt.sparse_lu.iterative_refinement) {
+	            // IR path: sparse_lu_solve_refined runs fac.solve(b) then refines.
+	            // A is in scope here so residual r = b - A*x can be computed.
+	            vcp::sparse_lu_refinement_info<_T> ir_info;
+	            result.x = vcp::sparse_lu_solve_refined(A, fac, b, opt.sparse_lu, &ir_info);
+	            result.iterations             = ir_info.iterations;
+	            result.initial_residual_norm  = ir_info.initial_residual;
+	            result.residual_norm          = ir_info.final_residual;
+	            result.absolute_residual_norm = ir_info.final_residual;
+	            result.relative_residual_norm = ir_info.final_relative_residual;
+	        } else {
+	            // Plain solve path: byte-identical to pre-IR behavior.
+	            result.x                      = fac.solve(b);
+	            result.residual_norm          = real_type(0);
+	            result.absolute_residual_norm = real_type(0);
+	            result.relative_residual_norm = real_type(0);
+	        }
+	        result.solution  = result.x;
+	        result.converged = true;
+	    } else {
+	        result.converged = false;
+	        result.x.assign(n, _T(0));
+	        result.solution = result.x;
+	        // residual fields remain at infinity (set by linear_solve_result default ctor)
+	    }
+	    return result;
+	}
+
+	// unsigned Index path: sparse_lu cannot be used (Index must be signed)
+	template <typename _T, typename _Index>
+	inline typename std::enable_if<!std::is_signed<_Index>::value,
+	                               linear_solve_result<_T> >::type
+	dispatch_sparse_lu_(
+	    const spmats<_T,_Index>& A,
+	    const std::vector<_T>& b,
+	    const linear_solve_options<_T>& opt)
+	{
+	    (void)A; (void)b; (void)opt;
+	    vcp::throw_error<vcp::state_error>(
+	        "spmats::policy_lss_with_info: sparse_lu requires a signed Index type");
+	    return linear_solve_result<_T>();
+	}
+
 } // namespace spmats_lss_detail
 
 // ---------------------------------------------------------------------------
@@ -486,10 +553,28 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_gmres_with_info_(
 }
 
 // ---------------------------------------------------------------------------
-// policy_lss_with_info: main dispatch
+// policy_lss_with_info: NVI outer (non-virtual). Finalizes A, then delegates
+// to the virtual policy_lss_with_info_impl. Must never be overridden —
+// override policy_lss_with_info_impl instead (see
+// sandbox/docs/design/spmats_finalize_policy.md §3).
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 linear_solve_result<_T> spmats<_T, _Index>::policy_lss_with_info(
+	const spmats<_T, _Index>& A,
+	const std::vector<_T>& b,
+	const linear_solve_options<_T>& opt) const
+{
+	if (!A.is_finalized()) A.finalize();
+	return policy_lss_with_info_impl(A, b, opt);
+}
+
+// ---------------------------------------------------------------------------
+// policy_lss_with_info_impl: virtual algorithm body (input validation +
+// method dispatch). Custom policies (SuperLU, etc.) override this, not
+// policy_lss_with_info.
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+linear_solve_result<_T> spmats<_T, _Index>::policy_lss_with_info_impl(
 	const spmats<_T, _Index>& A,
 	const std::vector<_T>& b,
 	const linear_solve_options<_T>& opt) const
@@ -518,6 +603,8 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_lss_with_info(
 	case linear_solver_method::gmres:
 		return policy_solve_gmres_with_info_(A, b, opt.max_iter, opt.tol,
 		                                     opt.restart, opt.use_relative_residual, opt.preconditioner);
+	case linear_solver_method::sparse_lu:
+		return spmats_lss_detail::dispatch_sparse_lu_<_T, _Index>(A, b, opt);
 	}
 	vcp::throw_error<vcp::state_error>("spmats::policy_lss_with_info: unknown method");
 	return linear_solve_result<_T>();

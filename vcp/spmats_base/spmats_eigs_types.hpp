@@ -17,6 +17,7 @@
 #include <vcp/tsparse/tsparse_scalar.hpp>
 #include <vcp/tsparse/tsparse_eigs.hpp>
 #include <vcp/tsparse/tsparse_solvers.hpp>
+#include <vcp/tsparse/tsparse_sparse_lu.hpp>
 
 namespace vcp {
 
@@ -52,7 +53,8 @@ namespace vcp {
 		gauss_seidel,
 		conjugate_gradient,
 		bicgstab,
-		gmres
+		gmres,
+		sparse_lu
 	};
 
 	enum class preconditioner_type {
@@ -78,6 +80,7 @@ namespace vcp {
 		bool use_relative_residual;
 		std::size_t restart;
 		preconditioner_type preconditioner;
+		vcp::sparse_lu_options<T> sparse_lu;
 
 		linear_solve_options()
 			: method(linear_solver_method::conjugate_gradient), max_iter(1000),
