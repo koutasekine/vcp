@@ -275,11 +275,19 @@ struct dofmap_builder {
 // Y2 kernels (matrix scatter, vector scatter, gather).
 // General kernels: signed. Identity kernels: no sign multiplication at all.
 // Assembly code calls the dispatch() overloads on dofmap<D>::family_tag.
+//
+// Y2 promotion (RT-L3 internal design 2.3, B-5): the dofmap argument is a
+// template parameter DM so that the RT family dofmap (vcp/bfem/rt/, signed
+// l2g with folded index reversal) drives the SAME kernels. DM provides
+// global_dof(e, r) and dof_sign(e, r); the P^n dofmap<2> keeps its identity
+// kernels selected by pn_family_tag exactly as before (S-L3-1 unchanged).
+// This template-argument generalization is the ONLY change to the frozen
+// P^n implementation (gate condition S-RT3-2/RE-8).
 // ---------------------------------------------------------------------------
 
 // --- general (signed) matrix scatter: buf.push(gi, gj, si * sj * v) ---
-template <typename T, typename Buf, typename Loc>
-void scatter_matrix_general(const dofmap<2>& dm, int e, const Loc& loc, int n,
+template <typename T, typename Buf, typename Loc, typename DM>
+void scatter_matrix_general(const DM& dm, int e, const Loc& loc, int n,
                             Buf& buf) {
     for (int a = 0; a < n; ++a) {
         int ga = dm.global_dof(e, a);
@@ -293,8 +301,8 @@ void scatter_matrix_general(const dofmap<2>& dm, int e, const Loc& loc, int n,
 }
 
 // --- P^n identity matrix scatter: no sign multiplication (S-L3-1) ---
-template <typename T, typename Buf, typename Loc>
-void scatter_matrix_identity(const dofmap<2>& dm, int e, const Loc& loc, int n,
+template <typename T, typename Buf, typename Loc, typename DM>
+void scatter_matrix_identity(const DM& dm, int e, const Loc& loc, int n,
                              Buf& buf) {
     for (int a = 0; a < n; ++a) {
         int ga = dm.global_dof(e, a);
@@ -303,54 +311,54 @@ void scatter_matrix_identity(const dofmap<2>& dm, int e, const Loc& loc, int n,
     }
 }
 
-template <typename T, typename Buf, typename Loc>
-void scatter_matrix(const dofmap<2>& dm, int e, const Loc& loc, int n, Buf& buf,
+template <typename T, typename Buf, typename Loc, typename DM>
+void scatter_matrix(const DM& dm, int e, const Loc& loc, int n, Buf& buf,
                     pn_family_tag) {
     scatter_matrix_identity<T>(dm, e, loc, n, buf);
 }
-template <typename T, typename Buf, typename Loc>
-void scatter_matrix(const dofmap<2>& dm, int e, const Loc& loc, int n, Buf& buf,
+template <typename T, typename Buf, typename Loc, typename DM>
+void scatter_matrix(const DM& dm, int e, const Loc& loc, int n, Buf& buf,
                     general_family_tag) {
     scatter_matrix_general<T>(dm, e, loc, n, buf);
 }
 
 // --- gather: local = sign * global (identity: plain copy) ---
-template <typename T, typename Vec>
-void gather_general(const dofmap<2>& dm, int e, const Vec& g, T* loc, int n) {
+template <typename T, typename Vec, typename DM>
+void gather_general(const DM& dm, int e, const Vec& g, T* loc, int n) {
     for (int r = 0; r < n; ++r)
         loc[r] = T(dm.dof_sign(e, r)) * g(dm.global_dof(e, r), 0);
 }
-template <typename T, typename Vec>
-void gather_identity(const dofmap<2>& dm, int e, const Vec& g, T* loc, int n) {
+template <typename T, typename Vec, typename DM>
+void gather_identity(const DM& dm, int e, const Vec& g, T* loc, int n) {
     for (int r = 0; r < n; ++r)
         loc[r] = g(dm.global_dof(e, r), 0);
 }
-template <typename T, typename Vec>
-void gather(const dofmap<2>& dm, int e, const Vec& g, T* loc, int n, pn_family_tag) {
+template <typename T, typename Vec, typename DM>
+void gather(const DM& dm, int e, const Vec& g, T* loc, int n, pn_family_tag) {
     gather_identity(dm, e, g, loc, n);
 }
-template <typename T, typename Vec>
-void gather(const dofmap<2>& dm, int e, const Vec& g, T* loc, int n, general_family_tag) {
+template <typename T, typename Vec, typename DM>
+void gather(const DM& dm, int e, const Vec& g, T* loc, int n, general_family_tag) {
     gather_general(dm, e, g, loc, n);
 }
 
 // --- vector scatter: global += sign * local ---
-template <typename T, typename Vec>
-void scatter_vector_general(const dofmap<2>& dm, int e, const T* loc, int n, Vec& g) {
+template <typename T, typename Vec, typename DM>
+void scatter_vector_general(const DM& dm, int e, const T* loc, int n, Vec& g) {
     for (int r = 0; r < n; ++r)
         g(dm.global_dof(e, r), 0) += T(dm.dof_sign(e, r)) * loc[r];
 }
-template <typename T, typename Vec>
-void scatter_vector_identity(const dofmap<2>& dm, int e, const T* loc, int n, Vec& g) {
+template <typename T, typename Vec, typename DM>
+void scatter_vector_identity(const DM& dm, int e, const T* loc, int n, Vec& g) {
     for (int r = 0; r < n; ++r)
         g(dm.global_dof(e, r), 0) += loc[r];
 }
-template <typename T, typename Vec>
-void scatter_vector(const dofmap<2>& dm, int e, const T* loc, int n, Vec& g, pn_family_tag) {
+template <typename T, typename Vec, typename DM>
+void scatter_vector(const DM& dm, int e, const T* loc, int n, Vec& g, pn_family_tag) {
     scatter_vector_identity(dm, e, loc, n, g);
 }
-template <typename T, typename Vec>
-void scatter_vector(const dofmap<2>& dm, int e, const T* loc, int n, Vec& g, general_family_tag) {
+template <typename T, typename Vec, typename DM>
+void scatter_vector(const DM& dm, int e, const T* loc, int n, Vec& g, general_family_tag) {
     scatter_vector_general(dm, e, loc, n, g);
 }
 
