@@ -16,6 +16,18 @@
 // Index reversal is folded into l2g; signs are a separate +-1 array
 // (internal design 2.1).
 //
+// D generalization (phase 5c, D5C-3/D5C-4): rt_space is generalized over D;
+// the dimension dispatch is detail::rt_space_backend<D> (two points only:
+// the topology type and the rt dofmap -- the fe_space_backend precedent).
+// D = 3 sign rule (D5C-1): global face DOF = moment against nu of the
+// canonical (ascending global) face vertex order; local -> global is the
+// permutation sigma(beta) folded into l2g with sign = parity(sigma)
+// (rt_dofmap3, rt_backend3.hpp). ORIENT-FREE as in 2D. The pullback of
+// rt_interp uses the stored cofactor rows adj(B) for every D (2x2 minors for
+// D = 3; multiplications only, zero added divisions); the facet DOF
+// application dispatches on D (edges / faces), the interior moments are
+// dimension uniform.
+//
 // rt_interp (K6, Q5 test-support scope): pullback via adj(B) (sign
 // permutation of B entries, multiplications only -- zero added divisions),
 // reference DOF application with the typed L0 1D/2D mass tables (the SAME
@@ -44,6 +56,7 @@
 #include <vcp/bfem/fe_space.hpp>          // detail::coo_buffer / spm_adapter
 #include <vcp/bfem/geometry.hpp>
 #include <vcp/bfem/bpoly.hpp>
+#include <vcp/bfem/rt/rt_backend3.hpp>    // rt_dofmap3 / rt_interp_faces3
 #include <vcp/bfem/rt/rt_tables.hpp>
 #include <vcp/bfem/rt/rt_typed_tables.hpp>
 #include <vcp/bfem/rt/rt_element_op.hpp>
@@ -128,6 +141,38 @@ private:
     std::vector<signed char> sgn_;
 };
 
+// ---------------------------------------------------------------------------
+// rt_space_backend<D> (D5C-3): the single dimension dispatch of the RT
+// space layer -- the topology type and the rt dofmap, nothing else (the
+// fe_space_backend precedent).
+// ---------------------------------------------------------------------------
+template <int D>
+struct rt_space_backend;
+
+template <>
+struct rt_space_backend<2> {
+    typedef mesh_topology2 topology_type;
+    typedef rt_dofmap dofmap_type;
+    static dofmap_type build_dofmap(const topology_type& tp, int k) {
+        return rt_dofmap::build(tp, k);
+    }
+    static int num_facet_dofs(const dofmap_type& dm) {
+        return dm.num_edge_dofs();
+    }
+};
+
+template <>
+struct rt_space_backend<3> {
+    typedef mesh_topology3 topology_type;
+    typedef rt_dofmap3 dofmap_type;                 // rt_backend3.hpp
+    static dofmap_type build_dofmap(const topology_type& tp, int k) {
+        return rt_dofmap3::build(tp, k);
+    }
+    static int num_facet_dofs(const dofmap_type& dm) {
+        return dm.num_face_dofs();
+    }
+};
+
 } // namespace detail
 
 // ---------------------------------------------------------------------------
@@ -158,10 +203,12 @@ private:
 // ---------------------------------------------------------------------------
 template <int D, typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
 class rt_space {
-    static_assert(D == 2, "bfem::rt_space: initial version supports D == 2 only");
+    static_assert(D == 2 || D == 3, "bfem::rt_space: only D == 2 or D == 3");
+    typedef detail::rt_space_backend<D> BK;
 public:
     typedef vcp::spmatrix<T, SP> spmatrix_t;
     typedef rt_field<D, T, P> field_type;
+    typedef typename BK::dofmap_type dofmap_type;
 
     // geometries are computed at construction (degeneracy fails fast, as in
     // fe_space)
@@ -169,8 +216,8 @@ public:
         : k_(k), topo_(), dm_(), geom_(), op_(), buf_(), sloc_(), loc_() {
         if (k < 0)
             throw std::invalid_argument("bfem::rt_space: k must be >= 0");
-        topo_ = detail::mesh_topology2::build(msh);
-        dm_ = detail::rt_dofmap::build(topo_, k);
+        topo_ = BK::topology_type::build(msh);
+        dm_ = BK::build_dofmap(topo_, k);
         geom_.reserve(static_cast<std::size_t>(topo_.nt));
         for (int e = 0; e < topo_.nt; ++e) {
             std::array<std::array<T, D>, D + 1> vv;
@@ -190,7 +237,7 @@ public:
 
     // accessors for the cross-family free functions and the tests (internal
     // design 4: free functions "borrow dofmap and geometry from the spaces")
-    const detail::rt_dofmap& dofs() const { return dm_; }
+    const dofmap_type& dofs() const { return dm_; }
     const element_geometry<D, T>& geometry(int e) const {
         assert(e >= 0 && e < topo_.nt);
         return geom_[static_cast<std::size_t>(e)];
@@ -223,74 +270,42 @@ public:
             // Y2 GENERAL kernel: signed scatter (the promotion's production
             // entry point -- S-RT3-1(ii))
             detail::scatter_matrix<T>(dm_, e, loc_, nloc, buf_,
-                                      detail::rt_dofmap::family_tag());
+                                      typename dofmap_type::family_tag());
         }
         buf_.combine();
         return detail::spm_adapter<T, SP>::build(dm_.ndof(), dm_.ndof(), buf_);
     }
 
     // ---- K6: RT interpolation (Q5, test-support scope) ----
-    // Provider: e -> std::pair<bpoly σ_x, bpoly σ_y> (PHYSICAL components,
-    // barycentric bpoly). Precondition: normal-continuous input (see header
-    // note); shared-edge DOFs are written last-write-wins in element order.
+    // Provider: e -> the PHYSICAL components of sigma as barycentric bpoly --
+    // D = 2: std::pair<bpoly σ_x, bpoly σ_y> (unchanged surface);
+    // D = 3: std::array<bpoly, 3>.
+    // Precondition: normal-continuous input (see header note); shared-facet
+    // DOFs are written last-write-wins in element order.
     template <typename Provider>
     field_type interpolate(Provider f) {
         field_type out = zero_field();
         const int k = k_;
-        const int nint2 = (k >= 1) ? coeff_registry<D>::indices(k - 1).size() : 0;
+        const int nint = (k >= 1) ? coeff_registry<D>::indices(k - 1).size() : 0;
         for (int e = 0; e < topo_.nt; ++e) {
-            std::pair<bpoly<D, T>, bpoly<D, T> > s = f(e);
-            const element_geometry<D, T>& g = geom_[static_cast<std::size_t>(e)];
-            // pullback: sigma_hat = adj(B) (sigma o F); adj(B) is a signed
-            // permutation of the B entries (multiplications only)
-            const T a00 = g.edge_matrix(1, 1), a01 = -g.edge_matrix(0, 1);
-            const T a10 = -g.edge_matrix(1, 0), a11 = g.edge_matrix(0, 0);
-            scale_into(ibuf_[0], s.first, a00);
-            scale_into(ibuf_[1], s.second, a01);
-            add_into(hat_[0], ibuf_[0], ibuf_[1]);
-            scale_into(ibuf_[0], s.first, a10);
-            scale_into(ibuf_[1], s.second, a11);
-            add_into(hat_[1], ibuf_[0], ibuf_[1]);
-            // reference DOF application (RT-L0 section 4 in T arithmetic)
-            for (int sdg = 0; sdg < 3; ++sdg) {
-                bool fwd = topo_.tri_edge_fwd[static_cast<std::size_t>(e)]
-                                             [static_cast<std::size_t>(sdg)];
-                int ed = topo_.tri_edge[static_cast<std::size_t>(e)]
-                                       [static_cast<std::size_t>(sdg)];
-                for (int j = 0; j <= k; ++j) {
-                    T ell(0);
-                    for (int d = 0; d < 2; ++d) {
-                        int nu = detail::rt_edge_normal(sdg, d);
-                        if (nu == 0) continue;
-                        const bpoly<D, T>& hd = hat_[static_cast<std::size_t>(d)];
-                        const int deg = hd.degree();
-                        const typed_mass_table<1, T>& M1 =
-                            typed_registry<1, T>::mass(k, deg);
-                        T acc(0);
-                        for (int t = 0; t <= deg; ++t)
-                            acc += M1.at(j, t)
-                                   * hd.coeff(detail::rt_trace_index(sdg, deg, t));
-                        ell += (nu > 0) ? acc : -acc;    // nonzero nu is +-1
-                    }
-                    // global convention (external 2.2 inverse): fwd keeps
-                    // (index, sign); reversed flips both
-                    int gidx = ed * (k + 1) + (fwd ? j : k - j);
-                    out.c_(gidx, 0) = fwd ? ell : -ell;  // write-once assignment
-                }
-            }
+            // pullback: sigma_hat = adj(B) (sigma o F) into hat_[0..D)
+            pullback_hat(f(e), e);
+            // facet DOF application (RT-L0 section 4 in T arithmetic; the
+            // D dispatch of D5C-3 -- edges vs faces)
+            apply_facet_dofs(e, out, std::integral_constant<int, D>());
             if (k >= 1) {
-                const int int_base = dm_.num_edge_dofs() + e * (2 * nint2);
-                for (int d = 0; d < 2; ++d) {
+                const int int_base = BK::num_facet_dofs(dm_) + e * (D * nint);
+                for (int d = 0; d < D; ++d) {
                     const bpoly<D, T>& hd = hat_[static_cast<std::size_t>(d)];
                     const typed_mass_table<D, T>& M2 =
                         typed_registry<D, T>::mass(k - 1, hd.degree());
-                    for (int ar = 0; ar < nint2; ++ar) {
+                    for (int ar = 0; ar < nint; ++ar) {
                         T acc = M2.at(ar, 0) * hd.coeff(0);
                         for (int b = 1; b < M2.cols(); ++b)
                             acc += M2.at(ar, b) * hd.coeff(b);
                         // interior moment includes |T_hat| = 1/D! (the RT-L0
                         // normative DOF convention)
-                        out.c_(int_base + d * nint2 + ar, 0) = that_const() * acc;
+                        out.c_(int_base + d * nint + ar, 0) = that_const() * acc;
                     }
                 }
             }
@@ -300,18 +315,83 @@ public:
 
 private:
     int k_;
-    detail::mesh_topology2 topo_;
-    detail::rt_dofmap dm_;
+    typename BK::topology_type topo_;
+    typename BK::dofmap_type dm_;
     std::vector<element_geometry<D, T> > geom_;
     rt_element_op<D, T, P> op_;
     detail::coo_buffer<T> buf_;
     rt_local_coeffs<T> sloc_;
     vcp::matrix<T, P> loc_;
-    bpoly<D, T> ibuf_[2], hat_[2];
+    bpoly<D, T> ibuf_[2], acc_, hat_[D];
 
     static const T& that_const() {                       // |T_hat| = 1/D!
         static const T c = rational_to<T>(1, detail::factorial_of<D>::value);
         return c;
+    }
+
+    // ---- interpolate helpers ----
+    // pullback sigma_hat = adj(B) (sigma o F): the adj rows are the stored
+    // cofactor rows of the geometry (D = 2: signed permutation of B entries;
+    // D = 3: 2x2 minors) -- multiplications only, zero added divisions.
+    void pullback_comp(const bpoly<D, T>* const* s, int e) {
+        const element_geometry<D, T>& g = geom_[static_cast<std::size_t>(e)];
+        for (int r = 0; r < D; ++r) {
+            scale_into(ibuf_[0], *s[0], detail::geometry_access::cof(g, r + 1, 0));
+            scale_into(ibuf_[1], *s[1], detail::geometry_access::cof(g, r + 1, 1));
+            if (D == 2) {
+                add_into(hat_[static_cast<std::size_t>(r)], ibuf_[0], ibuf_[1]);
+            } else {
+                add_into(acc_, ibuf_[0], ibuf_[1]);
+                scale_into(ibuf_[1], *s[D - 1],
+                           detail::geometry_access::cof(g, r + 1, D - 1));
+                add_into(hat_[static_cast<std::size_t>(r)], acc_, ibuf_[1]);
+            }
+        }
+    }
+    void pullback_hat(const std::pair<bpoly<D, T>, bpoly<D, T> >& s, int e) {
+        const bpoly<D, T>* c[2] = { &s.first, &s.second };
+        pullback_comp(c, e);
+    }
+    void pullback_hat(const std::array<bpoly<D, T>, 3>& s, int e) {
+        const bpoly<D, T>* c[3] = { &s[0], &s[1], &s[2] };
+        pullback_comp(c, e);
+    }
+
+    // D = 2 facet application: edge moments (the historical body; external
+    // 2.2 inverse -- fwd keeps (index, sign), reversed flips both)
+    void apply_facet_dofs(int e, field_type& out, std::integral_constant<int, 2>) {
+        const int k = k_;
+        for (int sdg = 0; sdg < 3; ++sdg) {
+            bool fwd = topo_.tri_edge_fwd[static_cast<std::size_t>(e)]
+                                         [static_cast<std::size_t>(sdg)];
+            int ed = topo_.tri_edge[static_cast<std::size_t>(e)]
+                                   [static_cast<std::size_t>(sdg)];
+            for (int j = 0; j <= k; ++j) {
+                T ell(0);
+                for (int d = 0; d < 2; ++d) {
+                    int nu = detail::rt_edge_normal(sdg, d);
+                    if (nu == 0) continue;
+                    const bpoly<D, T>& hd = hat_[static_cast<std::size_t>(d)];
+                    const int deg = hd.degree();
+                    const typed_mass_table<1, T>& M1 =
+                        typed_registry<1, T>::mass(k, deg);
+                    T acc(0);
+                    for (int t = 0; t <= deg; ++t)
+                        acc += M1.at(j, t)
+                               * hd.coeff(detail::rt_trace_index(sdg, deg, t));
+                    ell += (nu > 0) ? acc : -acc;    // nonzero nu is +-1
+                }
+                int gidx = ed * (k + 1) + (fwd ? j : k - j);
+                out.c_(gidx, 0) = fwd ? ell : -ell;  // write-once assignment
+            }
+        }
+    }
+
+    // D = 3 facet application: face moments with the parity sign rule and
+    // sigma(beta) fold (D5C-1); single implementation in rt_backend3.hpp
+    void apply_facet_dofs(int e, field_type& out, std::integral_constant<int, 3>) {
+        const bpoly<D, T>* h[3] = { &hat_[0], &hat_[1], &hat_[D - 1] };
+        detail::rt_interp_faces3<T>(topo_, e, k_, h, out.c_);
     }
 };
 

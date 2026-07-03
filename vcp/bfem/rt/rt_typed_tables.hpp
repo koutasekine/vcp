@@ -57,8 +57,8 @@ inline std::vector<T> rt_conv_vec_mat(const rt_mat_tbl<rational>& s) {
 // ---------------------------------------------------------------------------
 template <int D, typename T>
 class typed_rt_registry {
-    static_assert(D == 2,
-                  "bfem::typed_rt_registry: initial version supports D == 2 only");
+    static_assert(D == 2 || D == 3,
+                  "bfem::typed_rt_registry: only D == 2 or D == 3");
 public:
     typedef rt_basis_tbl<T> basis_table;
     typedef rt_div_tbl<T>   div_table;
@@ -82,7 +82,7 @@ public:
             for (int j = 0; j < src.cols(); ++j)
                 v.push_back(detail::rt_conv<T>(src.at(i, j)));
         basis_table t = detail::rt_table_access::make_basis(
-            src.order(), src.comp_size(), src.dim(), std::move(v));
+            src.num_comp(), src.order(), src.comp_size(), src.dim(), std::move(v));
         return s.basis.insert(std::make_pair(k, std::move(t))).first->second;
     }
 
@@ -111,14 +111,17 @@ public:
         const rt_flux_table& src = rt_registry<D>::edge_flux(k);
         const int kk = src.order();
         const int dm = src.dim();
+        const int nfac = src.num_facets();
+        const int pf = src.per_facet();
         std::vector<T> v;
-        v.reserve(static_cast<std::size_t>(3) * static_cast<std::size_t>(kk + 1)
+        v.reserve(static_cast<std::size_t>(nfac) * static_cast<std::size_t>(pf)
                   * static_cast<std::size_t>(dm));
-        for (int e = 0; e < 3; ++e)
-            for (int j = 0; j <= kk; ++j)
+        for (int e = 0; e < nfac; ++e)
+            for (int j = 0; j < pf; ++j)
                 for (int c = 0; c < dm; ++c)
                     v.push_back(detail::rt_conv<T>(src.at(e, j, c)));
-        flux_table t = detail::rt_table_access::make_flux(kk, dm, std::move(v));
+        flux_table t = detail::rt_table_access::make_flux(kk, dm, nfac, pf,
+                                                          std::move(v));
         return s.flux.insert(std::make_pair(k, std::move(t))).first->second;
     }
 
@@ -150,10 +153,12 @@ public:
             s.cross.find(key);
         if (it != s.cross.end()) return it->second;
         const rt_cross_table& src = rt_registry<D>::cross_grad(k, n);
+        const int nc = src.n_comp();
+        const int nv = src.n_vert();
         std::vector<std::vector<T> > blk;
-        blk.reserve(6);
-        for (int d = 0; d < 2; ++d) {
-            for (int i = 0; i <= 2; ++i) {
+        blk.reserve(static_cast<std::size_t>(nc) * static_cast<std::size_t>(nv));
+        for (int d = 0; d < nc; ++d) {
+            for (int i = 0; i < nv; ++i) {
                 rt_block_view<detail::rational> B = src.block(d, i);
                 std::vector<T> b;
                 b.reserve(static_cast<std::size_t>(B.rows())
@@ -165,7 +170,7 @@ public:
             }
         }
         cross_table t = detail::rt_table_access::make_cross(
-            src.dim(), src.nn(), std::move(blk));
+            src.dim(), src.nn(), nv, std::move(blk));
         return s.cross.insert(std::make_pair(key, std::move(t))).first->second;
     }
 
@@ -213,15 +218,17 @@ private:
     static block_table conv_block(const rt_block_table& src) {
         std::vector<std::vector<T> > blk;
         blk.reserve(static_cast<std::size_t>(src.num_blocks()));
-        // convert the STORED blocks (block(1,0) stays a transposed view)
-        for (int b = 0; b < src.num_blocks(); ++b) {
-            // stored order: single block, or (0,0), (0,1), (1,1)
+        // convert the STORED blocks only (the lower triangle stays a
+        // transposed view); stored order: single block, or the upper
+        // triangle (d <= d') in row-major order
+        const int nblk = src.num_blocks();
+        int d = 0, dp = 0;
+        for (int b = 0; b < nblk; ++b) {
             rt_block_view<detail::rational> V =
-                src.num_blocks() == 1
+                nblk == 1
                     ? rt_block_view<detail::rational>(&src.at(0, 0),
                                                       src.rows(), src.cols(), false)
-                    : src.block(b == 0 ? 0 : (b == 1 ? 0 : 1),
-                                b == 0 ? 0 : 1);
+                    : src.block(d, dp);
             std::vector<T> w;
             w.reserve(static_cast<std::size_t>(V.rows())
                       * static_cast<std::size_t>(V.cols()));
@@ -229,6 +236,10 @@ private:
                 for (int j = 0; j < V.cols(); ++j)
                     w.push_back(detail::rt_conv<T>(V.at(i, j)));
             blk.push_back(std::move(w));
+            if (nblk > 1) {                       // next upper-triangle pair
+                ++dp;
+                if (dp >= src.num_comp()) { ++d; dp = d; }
+            }
         }
         return detail::rt_table_access::make_block(src.block_rows(),
                                                    src.block_cols(),

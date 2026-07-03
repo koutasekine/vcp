@@ -85,7 +85,10 @@ private:
 // ---------------------------------------------------------------------------
 template <int D, typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
 class broken_space {
-    static_assert(D == 2, "bfem::broken_space: initial version supports D == 2 only");
+    // phase 5c (D5C-5): broken_space is dimension uniform; D == 3 is enabled
+    // by relaxing this guard only (no other change -- see
+    // sandbox/docs/issues/bfem_d3c_broken_space_allowlist_issue.md)
+    static_assert(D == 2 || D == 3, "bfem::broken_space: only D == 2 or D == 3");
 public:
     typedef vcp::spmatrix<T, SP> spmatrix_t;
     typedef broken_field<D, T, P> field_type;

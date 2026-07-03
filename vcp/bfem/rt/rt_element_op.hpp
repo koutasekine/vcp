@@ -13,6 +13,14 @@
 //   div sigma : coefficients = inv_det_signed * (DivCoef c)          (T-R2)
 // c_D = 1/D! (static constant via rational_to), G = B^T B.
 //
+// D generalization (phase 5c, D5C-5): every formula above is dimension
+// uniform (the cross identity (B sigma_hat) . (B^{-T} grad_hat v_hat) =
+// sigma_hat . grad_hat v_hat is metric free; the mass carries (1/|det|) G;
+// div carries orient c_D). D = 3 only changes the block counts: G = B^T B
+// has 6 independent components, c_D = 1/3! = 1/6, and the local mass
+// counting norm becomes 6 dim^2 + O(dim) (upper-triangle fold of 6 blocks;
+// 2D stays 3 dim^2 + 3, S-RT2-3 unchanged).
+//
 // Division contract (W-RT1, RC-1): THIS LAYER ADDS NO DIVISION. All inverse
 // factors are products of the single L2 geometry division (inv_det). The
 // counting test bfem_rt_l2_count_tests.cpp enforces this mechanically.
@@ -53,12 +61,12 @@ namespace bfem {
 template <typename T>
 struct rt_local_coeffs {
     int k;                     // RT order
-    std::vector<T> c;          // length rt_registry<2>::dim(k)
+    std::vector<T> c;          // length rt_registry<D>::dim(k)
 };
 
 template <int D, typename T, typename P = vcp::mats<T> >
 class rt_element_op {
-    static_assert(D == 2, "bfem::rt_element_op: initial version supports D == 2 only");
+    static_assert(D == 2 || D == 3, "bfem::rt_element_op: only D == 2 or D == 3");
 public:
     rt_element_op()
         : geom_(detail::geometry_access::make_empty<D, T>()),
@@ -70,11 +78,13 @@ public:
     // element_geometry::from_vertices.
     void set_geometry(const element_geometry<D, T>& g) {
         geom_ = g;
-        // G = B^T B (3 independent components for D = 2)
-        for (int d = 0; d < 2; ++d) {
-            for (int dp = d; dp < 2; ++dp) {
+        // G = B^T B (D (D+1) / 2 independent components: 3 for D = 2,
+        // 6 for D = 3)
+        for (int d = 0; d < D; ++d) {
+            for (int dp = d; dp < D; ++dp) {
                 T dot = g.edge_matrix(0, d) * g.edge_matrix(0, dp);
-                dot += g.edge_matrix(1, d) * g.edge_matrix(1, dp);
+                for (int r = 1; r < D; ++r)
+                    dot += g.edge_matrix(r, d) * g.edge_matrix(r, dp);
                 G_[static_cast<std::size_t>(gidx(d, dp))] = dot;
             }
         }
@@ -85,7 +95,8 @@ public:
         for (int i = 0; i <= D; ++i) {
             for (int j = i; j <= D; ++j) {
                 T dot = g.grad_lambda(i, 0) * g.grad_lambda(j, 0);
-                dot += g.grad_lambda(i, 1) * g.grad_lambda(j, 1);
+                for (int r = 1; r < D; ++r)
+                    dot += g.grad_lambda(i, r) * g.grad_lambda(j, r);
                 gp_[static_cast<std::size_t>(detail::ref_stiff_block_index(D, i, j))] =
                     g.measure() * dot;
             }
@@ -101,8 +112,8 @@ public:
             typed_rt_registry<D, T>::comp_mass(k);
         const int dim = R.block_rows();
         out.zeros(dim, dim);
-        for (int d = 0; d < 2; ++d) {
-            for (int dp = d; dp < 2; ++dp) {
+        for (int d = 0; d < D; ++d) {
+            for (int dp = d; dp < D; ++dp) {
                 const T w = f_mass_ * G_[static_cast<std::size_t>(gidx(d, dp))];
                 rt_block_view<T> B = R.block(d, dp);
                 if (d == dp) {
@@ -179,8 +190,8 @@ public:
         const int dim = R.block_rows();
         // M_ss = inv_absdet c_D sum_{dd'} G_{dd'} (c^T R^{(dd')} c)
         T Mss(0);
-        for (int d = 0; d < 2; ++d) {
-            for (int dp = d; dp < 2; ++dp) {
+        for (int d = 0; d < D; ++d) {
+            for (int dp = d; dp < D; ++dp) {
                 rt_block_view<T> B = R.block(d, dp);
                 T q(0);
                 for (int i = 0; i < dim; ++i) {
@@ -239,7 +250,7 @@ public:
 
 private:
     element_geometry<D, T> geom_;                // copy (L2 V1 convention)
-    std::array<T, 3> G_;                         // G_00, G_01, G_11
+    std::array<T, static_cast<std::size_t>(D * (D + 1) / 2)> G_;   // upper triangle of B^T B
     T f_mass_;                                   // inv_absdet * c_D
     T f_div_;                                    // orient * c_D
     T inv_det_signed_;                           // orient > 0 ? inv|det| : -inv|det|
@@ -247,8 +258,10 @@ private:
     bpoly<D, T> dbuf_, sbuf_;                    // RG6 buffers (reused)
     bool geometry_set_;
 
-    static int gidx(int d, int dp) {             // (0,0)->0, (0,1)->1, (1,1)->2
-        return d + dp;
+    // upper-triangle row-major rank of (d, dp), d <= dp:
+    // D = 2: (0,0)->0, (0,1)->1, (1,1)->2 (the historical d + dp)
+    static int gidx(int d, int dp) {
+        return d * D - d * (d - 1) / 2 + (dp - d);
     }
     static const T& c_D() {
         static const T c = rational_to<T>(1, detail::factorial_of<D>::value);
