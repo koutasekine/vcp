@@ -48,7 +48,7 @@ void reduce_to_hessenberg_inplace(std::vector<std::vector<T> >& A)
         }
         sigma = vcp::tsparse_scalar::sqrt_value(sigma);
 
-        const R eps10 = std::numeric_limits<R>::epsilon() * R(10);
+        const R eps10 = vcp::tsparse_scalar::epsilon<R>() * R(10);
         if (sigma <= eps10) continue;
 
         const R x0 = vcp::tsparse_scalar::real_part(A[k + 1][k]);
@@ -122,7 +122,7 @@ void reduce_to_hessenberg_with_q(
         }
         sigma = vcp::tsparse_scalar::sqrt_value(sigma);
 
-        const R eps10 = std::numeric_limits<R>::epsilon() * R(10);
+        const R eps10 = vcp::tsparse_scalar::epsilon<R>() * R(10);
         if (sigma <= eps10) continue;
 
         const R x0 = vcp::tsparse_scalar::real_part(A[k + 1][k]);

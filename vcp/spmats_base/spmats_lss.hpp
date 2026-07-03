@@ -107,7 +107,7 @@ namespace spmats_lss_detail {
 			_T sum = rhs[i];
 			for (std::size_t j = i + 1; j < n; j++) sum -= R[i][j] * y[j];
 			const real_type denom = vcp::tsparse_scalar::abs_value(R[i][i]);
-			if (denom <= std::numeric_limits<real_type>::epsilon()) { y[i] = _T(0); continue; }
+			if (!(denom > vcp::tsparse_scalar::epsilon<real_type>())) { y[i] = _T(0); continue; }
 			y[i] = sum / R[i][i];
 		}
 		return y;
@@ -160,7 +160,8 @@ namespace spmats_lss_detail {
 	        result.converged = false;
 	        result.x.assign(n, _T(0));
 	        result.solution = result.x;
-	        // residual fields remain at infinity (set by linear_solve_result default ctor)
+	        // SLU-GT1 D5: residual fields remain at the default real_type(0);
+	        // converged == false marks them as undefined (do not read).
 	    }
 	    return result;
 	}
@@ -393,16 +394,16 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_bicgstab_with_info_(
 	result.converged = current_residual <= control.threshold;
 	result.iterations = 0;
 	result.method = linear_solver_method::bicgstab;
-	const real_type eps = std::numeric_limits<real_type>::epsilon();
+	const real_type eps = vcp::tsparse_scalar::epsilon<real_type>();
 	for (std::size_t iter = 1; iter <= max_iter && !result.converged; iter++) {
 		const real_type rho = spmats_lss_detail::dot_value_lss<_T,_Index>(r_hat, r);
-		if (vcp::tsparse_scalar::abs_value(rho) <= eps || !vcp::tsparse_scalar::is_finite(rho)) break;
+		if (!(vcp::tsparse_scalar::abs_value(rho) > eps) || !vcp::tsparse_scalar::is_finite(rho)) break;
 		const real_type beta = (rho / rho_old) * (alpha / omega);
 		for (std::size_t i = 0; i < n; i++)
 			p[i] = r[i] + _T(beta) * (p[i] - _T(omega) * v[i]);
 		v = spmats_lss_detail::apply_prec_op_lss<_T,_Index>(A, p, inv_diag, prec_type);
 		const real_type denom = spmats_lss_detail::dot_value_lss<_T,_Index>(r_hat, v);
-		if (vcp::tsparse_scalar::abs_value(denom) <= eps || !vcp::tsparse_scalar::is_finite(denom)) break;
+		if (!(vcp::tsparse_scalar::abs_value(denom) > eps) || !vcp::tsparse_scalar::is_finite(denom)) break;
 		alpha = rho / denom;
 		std::vector<_T> s(n);
 		for (std::size_t i = 0; i < n; i++) s[i] = r[i] - _T(alpha) * v[i];
@@ -417,9 +418,9 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_bicgstab_with_info_(
 		}
 		const std::vector<_T> t = spmats_lss_detail::apply_prec_op_lss<_T,_Index>(A, s, inv_diag, prec_type);
 		const real_type tt = spmats_lss_detail::dot_value_lss<_T,_Index>(t, t);
-		if (tt <= eps || !vcp::tsparse_scalar::is_finite(tt)) break;
+		if (!(tt > eps) || !vcp::tsparse_scalar::is_finite(tt)) break;
 		omega = spmats_lss_detail::dot_value_lss<_T,_Index>(t, s) / tt;
-		if (vcp::tsparse_scalar::abs_value(omega) <= eps || !vcp::tsparse_scalar::is_finite(omega)) break;
+		if (!(vcp::tsparse_scalar::abs_value(omega) > eps) || !vcp::tsparse_scalar::is_finite(omega)) break;
 		for (std::size_t i = 0; i < n; i++) {
 			x[i] += _T(alpha) * p[i] + _T(omega) * s[i];
 			r[i] = s[i] - _T(omega) * t[i];
@@ -497,7 +498,7 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_gmres_with_info_(
 			}
 			const real_type hnext = spmats_lss_detail::norm_value_lss<_T,_Index>(w);
 			H[m + 1][m] = _T(hnext);
-			if (hnext > std::numeric_limits<real_type>::epsilon()) {
+			if (hnext > vcp::tsparse_scalar::epsilon<real_type>()) {
 				for (std::size_t i = 0; i < n; i++) V[m + 1][i] = w[i] / _T(hnext);
 			}
 			for (std::size_t j = 0; j < m; j++) {
@@ -509,7 +510,7 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_gmres_with_info_(
 			const real_type h0 = vcp::tsparse_scalar::abs_value(H[m][m]);
 			const real_type h1 = vcp::tsparse_scalar::abs_value(H[m + 1][m]);
 			const real_type rho = vcp::tsparse_scalar::hypot_value(h0, h1);
-			if (rho <= std::numeric_limits<real_type>::epsilon()) {
+			if (!(rho > vcp::tsparse_scalar::epsilon<real_type>())) {
 				cs[m] = real_type(1); sn[m] = real_type(0);
 			} else {
 				cs[m] = vcp::tsparse_scalar::real_part(H[m][m]) / rho;
@@ -535,7 +536,7 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_gmres_with_info_(
 				result.converged = current_residual <= control.threshold;
 				break;
 			}
-			if (hnext <= std::numeric_limits<real_type>::epsilon()) { m++; break; }
+			if (!(hnext > vcp::tsparse_scalar::epsilon<real_type>())) { m++; break; }
 		}
 		if (m == 0) break;
 		if (!result.converged) {
@@ -579,7 +580,8 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_lss_with_info_impl(
 	const std::vector<_T>& b,
 	const linear_solve_options<_T>& opt) const
 {
-	// Validate inputs
+	// Validate inputs (misuse contract: invalid input THROWS vcp::error;
+	// the SLU-GT1 D6 net below rethrows these unchanged)
 	if (A.rowsize() != A.columnsize())
 		vcp::throw_error<vcp::dimension_error>("spmats::policy_lss_with_info: matrix must be square");
 	if (b.size() != static_cast<std::size_t>(A.rowsize()))
@@ -589,22 +591,38 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_lss_with_info_impl(
 	if (opt.tol <= scalar_real_type(0))
 		vcp::throw_error<vcp::invalid_argument>("spmats::policy_lss_with_info: tol must be positive");
 
-	switch (opt.method) {
-	case linear_solver_method::jacobi:
-		return policy_solve_jacobi_with_info_(A, b, opt.max_iter, opt.tol, opt.use_relative_residual);
-	case linear_solver_method::gauss_seidel:
-		return policy_solve_gauss_seidel_with_info_(A, b, opt.max_iter, opt.tol, opt.use_relative_residual);
-	case linear_solver_method::conjugate_gradient:
-		return policy_solve_cg_with_info_(A, b, opt.max_iter, opt.tol,
-		                                  opt.check_symmetric, opt.preconditioner, opt.use_relative_residual);
-	case linear_solver_method::bicgstab:
-		return policy_solve_bicgstab_with_info_(A, b, opt.max_iter, opt.tol,
-		                                        opt.use_relative_residual, opt.preconditioner);
-	case linear_solver_method::gmres:
-		return policy_solve_gmres_with_info_(A, b, opt.max_iter, opt.tol,
-		                                     opt.restart, opt.use_relative_residual, opt.preconditioner);
-	case linear_solver_method::sparse_lu:
-		return spmats_lss_detail::dispatch_sparse_lu_<_T, _Index>(A, b, opt);
+	try {
+		switch (opt.method) {
+		case linear_solver_method::jacobi:
+			return policy_solve_jacobi_with_info_(A, b, opt.max_iter, opt.tol, opt.use_relative_residual);
+		case linear_solver_method::gauss_seidel:
+			return policy_solve_gauss_seidel_with_info_(A, b, opt.max_iter, opt.tol, opt.use_relative_residual);
+		case linear_solver_method::conjugate_gradient:
+			return policy_solve_cg_with_info_(A, b, opt.max_iter, opt.tol,
+			                                  opt.check_symmetric, opt.preconditioner, opt.use_relative_residual);
+		case linear_solver_method::bicgstab:
+			return policy_solve_bicgstab_with_info_(A, b, opt.max_iter, opt.tol,
+			                                        opt.use_relative_residual, opt.preconditioner);
+		case linear_solver_method::gmres:
+			return policy_solve_gmres_with_info_(A, b, opt.max_iter, opt.tol,
+			                                     opt.restart, opt.use_relative_residual, opt.preconditioner);
+		case linear_solver_method::sparse_lu:
+			return spmats_lss_detail::dispatch_sparse_lu_<_T, _Index>(A, b, opt);
+		}
+	} catch (const vcp::error&) {
+		// misuse / state errors keep their throwing contract (unchanged)
+		throw;
+	} catch (const std::exception&) {
+		// SLU-GT1 D6: certified ゲート(D1/D3)が正しければ到達しない最終防護網。
+		// 発火は「ゲートの取りこぼし」を意味する(調査対象)。
+		// linear_solve_result にはステータス欄がないため converged=false のまま
+		// 返す(residual フィールドは D5 契約により未定義)。
+		linear_solve_result<_T> result;
+		result.method = opt.method;
+		result.converged = false;
+		result.x.assign(b.size(), _T(0));
+		result.solution = result.x;
+		return result;
 	}
 	vcp::throw_error<vcp::state_error>("spmats::policy_lss_with_info: unknown method");
 	return linear_solve_result<_T>();

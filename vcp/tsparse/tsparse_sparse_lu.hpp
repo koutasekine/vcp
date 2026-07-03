@@ -586,8 +586,12 @@ struct sparse_lu_info {
     std::size_t supernodal_true_numeric_gemm_count;
     std::size_t supernodal_true_numeric_gemv_count;
     std::size_t supernodal_true_numeric_ger_count;
-    double      supernodal_factorization_residual_abs;
-    double      supernodal_factorization_residual_rel;
+    // SLU-GT1 D2: residual diagnostics carry real_type (requirement-set
+    // arithmetic).  Valid ONLY when supernodal_factorization_residual_checked
+    // is true; when the flag is false these fields are undefined and must not
+    // be read.
+    real_type   supernodal_factorization_residual_abs;
+    real_type   supernodal_factorization_residual_rel;
 
     // SLU-8R.6.1: Gate 2 repair — true-numeric path dedicated timing (nanoseconds).
     // These fields are EXCLUSIVELY for the A_eff-origin true-numeric factorization path.
@@ -723,8 +727,8 @@ struct sparse_lu_info {
           supernodal_true_numeric_gemm_count(0),
           supernodal_true_numeric_gemv_count(0),
           supernodal_true_numeric_ger_count(0),
-          supernodal_factorization_residual_abs(0.0),
-          supernodal_factorization_residual_rel(0.0),
+          supernodal_factorization_residual_abs(real_type(0)),
+          supernodal_factorization_residual_rel(real_type(0)),
           supernodal_true_numeric_total_ticks(0),
           supernodal_true_numeric_dense_kernel_ticks(0),
           supernodal_true_numeric_panel_update_ticks(0),
@@ -1177,18 +1181,22 @@ struct sparse_lu_scalar_policy {
         return abs_value(x) == real_type(0);
     }
 
-    // Legacy: abs_value(x) <= tol. Does not throw on negative tol.
+    // Legacy: !(abs_value(x) > tol). Does not throw on negative tol.
+    // Certified-only idiom (SLU-GT1 P1): for interval types this is
+    // "cannot certify abs_value(x) > tol", which falls to the safe side.
+    // For totally ordered types it is identical to abs_value(x) <= tol.
     static bool is_zero(const T& x, const real_type& tol) {
-        return abs_value(x) <= tol;
+        return !(abs_value(x) > tol);
     }
 
-    // Near-zero: abs_value(x) <= tol. Throws if tol < 0 (invalid input).
+    // Near-zero: !(abs_value(x) > tol). Throws if tol < 0 (invalid input).
+    // Certified-only idiom (SLU-GT1 P1); same semantics as is_zero above.
     static bool is_near_zero(const T& x, const real_type& tol) {
         if (tol < real_type(0)) {
             vcp::throw_error<vcp::invalid_argument>(
                 "sparse_lu: is_near_zero: tolerance must be non-negative");
         }
-        return abs_value(x) <= tol;
+        return !(abs_value(x) > tol);
     }
 
     // Magnitude comparisons: compare abs_value(a) vs abs_value(b).
@@ -1255,6 +1263,12 @@ void sparse_lu_validate_pivot_parameters(Real threshold, Real absolute_tol)
 //   1. abs_value(pivot) > absolute_tol
 //   2. abs_value(pivot) >= threshold * abs_value(column_max)
 // Throws invalid_argument if threshold not in [0,1] or absolute_tol < 0.
+//
+// SLU-GT1 P1 note: condition 1 is written as !(abs_pivot > absolute_tol) ->
+// reject.  The comparison is a certainly-> relation, so for interval scalars a
+// pivot whose magnitude cannot be certified positive (e.g. an interval
+// containing 0) is rejected here, BEFORE any division can occur.  This is the
+// certified direction; do not rewrite it as abs_pivot <= absolute_tol.
 template <class T>
 bool sparse_lu_is_acceptable_pivot(
     const T& pivot,
@@ -1504,6 +1518,10 @@ struct within_panel_factor_stats {
 // SLU-8R.5.5: Supernodal true numeric factorization statistics.
 // Returned by factorize_supernodal_from_a_eff().
 // Defined here (in sparse_lu_detail) so set_true_numeric_info_ can use it inline.
+// SLU-GT1 D2: templated on R = real_type of the module scalar so the residual
+// report fields carry R (requirement-set arithmetic, no double conversion).
+// Only factorization_residual_abs/rel are R; flop_* stay double (counters).
+template <class R>
 struct supernodal_true_numeric_stats {
     bool attempted;                     // factorize_supernodal_from_a_eff was called
     bool success;                       // A_eff-origin factorization + residual passed
@@ -1522,8 +1540,8 @@ struct supernodal_true_numeric_stats {
     std::size_t ger_count;              // ger calls during §17.2(B)
     std::size_t a_entry_scatter_count;  // entries written during A_eff initialization
     std::size_t a_entry_missing_count;  // structural zero positions in A_eff init
-    double factorization_residual_abs;
-    double factorization_residual_rel;
+    R factorization_residual_abs;
+    R factorization_residual_rel;
 
     // SLU-8R.6.1: Gate 2 repair — true-numeric path dedicated timing (nanoseconds).
     // Measured by std::chrono::steady_clock in factorize_supernodal_from_a_eff.
@@ -1582,7 +1600,7 @@ struct supernodal_true_numeric_stats {
           supernodes_processed(0), panel_update_count(0), within_panel_count(0),
           trsm_count(0), gemm_count(0), gemv_count(0), ger_count(0),
           a_entry_scatter_count(0), a_entry_missing_count(0),
-          factorization_residual_abs(0.0), factorization_residual_rel(0.0),
+          factorization_residual_abs(R(0)), factorization_residual_rel(R(0)),
           total_ticks(0), dense_kernel_ticks(0),
           panel_update_dense_kernel_ticks(0), within_panel_dense_kernel_ticks(0),
           init_scatter_ticks(0), symbolic_ticks(0),
@@ -1724,7 +1742,8 @@ sparse_lu_factorize(
 //   on failure: panel_values/U_segments may be modified (zeroed + A_eff scatter);
 //               true_numeric_source remains false, native solve disabled.
 template <class T, class Index>
-sparse_lu_detail::supernodal_true_numeric_stats
+sparse_lu_detail::supernodal_true_numeric_stats<
+    typename vcp::tsparse_scalar::real_type<T>::type>
 sparse_lu_factorize_supernodal_from_a_eff(
     const csc_storage<T, Index>&           A_csc,
     const baseline_lu_storage<T, Index>&   csc_lu,
@@ -2234,7 +2253,8 @@ private:
     // Must be called BEFORE set_supernodal_solve_info_() so that the
     // supernodal_.true_numeric_source is visible to the solve gate check.
     void set_true_numeric_info_(
-        const sparse_lu_detail::supernodal_true_numeric_stats& tns,
+        const sparse_lu_detail::supernodal_true_numeric_stats<
+            typename vcp::tsparse_scalar::real_type<T>::type>& tns,
         const supernodal_lu_storage<T, Index>&                 updated_storage)
     {
         // Refresh supernodal_ to pick up true_numeric_source / numeric_source_kind.
@@ -4465,7 +4485,8 @@ struct native_mc64_supernodal_outcome {
     bool                            ok;
     bool                            matching_failed;
     supernodal_lu_storage<T, Index> storage;
-    supernodal_true_numeric_stats   tns;
+    supernodal_true_numeric_stats<
+        typename vcp::tsparse_scalar::real_type<T>::type> tns;
     native_mc64_supernodal_outcome() : ok(false), matching_failed(false) {}
 };
 
@@ -4740,7 +4761,8 @@ sparse_lu_numeric(
                 if (sn_storage.valid) {
                     // SLU-MF: production numeric source is the multifrontal driver
                     // (left-looking retained as opt-in diagnostic).
-                    sparse_lu_detail::supernodal_true_numeric_stats tns =
+                    sparse_lu_detail::supernodal_true_numeric_stats<
+                        typename vcp::tsparse_scalar::real_type<T>::type> tns =
                         sparse_lu_factorize_supernodal_numeric_source(
                             A_csc, num_result.storage, sn_storage, opt);
                     // Pass updated sn_storage so that supernodal_ is refreshed with
@@ -4765,6 +4787,14 @@ sparse_lu_numeric(
     } catch (const vcp::error&) {
         info.success = false;
         info.status  = sparse_lu_status::invalid_input;
+        fac.set_info_(info);
+    } catch (const std::exception&) {
+        // certified ゲート(SLU-GT1 D1/D3)が正しければ到達しない最終防護網。
+        // 発火は「ゲートの取りこぼし」= 実装上の予期しない状態を意味する。
+        // 数値的特異性は D3 ゲートが throw 前に numerical_singularity /
+        // zero_pivot として報告する(例外網を数値失敗の正規経路にしない)。
+        info.success = false;
+        info.status  = sparse_lu_status::internal_error;
         fac.set_info_(info);
     }
     return fac;
@@ -4958,7 +4988,8 @@ sparse_lu_factorize_with_info(
                 if (sn_storage.valid) {
                     // SLU-MF: production numeric source is the multifrontal driver
                     // (left-looking retained as opt-in diagnostic).
-                    sparse_lu_detail::supernodal_true_numeric_stats tns =
+                    sparse_lu_detail::supernodal_true_numeric_stats<
+                        typename vcp::tsparse_scalar::real_type<T>::type> tns =
                         sparse_lu_factorize_supernodal_numeric_source(
                             A_csc, num_result.storage, sn_storage, opt);
                     fac.set_true_numeric_info_(tns, sn_storage);
@@ -4984,6 +5015,14 @@ sparse_lu_factorize_with_info(
         //   - unsupported finalized format → invalid_input
         info.success = false;
         info.status  = sparse_lu_status::invalid_input;
+        fac.set_info_(info);
+    } catch (const std::exception&) {
+        // certified ゲート(SLU-GT1 D1/D3)が正しければ到達しない最終防護網。
+        // 発火は「ゲートの取りこぼし」= 実装上の予期しない状態を意味する。
+        // 数値的特異性は D3 ゲートが throw 前に numerical_singularity /
+        // zero_pivot として報告する(例外網を数値失敗の正規経路にしない)。
+        info.success = false;
+        info.status  = sparse_lu_status::internal_error;
         fac.set_info_(info);
     }
     return fac;

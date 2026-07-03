@@ -96,15 +96,19 @@ compute_projected_residuals(
     std::vector<R> residuals;
     residuals.reserve(m);
     for (std::size_t p = 0; p < m; p++) {
+        // SLU-GT1 D5: R(0) entries for malformed pairs are defensive
+        // placeholders (invalid values), NOT computed residuals.  Callers
+        // must not treat them as convergence evidence; well-formedness of
+        // the pair is the validity witness.
         if (p >= eigenvectors.size() || eigenvectors[p].size() != n) {
-            residuals.push_back((std::numeric_limits<R>::infinity)());
+            residuals.push_back(R(0));
             continue;
         }
         const std::vector<T>& y = eigenvectors[p];
         std::vector<T> hy(n, T(0));
         for (std::size_t row = 0; row < n; row++) {
             if (H[row].size() < n) {
-                residuals.push_back((std::numeric_limits<R>::infinity)());
+                residuals.push_back(R(0));
                 goto next_pair;
             }
             for (std::size_t col = 0; col < n; col++) {
@@ -232,9 +236,12 @@ projected_eigensolver_result<T> solve_real_symmetric_projected(
             result.pairs[i].vector.assign(n, T(0));
         }
 
+        // SLU-GT1 D5: R(0) for a missing residual entry is a defensive
+        // placeholder (invalid value), not a computed residual; callers must
+        // not read residual_estimate for pairs without a res_vec entry.
         result.pairs[i].residual_estimate = (i < res_vec.size())
             ? res_vec[i]
-            : (std::numeric_limits<R>::infinity)();
+            : R(0);
     }
 
     return result;

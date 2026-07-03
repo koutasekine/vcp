@@ -156,7 +156,7 @@ hermitian_lanczos_result<T> hermitian_lanczos_eigs(
 
 	const std::size_t m_limit = std::min(n, std::max(subspace_dim, k + std::size_t(3)));
 	const R small_tol = tol / R(10);
-	const R eps_R = std::numeric_limits<R>::epsilon();
+	const R eps_R = vcp::tsparse_scalar::epsilon<R>();
 
 	std::vector<T> locked_vals;
 	std::vector<std::vector<T> > locked_vecs;

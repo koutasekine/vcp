@@ -42,13 +42,18 @@ namespace vcp {
 			std::size_t iterations;
 			real_type residual_norm;
 
+			// SLU-GT1 D5: residual_norm initialized to real_type(0); valid
+			// only when `converged` is true (undefined otherwise -- do not read).
 			dense_eigen_result()
-				: converged(false), iterations(0), residual_norm((std::numeric_limits<real_type>::infinity)()) {}
+				: converged(false), iterations(0), residual_norm(real_type(0)) {}
 		};
 
+		// SLU-GT1 D5: an empty input has no maximum; T(0) is returned as a
+		// defensive placeholder, NOT a sentinel.  Callers must reject empty
+		// inputs beforehand (currently this helper has no callers).
 		template <typename T>
 		T max_value(const std::vector<T>& values) {
-			if (values.empty()) return (std::numeric_limits<T>::infinity)();
+			if (values.empty()) return T(0);
 			T v(0);
 			for (std::size_t i = 0; i < values.size(); i++) v = std::max(v, values[i]);
 			return v;
@@ -166,7 +171,7 @@ namespace vcp {
 				T s = rhs[i];
 				for (std::size_t j = i + 1; j < n; j++) s -= R[i][j] * y[j];
 				typedef typename tsparse_scalar::real_type<T>::type real_type;
-				if (tsparse_scalar::abs_value(R[i][i]) <= (std::numeric_limits<real_type>::epsilon)()) {
+				if (!(tsparse_scalar::abs_value(R[i][i]) > vcp::tsparse_scalar::epsilon<real_type>())) {
 					vcp::throw_error<vcp::numerical_error>("tsparse_dense_linalg::solve_upper_triangular: singular matrix");
 				}
 				y[i] = s / R[i][i];
@@ -224,7 +229,7 @@ namespace vcp {
 			for (std::size_t kk = 0; kk < n; kk++) {
 				const std::size_t i = n - 1 - kk;
 				for (std::size_t j = i + 1; j < n; j++) rhs[i] -= factor.lu[i][j] * rhs[j];
-				if (tsparse_scalar::abs_value(factor.lu[i][i]) <= (std::numeric_limits<real_type>::epsilon)()) {
+				if (!(tsparse_scalar::abs_value(factor.lu[i][i]) > vcp::tsparse_scalar::epsilon<real_type>())) {
 					vcp::throw_error<vcp::numerical_error>("tsparse_dense_linalg::dense_lu_solve: singular matrix");
 				}
 				rhs[i] /= factor.lu[i][i];
@@ -246,7 +251,7 @@ namespace vcp {
 						pivot = i;
 					}
 				}
-				if (pivot_abs <= (std::numeric_limits<real_type>::epsilon)()) {
+				if (!(pivot_abs > vcp::tsparse_scalar::epsilon<real_type>())) {
 					vcp::throw_error<vcp::numerical_error>("tsparse_dense_linalg::solve_dense_gaussian: singular matrix");
 				}
 				if (pivot != k) {
@@ -287,7 +292,12 @@ namespace vcp {
 		                                                                              const std::vector<T>& eigenvalues,
 		                                                                              const std::vector<std::vector<T> >& eigenvectors) {
 			typedef typename tsparse_scalar::real_type<T>::type real_type;
-			if (eigenvalues.empty() || eigenvectors.size() != eigenvalues.size()) return (std::numeric_limits<real_type>::infinity)();
+			// SLU-GT1 D5: defensive branch only.  Both callers (qr_eig_dense)
+			// build eigenvectors with eigenvalues.size() entries before calling,
+			// so this branch is structurally unreachable; real_type(0) is a
+			// placeholder, not a sentinel.  New callers must guarantee
+			// non-empty, size-matched inputs.
+			if (eigenvalues.empty() || eigenvectors.size() != eigenvalues.size()) return real_type(0);
 			real_type maximum(0);
 			for (std::size_t p = 0; p < eigenvalues.size(); p++) {
 				const real_type residual = dense_eigenpair_residual_norm_value(A, eigenvalues[p], eigenvectors[p]);
@@ -325,7 +335,7 @@ namespace vcp {
 					break;
 				}
 				const real_type ny = tsparse_scalar::real_norm_value(y);
-				if (ny <= (std::numeric_limits<real_type>::epsilon)()) break;
+				if (!(ny > vcp::tsparse_scalar::epsilon<real_type>())) break;
 				for (std::size_t i = 0; i < n; i++) y[i] /= T(ny);
 			}
 			return y;
@@ -352,7 +362,7 @@ namespace vcp {
 					break;
 				}
 				const real_type ny = tsparse_scalar::real_norm_value(y);
-				if (ny <= (std::numeric_limits<real_type>::epsilon)()) break;
+				if (!(ny > vcp::tsparse_scalar::epsilon<real_type>())) break;
 				for (std::size_t i = 0; i < n; i++) y[i] /= T(ny);
 			}
 			return y;
@@ -443,6 +453,14 @@ namespace vcp {
 			for (std::size_t iter = 1; iter <= max_iter; iter++) {
 				std::size_t p = 0, q = 0;
 				real_type max_off(0);
+				// SLU-GT1.1: convergence must be CERTIFIED -- every off-diagonal
+				// certainly <= tolerance.  The old `max_off <= tolerance` check is
+				// a fake-convergence hole for intervals: when every off-diagonal
+				// straddles 0, no certainly-> comparison fires, max_off stays
+				// [0,0], and the certainly-<= test wrongly declares convergence.
+				// For double the two are decision-equivalent
+				// (max <= tol <=> all aij <= tol).
+				bool all_small = true;
 				for (std::size_t i = 0; i < n; i++) {
 					for (std::size_t j = i + 1; j < n; j++) {
 						const real_type aij = tsparse_scalar::abs_value(A[i][j]);
@@ -451,21 +469,34 @@ namespace vcp {
 							p = i;
 							q = j;
 						}
+						if (!(aij <= tolerance)) all_small = false;
 					}
 				}
 				result.residual_norm = max_off;
 				result.iterations = iter - 1;
-				if (max_off <= tolerance) {
+				if (all_small) {
 					result.converged = true;
 					break;
 				}
+				// SLU-GT1.1 F-7: certified-only -- if the pivot magnitude cannot
+				// be certified positive, the rotation's division by apq and the
+				// sqrt arguments below cannot be certified either.  Do not fake
+				// progress: stop with converged=false (honest non-convergence).
+				// For double, !all_small implies some aij > tolerance >= 0, so
+				// max_off > 0 and this branch is unreachable.
+				if (!(max_off > real_type(0))) break;
 				const real_type app = tsparse_scalar::real_part(A[p][p]);
 				const real_type aqq = tsparse_scalar::real_part(A[q][q]);
 				const real_type apq = tsparse_scalar::real_part(A[p][q]);
 				const real_type tau = (aqq - app) / (real_type(2) * apq);
 				const real_type sign = tau >= real_type(0) ? real_type(1) : real_type(-1);
-				const real_type t = sign / (tsparse_scalar::abs_value(tau) + tsparse_scalar::sqrt_value(real_type(1) + tau * tau));
-				const real_type c = real_type(1) / tsparse_scalar::sqrt_value(real_type(1) + t * t);
+				// SLU-GT1.1 F-7: square via abs so the sqrt arguments are
+				// certified >= 1 for interval real_type; |x|*|x| is bit-identical
+				// to x*x for double.
+				const real_type atau = tsparse_scalar::abs_value(tau);
+				const real_type t = sign / (atau + tsparse_scalar::sqrt_value(real_type(1) + atau * atau));
+				const real_type at = tsparse_scalar::abs_value(t);
+				const real_type c = real_type(1) / tsparse_scalar::sqrt_value(real_type(1) + at * at);
 				const real_type s = t * c;
 				for (std::size_t k = 0; k < n; k++) {
 					if (k != p && k != q) {
@@ -514,7 +545,9 @@ namespace vcp {
 			dense_eigen_result<T> result;
 			result.converged = false;
 			result.iterations = 0;
-			result.residual_norm = (std::numeric_limits<real_type>::infinity)();
+			// SLU-GT1 D5: real_type(0), not an infinity sentinel; `converged`
+			// is the validity witness for residual_norm.
+			result.residual_norm = real_type(0);
 			result.eigenvectors.clear();
 			if (n <= 3) {
 				result.eigenvalues = small_real_eigenvalues(A);
@@ -545,7 +578,7 @@ namespace vcp {
 						for (std::size_t i = 0; i < n; i++) v[i] -= rij * q[i][k];
 					}
 					real_type nv = tsparse_scalar::real_norm_value(v);
-					if (nv <= (std::numeric_limits<real_type>::epsilon)()) {
+					if (!(nv > vcp::tsparse_scalar::epsilon<real_type>())) {
 						std::fill(v.begin(), v.end(), T(0));
 						v[j] = T(1);
 						for (std::size_t k = 0; k < j; k++) {
@@ -554,7 +587,7 @@ namespace vcp {
 							for (std::size_t i = 0; i < n; i++) v[i] -= rij * q[i][k];
 						}
 						nv = tsparse_scalar::real_norm_value(v);
-						if (nv <= (std::numeric_limits<real_type>::epsilon)()) continue;
+						if (!(nv > vcp::tsparse_scalar::epsilon<real_type>())) continue;
 					}
 					r[j][j] = T(nv);
 					for (std::size_t i = 0; i < n; i++) q[i][j] = v[i] / T(nv);
@@ -608,7 +641,7 @@ namespace vcp {
 					for (std::size_t i = 0; i < n; i++) v[i] += V[j][i] * small_vectors[p][j];
 				}
 				const real_type nv = tsparse_scalar::real_norm_value(v);
-				if (nv > (std::numeric_limits<real_type>::epsilon)()) {
+				if (nv > vcp::tsparse_scalar::epsilon<real_type>()) {
 					for (std::size_t i = 0; i < n; i++) v[i] /= T(nv);
 				}
 				vectors.push_back(v);

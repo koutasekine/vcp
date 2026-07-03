@@ -102,7 +102,8 @@ template <class T, class Index>
 bool initialize_supernodal_from_a_eff(
     const csc_storage<T, Index>&           A_csc,
     supernodal_lu_storage<T, Index>&       storage,
-    supernodal_true_numeric_stats&         stats)
+    supernodal_true_numeric_stats<
+        typename sparse_lu_scalar_policy<T>::real_type>& stats)
 {
     std::fill(storage.panel_values.begin(),     storage.panel_values.end(),     T(0));
     std::fill(storage.U_segments.values.begin(), storage.U_segments.values.end(), T(0));
@@ -224,12 +225,15 @@ bool factorize_within_panel_single(
             work.values[static_cast<std::size_t>(c * work.ld + c)];
         const real_type abs_pv = scalar_pol::abs_value(actual_pivot);
 
-        if (abs_pv <= opt.zero_tolerance) {
+        // SLU-GT1 D3 (certified-only): pivots whose magnitude cannot be
+        // certified positive (interval containing 0) are skipped BEFORE the
+        // division in scale_pivot_column.  Identical to <= for ordered types.
+        if (!(abs_pv > opt.zero_tolerance)) {
             stats.zero_pivot_count++;
             completed = false;
             continue;
         }
-        if (abs_pv <= opt.near_zero_tolerance) {
+        if (!(abs_pv > opt.near_zero_tolerance)) {
             stats.near_zero_pivot_count++;
         }
 
@@ -247,7 +251,7 @@ bool factorize_within_panel_single(
 // compute_supernodal_lu_residual  (DENSE REFERENCE)
 //
 // Reconstructs dense L (unit lower) and U (upper) from supernodal storage and
-// computes the point-arithmetic Frobenius residual:
+// computes the requirement-set arithmetic Frobenius residual:
 //   abs_res = ||L*U - A_eff||_F
 //   rel_res = abs_res / max(1.0, ||A_eff||_F)
 //
@@ -259,7 +263,9 @@ bool factorize_within_panel_single(
 // reconstruction is capped at sn_residual_dense_reference_n_max; for larger n
 // it returns false and the caller MUST use the sparse variant.
 //
-// NOTE: this is a point-arithmetic residual sanity check (Frobenius norm).
+// NOTE: this is a requirement-set arithmetic residual sanity check (Frobenius
+// norm), not a rigorous error bound.  SLU-GT1 D7: retained (dead on the
+// production path) and T-generic like the sparse variant.
 // ---------------------------------------------------------------------------
 static const std::size_t sn_residual_dense_reference_n_max = 200u;
 
@@ -268,11 +274,13 @@ bool compute_supernodal_lu_residual(
     const csc_storage<T, Index>&           A_csc,
     const supernodal_lu_storage<T, Index>& storage,
     Index n,
-    double& abs_res,
-    double& rel_res)
+    typename sparse_lu_scalar_policy<T>::real_type& abs_res,
+    typename sparse_lu_scalar_policy<T>::real_type& rel_res)
 {
     typedef sparse_lu_scalar_policy<T> scalar_pol;
-    abs_res = 0.0; rel_res = 0.0;
+    typedef typename scalar_pol::real_type R;
+    using std::sqrt;
+    abs_res = R(0); rel_res = R(0);
 
     if (static_cast<std::size_t>(n) > sn_residual_dense_reference_n_max ||
         n <= Index(0))
@@ -358,9 +366,9 @@ bool compute_supernodal_lu_residual(
         }
     }
 
-    // Compute Frobenius residual against A_eff
-    double res_sq  = 0.0;
-    double aeff_sq = 0.0;
+    // Compute Frobenius residual against A_eff (R = real_type accumulation)
+    R res_sq(0);
+    R aeff_sq(0);
     for (std::size_t new_col = 0u; new_col < sn; ++new_col) {
         for (std::size_t new_row = 0u; new_row < sn; ++new_row) {
             const T aeff = a_eff_lookup(
@@ -369,16 +377,21 @@ bool compute_supernodal_lu_residual(
                 static_cast<Index>(new_col));
             const T diff = LU[new_col * sn + new_row] - aeff;
 
-            const double da = static_cast<double>(scalar_pol::abs_value(aeff));
-            const double dd = static_cast<double>(scalar_pol::abs_value(diff));
+            const R da = scalar_pol::abs_value(aeff);
+            const R dd = scalar_pol::abs_value(diff);
             aeff_sq += da * da;
             res_sq  += dd * dd;
         }
     }
 
-    abs_res = std::sqrt(res_sq);
-    const double aeff_norm = std::sqrt(aeff_sq);
-    rel_res = abs_res / ((aeff_norm > 1.0) ? aeff_norm : 1.0);
+    // res_sq / aeff_sq are sums of squares (non-negative), so the ADL sqrt
+    // never reaches a negative-argument domain error (kv included).
+    abs_res = sqrt(res_sq);
+    const R aeff_norm = sqrt(aeff_sq);
+    // Certainly-> denominator selection: an interval overlapping 1 falls to
+    // the exact R(1) side, so the division cannot hit a 0-containing
+    // denominator.  Verified property (SLU-GT1 D2) -- do not change.
+    rel_res = abs_res / ((aeff_norm > R(1)) ? aeff_norm : R(1));
     return true;
 }
 
@@ -411,18 +424,21 @@ bool compute_supernodal_lu_residual(
 // Workspace is O(n): a dense `work` accumulator cleared via a `touched` list,
 // no dense n x n matrix is ever formed.
 //
-// NOTE: point-arithmetic Frobenius residual sanity check.
+// NOTE: requirement-set arithmetic Frobenius residual sanity check (not a
+// rigorous error bound).
 // ---------------------------------------------------------------------------
 template <class T, class Index>
 bool compute_supernodal_lu_residual_sparse(
     const csc_storage<T, Index>&           A_csc,
     const supernodal_lu_storage<T, Index>& storage,
     Index n,
-    double& abs_res,
-    double& rel_res)
+    typename sparse_lu_scalar_policy<T>::real_type& abs_res,
+    typename sparse_lu_scalar_policy<T>::real_type& rel_res)
 {
     typedef sparse_lu_scalar_policy<T> scalar_pol;
-    abs_res = 0.0; rel_res = 0.0;
+    typedef typename scalar_pol::real_type RT;
+    using std::sqrt;
+    abs_res = RT(0); rel_res = RT(0);
 
     if (n <= Index(0)) return false;
     if (A_csc.col_ptr.size() < static_cast<std::size_t>(n) + 1u) return false;
@@ -516,8 +532,8 @@ bool compute_supernodal_lu_residual_sparse(
     std::vector<Index> touched;
     touched.reserve(64);
 
-    double res_sq  = 0.0;
-    double aeff_sq = 0.0;
+    RT res_sq(0);
+    RT aeff_sq(0);
 
     for (std::size_t jcol = 0u; jcol < sn; ++jcol) {
         touched.clear();
@@ -544,7 +560,7 @@ bool compute_supernodal_lu_residual_sparse(
             if (!marked[snr]) { marked[snr] = 1; touched.push_back(new_row); }
             work[snr] = work[snr] + aval;
 
-            const double da = static_cast<double>(scalar_pol::abs_value(aval));
+            const RT da = scalar_pol::abs_value(aval);
             aeff_sq += da * da;
         }
 
@@ -572,17 +588,21 @@ bool compute_supernodal_lu_residual_sparse(
         // accumulate ||acc||^2 and clear workspace via touched list
         for (std::size_t t = 0u; t < touched.size(); ++t) {
             const std::size_t sr = static_cast<std::size_t>(touched[t]);
-            const double dv =
-                static_cast<double>(scalar_pol::abs_value(work[sr]));
+            const RT dv = scalar_pol::abs_value(work[sr]);
             res_sq += dv * dv;
             work[sr]   = T(0);
             marked[sr] = 0;
         }
     }
 
-    abs_res = std::sqrt(res_sq);
-    const double aeff_norm = std::sqrt(aeff_sq);
-    rel_res = abs_res / ((aeff_norm > 1.0) ? aeff_norm : 1.0);
+    // res_sq / aeff_sq are sums of squares (non-negative), so the ADL sqrt
+    // never reaches a negative-argument domain error (kv included).
+    abs_res = sqrt(res_sq);
+    const RT aeff_norm = sqrt(aeff_sq);
+    // Certainly-> denominator selection: an interval overlapping 1 falls to
+    // the exact RT(1) side, so the division cannot hit a 0-containing
+    // denominator.  Verified property (SLU-GT1 D2) -- do not change.
+    rel_res = abs_res / ((aeff_norm > RT(1)) ? aeff_norm : RT(1));
     return true;
 }
 
@@ -609,7 +629,8 @@ bool compute_supernodal_lu_residual_sparse(
 //   issue_SLU8_contract_violation.md: OPEN.
 // ---------------------------------------------------------------------------
 template <class T, class Index>
-sparse_lu_detail::supernodal_true_numeric_stats
+sparse_lu_detail::supernodal_true_numeric_stats<
+    typename vcp::tsparse_scalar::real_type<T>::type>
 sparse_lu_factorize_supernodal_from_a_eff(
     const csc_storage<T, Index>&           A_csc,
     const baseline_lu_storage<T, Index>&   csc_lu,
@@ -618,9 +639,11 @@ sparse_lu_factorize_supernodal_from_a_eff(
 {
     (void)csc_lu; // row_perm/Dr/Dc already in storage (copied from csc_lu at bootstrap)
 
+    typedef typename vcp::tsparse_scalar::real_type<T>::type RT;
+
     const auto t_total_start = std::chrono::steady_clock::now();
 
-    sparse_lu_detail::supernodal_true_numeric_stats stats;
+    sparse_lu_detail::supernodal_true_numeric_stats<RT> stats;
     stats.attempted = true;
 
     // SLU-8R.6.2: helper to set total_ticks on every return path without repetition.
@@ -799,10 +822,10 @@ sparse_lu_factorize_supernodal_from_a_eff(
     // accepted true-numeric source therefore ALWAYS has residual_checked == true
     // AND residual_passed == true. There is no skip-accept.
     //
-    // Residual type: point-arithmetic Frobenius sanity check.
+    // Residual type: requirement-set arithmetic Frobenius sanity check.
     // ------------------------------------------------------------------
     {
-        double abs_res = 0.0, rel_res = 0.0;
+        RT abs_res(0), rel_res(0);
         const auto t_res0 = std::chrono::steady_clock::now();
         bool checked = sparse_lu_detail::compute_supernodal_lu_residual_sparse(
             A_csc, storage, n, abs_res, rel_res);
@@ -827,12 +850,14 @@ sparse_lu_factorize_supernodal_from_a_eff(
         }
 
         stats.factorization_residual_checked = true;
-        // Point-arithmetic sanity threshold for well-conditioned deterministic
-        // matrices: 1e-6 relative (or absolute). This is a residual sanity gate,
-        // NOT a rigorous error bound.
-        const double tol = 1e-6;
+        // Requirement-set arithmetic sanity threshold for well-conditioned
+        // deterministic matrices: 1e-6 relative (or absolute). This is a
+        // residual sanity gate, NOT a rigorous error bound.  Certainly-<=:
+        // accepted only when the residual is CERTIFIED <= tol (interval
+        // scalars with wide residuals fail safe).
+        const RT tol = RT(1e-6);
         stats.factorization_residual_passed =
-            (rel_res <= tol || abs_res <= tol);
+            (rel_res <= tol) || (abs_res <= tol);
 
         if (!stats.factorization_residual_passed) {
             stats.status =

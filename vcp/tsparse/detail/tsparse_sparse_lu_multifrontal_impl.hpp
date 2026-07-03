@@ -676,7 +676,8 @@ void mf_build_relative_maps(
 //             storage.numeric_source_kind = a_eff_true_numeric.
 // ===========================================================================
 template <class T, class Index>
-sparse_lu_detail::supernodal_true_numeric_stats
+sparse_lu_detail::supernodal_true_numeric_stats<
+    typename vcp::tsparse_scalar::real_type<T>::type>
 sparse_lu_factorize_supernodal_multifrontal(
     const csc_storage<T, Index>&           A_csc,
     const baseline_lu_storage<T, Index>&   csc_lu,
@@ -691,7 +692,7 @@ sparse_lu_factorize_supernodal_multifrontal(
 
     const auto t_total_start = std::chrono::steady_clock::now();
 
-    sparse_lu_detail::supernodal_true_numeric_stats stats;
+    sparse_lu_detail::supernodal_true_numeric_stats<real_type> stats;
     stats.attempted = true;
 
     const auto finish_total_ticks = [&]() {
@@ -957,7 +958,9 @@ sparse_lu_factorize_supernodal_multifrontal(
         for (std::size_t k = 0u; k < sw && ok; ++k) {
             const T piv = Fp[k + k * ldF];
             const real_type apv = scalar_pol::abs_value(piv);
-            if (apv <= opt.zero_tolerance) {
+            // SLU-GT1 D3 (certified-only): reject the front unless the pivot
+            // magnitude is certifiably positive (division by piv follows).
+            if (!(apv > opt.zero_tolerance)) {
                 ok = false; break;
             }
             // scale L column below the pivot (within block).
@@ -1155,7 +1158,7 @@ sparse_lu_factorize_supernodal_multifrontal(
     // else fall back to GP.
     // ------------------------------------------------------------------
     if (opt.supernodal_native_check_residual) {
-        double abs_res = 0.0, rel_res = 0.0;
+        real_type abs_res(0), rel_res(0);
         const auto t_res0 = std::chrono::steady_clock::now();
         bool checked = sparse_lu_detail::compute_supernodal_lu_residual_sparse(
             A_csc, storage, n, abs_res, rel_res);
@@ -1174,8 +1177,10 @@ sparse_lu_factorize_supernodal_multifrontal(
             return stats;
         }
         stats.factorization_residual_checked = true;
-        const double tol = 1e-6;
-        stats.factorization_residual_passed = (rel_res <= tol || abs_res <= tol);
+        // Requirement-set arithmetic sanity threshold (certainly-<=; not a
+        // rigorous error bound).  SLU-GT1 D2.
+        const real_type tol = real_type(1e-6);
+        stats.factorization_residual_passed = (rel_res <= tol) || (abs_res <= tol);
         if (!stats.factorization_residual_passed) {
             stats.status = supernodal_true_numeric_status::residual_failed;
             finish_total_ticks();
@@ -1237,7 +1242,8 @@ sparse_lu_factorize_supernodal_multifrontal(
 // Same signature / return contract as sparse_lu_factorize_supernodal_multifrontal.
 // ===========================================================================
 template <class T, class Index>
-sparse_lu_detail::supernodal_true_numeric_stats
+sparse_lu_detail::supernodal_true_numeric_stats<
+    typename vcp::tsparse_scalar::real_type<T>::type>
 sparse_lu_factorize_supernodal_multifrontal_inplace(
     const csc_storage<T, Index>&           A_csc,
     const baseline_lu_storage<T, Index>&   csc_lu,
@@ -1251,7 +1257,7 @@ sparse_lu_factorize_supernodal_multifrontal_inplace(
 
     const auto t_total_start = std::chrono::steady_clock::now();
 
-    sparse_lu_detail::supernodal_true_numeric_stats stats;
+    sparse_lu_detail::supernodal_true_numeric_stats<real_type> stats;
     stats.attempted = true;
 
     const auto finish_total_ticks = [&]() {
@@ -1470,7 +1476,8 @@ sparse_lu_factorize_supernodal_multifrontal_inplace(
         for (std::size_t k = 0u; k < sw && ok; ++k) {
             const T piv = Fp[k + k * ldF];
             const real_type apv = scalar_pol::abs_value(piv);
-            if (apv <= opt.zero_tolerance) { ok = false; break; }
+            // SLU-GT1 D3 (certified-only): see the MF2 block above.
+            if (!(apv > opt.zero_tolerance)) { ok = false; break; }
             for (std::size_t i = k + 1u; i < sw; ++i)
                 Fp[i + k * ldF] = Fp[i + k * ldF] / piv;
             const std::size_t below = sw - k - 1u;
@@ -1655,7 +1662,7 @@ sparse_lu_factorize_supernodal_multifrontal_inplace(
     // SLU-MF7: opt-in (opt.supernodal_native_check_residual).  DEFAULT false =
     // skip (structural acceptance).  Set true for GP-fallback safety net.
     if (opt.supernodal_native_check_residual) {
-        double abs_res = 0.0, rel_res = 0.0;
+        real_type abs_res(0), rel_res(0);
         const auto t_res0 = std::chrono::steady_clock::now();
         bool checked = sparse_lu_detail::compute_supernodal_lu_residual_sparse(
             A_csc, storage, n, abs_res, rel_res);
@@ -1672,8 +1679,10 @@ sparse_lu_factorize_supernodal_multifrontal_inplace(
             return stats;
         }
         stats.factorization_residual_checked = true;
-        const double tol = 1e-6;
-        stats.factorization_residual_passed = (rel_res <= tol || abs_res <= tol);
+        // Requirement-set arithmetic sanity threshold (certainly-<=; not a
+        // rigorous error bound).  SLU-GT1 D2.
+        const real_type tol = real_type(1e-6);
+        stats.factorization_residual_passed = (rel_res <= tol) || (abs_res <= tol);
         if (!stats.factorization_residual_passed) {
             stats.status = supernodal_true_numeric_status::residual_failed;
             finish_total_ticks();
@@ -1704,7 +1713,8 @@ sparse_lu_factorize_supernodal_multifrontal_inplace(
 // (opt.supernodal_numeric_diagnostic_leftlooking == true).
 // ===========================================================================
 template <class T, class Index>
-sparse_lu_detail::supernodal_true_numeric_stats
+sparse_lu_detail::supernodal_true_numeric_stats<
+    typename vcp::tsparse_scalar::real_type<T>::type>
 sparse_lu_factorize_supernodal_numeric_source(
     const csc_storage<T, Index>&           A_csc,
     const baseline_lu_storage<T, Index>&   csc_lu,

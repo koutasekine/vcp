@@ -350,7 +350,7 @@ gmres_result<T, ApplyA, ApplyPrec> gmres_solve(
 			}
 			const R hnext = tsparse_scalar::real_norm_value(wz);
 			H[k + 1][k] = T(hnext);
-			if (hnext > std::numeric_limits<R>::epsilon()) {
+			if (hnext > vcp::tsparse_scalar::epsilon<R>()) {
 				for (std::size_t i = 0; i < n; i++) V[k + 1][i] = wz[i] / T(hnext);
 			}
 			for (std::size_t j = 0; j < k; j++) {
@@ -361,7 +361,7 @@ gmres_result<T, ApplyA, ApplyPrec> gmres_solve(
 			const R h0 = tsparse_scalar::abs_value(H[k][k]);
 			const R h1 = tsparse_scalar::abs_value(H[k+1][k]);
 			const R rho = tsparse_scalar::hypot_value(h0, h1);
-			if (rho <= std::numeric_limits<R>::epsilon()) { cs[k] = R(1); sn[k] = R(0); }
+			if (rho <= vcp::tsparse_scalar::epsilon<R>()) { cs[k] = R(1); sn[k] = R(0); }
 			else { cs[k] = tsparse_scalar::real_part(H[k][k]) / rho; sn[k] = tsparse_scalar::real_part(H[k+1][k]) / rho; }
 			H[k][k] = T(rho);
 			H[k+1][k] = T(0);
@@ -378,7 +378,7 @@ gmres_result<T, ApplyA, ApplyPrec> gmres_solve(
 			const std::size_t i = k - 1 - ii;
 			T s = g[i];
 			for (std::size_t j = i + 1; j < k; j++) s -= H[i][j] * y[j];
-			if (tsparse_scalar::abs_value(H[i][i]) > std::numeric_limits<R>::epsilon())
+			if (tsparse_scalar::abs_value(H[i][i]) > vcp::tsparse_scalar::epsilon<R>())
 				y[i] = s / H[i][i];
 		}
 		for (std::size_t j = 0; j < k; j++)

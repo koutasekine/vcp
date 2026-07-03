@@ -73,7 +73,8 @@ b_norm(
             "tsparse_b_inner_lanczos::b_norm: dimension mismatch");
     }
     const R v = b_inner_product<SparseMatrix, T>(B, x, x);
-    if (v <= R(0)) return R(0);
+    // SLU-GT1.1 F-7: certified-only — 直後の sqrt の引数を certainly 正に保証する
+    if (!(v > R(0))) return R(0);
     return vcp::tsparse_scalar::sqrt_value(v);
 }
 
@@ -183,7 +184,7 @@ b_inner_lanczos_eigs(
 
     const std::size_t k_actual = (k < n) ? k : n;
     const std::size_t m_limit  = std::min(n, std::max(subspace_dim, k_actual + std::size_t(3)));
-    const R eps   = std::numeric_limits<R>::epsilon();
+    const R eps   = vcp::tsparse_scalar::epsilon<R>();
     const R small_tol = tol / R(10);
 
     // Threshold for SPD violation detection
@@ -238,7 +239,8 @@ b_inner_lanczos_eigs(
             R bsq = R(0);
             for (std::size_t i = 0; i < n; i++) bsq += v0[i] * Bv0[i];
 
-            if (bsq <= spd_eps) {
+            // SLU-GT1.1 F-7: certified-only — 直後の sqrt/除算の引数を certainly 正に保証する
+            if (!(bsq > spd_eps)) {
                 // Possibly SPD failure; try another seed
                 if (attempt == 4) {
                     res.spd_check_failed = true;
@@ -362,9 +364,24 @@ b_inner_lanczos_eigs(
             num_steps++;
 
             // Check for happy breakdown (B-norm too small to continue)
+            // SLU-GT1.1 F-8: certified 三分岐 — happy breakdown は成功宣言側の
+            // ゲートなので certified-≤ を保持し、0 跨ぎ(認証不能)は第三分岐で
+            // 非収束 abort する(修正 P1: `!(x > tol)` は ≤枝が失敗・スキップ側
+            // のゲート専用)。double では前 2 分岐が全事象を被覆し第三分岐は
+            // 到達不能(挙動不変)。
             if (beta_sq <= small_tol * small_tol) {
+                // certified happy breakdown(従来の成功側: Ritz 抽出に進む)
                 bd_reason = "happy breakdown (zero B-norm residual)";
                 break;
+            } else if (beta_sq > small_tol * small_tol) {
+                // certified 正 — 直後の sqrt/除算の引数が certainly 正
+            } else {
+                // 0 跨ぎ: B-norm の符号を認証できない — 収束を装わず
+                // 非収束で中断する(S-D)。
+                res.breakdown_reason = "B-norm sign not certifiable";
+                res.failure_reason   = "B-norm sign not certifiable";
+                res.mv_count = mv_total;
+                return res;
             }
 
             const R beta_j = vcp::tsparse_scalar::sqrt_value(beta_sq);
@@ -456,7 +473,8 @@ b_inner_lanczos_eigs(
             mv_total++;
             R bsq_u = R(0);
             for (std::size_t i = 0; i < n; i++) bsq_u += u[i] * Bu_norm_vec[i];
-            if (bsq_u <= small_tol * small_tol) continue;
+            // SLU-GT1.1 F-7: certified-only — 直後の sqrt/除算の引数を certainly 正に保証する
+            if (!(bsq_u > small_tol * small_tol)) continue;
             const R u_bnorm = vcp::tsparse_scalar::sqrt_value(bsq_u);
             for (std::size_t i = 0; i < n; i++) u[i] /= T(u_bnorm);
 
@@ -478,7 +496,7 @@ b_inner_lanczos_eigs(
             //   ||A||_F * ||u|| + |mu| * ||B||_F * ||u|| + eps
             const R denom    = norm_A * u_l2norm
                 + vcp::tsparse_scalar::abs_value(mu) * norm_B * u_l2norm
-                + std::numeric_limits<R>::epsilon();
+                + vcp::tsparse_scalar::epsilon<R>();
             const R res_rel  = res_abs / denom;
 
             if (compute_residual_history) {
@@ -539,7 +557,7 @@ b_inner_lanczos_eigs(
             const R u_l2norm = vcp::tsparse_scalar::real_norm_value(res.eigenvectors[i]);
             const R denom    = norm_A * u_l2norm
                 + vcp::tsparse_scalar::abs_value(res.eigenvalues[i]) * norm_B * u_l2norm
-                + std::numeric_limits<R>::epsilon();
+                + vcp::tsparse_scalar::epsilon<R>();
             res.residuals_rel[i] = res.residuals_abs[i] / denom;
         }
         res.returned_count = res.eigenvalues.size();
@@ -569,7 +587,7 @@ b_inner_lanczos_eigs(
             const R u_l2norm = vcp::tsparse_scalar::real_norm_value(res.eigenvectors[i]);
             const R denom    = norm_A * u_l2norm
                 + vcp::tsparse_scalar::abs_value(res.eigenvalues[i]) * norm_B * u_l2norm
-                + std::numeric_limits<R>::epsilon();
+                + vcp::tsparse_scalar::epsilon<R>();
             res.residuals_rel[i] = res.residuals_abs[i] / denom;
         }
         res.returned_count = res.eigenvalues.size();

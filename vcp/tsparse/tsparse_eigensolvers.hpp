@@ -102,7 +102,7 @@ namespace vcp {
 			std::vector<T> q(n, T(0));
 			for (std::size_t i = 0; i < n; i++) q[i] = T(i + 1);
 			const real_type nq = tsparse_scalar::real_norm_value(q);
-			if (nq <= (std::numeric_limits<real_type>::epsilon)()) {
+			if (!(nq > vcp::tsparse_scalar::epsilon<real_type>())) {
 				decomp.breakdown_reason = "initial vector has zero norm";
 				return decomp;
 			}
@@ -155,7 +155,7 @@ namespace vcp {
 			decomp.hessenberg.assign(m_limit + 1, std::vector<T>(m_limit, T(0)));
 			for (std::size_t i = 0; i < n; i++) decomp.basis[0][i] = T(i + 1);
 			const real_type n0 = tsparse_scalar::real_norm_value(decomp.basis[0]);
-			if (n0 <= (std::numeric_limits<real_type>::epsilon)()) {
+			if (!(n0 > vcp::tsparse_scalar::epsilon<real_type>())) {
 				decomp.breakdown_reason = "initial vector has zero norm";
 				return decomp;
 			}
@@ -225,14 +225,23 @@ namespace vcp {
 		for (std::size_t k = 0; k + 1 < n; k++) {
 			const std::size_t len = (k + 2 < n) ? 3 : 2;
 			if (len < 3) z = R(0);
-			const R nrm = (len == 3) ? tsparse_scalar::sqrt_value(x*x + y*y + z*z)
-			                         : tsparse_scalar::sqrt_value(x*x + y*y);
-			if (nrm <= std::numeric_limits<R>::epsilon()) break;
+			// SLU-GT1.1 F-7: square via abs so the sqrt argument is certified
+			// non-negative for interval R ([0,a]^2 = [0,a^2]); |x|*|x| is
+			// bit-identical to x*x for double.
+			const R ax = tsparse_scalar::abs_value(x);
+			const R ay = tsparse_scalar::abs_value(y);
+			const R az = tsparse_scalar::abs_value(z);
+			const R nrm = (len == 3) ? tsparse_scalar::sqrt_value(ax*ax + ay*ay + az*az)
+			                         : tsparse_scalar::sqrt_value(ax*ax + ay*ay);
+			if (!(nrm > vcp::tsparse_scalar::epsilon<R>())) break;
 			const R sign_x = (x >= R(0)) ? R(1) : R(-1);
 			R u0 = x + sign_x * nrm, u1 = y, u2 = z;
-			const R un = (len == 3) ? tsparse_scalar::sqrt_value(u0*u0 + u1*u1 + u2*u2)
-			                        : tsparse_scalar::sqrt_value(u0*u0 + u1*u1);
-			if (un <= std::numeric_limits<R>::epsilon()) break;
+			const R au0 = tsparse_scalar::abs_value(u0);
+			const R au1 = tsparse_scalar::abs_value(u1);
+			const R au2 = tsparse_scalar::abs_value(u2);
+			const R un = (len == 3) ? tsparse_scalar::sqrt_value(au0*au0 + au1*au1 + au2*au2)
+			                        : tsparse_scalar::sqrt_value(au0*au0 + au1*au1);
+			if (!(un > vcp::tsparse_scalar::epsilon<R>())) break;
 			u0 /= un; u1 /= un; if (len == 3) u2 /= un; else u2 = R(0);
 			// Apply from left
 			const std::size_t jstart = (k > 0) ? k - 1 : 0;
@@ -292,14 +301,23 @@ namespace vcp {
 				const R tr = a + d;
 				const R det2 = a*d - b*c;
 				const R disc = tr*tr - R(4)*det2;
-				if (disc >= R(0)) {
+				if (disc >= R(0)) {          // certified real pair
 					const R s = tsparse_scalar::sqrt_value(disc);
 					result.push_back(C((tr + s) / R(2), R(0)));
 					result.push_back(C((tr - s) / R(2), R(0)));
-				} else {
+				} else if (disc < R(0)) {    // certified complex pair
 					const R s = tsparse_scalar::sqrt_value(-disc);
 					result.push_back(C(tr / R(2),  s / R(2)));
 					result.push_back(C(tr / R(2), -s / R(2)));
+				} else {
+					// SLU-GT1.1 F-7: disc straddles 0 -- its sign cannot be
+					// certified, so this 2x2 block's eigenvalues cannot be
+					// certified either.  Do not fake convergence (S-D): fail
+					// the whole extraction by returning empty; callers
+					// (arnoldi / krylov_schur) report it via failure_reason.
+					// For double, disc >= 0 / disc < 0 cover all cases and
+					// this branch is unreachable.
+					return std::vector<C>();
 				}
 				break;
 			}
@@ -329,14 +347,18 @@ namespace vcp {
 					const R tr = a + d;
 					const R det2 = a*d - b*c;
 					const R disc = tr*tr - R(4)*det2;
-					if (disc >= R(0)) {
+					if (disc >= R(0)) {          // certified real pair
 						const R s = tsparse_scalar::sqrt_value(disc);
 						result.push_back(C((tr+s)/R(2), R(0)));
 						result.push_back(C((tr-s)/R(2), R(0)));
-					} else {
+					} else if (disc < R(0)) {    // certified complex pair
 						const R s = tsparse_scalar::sqrt_value(-disc);
 						result.push_back(C(tr/R(2),  s/R(2)));
 						result.push_back(C(tr/R(2), -s/R(2)));
+					} else {
+						// SLU-GT1.1 F-7: 0-straddling disc (same treatment as
+						// the active == 2 site above; unreachable for double).
+						return std::vector<C>();
 					}
 					active -= 2;
 					H.resize(active);

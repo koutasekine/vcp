@@ -355,7 +355,10 @@ void apply_within_panel_row_swap(
 // Assumes pivot is at (pivot_col, pivot_col) (after any row swap).
 // Increments stats.scale_count (one per column where scaling is applied).
 //
-// Precondition: abs(pivot_value) > 0. Caller must check pivot_value != 0.
+// Precondition: abs(pivot_value) > 0 must be CERTIFIED by the caller via the
+// Step 4 gate !(abs_pv > opt.zero_tolerance) -> skip (SLU-GT1 D3).  For
+// interval scalars this means the pivot magnitude is certainly positive (an
+// interval containing 0 never reaches this division).
 // ---------------------------------------------------------------------------
 template <class T, class Index>
 void scale_pivot_column(
@@ -596,15 +599,21 @@ run_within_panel_factorization(
 
             // ----------------------------------------------------------------
             // Step 4: Zero / near-zero pivot status tracking
+            //
+            // SLU-GT1 D3 (certified-only): !(abs_pv > tol) means "cannot
+            // certify abs_pv > tol".  For interval scalars a pivot containing
+            // 0 is skipped HERE, so only certifiably nonzero pivots reach the
+            // division in scale_pivot_column (Step 5).  For totally ordered
+            // scalars this is identical to abs_pv <= tol.
             // ----------------------------------------------------------------
-            if (abs_pv <= opt.zero_tolerance) {
+            if (!(abs_pv > opt.zero_tolerance)) {
                 stats.zero_pivot_count++;
                 // Zero pivot: skip scale and trailing update for this column.
                 // Status propagation: not silently consumed.
                 panel_completed = false;
                 continue;
             }
-            if (abs_pv <= opt.near_zero_tolerance) {
+            if (!(abs_pv > opt.near_zero_tolerance)) {
                 stats.near_zero_pivot_count++;
                 // Near-zero pivot: warning only, continue factorization.
             }

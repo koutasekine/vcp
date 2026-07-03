@@ -25,13 +25,19 @@
 //   S-D  No perfect matching / structurally singular -> safe failure
 //        (structural_singularity); numerically singular B -> numeric stage fails
 //        safely.  Never a silent wrong answer.
-//   S-E  Deterministic matching (fixed index tie-break; no randomness).
+//   S-E  Deterministic matching PER SCALAR TYPE T (fixed index tie-break; no
+//        randomness).  Cross-type identity of the permutation is NOT guaranteed.
 //
-// The matching/scaling is computed in plain double scalar arithmetic and is
-// T-INDEPENDENT: magnitudes are converted to double via static_cast (every
-// supported real_type, incl. kv::dd / kv::mpfr, provides operator double()), and
-// the resulting scale factors are converted back with static_cast<T>(...).  No
-// branch depends on what T is.
+// SLU-GT1 D1: the matching/scaling is computed within the requirement set of
+// the module scalar contract -- R = real_type<T> arithmetic (+,-,*,/),
+// certainly comparisons, and ADL-resolved log/exp only.  No conversion of
+// T/R-dependent values to double, and no branch depends on what T is.
+// Components whose magnitude cannot be certified positive (!(|a_ij| > 0),
+// e.g. an interval containing 0) are treated as STRUCTURALLY ABSENT for the
+// matching: this keeps log() arguments certifiably positive and prevents a
+// silently degenerate matching (S-D).  "Unreached / not yet computed" states
+// in the shortest-path searches are represented by explicit flags, never by
+// numeric infinity sentinels (SLU-GT1 P4).
 //
 // This file MUST be #included from WITHIN namespace vcp, AFTER csc_storage,
 // sparse_lu_scalar_policy, sparse_lu_identity_permutation and
@@ -94,54 +100,68 @@ struct sparse_lu_mc64_transform {
 // The graph is complete (forbidden edges carry a large finite cost `big`), so a
 // perfect assignment always exists; the caller checks matched edges against `big`
 // to detect structural singularity.  Deterministic: ties resolved by lowest
-// index (strict `<` comparisons), no randomness (S-E).
+// index (strict `<` comparisons), no randomness (S-E, per scalar type).
+//
+// SLU-GT1 D1/P4: R-generic (R = real_type of the module scalar).  The
+// "not yet computed" state of minv[] is an explicit flag (minv_set[]), not a
+// numeric infinity sentinel.  For totally ordered R this is behaviorally
+// identical to the classic INF initialization (the first relaxation always
+// records).  For interval R the certainly-< comparisons may keep a
+// suboptimal candidate, but every do-while pass still settles exactly one
+// column (the graph is complete, so after the first scan every unused column
+// has minv_set), preserving termination and per-T determinism.
 // ---------------------------------------------------------------------------
+template <class R>
 inline void sparse_lu_mc64_assignment(
-    const std::vector<double>& cost,           // size n*n, row-major
+    const std::vector<R>&      cost,           // size n*n, row-major
     int                        n,
     std::vector<int>&          match_row_for_col,
-    std::vector<double>&       u,               // size n (row potentials)
-    std::vector<double>&       v)               // size n (col potentials)
+    std::vector<R>&            u,               // size n (row potentials)
+    std::vector<R>&            v)               // size n (col potentials)
 {
-    const double INF = std::numeric_limits<double>::max() / 4.0;
-
     // 1-indexed work arrays (e-maxx convention) to keep the algorithm transparent.
-    std::vector<double> U(static_cast<std::size_t>(n) + 1u, 0.0);
-    std::vector<double> V(static_cast<std::size_t>(n) + 1u, 0.0);
-    std::vector<int>    p(static_cast<std::size_t>(n) + 1u, 0);   // p[j] = row of col j
-    std::vector<int>    way(static_cast<std::size_t>(n) + 1u, 0);
+    std::vector<R>   U(static_cast<std::size_t>(n) + 1u, R(0));
+    std::vector<R>   V(static_cast<std::size_t>(n) + 1u, R(0));
+    std::vector<int> p(static_cast<std::size_t>(n) + 1u, 0);   // p[j] = row of col j
+    std::vector<int> way(static_cast<std::size_t>(n) + 1u, 0);
 
     for (int i = 1; i <= n; ++i) {
         p[0] = i;
         int j0 = 0;
-        std::vector<double> minv(static_cast<std::size_t>(n) + 1u, INF);
-        std::vector<char>   used(static_cast<std::size_t>(n) + 1u, 0);
+        std::vector<R>    minv(static_cast<std::size_t>(n) + 1u, R(0));
+        std::vector<char> minv_set(static_cast<std::size_t>(n) + 1u, 0);
+        std::vector<char> used(static_cast<std::size_t>(n) + 1u, 0);
         do {
             used[static_cast<std::size_t>(j0)] = 1;
             const int i0 = p[static_cast<std::size_t>(j0)];
-            double delta = INF;
-            int    j1    = -1;
+            R    delta     = R(0);
+            bool delta_set = false;
+            int  j1        = -1;
             for (int j = 1; j <= n; ++j) {
                 if (used[static_cast<std::size_t>(j)]) continue;
-                const double cur =
+                const R cur =
                     cost[static_cast<std::size_t>(i0 - 1) * static_cast<std::size_t>(n)
                          + static_cast<std::size_t>(j - 1)]
                     - U[static_cast<std::size_t>(i0)]
                     - V[static_cast<std::size_t>(j)];
-                if (cur < minv[static_cast<std::size_t>(j)]) {
-                    minv[static_cast<std::size_t>(j)] = cur;
-                    way[static_cast<std::size_t>(j)]  = j0;
+                if (!minv_set[static_cast<std::size_t>(j)] ||
+                    cur < minv[static_cast<std::size_t>(j)]) {
+                    minv[static_cast<std::size_t>(j)]     = cur;
+                    minv_set[static_cast<std::size_t>(j)] = 1;
+                    way[static_cast<std::size_t>(j)]      = j0;
                 }
-                if (minv[static_cast<std::size_t>(j)] < delta) {
-                    delta = minv[static_cast<std::size_t>(j)];
-                    j1    = j;
+                if (minv_set[static_cast<std::size_t>(j)] &&
+                    (!delta_set || minv[static_cast<std::size_t>(j)] < delta)) {
+                    delta     = minv[static_cast<std::size_t>(j)];
+                    delta_set = true;
+                    j1        = j;
                 }
             }
             for (int j = 0; j <= n; ++j) {
                 if (used[static_cast<std::size_t>(j)]) {
                     U[static_cast<std::size_t>(p[static_cast<std::size_t>(j)])] += delta;
                     V[static_cast<std::size_t>(j)]                              -= delta;
-                } else {
+                } else if (minv_set[static_cast<std::size_t>(j)]) {
                     minv[static_cast<std::size_t>(j)] -= delta;
                 }
             }
@@ -155,8 +175,8 @@ inline void sparse_lu_mc64_assignment(
     }
 
     match_row_for_col.assign(static_cast<std::size_t>(n), 0);
-    u.assign(static_cast<std::size_t>(n), 0.0);
-    v.assign(static_cast<std::size_t>(n), 0.0);
+    u.assign(static_cast<std::size_t>(n), R(0));
+    v.assign(static_cast<std::size_t>(n), R(0));
     for (int j = 1; j <= n; ++j) {
         match_row_for_col[static_cast<std::size_t>(j - 1)] =
             p[static_cast<std::size_t>(j)] - 1;       // 0-indexed row matched to col j-1
@@ -196,6 +216,8 @@ sparse_lu_mc64_make_transform(
     const std::vector<Index>&    col_perm)
 {
     typedef typename sparse_lu_scalar_policy<T>::real_type real_type;
+    using std::log;
+    using std::exp;
 
     sparse_lu_mc64_transform<T, Index> out;
     const std::size_t un = static_cast<std::size_t>(n);
@@ -210,28 +232,30 @@ sparse_lu_mc64_make_transform(
     const int ni = static_cast<int>(n);
 
     // ------------------------------------------------------------------
-    // 1. Dense magnitude matrix |a_ij| (double) and per-column maxima.
-    //    aval[i*n + j] = |A[i,j]| as double (0 if absent / exact zero).
+    // 1. Dense magnitude matrix |a_ij| (R = real_type) and per-column maxima.
+    //    aval[i*n + j] = |A[i,j]| (0 if absent / magnitude not certifiably
+    //    positive).  SLU-GT1 D1: components with !(|a_ij| > 0) are treated as
+    //    structurally absent, so every stored aval/maxcol entry is certifiably
+    //    positive and every log() argument below is certified > 0.
     // ------------------------------------------------------------------
-    std::vector<double> aval(un * un, 0.0);
-    std::vector<char>   exists(un * un, 0);
-    std::vector<double> maxcol(un, 0.0);
+    std::vector<real_type> aval(un * un, real_type(0));
+    std::vector<char>      exists(un * un, 0);
+    std::vector<real_type> maxcol(un, real_type(0));
 
     for (Index j = Index(0); j < n; ++j) {
         const std::size_t sj = static_cast<std::size_t>(j);
         for (Index k = A_nat.col_ptr[sj]; k < A_nat.col_ptr[sj + 1u]; ++k) {
             const std::size_t sk = static_cast<std::size_t>(k);
             const Index       i  = A_nat.row_ind[sk];
-            if (sparse_lu_scalar_policy<T>::is_exact_zero(A_nat.values[sk])) continue;
             const real_type ar = sparse_lu_scalar_policy<T>::abs_value(A_nat.values[sk]);
-            const double    av = static_cast<double>(ar);   // T-independent conversion
+            if (!(ar > real_type(0))) continue;   // not certifiably nonzero: absent
             const std::size_t idx =
                 static_cast<std::size_t>(i) * un + sj;
-            if (av > aval[idx]) {        // keep the largest magnitude if duplicated
-                aval[idx] = av;
+            if (ar > aval[idx]) {        // keep the largest magnitude if duplicated
+                aval[idx] = ar;
             }
             exists[idx] = 1;
-            if (av > maxcol[sj]) maxcol[sj] = av;
+            if (ar > maxcol[sj]) maxcol[sj] = ar;
         }
     }
 
@@ -239,34 +263,35 @@ sparse_lu_mc64_make_transform(
     // 2. Cost matrix with a large finite "forbidden" cost so the assignment
     //    always completes; matched forbidden edges flag structural singularity.
     // ------------------------------------------------------------------
-    double finite_max = 0.0;
+    real_type finite_max(0);
     for (std::size_t i = 0; i < un; ++i) {
         for (std::size_t j = 0; j < un; ++j) {
             const std::size_t idx = i * un + j;
             if (exists[idx]) {
-                const double c = std::log(maxcol[j]) - std::log(aval[idx]);
+                const real_type c = log(maxcol[j]) - log(aval[idx]);
                 if (c > finite_max) finite_max = c;
             }
         }
     }
-    const double big = (static_cast<double>(ni) + 1.0) * (finite_max + 1.0) + 1.0;
+    const real_type big =
+        (real_type(ni) + real_type(1)) * (finite_max + real_type(1)) + real_type(1);
 
-    std::vector<double> cost(un * un, big);
+    std::vector<real_type> cost(un * un, big);
     for (std::size_t i = 0; i < un; ++i) {
         for (std::size_t j = 0; j < un; ++j) {
             const std::size_t idx = i * un + j;
             if (exists[idx]) {
-                cost[idx] = std::log(maxcol[j]) - std::log(aval[idx]);
-                if (cost[idx] < 0.0) cost[idx] = 0.0;   // guard tiny negative rounding
+                cost[idx] = log(maxcol[j]) - log(aval[idx]);
+                if (cost[idx] < real_type(0)) cost[idx] = real_type(0);   // guard tiny negative rounding
             }
         }
     }
 
     // ------------------------------------------------------------------
-    // 3. Minimum-cost perfect assignment (deterministic).
+    // 3. Minimum-cost perfect assignment (deterministic per scalar type).
     // ------------------------------------------------------------------
-    std::vector<int>    match_row_for_col;
-    std::vector<double> u, v;
+    std::vector<int>       match_row_for_col;
+    std::vector<real_type> u, v;
     sparse_lu_mc64_assignment(cost, ni, match_row_for_col, u, v);
 
     // Structural singularity: any matched edge is a forbidden (no-entry) slot.
@@ -284,23 +309,23 @@ sparse_lu_mc64_make_transform(
     //    Dr[i] = exp(u_i); Dc[j] = exp(v_j) / maxcol[j].
     //    Fall back to identity if any factor is degenerate.
     // ------------------------------------------------------------------
-    std::vector<double> Dr_r(un, 1.0);
-    std::vector<double> Dc_r(un, 1.0);
+    std::vector<real_type> Dr_r(un, real_type(1));
+    std::vector<real_type> Dc_r(un, real_type(1));
     bool scaling_ok = true;
     for (std::size_t i = 0; i < un && scaling_ok; ++i) {
-        const double d = std::exp(u[i]);
-        if (!(d > 0.0) || !std::isfinite(d)) scaling_ok = false;
+        const real_type d = exp(u[i]);
+        if (!(d > real_type(0)) || !vcp::tsparse_scalar::is_finite(d)) scaling_ok = false;
         Dr_r[i] = d;
     }
     for (std::size_t j = 0; j < un && scaling_ok; ++j) {
-        if (!(maxcol[j] > 0.0)) { scaling_ok = false; break; }
-        const double d = std::exp(v[j]) / maxcol[j];
-        if (!(d > 0.0) || !std::isfinite(d)) scaling_ok = false;
+        if (!(maxcol[j] > real_type(0))) { scaling_ok = false; break; }
+        const real_type d = exp(v[j]) / maxcol[j];
+        if (!(d > real_type(0)) || !vcp::tsparse_scalar::is_finite(d)) scaling_ok = false;
         Dc_r[j] = d;
     }
     if (!scaling_ok) {
-        std::fill(Dr_r.begin(), Dr_r.end(), 1.0);
-        std::fill(Dc_r.begin(), Dc_r.end(), 1.0);
+        std::fill(Dr_r.begin(), Dr_r.end(), real_type(1));
+        std::fill(Dc_r.begin(), Dc_r.end(), real_type(1));
     }
 
     // ------------------------------------------------------------------
@@ -319,11 +344,12 @@ sparse_lu_mc64_make_transform(
         inv_p_static[static_cast<std::size_t>(mr)] = jc;
     }
 
-    // Store Dr/Dc as T (original coordinates).
+    // Store Dr/Dc as T (original coordinates).  T(real_type) construction:
+    // identity for real T, real-part construction for complex T (SLU-GT1 D1).
     out.Dr.assign(un, T(0));
     out.Dc.assign(un, T(0));
-    for (std::size_t i = 0; i < un; ++i) out.Dr[i] = static_cast<T>(Dr_r[i]);
-    for (std::size_t j = 0; j < un; ++j) out.Dc[j] = static_cast<T>(Dc_r[j]);
+    for (std::size_t i = 0; i < un; ++i) out.Dr[i] = T(Dr_r[i]);
+    for (std::size_t j = 0; j < un; ++j) out.Dc[j] = T(Dc_r[j]);
 
     // ------------------------------------------------------------------
     // 6. Assemble B = P_static * Dr * A * Dc * Qc (CSC, ascending rows/col).
@@ -420,8 +446,12 @@ struct sparse_lu_mc64_matching {
 // try_build_native_mc64_supernodal still guarantees full accuracy.
 //
 // No perfect matching on the real-edge graph -> success=false /
-// structural_singularity (S-D).  Magnitudes are read through the scalar policy and
-// converted to double exactly as the dense path (T-independent).
+// structural_singularity (S-D).  SLU-GT1 D1: magnitudes are read through the
+// scalar policy and kept in R = real_type<T> (requirement-set arithmetic,
+// ADL log; no double conversion).  Components whose magnitude cannot be
+// certified positive are treated as structurally absent, exactly as the dense
+// path.  Unreached dist[] states are explicit flags, not infinity sentinels
+// (SLU-GT1 P4).  Matching is deterministic PER SCALAR TYPE T (S-E).
 // ---------------------------------------------------------------------------
 template <class T, class Index>
 sparse_lu_mc64_matching<Index>
@@ -430,6 +460,9 @@ sparse_lu_mc64_match_native(
     Index                        n,
     const std::vector<Index>&    col_perm)
 {
+    typedef typename sparse_lu_scalar_policy<T>::real_type real_type;
+    using std::log;
+
     sparse_lu_mc64_matching<Index> out;
     const std::size_t un = static_cast<std::size_t>(n);
 
@@ -443,16 +476,18 @@ sparse_lu_mc64_match_native(
 
     // ------------------------------------------------------------------
     // 1. Per-column maxima (O(nnz), col_ptr scan; same as the dense path).
+    //    SLU-GT1 D1: !(|a_ij| > 0) entries are structurally absent, so every
+    //    stored maxcol entry is certifiably positive (log-safe below).
     // ------------------------------------------------------------------
-    std::vector<double> maxcol(un, 0.0);
+    std::vector<real_type> maxcol(un, real_type(0));
     for (Index j = Index(0); j < n; ++j) {
         const std::size_t sj = static_cast<std::size_t>(j);
         for (Index k = A_nat.col_ptr[sj]; k < A_nat.col_ptr[sj + 1u]; ++k) {
             const std::size_t sk = static_cast<std::size_t>(k);
-            if (sparse_lu_scalar_policy<T>::is_exact_zero(A_nat.values[sk])) continue;
-            const double av = static_cast<double>(
-                sparse_lu_scalar_policy<T>::abs_value(A_nat.values[sk]));
-            if (av > maxcol[sj]) maxcol[sj] = av;
+            const real_type ar =
+                sparse_lu_scalar_policy<T>::abs_value(A_nat.values[sk]);
+            if (!(ar > real_type(0))) continue;   // not certifiably nonzero: absent
+            if (ar > maxcol[sj]) maxcol[sj] = ar;
         }
     }
 
@@ -461,19 +496,18 @@ sparse_lu_mc64_match_native(
     //    cost[i][j] = log(maxcol[j]) - log(|a_ij|) >= 0 (clip tiny negatives).
     //    Sorted by column index so the SSP expansion is deterministic.
     // ------------------------------------------------------------------
-    std::vector<std::vector<std::pair<int, double> > > adj(un);
+    std::vector<std::vector<std::pair<int, real_type> > > adj(un);
     for (Index j = Index(0); j < n; ++j) {
         const std::size_t sj = static_cast<std::size_t>(j);
-        if (!(maxcol[sj] > 0.0)) continue;          // empty column: no real edge
-        const double logmax = std::log(maxcol[sj]);
+        if (!(maxcol[sj] > real_type(0))) continue; // empty column: no real edge
+        const real_type logmax = log(maxcol[sj]);
         for (Index k = A_nat.col_ptr[sj]; k < A_nat.col_ptr[sj + 1u]; ++k) {
             const std::size_t sk = static_cast<std::size_t>(k);
-            if (sparse_lu_scalar_policy<T>::is_exact_zero(A_nat.values[sk])) continue;
-            const double av = static_cast<double>(
-                sparse_lu_scalar_policy<T>::abs_value(A_nat.values[sk]));
-            if (av == 0.0) continue;
-            double c = logmax - std::log(av);
-            if (c < 0.0) c = 0.0;
+            const real_type ar =
+                sparse_lu_scalar_policy<T>::abs_value(A_nat.values[sk]);
+            if (!(ar > real_type(0))) continue;   // certified-positive guard before log
+            real_type c = logmax - log(ar);
+            if (c < real_type(0)) c = real_type(0);
             const int i = static_cast<int>(A_nat.row_ind[sk]);
             adj[static_cast<std::size_t>(i)].push_back(
                 std::make_pair(static_cast<int>(j), c));
@@ -481,61 +515,109 @@ sparse_lu_mc64_match_native(
     }
     for (std::size_t i = 0; i < un; ++i) {
         std::sort(adj[i].begin(), adj[i].end(),
-                  [](const std::pair<int, double>& a,
-                     const std::pair<int, double>& b) { return a.first < b.first; });
+                  [](const std::pair<int, real_type>& a,
+                     const std::pair<int, real_type>& b) { return a.first < b.first; });
     }
 
     // ------------------------------------------------------------------
     // 3. Minimum-cost perfect assignment via successive shortest augmenting
     //    paths (Dijkstra + column dual potentials, real edges only).
     //    col_match[j] = row matched to column j (or -1).
+    //    SLU-GT1 P4: "column not reached yet" is the explicit flag
+    //    dist_set[j] == 0, not an infinity sentinel.  For totally ordered R
+    //    this is behaviorally identical (the first relaxation always records);
+    //    for interval R indeterminate certainly-< keeps the incumbent, and
+    //    termination is preserved (each pop settles at most one column).
     // ------------------------------------------------------------------
-    const double INF = std::numeric_limits<double>::infinity();
-    std::vector<double> pi_col(un, 0.0);            // column dual potentials
-    std::vector<int>    col_match(un, -1);
-    typedef std::pair<double, int> QE;              // (reduced distance, col)
+    std::vector<real_type> pi_col(un, real_type(0)); // column dual potentials
+    std::vector<int>       col_match(un, -1);
+    typedef std::pair<real_type, int> QE;            // (reduced distance, col)
 
-    // Binary min-heap over QE: lowest distance first, ties broken by lowest column
-    // index (std::pair's lexicographic operator>).  Uses push_heap/pop_heap from
-    // <algorithm> (already in scope) -- this file is injected inside namespace vcp,
-    // so <queue> must NOT be #included here.
-    struct qe_greater {
-        bool operator()(const QE& a, const QE& b) const { return a > b; }
-    };
-    const qe_greater heap_gt = qe_greater();
+    // Hand-rolled binary min-heap over QE: lowest distance first, ties broken by
+    // lowest column index.  The order predicate is the same lexicographic pair
+    // comparison the previous std::push_heap/pop_heap usage induced:
+    //   qe_before(a, b) = a.first < b.first
+    //                  || (!(b.first < a.first) && a.second < b.second)
+    // It deliberately falls through to the column tie-break when the distances
+    // are equal OR certainly-incomparable, so interval distances that cannot be
+    // ordered are still decided deterministically by column index (S-E: per-T
+    // determinism via fixed tie-break is preserved).
+    //
+    // SLU-GT1.1 F-1 (B-7): this hand-rolled heap does NOT require the predicate
+    // to be a strict weak ordering.  Under R's certainly comparisons (a partial
+    // order: incomparability is not transitive) the extraction order is
+    // best-effort, and any ordering degradation affects only matching quality,
+    // never correctness.  std::push_heap/pop_heap (and other std algorithms
+    // with comparator requirements) are avoided because passing a non-SWO
+    // predicate to them is formally UB.  This file is injected inside
+    // namespace vcp, so <queue> must NOT be #included here either.
     std::vector<QE> heap;
+    const auto qe_before = [](const QE& a, const QE& b) -> bool {
+        return a.first < b.first ||
+               (!(b.first < a.first) && a.second < b.second);
+    };
+    // sift-up (push): iterative, no recursion.
+    const auto heap_sift_up = [&heap, &qe_before](std::size_t c) {
+        while (c > 0u) {
+            const std::size_t p = (c - 1u) / 2u;
+            if (!qe_before(heap[c], heap[p])) break;
+            const QE tmp = heap[c]; heap[c] = heap[p]; heap[p] = tmp;
+            c = p;
+        }
+    };
+    // sift-down (pop): iterative, no recursion.
+    const auto heap_sift_down = [&heap, &qe_before](std::size_t c) {
+        const std::size_t sz = heap.size();
+        for (;;) {
+            const std::size_t l = 2u * c + 1u;
+            if (l >= sz) break;
+            std::size_t m = l;
+            const std::size_t rt = l + 1u;
+            if (rt < sz && qe_before(heap[rt], heap[l])) m = rt;
+            if (!qe_before(heap[m], heap[c])) break;
+            const QE tmp = heap[c]; heap[c] = heap[m]; heap[m] = tmp;
+            c = m;
+        }
+    };
 
     for (int r = 0; r < ni; ++r) {
-        std::vector<double> dist(un, INF);
-        std::vector<char>   done(un, 0);
-        std::vector<int>    par_col(un, -1);        // predecessor column on the path
-        std::vector<int>    col_via_row(un, -1);    // row used to settle this column
+        std::vector<real_type> dist(un, real_type(0));
+        std::vector<char>      dist_set(un, 0);     // P4 flag: dist[j] valid iff set
+        std::vector<char>      done(un, 0);
+        std::vector<int>       par_col(un, -1);     // predecessor column on the path
+        std::vector<int>       col_via_row(un, -1); // row used to settle this column
         heap.clear();
 
-        const std::vector<std::pair<int, double> >& r_adj =
+        const std::vector<std::pair<int, real_type> >& r_adj =
             adj[static_cast<std::size_t>(r)];
         for (std::size_t e = 0; e < r_adj.size(); ++e) {
-            const int    j  = r_adj[e].first;
-            const double rc = r_adj[e].second - pi_col[static_cast<std::size_t>(j)];
-            if (rc < dist[static_cast<std::size_t>(j)]) {
+            const int       j  = r_adj[e].first;
+            const real_type rc = r_adj[e].second - pi_col[static_cast<std::size_t>(j)];
+            if (!dist_set[static_cast<std::size_t>(j)] ||
+                rc < dist[static_cast<std::size_t>(j)]) {
                 dist[static_cast<std::size_t>(j)]        = rc;
+                dist_set[static_cast<std::size_t>(j)]    = 1;
                 col_via_row[static_cast<std::size_t>(j)] = r;
                 par_col[static_cast<std::size_t>(j)]     = -1;
                 heap.push_back(QE(rc, j));
-                std::push_heap(heap.begin(), heap.end(), heap_gt);
+                heap_sift_up(heap.size() - 1u);
             }
         }
 
-        int    free_col = -1;
-        double free_d   = 0.0;
+        int       free_col = -1;
+        real_type free_d(0);
         while (!heap.empty()) {
-            const QE     top = heap.front();
-            std::pop_heap(heap.begin(), heap.end(), heap_gt);
+            const QE        top = heap.front();
+            if (heap.size() > 1u) heap.front() = heap.back();
             heap.pop_back();
-            const int    j = top.second;
-            const double d = top.first;
+            if (!heap.empty()) heap_sift_down(0u);
+            const int       j = top.second;
+            const real_type d = top.first;
             if (done[static_cast<std::size_t>(j)]) continue;
-            if (d > dist[static_cast<std::size_t>(j)] + 1e-300) continue;
+            // Stale heap entry (superseded by a later, better relaxation).
+            // Heap entries are only pushed with dist_set[j] == 1.
+            if (dist_set[static_cast<std::size_t>(j)] &&
+                (d > dist[static_cast<std::size_t>(j)] + real_type(1e-300))) continue;
             done[static_cast<std::size_t>(j)] = 1;
             if (col_match[static_cast<std::size_t>(j)] < 0) {
                 free_col = j;
@@ -543,19 +625,21 @@ sparse_lu_mc64_match_native(
                 break;
             }
             const int mi = col_match[static_cast<std::size_t>(j)];
-            const std::vector<std::pair<int, double> >& m_adj =
+            const std::vector<std::pair<int, real_type> >& m_adj =
                 adj[static_cast<std::size_t>(mi)];
             for (std::size_t e = 0; e < m_adj.size(); ++e) {
                 const int jj = m_adj[e].first;
                 if (done[static_cast<std::size_t>(jj)]) continue;
-                const double rc = m_adj[e].second - pi_col[static_cast<std::size_t>(jj)];
-                const double nd = d + rc;
-                if (nd < dist[static_cast<std::size_t>(jj)]) {
+                const real_type rc = m_adj[e].second - pi_col[static_cast<std::size_t>(jj)];
+                const real_type nd = d + rc;
+                if (!dist_set[static_cast<std::size_t>(jj)] ||
+                    nd < dist[static_cast<std::size_t>(jj)]) {
                     dist[static_cast<std::size_t>(jj)]        = nd;
+                    dist_set[static_cast<std::size_t>(jj)]    = 1;
                     col_via_row[static_cast<std::size_t>(jj)] = mi;
                     par_col[static_cast<std::size_t>(jj)]     = j;
                     heap.push_back(QE(nd, jj));
-                    std::push_heap(heap.begin(), heap.end(), heap_gt);
+                    heap_sift_up(heap.size() - 1u);
                 }
             }
         }

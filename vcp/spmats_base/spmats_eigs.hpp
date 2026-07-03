@@ -121,7 +121,7 @@ static void set_result_counts_(eig_result<_T>& result, const std::size_t request
     result.returned_complex_count = 0;
     for (std::size_t i = 0; i < result.complex_eigenvalues.size(); i++) {
         if (vcp::tsparse_scalar::abs_value(result.complex_eigenvalues[i].imag())
-                > std::numeric_limits<scalar_real_type>::epsilon()) {
+                > vcp::tsparse_scalar::epsilon<scalar_real_type>()) {
             result.returned_complex_count++;
         }
     }
@@ -377,7 +377,7 @@ eigenpair_relative_residual_norm_value_(const spmats<_T,_Index>& A, const _T& la
     const scalar_real_type vn      = norm_value_<_T,_Index>(v);
     const scalar_real_type denom   = frobenius_norm_value_<_T,_Index>(A) * vn
         + vcp::tsparse_scalar::abs_value(lambda) * vn
-        + std::numeric_limits<scalar_real_type>::epsilon();
+        + vcp::tsparse_scalar::epsilon<scalar_real_type>();
     return abs_res / denom;
 }
 
@@ -392,8 +392,11 @@ max_eigenpair_residual_value_(const spmats<_T,_Index>& A,
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
     scalar_real_type maximum(0);
+    // SLU-GT1 D5: defensive branch only -- every caller guards
+    // !eigenvectors.empty() and derives `converged` independently of this
+    // value, so scalar_real_type(0) is a placeholder, not a sentinel.
     if (eigenvalues.empty() || eigenvectors.size() != eigenvalues.size()) {
-        return std::numeric_limits<scalar_real_type>::infinity();
+        return scalar_real_type(0);
     }
     for (std::size_t i = 0; i < eigenvalues.size(); i++) {
         const scalar_real_type residual = eigenpair_residual_norm_value_<_T,_Index>(A, eigenvalues[i], eigenvectors[i]);
@@ -539,7 +542,7 @@ generalized_eigenpair_relative_residual_norm_value_(const spmats<_T,_Index>& A,
     const scalar_real_type vn      = norm_value_<_T,_Index>(eigenvector);
     const scalar_real_type denom   = frobenius_norm_value_<_T,_Index>(A) * vn
         + vcp::tsparse_scalar::abs_value(eigenvalue) * frobenius_norm_value_<_T,_Index>(B) * vn
-        + std::numeric_limits<scalar_real_type>::epsilon();
+        + vcp::tsparse_scalar::epsilon<scalar_real_type>();
     return abs_res / denom;
 }
 
@@ -555,8 +558,9 @@ max_generalized_eigenpair_residual_value_(const spmats<_T,_Index>& A,
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
     scalar_real_type maximum(0);
+    // SLU-GT1 D5: defensive branch only -- see max_eigenpair_residual_value_.
     if (eigenvalues.empty() || eigenvectors.size() != eigenvalues.size()) {
-        return std::numeric_limits<scalar_real_type>::infinity();
+        return scalar_real_type(0);
     }
     for (std::size_t i = 0; i < eigenvalues.size(); i++) {
         const scalar_real_type residual =
@@ -744,7 +748,7 @@ static eig_result<_T> generalized_diagonal_eigs_(const spmats<_T,_Index>& A,
     std::vector<std::vector<_T> > vectors;
     values.reserve(n);
     vectors.reserve(n);
-    const scalar_real_type pivot_tol = std::numeric_limits<scalar_real_type>::epsilon();
+    const scalar_real_type pivot_tol = vcp::tsparse_scalar::epsilon<scalar_real_type>();
     for (std::size_t i = 0; i < n; i++) {
         const _T bdiag = B.get(static_cast<_Index>(i), static_cast<_Index>(i));
         if (vcp::tsparse_scalar::abs_value(bdiag) <= pivot_tol) {
@@ -807,7 +811,7 @@ hermitian_eigenpair_relative_residual_norm_value_(const spmats<_T,_Index>& A, co
     const scalar_real_type vn = vcp::tsparse_hermitian_lanczos::hermitian_norm(v);
     const scalar_real_type denom = frobenius_norm_value_<_T,_Index>(A) * vn
         + vcp::tsparse_scalar::abs_value(lambda) * vn
-        + std::numeric_limits<scalar_real_type>::epsilon();
+        + vcp::tsparse_scalar::epsilon<scalar_real_type>();
     return abs_res / denom;
 }
 
@@ -2284,6 +2288,30 @@ static eig_result<_T> make_empty_eigs_success_(const spmats<_T,_Index>&,
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// make_internal_error_eigs_result_  (SLU-GT1 D6)
+//
+// Result for the last-resort exception net of the policy_*_with_info
+// boundaries.  Reached only if a std::exception (kv domain error, bad_alloc,
+// ...) escapes the algorithm body: with the certified gates (D1/D3) in place
+// this should not happen, so firing indicates a gate leak (investigate).
+// Numerical singularity is NOT reported here -- the D3 gates report it as
+// numerical_singularity / zero_pivot BEFORE any throw can occur.
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static eig_result<_T> make_internal_error_eigs_result_(const std::size_t k,
+                                                        const char* what)
+{
+    eig_result<_T> result;
+    result.converged = false;
+    result.requested_count = k;
+    result.status = "internal_error";
+    result.failure_reason = (what != 0) ? what : "unknown exception";
+    result.message = result.failure_reason;
+    set_result_counts_<_T,_Index>(result, k);
+    return result;
+}
+
 // ===========================================================================
 // PUBLIC POLICY METHODS  (non-member free functions operating on spmats)
 // These mirror spmatrix::eigs_with_info / spmatrix::eigs_with_info(B,...).
@@ -2297,6 +2325,10 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
                                       const std::size_t k,
                                       const eig_options<_T>& options)
 {
+    // SLU-GT1 D6 net: vcp::error (validation/misuse) is rethrown unchanged;
+    // any other std::exception maps to status "internal_error" (see
+    // make_internal_error_eigs_result_).  Body indentation kept as-is.
+    try {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
     if (k == 0) return make_empty_eigs_success_<_T,_Index>(A, options);
     if (spmatrix_is_complex<_T>::value)
@@ -2327,6 +2359,11 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
     select_eigenpairs_<_T,_Index>(result, k, active.target, active.shift);
     set_result_counts_<_T,_Index>(result, k);
     return result;
+    } catch (const vcp::error&) {
+        throw;   // misuse contract preserved
+    } catch (const std::exception& e) {
+        return make_internal_error_eigs_result_<_T,_Index>(k, e.what());
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2338,6 +2375,8 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
                                       const eig_options<_T>& options,
                                       const Preconditioner& M)
 {
+    // SLU-GT1 D6 net (same convention as the no-preconditioner overload).
+    try {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
     if (k == 0) { (void)M; return make_empty_eigs_success_<_T,_Index>(A, options); }
     if (spmatrix_is_complex<_T>::value)
@@ -2384,6 +2423,11 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
         result = shift_invert_arnoldi_eigs_with_prec_<_T,_Index>(A, k, active, sigma, M);
     set_result_counts_<_T,_Index>(result, k);
     return result;
+    } catch (const vcp::error&) {
+        throw;   // misuse contract preserved
+    } catch (const std::exception& e) {
+        return make_internal_error_eigs_result_<_T,_Index>(k, e.what());
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2395,6 +2439,8 @@ eig_result<_T> policy_generalized_eigs_with_info(const spmats<_T,_Index>& A,
                                                    const std::size_t k,
                                                    const eig_options<_T>& options)
 {
+    // SLU-GT1 D6 net (same convention as policy_eigs_with_info).
+    try {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
     if (k == 0) return make_empty_eigs_success_<_T,_Index>(A, options);
     if (spmatrix_is_complex<_T>::value)
@@ -2470,6 +2516,11 @@ eig_result<_T> policy_generalized_eigs_with_info(const spmats<_T,_Index>& A,
     result.message = result.failure_reason;
     set_result_counts_<_T,_Index>(result, k);
     return result;
+    } catch (const vcp::error&) {
+        throw;   // misuse contract preserved
+    } catch (const std::exception& e) {
+        return make_internal_error_eigs_result_<_T,_Index>(k, e.what());
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2482,6 +2533,8 @@ eig_result<_T> policy_generalized_eigs_with_info(const spmats<_T,_Index>& A,
                                                    const eig_options<_T>& options,
                                                    const Preconditioner& M)
 {
+    // SLU-GT1 D6 net (same convention as policy_eigs_with_info).
+    try {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
     if (k == 0) { (void)B; (void)M; return make_empty_eigs_success_<_T,_Index>(A, options); }
     if (spmatrix_is_complex<_T>::value)
@@ -2544,6 +2597,11 @@ eig_result<_T> policy_generalized_eigs_with_info(const spmats<_T,_Index>& A,
     result.requested_count = k;
     set_result_counts_<_T,_Index>(result, k);
     return result;
+    } catch (const vcp::error&) {
+        throw;   // misuse contract preserved
+    } catch (const std::exception& e) {
+        return make_internal_error_eigs_result_<_T,_Index>(k, e.what());
+    }
 }
 
 // ===========================================================================

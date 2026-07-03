@@ -35,11 +35,14 @@ struct ritz_pair {
 	real_type residual_relative;
 	bool converged;
 
+	// SLU-GT1 D5: residual fields initialized to real_type(0); `converged`
+	// (and the writer that computes the residual) is the validity witness.
+	// Before a residual is written these fields are undefined -- do not read.
 	ritz_pair()
 		: value(T(0)),
 		  vector(),
-		  residual_absolute((std::numeric_limits<real_type>::infinity)()),
-		  residual_relative((std::numeric_limits<real_type>::infinity)()),
+		  residual_absolute(real_type(0)),
+		  residual_relative(real_type(0)),
 		  converged(false) {}
 };
 
@@ -56,11 +59,15 @@ struct locked_pair {
 	real_type residual_absolute;
 	real_type residual_relative;
 
+	// SLU-GT1 D5: a locked pair is by construction converged; its residual
+	// fields are written at lock time (see lock_converged_pairs).  The
+	// real_type(0) initializer is a placeholder, not a sentinel -- a
+	// default-constructed locked_pair must not have its residuals read.
 	locked_pair()
 		: value(T(0)),
 		  vector(),
-		  residual_absolute((std::numeric_limits<real_type>::infinity)()),
-		  residual_relative((std::numeric_limits<real_type>::infinity)()) {}
+		  residual_absolute(real_type(0)),
+		  residual_relative(real_type(0)) {}
 };
 
 // ---------------------------------------------------------------------------
@@ -134,7 +141,7 @@ orthogonalize_against_locked(
 {
 	typedef typename vcp::tsparse_scalar::real_type<T>::type real_type;
 	const std::size_t n = v.size();
-	const real_type eps = std::numeric_limits<real_type>::epsilon();
+	const real_type eps = vcp::tsparse_scalar::epsilon<real_type>();
 
 	// Pre-check dimensions and precompute <qk, qk> for each locked vector.
 	std::vector<real_type> q_norms2(locked.size());
@@ -149,7 +156,7 @@ orthogonalize_against_locked(
 			q_norm2 += vcp::tsparse_scalar::real_part(
 				vcp::tsparse_scalar::conjugate_if_needed(qk[i]) * qk[i]);
 		}
-		if (q_norm2 <= eps) {
+		if (!(q_norm2 > eps)) {
 			vcp::throw_error<vcp::numerical_error>(
 				"tsparse::orthogonalize_against_locked: locked vector has zero or near-zero norm");
 		}

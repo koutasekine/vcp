@@ -140,10 +140,14 @@ namespace vcp {
 		real_type initial_residual_norm;
 		linear_solver_method method;
 
+		// SLU-GT1 D5: residual fields are initialized to real_type(0), NOT an
+		// infinity sentinel.  `converged` is the ONLY validity witness: when
+		// converged == false the residual_norm / absolute_ / relative_ fields
+		// are undefined values and must not be read.
 		linear_solve_result()
-			: converged(false), iterations(0), residual_norm((std::numeric_limits<real_type>::infinity)()),
-			  absolute_residual_norm((std::numeric_limits<real_type>::infinity)()),
-			  relative_residual_norm((std::numeric_limits<real_type>::infinity)()),
+			: converged(false), iterations(0), residual_norm(real_type(0)),
+			  absolute_residual_norm(real_type(0)),
+			  relative_residual_norm(real_type(0)),
 			  initial_residual_norm(real_type(0)), method(linear_solver_method::conjugate_gradient) {}
 	};
 
@@ -196,8 +200,10 @@ namespace vcp {
 			  returned_real_count(0), returned_complex_count(0), converged_count(0),
 			  iterations(0), matrix_vector_products(0), linear_solves(0),
 			  residuals_absolute(), residuals_relative(),
-			  residual_norm_absolute((std::numeric_limits<real_type>::infinity)()),
-			  residual_norm_relative((std::numeric_limits<real_type>::infinity)()),
+			  // SLU-GT1 D5: initialized to real_type(0); valid only when
+			  // `converged` (or an explicit residual computation) sets them.
+			  residual_norm_absolute(real_type(0)),
+			  residual_norm_relative(real_type(0)),
 			  residual_history_absolute(), residual_history_relative(),
 			  method(eig_solver_method::lanczos), status(), message(), failure_reason(),
 			  breakdown_reason(), used_method(), used_orthogonalization(),
