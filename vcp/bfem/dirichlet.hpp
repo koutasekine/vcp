@@ -104,6 +104,37 @@ public:
         return out;
     }
 
+    // ---- additive extension (phase 5d / SV cross review A-2) ----
+    // One-sided reductions for RECTANGULAR systems: the Stokes/NS B matrix
+    // (pressure rows x velocity columns) needs its rows and columns reduced
+    // by DIFFERENT reductions, so the symmetric reduce(A) does not apply.
+    // reduce_rows keeps the unconstrained rows (any column count),
+    // reduce_cols the unconstrained columns (any row count); both are pure
+    // filters (no arithmetic on T at all). These methods are ADDITIVE: the
+    // pre-existing members above are untouched (bit invariance is a phase 5d
+    // gate condition, S-SV-4). Acceptance identity for square A:
+    // reduce(A) == reduce_rows(reduce_cols(A)) exactly.
+    spmatrix_t reduce_rows(const spmatrix_t& A) const {
+        if (A.rowsize() != full_)
+            throw std::invalid_argument(
+                "bfem::dirichlet_reduction::reduce_rows: row size mismatch");
+        detail::coo_buffer<T> buf;
+        row_collector col = { this, &buf };
+        detail::spm_adapter<T, SP>::for_each_entry(A, col);
+        buf.combine();
+        return detail::spm_adapter<T, SP>::build(reduced_size(), A.columnsize(), buf);
+    }
+    spmatrix_t reduce_cols(const spmatrix_t& A) const {
+        if (A.columnsize() != full_)
+            throw std::invalid_argument(
+                "bfem::dirichlet_reduction::reduce_cols: column size mismatch");
+        detail::coo_buffer<T> buf;
+        col_collector col = { this, &buf };
+        detail::spm_adapter<T, SP>::for_each_entry(A, col);
+        buf.combine();
+        return detail::spm_adapter<T, SP>::build(A.rowsize(), reduced_size(), buf);
+    }
+
 private:
     int full_;
     std::vector<int> to_reduced_;
@@ -116,6 +147,24 @@ private:
             int ri = self->to_reduced_[static_cast<std::size_t>(i)];
             int rj = self->to_reduced_[static_cast<std::size_t>(j)];
             if (ri >= 0 && rj >= 0) buf->push(ri, rj, v);
+        }
+    };
+
+    // phase 5d additive extension (A-2): one-sided collectors
+    struct row_collector {
+        const dirichlet_reduction* self;
+        detail::coo_buffer<T>* buf;
+        void operator()(int i, int j, const T& v) const {
+            int ri = self->to_reduced_[static_cast<std::size_t>(i)];
+            if (ri >= 0) buf->push(ri, j, v);
+        }
+    };
+    struct col_collector {
+        const dirichlet_reduction* self;
+        detail::coo_buffer<T>* buf;
+        void operator()(int i, int j, const T& v) const {
+            int rj = self->to_reduced_[static_cast<std::size_t>(j)];
+            if (rj >= 0) buf->push(i, rj, v);
         }
     };
 };
