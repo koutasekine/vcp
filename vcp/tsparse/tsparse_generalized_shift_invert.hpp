@@ -17,6 +17,7 @@
 #include <vcp/tsparse/tsparse_factorization.hpp>
 #include <vcp/tsparse/tsparse_scalar.hpp>
 #include <vcp/tsparse/tsparse_spgemm.hpp>
+#include <vcp/tsparse/tsparse_sparse_lu.hpp>
 
 namespace vcp {
 namespace tsparse {
@@ -212,6 +213,190 @@ private:
     bool        factorization_ok_;
     std::size_t factorization_zero_pivots_;
     std::string factorization_diagnostics_;
+};
+
+// ---------------------------------------------------------------------------
+// lu_shift_invert_operator  (E-A1)
+//
+// Implements the shift-invert operator with a supernodal sparse LU direct
+// solver as the inner linear solver ("factorize once, solve repeatedly"):
+//
+//   standard    problem:  y = (A - sigma*I)^{-1} x
+//   generalized problem:  y = (A - sigma*B)^{-1} (B x)
+//
+// Solve strategy: sparse_lu_factorize_with_info() at construction, then a
+// const fac_.solve() per apply; when slu_opts.iterative_refinement is true,
+// each apply uses sparse_lu_solve_refined() (solve-time IR) instead.
+//
+// Design notes (E-A1 design doc):
+//  * finalize classification: this operator follows the finalize_policy §2 Q6
+//    pattern (same as the preconditioners): all sparse inputs are consumed at
+//    CONSTRUCTION time via as_csr()/finalize into owned internal copies; no
+//    raw caller matrix is scanned during the iteration.
+//  * shifted_ (= A - sigma*I or A - sigma*B) is RETAINED as a member because
+//    solve-time iterative refinement needs the shifted matrix itself for the
+//    residual r = b - (A - sigma*B) x.
+//  * D-4: when the LU factorization fails, this operator does NOT fall back
+//    to any iterative solver.  It records factorization_ok() == false and a
+//    sparse_lu_status-based diagnostics string; the CALLER must check
+//    factorization_ok() right after construction and report the failure
+//    (status = "factorization_failed").  apply() on a failed operator is a
+//    contract violation and throws vcp::state_error.
+// ---------------------------------------------------------------------------
+template <class SparseMatrix>
+class lu_shift_invert_operator {
+public:
+    typedef typename SparseMatrix::value_type   value_type;
+    typedef typename SparseMatrix::index_type   index_type;
+    typedef typename vcp::tsparse_scalar::real_type<value_type>::type real_type;
+
+    // Standard problem:  y = (A - sigma*I)^{-1} x
+    lu_shift_invert_operator(
+        const SparseMatrix& A,
+        value_type sigma,
+        const vcp::sparse_lu_options<value_type>& slu_opts)
+        : has_B_(false)
+        , slu_opts_(slu_opts)
+        , n_(static_cast<std::size_t>(A.rowsize()))
+        , sigma_(sigma)
+        , linear_solves_(0)
+        , inner_iterations_(0)
+        , inner_failure_count_(0)
+        , inner_residual_norm_(real_type(0))
+        , factorization_ok_(false)
+    {
+        // Same diagonal-loop construction as the legacy standard shift-invert
+        // paths (get -> set(cur - sigma) -> finalize; C-3 O(1) amortized set).
+        SparseMatrix A_csr = A.as_csr();
+        SparseMatrix shifted = A_csr;
+        for (std::size_t i = 0; i < n_; i++) {
+            const value_type cur = shifted.get(static_cast<index_type>(i),
+                                               static_cast<index_type>(i));
+            shifted.set(static_cast<index_type>(i), static_cast<index_type>(i),
+                        cur - sigma_);
+        }
+        shifted.finalize();
+        shifted_ = shifted.as_csr();
+        factorize_();
+    }
+
+    // Generalized problem:  y = (A - sigma*B)^{-1} (B x)
+    lu_shift_invert_operator(
+        const SparseMatrix& A,
+        const SparseMatrix& B,
+        value_type sigma,
+        const vcp::sparse_lu_options<value_type>& slu_opts)
+        : has_B_(true)
+        , slu_opts_(slu_opts)
+        , n_(static_cast<std::size_t>(A.rowsize()))
+        , sigma_(sigma)
+        , linear_solves_(0)
+        , inner_iterations_(0)
+        , inner_failure_count_(0)
+        , inner_residual_norm_(real_type(0))
+        , factorization_ok_(false)
+    {
+        shifted_ = subtract_scaled_sparse(A, B, sigma_);
+        B_csr_ = B.as_csr();
+        factorize_();
+    }
+
+    std::size_t rows() const { return n_; }
+    std::size_t cols() const { return n_; }
+
+    // apply: y = (A - sigma*B)^{-1} (B x)   (standard: B = I, i.e. rhs = x)
+    //
+    // Precondition: factorization_ok() == true (the caller must have checked
+    // right after construction; violating this is a caller bug).
+    void apply(const std::vector<value_type>& x, std::vector<value_type>& y)
+    {
+        if (!factorization_ok_) {
+            vcp::throw_error<vcp::state_error>(
+                "tsparse::lu_shift_invert_operator::apply: "
+                "factorization failed; cannot apply operator");
+        }
+
+        std::vector<value_type> t;
+        if (has_B_) t = B_csr_.mul_vec(x);
+        const std::vector<value_type>& rhs = has_B_ ? t : x;
+
+        if (slu_opts_.iterative_refinement) {
+            vcp::sparse_lu_refinement_info<value_type> ir;
+            y = vcp::sparse_lu_solve_refined(shifted_, fac_, rhs, slu_opts_, &ir);
+            inner_iterations_ += ir.iterations;
+            if (!ir.converged) inner_failure_count_++;
+            inner_residual_norm_ = ir.final_residual;
+        } else {
+            y = fac_.solve(rhs);
+        }
+        linear_solves_++;
+    }
+
+    void operator()(const std::vector<value_type>& x, std::vector<value_type>& y)
+    { apply(x, y); }
+
+    bool factorization_ok() const { return factorization_ok_; }
+
+    // sparse_lu_status string + factorization summary (E-A1 E4).
+    std::string factorization_diagnostics() const { return factorization_diagnostics_; }
+
+    // G-1.2: sourced from sparse_lu_info::within_panel_zero_pivot_count.
+    // This counter is populated on the supernodal factorization path
+    // (within-panel pivot columns with |pivot| not certifiably above
+    // zero_tolerance); on the baseline GP path zero pivots abort the
+    // factorization and are reported through info().status only, so the
+    // count remains 0 there (no fabricated value).
+    std::size_t factorization_zero_pivots() const {
+        return static_cast<std::size_t>(fac_.info().within_panel_zero_pivot_count);
+    }
+
+    // Diagnostic accumulators (E-A1 E4 semantics for the sparse_lu path):
+    //   linear_solves()       -- number of apply() solves performed
+    //   inner_iterations()    -- TOTAL solve-time IR iterations (0 if IR off)
+    //   inner_failure_count() -- number of solves whose IR did not reach the
+    //                            IR tolerance (0 if IR off)
+    //   inner_residual_norm() -- IR final_residual of the LAST solve (0 if IR off)
+    std::size_t linear_solves()       const { return linear_solves_; }
+    std::size_t inner_iterations()    const { return inner_iterations_; }
+    std::size_t inner_failure_count() const { return inner_failure_count_; }
+    real_type   inner_residual_norm() const { return inner_residual_norm_; }
+
+private:
+    // Factorize shifted_ and record status.  Never throws on numerical
+    // failure: sparse_lu_factorize_with_info reports through info().status
+    // (SLU-GT1 P3 non-throw contract) and the failure is exposed to the
+    // caller via factorization_ok() / factorization_diagnostics() (D-4).
+    void factorize_()
+    {
+        fac_ = vcp::sparse_lu_factorize_with_info(shifted_, slu_opts_);
+        factorization_ok_ = fac_.info().success;
+        std::ostringstream os;
+        os << "sparse_lu status="
+           << vcp::sparse_lu_status_to_string(fac_.info().status)
+           << "; n=" << fac_.info().n
+           << "; nnz_L=" << fac_.info().nnz_L
+           << "; nnz_U=" << fac_.info().nnz_U
+           << "; supernodes=" << fac_.info().number_of_supernodes
+           << "; iterative_refinement="
+           << (slu_opts_.iterative_refinement ? "on" : "off");
+        factorization_diagnostics_ = os.str();
+    }
+
+    SparseMatrix  shifted_;   // A - sigma*I / A - sigma*B (kept for IR residual)
+    SparseMatrix  B_csr_;     // generalized only (empty for standard)
+    bool          has_B_;
+    vcp::sparse_lu_factorization<value_type, index_type> fac_;
+    vcp::sparse_lu_options<value_type> slu_opts_;
+    std::size_t   n_;
+    value_type    sigma_;
+
+    std::size_t   linear_solves_;
+    std::size_t   inner_iterations_;
+    std::size_t   inner_failure_count_;
+    real_type     inner_residual_norm_;
+
+    bool          factorization_ok_;
+    std::string   factorization_diagnostics_;
 };
 
 } // namespace tsparse

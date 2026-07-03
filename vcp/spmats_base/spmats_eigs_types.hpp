@@ -90,6 +90,22 @@ namespace vcp {
 	};
 
 	// -----------------------------------------------------------------------
+	// eig_shift_invert_solver (E-A1)
+	//
+	// Inner linear solver used by the shift-invert eigensolver paths
+	// (standard shift_invert_lanczos / shift_invert_arnoldi and the
+	// generalized shift-invert operator).
+	// -----------------------------------------------------------------------
+
+	enum class eig_shift_invert_solver {
+		sparse_lu,    // default: direct solve (factorize (A - sigma*B) once,
+		              // solve repeatedly; solve-time IR follows the
+		              // eig_options::shift_invert_lu options)
+		ilu0_gmres    // compatibility opt-in: legacy ILU(0)-preconditioned
+		              // GMRES inner solve (byte-identical legacy path)
+	};
+
+	// -----------------------------------------------------------------------
 	// eig_options<T>
 	// -----------------------------------------------------------------------
 
@@ -110,6 +126,14 @@ namespace vcp {
 		unsigned int random_seed;
 		bool random_start;
 		bool compute_residual_history;
+		// E-A1: inner solver selection for the shift-invert paths
+		// (default: sparse_lu direct solve; D-1).
+		eig_shift_invert_solver shift_invert_solver;
+		// E-A1: sparse LU options passed through to the shift-invert LU
+		// operator (read only when shift_invert_solver == sparse_lu).
+		// Default construction = auto_select / threshold_partial /
+		// iterative_refinement = true (D-3).
+		vcp::sparse_lu_options<T> shift_invert_lu;
 
 		eig_options()
 			: method(eig_solver_method::lanczos),
@@ -121,7 +145,8 @@ namespace vcp {
 			  allow_dense_conversion(true), max_dense_size(1000000),
 			  orthogonalization(orthogonalization_method::modified_gram_schmidt),
 			  random_seed(0), random_start(false),
-			  compute_residual_history(false) {}
+			  compute_residual_history(false),
+			  shift_invert_solver(eig_shift_invert_solver::sparse_lu) {}
 	};
 
 	// -----------------------------------------------------------------------
@@ -187,6 +212,28 @@ namespace vcp {
 		bool used_shift_invert;
 		bool used_generalized_operator;
 		std::size_t used_subspace_dim;
+		// E-A1 E4: the inner_* / factorization_* diagnostics below carry
+		// per-solver meanings on the shift-invert paths, depending on
+		// eig_options::shift_invert_solver:
+		//
+		//   field                      | ilu0_gmres (legacy)     | sparse_lu (default)
+		//   ---------------------------+-------------------------+--------------------------------
+		//   inner_iterations           | total GMRES iterations  | total solve-time IR iterations
+		//                              |                         | (0 if IR off)
+		//   inner_failure_count        | GMRES non-convergences  | solves whose IR did not reach
+		//                              |                         | the IR tolerance
+		//   inner_residual_norm        | max final GMRES residual| IR final_residual of the LAST
+		//                              |                         | solve (0 if IR off)
+		//   inner_failure_reason       | GMRES failure reason    | normally empty (factorization
+		//                              |                         | failure is reported via
+		//                              |                         | status/failure_reason instead)
+		//   factorization_diagnostics  | ILU(0) diagnostics      | sparse_lu_status string +
+		//                              |                         | n/nnz summary
+		//   factorization_zero_pivots  | ILU(0) zero pivot count | sparse_lu_info::
+		//                              |                         | within_panel_zero_pivot_count
+		//                              |                         | (populated on the supernodal
+		//                              |                         | path; 0 on baseline GP where
+		//                              |                         | zero pivots abort via status)
 		std::size_t inner_iterations;
 		std::size_t inner_failure_count;
 		real_type inner_residual_norm;

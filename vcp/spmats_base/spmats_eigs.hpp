@@ -1129,6 +1129,413 @@ static eig_result<_T> complex_standard_eigs_with_info_(const spmats<_T,_Index>& 
 }
 
 // ---------------------------------------------------------------------------
+// E-A1: shared shift-invert back halves and sparse_lu dispatch helpers.
+//
+// The *_drive_ helpers are byte-preserving mechanical extractions of the
+// legacy back halves of shift_invert_lanczos_eigs_ / shift_invert_arnoldi_
+// eigs_ / generalized_shift_invert_arnoldi_eigs_ (Krylov driver call ->
+// lambda = sigma + 1/mu inversion -> result assembly -> residuals).  Both
+// the legacy ILU(0)+GMRES branch and the E-A1 sparse_lu branch call them,
+// so the post-processing stays single-source (B-10: the extraction does not
+// change any of the inversion / residual / selection semantics).
+//
+// The *_sparse_lu_ helpers implement the E-A1 default path: build a
+// vcp::tsparse::lu_shift_invert_operator (factorize (A - sigma*B) once,
+// direct-solve per apply), check factorization_ok() immediately, and on
+// failure return status="factorization_failed" with the sparse_lu
+// diagnostics (D-4 / B-9: no silent fallback to ILU+GMRES).  They are
+// SFINAE-split on the signedness of _Index because sparse LU requires a
+// signed Index (same precedent as dispatch_sparse_lu_ in spmats_lss.hpp);
+// for unsigned _Index a controlled factorization_failed result directs the
+// caller to the ilu0_gmres compatibility solver.
+// ---------------------------------------------------------------------------
+
+// --- back half #1: standard shift-invert Lanczos --------------------------
+template <typename _T, typename _Index, class Apply>
+static eig_result<_T> shift_invert_lanczos_drive_(const spmats<_T,_Index>& self,
+                                                    const std::size_t k,
+                                                    const eig_options<_T>& options,
+                                                    const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
+                                                    Apply& apply_si)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    const std::size_t n = static_cast<std::size_t>(self.rowsize());
+    const std::size_t sdim = (options.subspace_dim == 0)
+        ? std::max(k + 5, std::min(n, std::size_t(30)))
+        : options.subspace_dim;
+    const std::size_t max_restarts_si = (sdim > 0) ? (options.max_iter / sdim + k + 1) : options.max_iter;
+    auto pkg = vcp::tsparse_lanczos::lanczos_eigs_standard<_T, Apply>(
+        n, k, sdim, max_restarts_si, options.tol,
+        options.random_seed, options.random_start,
+        eig_target::largest_magnitude, scalar_real_type(0), options.compute_residual_history, apply_si);
+
+    for (std::size_t i = 0; i < pkg.eigenvalues.size(); i++) {
+        const scalar_real_type mu = vcp::tsparse_scalar::real_part(pkg.eigenvalues[i]);
+        if (vcp::tsparse_scalar::abs_value(mu) > scalar_real_type(0)) {
+            pkg.eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
+        }
+    }
+    return lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::shift_invert_lanczos);
+}
+
+// --- back half #2: standard shift-invert Arnoldi ---------------------------
+template <typename _T, typename _Index, class Apply>
+static eig_result<_T> shift_invert_arnoldi_drive_(const spmats<_T,_Index>& self,
+                                                    const std::size_t k,
+                                                    const eig_options<_T>& options,
+                                                    const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
+                                                    Apply& apply_si,
+                                                    bool& pkg_converged)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    spmats<_T,_Index> A = self.as_csr();
+    const std::size_t n = static_cast<std::size_t>(self.rowsize());
+    const std::size_t sdim = (options.subspace_dim == 0)
+        ? std::max(k + 5, std::min(n, std::size_t(30)))
+        : options.subspace_dim;
+    const vcp::tsparse_arnoldi::arnoldi_result_package<_T> pkg =
+        vcp::tsparse_arnoldi::arnoldi_eigs_standard<_T>(
+            n, k, sdim, options.max_iter + options.max_iter * k,
+            options.tol, options.orthogonalization, true, true,
+            options.random_seed, options.random_start, eig_target::largest_magnitude, scalar_real_type(0),
+            options.compute_residual_history, apply_si);
+    eig_result<_T> result;
+    result.requested_count = k;
+    result.method = eig_solver_method::shift_invert_arnoldi;
+    result.used_method = eig_method_to_string_<_T,_Index>(eig_solver_method::shift_invert_arnoldi);
+    result.used_orthogonalization = orthogonalization_to_string_<_T,_Index>(options.orthogonalization);
+    result.iterations = pkg.iterations;
+    result.matrix_vector_products = pkg.mv_count;
+    result.used_subspace_dim = sdim;
+    result.breakdown_reason = pkg.breakdown_reason;
+    result.failure_reason = pkg.failure_reason;
+    result.converged_count = pkg.converged_count;
+    result.residual_history_absolute = pkg.history_abs;
+    result.residual_history_relative = pkg.history_rel;
+    result.eigenvalues = pkg.eigenvalues;
+    for (std::size_t i = 0; i < result.eigenvalues.size(); i++) {
+        const scalar_real_type mu = vcp::tsparse_scalar::real_part(result.eigenvalues[i]);
+        if (vcp::tsparse_scalar::abs_value(mu) > scalar_real_type(0))
+            result.eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
+    }
+    result.eigenvectors = pkg.eigenvectors;
+    result.used_shift_invert = true;
+    result.used_dense_fallback = false;
+    if (!result.eigenvectors.empty()) {
+        result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
+        result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
+    }
+    pkg_converged = pkg.converged;
+    return result;
+}
+
+// --- back half #3: generalized shift-invert Arnoldi ------------------------
+// Op is any shift-invert operator exposing apply() and the shared diagnostic
+// accessors (generalized_shift_invert_operator / lu_shift_invert_operator).
+template <typename _T, typename _Index, class Op>
+static eig_result<_T> generalized_shift_invert_drive_(const spmats<_T,_Index>& self,
+                                                        const spmats<_T,_Index>& B,
+                                                        const std::size_t k,
+                                                        const eig_options<_T>& options,
+                                                        const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
+                                                        const eig_solver_method actual_method,
+                                                        const bool promoted_from_lanczos,
+                                                        Op& op,
+                                                        bool& pkg_converged,
+                                                        bool& has_complex)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    const std::size_t n = static_cast<std::size_t>(self.rowsize());
+
+    struct ApplyFn {
+        Op* op;
+        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { op->apply(x, y); }
+    } apply_fn = { &op };
+
+    const std::size_t sdim = (options.subspace_dim == 0)
+        ? std::max(k + 5, std::min(n, std::size_t(30)))
+        : options.subspace_dim;
+    const std::size_t max_restarts = options.max_iter + options.max_iter * k;
+
+    const vcp::tsparse_arnoldi::arnoldi_result_package<_T> pkg =
+        vcp::tsparse_arnoldi::arnoldi_eigs_standard<_T>(
+            n, k, sdim, max_restarts, options.tol, options.orthogonalization,
+            true, true, options.random_seed, options.random_start,
+            eig_target::largest_magnitude, scalar_real_type(0),
+            options.compute_residual_history, apply_fn);
+
+    std::vector<_T> eigenvalues = pkg.eigenvalues;
+    for (std::size_t i = 0; i < eigenvalues.size(); i++) {
+        const scalar_real_type mu = vcp::tsparse_scalar::real_part(eigenvalues[i]);
+        if (vcp::tsparse_scalar::abs_value(mu) > scalar_real_type(0)) {
+            eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
+        }
+    }
+
+    eig_result<_T> result;
+    result.requested_count = k;
+    result.method = actual_method;
+    result.used_method = promoted_from_lanczos
+        ? "shift_invert_arnoldi(promoted_from_lanczos)"
+        : eig_method_to_string_<_T,_Index>(actual_method);
+    result.used_orthogonalization = orthogonalization_to_string_<_T,_Index>(options.orthogonalization);
+    result.iterations = pkg.iterations;
+    result.matrix_vector_products = pkg.mv_count;
+    result.linear_solves = op.linear_solves();
+    result.inner_iterations = op.inner_iterations();
+    result.inner_failure_count = op.inner_failure_count();
+    result.inner_residual_norm = op.inner_residual_norm();
+    result.factorization_diagnostics = op.factorization_diagnostics();
+    result.factorization_zero_pivots = op.factorization_zero_pivots();
+    result.used_subspace_dim = sdim;
+    result.breakdown_reason = pkg.breakdown_reason;
+    result.failure_reason = pkg.failure_reason;
+    result.converged_count = pkg.converged_count;
+    result.residual_history_absolute = pkg.history_abs;
+    result.residual_history_relative = pkg.history_rel;
+    result.used_shift_invert = true;
+    result.used_generalized_operator = true;
+    result.used_dense_fallback = false;
+    result.eigenvalues = eigenvalues;
+    result.eigenvectors = pkg.eigenvectors;
+
+    if (!result.eigenvectors.empty()) {
+        result.residuals_absolute = generalized_eigenpair_residuals_<_T,_Index>(self, B, result.eigenvalues, result.eigenvectors);
+        result.residuals_relative = generalized_eigenpair_relative_residuals_<_T,_Index>(self, B, result.eigenvalues, result.eigenvectors);
+        const scalar_real_type res_val = max_generalized_eigenpair_residual_value_<_T,_Index>(self, B, result.eigenvalues, result.eigenvectors);
+        result.residual_norm_absolute = res_val;
+    }
+
+    for (std::size_t i = 0; i < pkg.complex_eigenvalues.size(); i++) {
+        result.complex_eigenvalues.push_back(
+            typename eig_result<_T>::eigenvalue_type(
+                pkg.complex_eigenvalues[i].first,
+                pkg.complex_eigenvalues[i].second));
+    }
+
+    pkg_converged = pkg.converged;
+    has_complex = pkg.has_complex;
+    return result;
+}
+
+// --- E-A1 sparse_lu path: standard shift-invert Lanczos --------------------
+template <typename _T, typename _Index>
+static typename std::enable_if<std::is_signed<_Index>::value, eig_result<_T> >::type
+shift_invert_lanczos_sparse_lu_(const spmats<_T,_Index>& self,
+                                  const std::size_t k,
+                                  const eig_options<_T>& options,
+                                  const typename vcp::tsparse_scalar::real_type<_T>::type& sigma)
+{
+    typedef vcp::tsparse::lu_shift_invert_operator<spmats<_T,_Index> > LUOp;
+    LUOp op(self, _T(sigma), options.shift_invert_lu);
+    if (!op.factorization_ok()) {
+        eig_result<_T> result;
+        result.requested_count = k;
+        result.method = eig_solver_method::shift_invert_lanczos;
+        result.used_method = eig_method_to_string_<_T,_Index>(eig_solver_method::shift_invert_lanczos);
+        result.used_shift_invert = true;
+        result.used_dense_fallback = false;
+        result.status = "factorization_failed";
+        result.failure_reason = "sparse LU factorization of (A - sigma*I) failed: "
+            + op.factorization_diagnostics();
+        result.message = result.failure_reason;
+        result.factorization_diagnostics = op.factorization_diagnostics();
+        result.factorization_zero_pivots = op.factorization_zero_pivots();
+        set_result_counts_<_T,_Index>(result, k);
+        return result;
+    }
+    struct ApplyLU {
+        LUOp* op;
+        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { op->apply(x, y); }
+    } apply_lu = { &op };
+    eig_result<_T> result = shift_invert_lanczos_drive_<_T,_Index>(self, k, options, sigma, apply_lu);
+    // E-A1 E4 diagnostics: IR totals; IR non-convergence is a diagnostic
+    // count only (no "inner_solve_failed" status on the sparse_lu path).
+    result.linear_solves = op.linear_solves();
+    result.inner_iterations = op.inner_iterations();
+    result.inner_failure_count = op.inner_failure_count();
+    result.inner_residual_norm = op.inner_residual_norm();
+    result.factorization_diagnostics = op.factorization_diagnostics();
+    result.factorization_zero_pivots = op.factorization_zero_pivots();
+    set_result_counts_<_T,_Index>(result, k);
+    return result;
+}
+
+template <typename _T, typename _Index>
+static typename std::enable_if<!std::is_signed<_Index>::value, eig_result<_T> >::type
+shift_invert_lanczos_sparse_lu_(const spmats<_T,_Index>& self,
+                                  const std::size_t k,
+                                  const eig_options<_T>& options,
+                                  const typename vcp::tsparse_scalar::real_type<_T>::type& sigma)
+{
+    (void)self; (void)options; (void)sigma;
+    eig_result<_T> result;
+    result.requested_count = k;
+    result.method = eig_solver_method::shift_invert_lanczos;
+    result.used_method = eig_method_to_string_<_T,_Index>(eig_solver_method::shift_invert_lanczos);
+    result.used_shift_invert = true;
+    result.used_dense_fallback = false;
+    result.status = "factorization_failed";
+    result.failure_reason = "shift-invert sparse_lu solver requires a signed Index type;"
+        " set eig_options::shift_invert_solver = eig_shift_invert_solver::ilu0_gmres";
+    result.message = result.failure_reason;
+    set_result_counts_<_T,_Index>(result, k);
+    return result;
+}
+
+// --- E-A1 sparse_lu path: standard shift-invert Arnoldi --------------------
+template <typename _T, typename _Index>
+static typename std::enable_if<std::is_signed<_Index>::value, eig_result<_T> >::type
+shift_invert_arnoldi_sparse_lu_(const spmats<_T,_Index>& self,
+                                  const std::size_t k,
+                                  const eig_options<_T>& options,
+                                  const typename vcp::tsparse_scalar::real_type<_T>::type& sigma)
+{
+    typedef vcp::tsparse::lu_shift_invert_operator<spmats<_T,_Index> > LUOp;
+    LUOp op(self, _T(sigma), options.shift_invert_lu);
+    if (!op.factorization_ok()) {
+        eig_result<_T> result;
+        result.requested_count = k;
+        result.method = eig_solver_method::shift_invert_arnoldi;
+        result.used_method = eig_method_to_string_<_T,_Index>(eig_solver_method::shift_invert_arnoldi);
+        result.used_orthogonalization = orthogonalization_to_string_<_T,_Index>(options.orthogonalization);
+        result.used_shift_invert = true;
+        result.used_dense_fallback = false;
+        result.status = "factorization_failed";
+        result.failure_reason = "sparse LU factorization of (A - sigma*I) failed: "
+            + op.factorization_diagnostics();
+        result.message = result.failure_reason;
+        result.factorization_diagnostics = op.factorization_diagnostics();
+        result.factorization_zero_pivots = op.factorization_zero_pivots();
+        set_result_counts_<_T,_Index>(result, k);
+        return result;
+    }
+    struct ApplyLU {
+        LUOp* op;
+        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { op->apply(x, y); }
+    } apply_lu = { &op };
+    bool pkg_converged = false;
+    eig_result<_T> result = shift_invert_arnoldi_drive_<_T,_Index>(self, k, options, sigma, apply_lu, pkg_converged);
+    result.linear_solves = op.linear_solves();
+    result.inner_iterations = op.inner_iterations();
+    result.inner_failure_count = op.inner_failure_count();
+    result.inner_residual_norm = op.inner_residual_norm();
+    result.factorization_diagnostics = op.factorization_diagnostics();
+    result.factorization_zero_pivots = op.factorization_zero_pivots();
+    // E-A1 E4: direct solve; IR non-convergence does not gate convergence.
+    result.converged = pkg_converged && result.eigenvalues.size() >= k;
+    set_eig_diagnostics_<_T,_Index>(result, eig_solver_method::shift_invert_arnoldi, result.used_subspace_dim,
+        result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
+    set_result_counts_<_T,_Index>(result, k);
+    return result;
+}
+
+template <typename _T, typename _Index>
+static typename std::enable_if<!std::is_signed<_Index>::value, eig_result<_T> >::type
+shift_invert_arnoldi_sparse_lu_(const spmats<_T,_Index>& self,
+                                  const std::size_t k,
+                                  const eig_options<_T>& options,
+                                  const typename vcp::tsparse_scalar::real_type<_T>::type& sigma)
+{
+    (void)self; (void)sigma;
+    eig_result<_T> result;
+    result.requested_count = k;
+    result.method = eig_solver_method::shift_invert_arnoldi;
+    result.used_method = eig_method_to_string_<_T,_Index>(eig_solver_method::shift_invert_arnoldi);
+    result.used_orthogonalization = orthogonalization_to_string_<_T,_Index>(options.orthogonalization);
+    result.used_shift_invert = true;
+    result.used_dense_fallback = false;
+    result.status = "factorization_failed";
+    result.failure_reason = "shift-invert sparse_lu solver requires a signed Index type;"
+        " set eig_options::shift_invert_solver = eig_shift_invert_solver::ilu0_gmres";
+    result.message = result.failure_reason;
+    set_result_counts_<_T,_Index>(result, k);
+    return result;
+}
+
+// --- E-A1 sparse_lu path: generalized shift-invert -------------------------
+template <typename _T, typename _Index>
+static typename std::enable_if<std::is_signed<_Index>::value, eig_result<_T> >::type
+generalized_shift_invert_sparse_lu_(const spmats<_T,_Index>& self,
+                                      const spmats<_T,_Index>& B,
+                                      const std::size_t k,
+                                      const eig_options<_T>& options,
+                                      const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
+                                      const eig_solver_method actual_method,
+                                      const bool promoted_from_lanczos)
+{
+    typedef vcp::tsparse::lu_shift_invert_operator<spmats<_T,_Index> > LUOp;
+    LUOp op(self, B, _T(sigma), options.shift_invert_lu);
+    if (!op.factorization_ok()) {
+        eig_result<_T> result;
+        result.requested_count = k;
+        result.method = actual_method;
+        result.used_method = promoted_from_lanczos
+            ? "shift_invert_arnoldi(promoted_from_lanczos)"
+            : eig_method_to_string_<_T,_Index>(actual_method);
+        result.used_shift_invert = true;
+        result.used_generalized_operator = true;
+        result.used_dense_fallback = false;
+        result.status = "factorization_failed";
+        result.failure_reason = "sparse LU factorization of (A - sigma*B) failed: "
+            + op.factorization_diagnostics();
+        result.message = result.failure_reason;
+        result.factorization_diagnostics = op.factorization_diagnostics();
+        result.factorization_zero_pivots = op.factorization_zero_pivots();
+        set_result_counts_<_T,_Index>(result, k);
+        return result;
+    }
+    bool pkg_converged = false;
+    bool has_complex = false;
+    eig_result<_T> result = generalized_shift_invert_drive_<_T,_Index>(
+        self, B, k, options, sigma, actual_method, promoted_from_lanczos,
+        op, pkg_converged, has_complex);
+    // E-A1 E4: direct solve; IR non-convergence does not gate convergence.
+    result.converged = pkg_converged && !has_complex && (result.eigenvalues.size() >= k);
+    if (has_complex) {
+        result.status = "complex_ritz_values";
+        result.message = "complex Ritz values detected in generalized shift-invert";
+        if (result.failure_reason.empty())
+            result.failure_reason = "complex Ritz values in requested subset";
+    } else {
+        set_eig_diagnostics_<_T,_Index>(result, actual_method, result.used_subspace_dim,
+            result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
+        if (promoted_from_lanczos)
+            result.used_method = "shift_invert_arnoldi(promoted_from_lanczos)";
+    }
+    set_result_counts_<_T,_Index>(result, k);
+    return result;
+}
+
+template <typename _T, typename _Index>
+static typename std::enable_if<!std::is_signed<_Index>::value, eig_result<_T> >::type
+generalized_shift_invert_sparse_lu_(const spmats<_T,_Index>& self,
+                                      const spmats<_T,_Index>& B,
+                                      const std::size_t k,
+                                      const eig_options<_T>& options,
+                                      const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
+                                      const eig_solver_method actual_method,
+                                      const bool promoted_from_lanczos)
+{
+    (void)self; (void)B; (void)options; (void)sigma;
+    eig_result<_T> result;
+    result.requested_count = k;
+    result.method = actual_method;
+    result.used_method = promoted_from_lanczos
+        ? "shift_invert_arnoldi(promoted_from_lanczos)"
+        : eig_method_to_string_<_T,_Index>(actual_method);
+    result.used_shift_invert = true;
+    result.used_generalized_operator = true;
+    result.used_dense_fallback = false;
+    result.status = "factorization_failed";
+    result.failure_reason = "shift-invert sparse_lu solver requires a signed Index type;"
+        " set eig_options::shift_invert_solver = eig_shift_invert_solver::ilu0_gmres";
+    result.message = result.failure_reason;
+    set_result_counts_<_T,_Index>(result, k);
+    return result;
+}
+
+// ---------------------------------------------------------------------------
 // shift_invert_lanczos_eigs_  (standard, no user preconditioner)
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
@@ -1138,6 +1545,12 @@ static eig_result<_T> shift_invert_lanczos_eigs_(const spmats<_T,_Index>& self,
                                                    const typename vcp::tsparse_scalar::real_type<_T>::type& sigma)
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    // E-A1 D-1: solver dispatch.  Default = sparse_lu direct solve; the
+    // legacy ILU(0)+GMRES implementation below is the ilu0_gmres opt-in
+    // compatibility path and is unchanged (B-8).
+    if (options.shift_invert_solver == eig_shift_invert_solver::sparse_lu) {
+        return shift_invert_lanczos_sparse_lu_<_T,_Index>(self, k, options, sigma);
+    }
     spmats<_T,_Index> A = self.as_csr();
     const std::size_t n = static_cast<std::size_t>(self.rowsize());
 
@@ -1213,22 +1626,10 @@ static eig_result<_T> shift_invert_lanczos_eigs_(const spmats<_T,_Index>& self,
     } apply_si = { &A, &ilu, inner_max, inner_tol, sigma, &linear_solve_count,
         &inner_failure_count, &inner_iteration_count, &inner_residual_norm };
 
-    const std::size_t sdim = (options.subspace_dim == 0)
-        ? std::max(k + 5, std::min(n, std::size_t(30)))
-        : options.subspace_dim;
-    const std::size_t max_restarts_si = (sdim > 0) ? (options.max_iter / sdim + k + 1) : options.max_iter;
-    auto pkg = vcp::tsparse_lanczos::lanczos_eigs_standard<_T, apply_fn>(
-        n, k, sdim, max_restarts_si, options.tol,
-        options.random_seed, options.random_start,
-        eig_target::largest_magnitude, scalar_real_type(0), options.compute_residual_history, apply_si);
-
-    for (std::size_t i = 0; i < pkg.eigenvalues.size(); i++) {
-        const scalar_real_type mu = vcp::tsparse_scalar::real_part(pkg.eigenvalues[i]);
-        if (vcp::tsparse_scalar::abs_value(mu) > scalar_real_type(0)) {
-            pkg.eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
-        }
-    }
-    eig_result<_T> result = lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::shift_invert_lanczos);
+    // E-A1: back half (driver -> lambda inversion -> result assembly)
+    // mechanically extracted to shift_invert_lanczos_drive_; the legacy-path
+    // computation and results are unchanged (shared with the sparse_lu path).
+    eig_result<_T> result = shift_invert_lanczos_drive_<_T,_Index>(self, k, options, sigma, apply_si);
     result.linear_solves = linear_solve_count;
     result.inner_iterations = inner_iteration_count;
     result.inner_failure_count = inner_failure_count;
@@ -1291,6 +1692,12 @@ static eig_result<_T> shift_invert_arnoldi_eigs_(const spmats<_T,_Index>& self,
                                                    const typename vcp::tsparse_scalar::real_type<_T>::type& sigma)
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    // E-A1 D-1: solver dispatch.  Default = sparse_lu direct solve; the
+    // legacy ILU(0)+GMRES implementation below is the ilu0_gmres opt-in
+    // compatibility path and is unchanged (B-8).
+    if (options.shift_invert_solver == eig_shift_invert_solver::sparse_lu) {
+        return shift_invert_arnoldi_sparse_lu_<_T,_Index>(self, k, options, sigma);
+    }
     spmats<_T,_Index> A = self.as_csr();
     const std::size_t n = static_cast<std::size_t>(self.rowsize());
     spmats<_T,_Index> shifted = A;
@@ -1362,55 +1769,26 @@ static eig_result<_T> shift_invert_arnoldi_eigs_(const spmats<_T,_Index>& self,
         }
     } apply_si = { &A, &ilu, inner_max, inner_tol, sigma, &linear_solve_count,
         &inner_failure_count, &inner_iteration_count, &inner_residual_norm };
-    const std::size_t sdim = (options.subspace_dim == 0)
-        ? std::max(k + 5, std::min(n, std::size_t(30)))
-        : options.subspace_dim;
-    const vcp::tsparse_arnoldi::arnoldi_result_package<_T> pkg =
-        vcp::tsparse_arnoldi::arnoldi_eigs_standard<_T>(
-            n, k, sdim, options.max_iter + options.max_iter * k,
-            options.tol, options.orthogonalization, true, true,
-            options.random_seed, options.random_start, eig_target::largest_magnitude, scalar_real_type(0),
-            options.compute_residual_history, apply_si);
-    eig_result<_T> result;
-    result.requested_count = k;
-    result.method = eig_solver_method::shift_invert_arnoldi;
-    result.used_method = eig_method_to_string_<_T,_Index>(eig_solver_method::shift_invert_arnoldi);
-    result.used_orthogonalization = orthogonalization_to_string_<_T,_Index>(options.orthogonalization);
-    result.iterations = pkg.iterations;
-    result.matrix_vector_products = pkg.mv_count;
+    // E-A1: back half (driver -> lambda inversion -> result assembly ->
+    // residuals) mechanically extracted to shift_invert_arnoldi_drive_; the
+    // legacy-path computation and results are unchanged (shared with the
+    // sparse_lu path).  sdim is available as result.used_subspace_dim.
+    bool pkg_converged = false;
+    eig_result<_T> result = shift_invert_arnoldi_drive_<_T,_Index>(self, k, options, sigma, apply_si, pkg_converged);
     result.linear_solves = linear_solve_count;
     result.inner_iterations = inner_iteration_count;
     result.inner_failure_count = inner_failure_count;
     result.inner_residual_norm = inner_residual_norm;
     result.factorization_diagnostics = ilu.diagnostics;
     result.factorization_zero_pivots = ilu.zero_pivots;
-    result.used_subspace_dim = sdim;
-    result.breakdown_reason = pkg.breakdown_reason;
-    result.failure_reason = pkg.failure_reason;
-    result.converged_count = pkg.converged_count;
-    result.residual_history_absolute = pkg.history_abs;
-    result.residual_history_relative = pkg.history_rel;
-    result.eigenvalues = pkg.eigenvalues;
-    for (std::size_t i = 0; i < result.eigenvalues.size(); i++) {
-        const scalar_real_type mu = vcp::tsparse_scalar::real_part(result.eigenvalues[i]);
-        if (vcp::tsparse_scalar::abs_value(mu) > scalar_real_type(0))
-            result.eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
-    }
-    result.eigenvectors = pkg.eigenvectors;
-    result.used_shift_invert = true;
-    result.used_dense_fallback = false;
-    if (!result.eigenvectors.empty()) {
-        result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
-        result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
-    }
-    result.converged = pkg.converged && result.eigenvalues.size() >= k && inner_failure_count == 0;
+    result.converged = pkg_converged && result.eigenvalues.size() >= k && inner_failure_count == 0;
     if (inner_failure_count != 0) {
         result.status = "inner_solve_failed";
         result.failure_reason = "inner GMRES solve failed";
         result.inner_failure_reason = result.failure_reason;
         result.message = result.failure_reason;
     } else {
-        set_eig_diagnostics_<_T,_Index>(result, eig_solver_method::shift_invert_arnoldi, sdim,
+        set_eig_diagnostics_<_T,_Index>(result, eig_solver_method::shift_invert_arnoldi, result.used_subspace_dim,
             result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
     }
     set_result_counts_<_T,_Index>(result, k);
@@ -1517,6 +1895,17 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_(const spmats<_T,_In
         actual_method = eig_solver_method::shift_invert_arnoldi;
     }
 
+    // E-A1 D-1: solver dispatch.  Default = sparse_lu direct solve; the
+    // legacy ILU(0)+GMRES implementation below is the ilu0_gmres opt-in
+    // compatibility path and is unchanged (B-8; the inner_max_iter /
+    // inner_tol / inner_restart computations moved INTO the legacy branch
+    // with values and expressions unchanged, because the sparse_lu path
+    // does not read them -- D-2).
+    if (options.shift_invert_solver == eig_shift_invert_solver::sparse_lu) {
+        return generalized_shift_invert_sparse_lu_<_T,_Index>(
+            self, B, k, options, sigma, actual_method, promoted_from_lanczos);
+    }
+
     const std::size_t inner_max_iter = std::min(n, std::size_t(100));
     const scalar_real_type inner_tol = options.tol / scalar_real_type(1000);
     const std::size_t inner_restart = std::min(n, std::size_t(30));
@@ -1543,75 +1932,18 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_(const spmats<_T,_In
         return result;
     }
 
-    struct ApplyFn {
-        GSIOperator* op;
-        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { op->apply(x, y); }
-    } apply_fn = { &gsi_op };
+    // E-A1: back half (apply wrapper -> driver -> lambda inversion -> result
+    // assembly -> residuals) mechanically extracted to
+    // generalized_shift_invert_drive_; the legacy-path computation and
+    // results are unchanged (shared with the sparse_lu path).
+    bool pkg_converged = false;
+    bool has_complex = false;
+    eig_result<_T> result = generalized_shift_invert_drive_<_T,_Index>(
+        self, B, k, options, sigma, actual_method, promoted_from_lanczos,
+        gsi_op, pkg_converged, has_complex);
 
-    const std::size_t sdim = (options.subspace_dim == 0)
-        ? std::max(k + 5, std::min(n, std::size_t(30)))
-        : options.subspace_dim;
-    const std::size_t max_restarts = options.max_iter + options.max_iter * k;
-
-    const vcp::tsparse_arnoldi::arnoldi_result_package<_T> pkg =
-        vcp::tsparse_arnoldi::arnoldi_eigs_standard<_T>(
-            n, k, sdim, max_restarts, options.tol, options.orthogonalization,
-            true, true, options.random_seed, options.random_start,
-            eig_target::largest_magnitude, scalar_real_type(0),
-            options.compute_residual_history, apply_fn);
-
-    std::vector<_T> eigenvalues = pkg.eigenvalues;
-    for (std::size_t i = 0; i < eigenvalues.size(); i++) {
-        const scalar_real_type mu = vcp::tsparse_scalar::real_part(eigenvalues[i]);
-        if (vcp::tsparse_scalar::abs_value(mu) > scalar_real_type(0)) {
-            eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
-        }
-    }
-
-    eig_result<_T> result;
-    result.requested_count = k;
-    result.method = actual_method;
-    result.used_method = promoted_from_lanczos
-        ? "shift_invert_arnoldi(promoted_from_lanczos)"
-        : eig_method_to_string_<_T,_Index>(actual_method);
-    result.used_orthogonalization = orthogonalization_to_string_<_T,_Index>(options.orthogonalization);
-    result.iterations = pkg.iterations;
-    result.matrix_vector_products = pkg.mv_count;
-    result.linear_solves = gsi_op.linear_solves();
-    result.inner_iterations = gsi_op.inner_iterations();
-    result.inner_failure_count = gsi_op.inner_failure_count();
-    result.inner_residual_norm = gsi_op.inner_residual_norm();
-    result.factorization_diagnostics = gsi_op.factorization_diagnostics();
-    result.factorization_zero_pivots = gsi_op.factorization_zero_pivots();
-    result.used_subspace_dim = sdim;
-    result.breakdown_reason = pkg.breakdown_reason;
-    result.failure_reason = pkg.failure_reason;
-    result.converged_count = pkg.converged_count;
-    result.residual_history_absolute = pkg.history_abs;
-    result.residual_history_relative = pkg.history_rel;
-    result.used_shift_invert = true;
-    result.used_generalized_operator = true;
-    result.used_dense_fallback = false;
-    result.eigenvalues = eigenvalues;
-    result.eigenvectors = pkg.eigenvectors;
-
-    if (!result.eigenvectors.empty()) {
-        result.residuals_absolute = generalized_eigenpair_residuals_<_T,_Index>(self, B, result.eigenvalues, result.eigenvectors);
-        result.residuals_relative = generalized_eigenpair_relative_residuals_<_T,_Index>(self, B, result.eigenvalues, result.eigenvectors);
-        const scalar_real_type res_val = max_generalized_eigenpair_residual_value_<_T,_Index>(self, B, result.eigenvalues, result.eigenvectors);
-        result.residual_norm_absolute = res_val;
-    }
-
-    for (std::size_t i = 0; i < pkg.complex_eigenvalues.size(); i++) {
-        result.complex_eigenvalues.push_back(
-            typename eig_result<_T>::eigenvalue_type(
-                pkg.complex_eigenvalues[i].first,
-                pkg.complex_eigenvalues[i].second));
-    }
-
-    const bool has_complex = pkg.has_complex;
     const bool inner_ok = (gsi_op.inner_failure_count() == 0);
-    result.converged = pkg.converged && !has_complex && (result.eigenvalues.size() >= k) && inner_ok;
+    result.converged = pkg_converged && !has_complex && (result.eigenvalues.size() >= k) && inner_ok;
 
     if (!inner_ok) {
         result.status = "inner_solve_failed";
@@ -1624,7 +1956,7 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_(const spmats<_T,_In
         if (result.failure_reason.empty())
             result.failure_reason = "complex Ritz values in requested subset";
     } else {
-        set_eig_diagnostics_<_T,_Index>(result, actual_method, sdim,
+        set_eig_diagnostics_<_T,_Index>(result, actual_method, result.used_subspace_dim,
             result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
         if (promoted_from_lanczos)
             result.used_method = "shift_invert_arnoldi(promoted_from_lanczos)";
