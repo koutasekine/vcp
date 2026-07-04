@@ -1151,7 +1151,6 @@ struct sparse_lu_symbolic_result {
     std::vector<Index> relaxed_supernodes; // symbolic candidate supernode boundaries
 
     sparse_lu_supernode_symbolic<Index>      supernode_info;       // SLU-7 symbolic metadata
-    sparse_lu_supernode_reach_symbolic<Index> supernode_reach_info; // SLU-8 reach metadata
 
     Index estimated_fill_upper_bound;
     bool  structural_singularity;
@@ -1771,7 +1770,6 @@ public:
 
     sparse_lu_factorization()
         : storage_kind_(sparse_lu_storage_kind::baseline_csc),
-          supernode_reach_info_valid_(false),
           uses_supernodal_prototype_(false) {}
 
     bool valid() const { return info_.success; }
@@ -1842,16 +1840,7 @@ public:
         return supernode_info_;
     }
 
-    // SLU-14R.5: returns the retained symbolic reach metadata stored in this
-    // factor.  This is used by structural validators that need an independent
-    // symbolic panel envelope after factorization.
-    const sparse_lu_supernode_reach_symbolic<Index>& supernode_reach_info() const {
-        return supernode_reach_info_;
-    }
-
-    bool supernode_reach_info_valid() const {
-        return supernode_reach_info_valid_ && supernode_reach_info_.valid;
-    }
+    // [SLU-RQ1] reach retention removed; derive from supernode_info() on demand.
 
     // SLU-11: diagnostic-only accessor for the CSC-backed baseline LU storage.
     // Allows verification helpers to access the actual L/U factors.
@@ -1988,8 +1977,6 @@ private:
     supernodal_lu_storage<T, Index>     supernodal_;
     sparse_lu_info<T, Index>            info_;
     sparse_lu_supernode_symbolic<Index> supernode_info_; // SLU-9: stored for supernode-aware solve
-    sparse_lu_supernode_reach_symbolic<Index> supernode_reach_info_; // SLU-14R.5 retained reach metadata
-    bool supernode_reach_info_valid_;
 
     // SLU-10: supernodal prototype fields
     bool                                       uses_supernodal_prototype_;
@@ -2069,15 +2056,6 @@ private:
     // SLU-9: store symbolic supernode metadata for supernode-aware solve.
     void set_supernode_info_(const sparse_lu_supernode_symbolic<Index>& si) {
         supernode_info_ = si;
-    }
-
-    // SLU-14R.5: store symbolic reach metadata for post-factorization
-    // structural accountability checks.
-    void set_supernode_reach_info_(
-        const sparse_lu_supernode_reach_symbolic<Index>& ri)
-    {
-        supernode_reach_info_ = ri;
-        supernode_reach_info_valid_ = ri.valid;
     }
 
     // SLU-10: store supernodal prototype numeric metadata and mark factor accordingly.
@@ -3474,6 +3452,32 @@ sparse_lu_build_supernode_symbolic_csc(
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
+// sparse_lu_for_each_supernode_ancestor
+//
+// Visits the ancestors of supernode s in the supernode etree, in strictly
+// increasing order (forward-parent invariant: parent[t] > t), by walking
+// parent[] from parent[s] to the root.  O(depth(s)) time, O(1) space.
+// This is the lazy replacement for the materialized ancestor reach
+// (sparse_lu_supernode_reach_symbolic): the reach of s is exactly the
+// visited sequence.  Visitor: void(Index ancestor).
+//
+// Preconditions (caller responsibility, matching the builder's validation):
+//   parent.size() == nsup; parent[t] == -1 or t < parent[t] < nsup.
+// ---------------------------------------------------------------------------
+template <class Index, class Visitor>
+void sparse_lu_for_each_supernode_ancestor(
+    const std::vector<Index>& parent, const Index s, Visitor visit)
+{
+    static_assert(std::is_signed<Index>::value,
+                  "sparse_lu_for_each_supernode_ancestor: Index must be signed");
+    Index t = parent[static_cast<std::size_t>(s)];
+    while (t != Index(-1)) {
+        visit(t);
+        t = parent[static_cast<std::size_t>(t)];
+    }
+}
+
+// ---------------------------------------------------------------------------
 // sparse_lu_build_supernode_reach_symbolic
 //
 // Constructs symbolic supernode reach metadata from validated supernode partition.
@@ -3503,6 +3507,13 @@ sparse_lu_build_supernode_symbolic_csc(
 //   - n < 0
 //
 // Template parameter Index must be signed (sentinel -1 used for roots).
+//
+// ON-DEMAND DIAGNOSTIC (SLU-RQ1): this builder materializes the full
+// ancestor reach, which is O(sum of ancestor-chain lengths) — O(nsup^2)
+// time and memory on chain etrees.  It is NOT called on any production
+// path; production code derives reach lazily via
+// sparse_lu_for_each_supernode_ancestor.  Intended for tests and
+// small-fixture diagnostics only.
 // ---------------------------------------------------------------------------
 template <class Index>
 sparse_lu_supernode_reach_symbolic<Index>
@@ -3539,11 +3550,9 @@ sparse_lu_build_supernode_reach_symbolic(
     // strictly increasing -- no cycle is possible. Walk until -1 (root).
     result.reach_ptr.resize(nsup + 1u, Index(0));
     for (std::size_t s = 0u; s < nsup; ++s) {
-        Index t = supernodes.parent[s];
-        while (t != Index(-1)) {
-            result.reach_ind.push_back(t);
-            t = supernodes.parent[static_cast<std::size_t>(t)];
-        }
+        sparse_lu_for_each_supernode_ancestor<Index>(
+            supernodes.parent, static_cast<Index>(s),
+            [&result](const Index t) { result.reach_ind.push_back(t); });
         // Parent chain is already strictly increasing by forward-parent invariant.
         // Sort and unique for defensive determinism (handles any edge cases).
         const std::size_t b = static_cast<std::size_t>(result.reach_ptr[s]);
@@ -4234,7 +4243,6 @@ sparse_lu_symbolic(
         // SLU-6: compute A^T A column elimination tree from sparsity pattern.
         // parent[k] = -1 (root) or k < parent[k] < n.
         // SLU-7: also build symbolic supernode metadata from A pattern and etree.
-        // SLU-8: build symbolic supernode reach metadata from SLU-7 supernode_info.
         // Production GP numeric path uses L-structure DFS (independent of col_etree).
         // The symbolic structure is built from the Q-permuted pattern so that it
         // matches the permuted CSC the numeric phase factorizes.
@@ -4253,8 +4261,6 @@ sparse_lu_symbolic(
             sym.supernode_info = sparse_lu_build_supernode_symbolic_csc(
                 n, A_csc_sym.col_ptr, A_csc_sym.row_ind, sym.col_etree,
                 relaxation);
-            sym.supernode_reach_info = sparse_lu_build_supernode_reach_symbolic(
-                n, sym.supernode_info);
         }
 
         // Relaxed supernodes: empty (boundary array superseded by supernode_info)
@@ -4627,7 +4633,6 @@ sparse_lu_numeric(
                 ninfo.n       = n;
                 fac.set_info_(ninfo);
                 fac.set_supernode_info_(sym.supernode_info);
-                fac.set_supernode_reach_info_(sym.supernode_reach_info);
                 fac.set_supernodal_storage_info_(mf7.storage);
                 fac.set_true_numeric_info_(mf7.tns, mf7.storage);
                 fac.set_supernodal_solve_info_();
@@ -4661,7 +4666,6 @@ sparse_lu_numeric(
             fac.set_baseline_storage_with_diagnostics_(n, num_result.storage, gf);
             // SLU-9: store supernode metadata for supernode-aware solve
             fac.set_supernode_info_(sym.supernode_info);
-            fac.set_supernode_reach_info_(sym.supernode_reach_info);
             // SLU-10: if explicit supernodal requested, build prototype numeric metadata
             // from actual CSC L/U (not from symbolic panel_row_ind).
             if (opt.method == sparse_lu_method::supernodal) {
@@ -4856,7 +4860,6 @@ sparse_lu_factorize_with_info(
                 ninfo.n       = info.n;
                 fac.set_info_(ninfo);
                 fac.set_supernode_info_(sym.supernode_info);
-                fac.set_supernode_reach_info_(sym.supernode_reach_info);
                 fac.set_supernodal_storage_info_(mf7.storage);
                 fac.set_true_numeric_info_(mf7.tns, mf7.storage);
                 fac.set_supernodal_solve_info_();
@@ -4896,7 +4899,6 @@ sparse_lu_factorize_with_info(
                 info.n, num_result.storage, gf);
             // SLU-9: store supernode metadata for supernode-aware solve
             fac.set_supernode_info_(sym.supernode_info);
-            fac.set_supernode_reach_info_(sym.supernode_reach_info);
             // SLU-10: if explicit supernodal requested, build prototype numeric metadata
             // from actual CSC L/U (not from symbolic panel_row_ind).
             if (opt.method == sparse_lu_method::supernodal) {

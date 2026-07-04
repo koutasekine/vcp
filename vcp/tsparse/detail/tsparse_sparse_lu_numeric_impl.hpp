@@ -356,35 +356,44 @@ baseline_sparse_gp_lu_factorize(
         const T pivot_diag = x[sj];
 
         // ------------------------------------------------------------------
-        // Step 6: Store U column j (rows 0..j)
-        //   Diagonal always stored; zero strict-upper entries skipped.
-        //   Row indices produced in ascending order (i=0..j).
+        // Steps 6+7 (SLU-NQ1): Store U column j (rows 0..j) and L column j
+        //   (rows j+1..n-1, normalized by pivot) by a single ascending sweep
+        //   of the sorted SPA pattern (pattern is built in sync with mark and
+        //   holds no duplicates -- construction invariant of Steps 1/2/5).
+        //   The previous implementation scanned the full row range
+        //   (i=0..j then i=j+1..n-1), costing n iterations per column and
+        //   n^2 total; replaced by SLU-NQ1
+        //   (issue_SLU_numeric_store_quadratic.md, plan A).
+        //   Store order (ascending row indices), store conditions, and stored
+        //   values are identical to the old scans, so the resulting L/U
+        //   storage is byte-identical.
+        //   - i <  j: U entry.  The mark guard is always true for pattern
+        //     members (invariant above); kept defensively.  Zero strict-upper
+        //     entries skipped, as before.
+        //   - i == j: diagonal, stored unconditionally (same semantics as the
+        //     old `if (i == j)` branch -- no is_exact_zero skip).  j is
+        //     guaranteed to be in pattern by both branches of Step 5.
+        //   - i >  j: L entry; zero test applies to the value AFTER division
+        //     by the pivot (same semantics as the old Step 7).
         // ------------------------------------------------------------------
+        std::sort(pattern.begin(), pattern.end());
         Index u_cnt = Index(0);
-        for (Index i = Index(0); i <= j; ++i) {
-            const std::size_t si = static_cast<std::size_t>(i);
-            if (i == j) {
-                U_row_ind_buf.push_back(i);
-                U_val_buf.push_back(x[si]);
-                ++u_cnt;
-            } else if (mark[si] == j &&
-                       !sparse_lu_scalar_policy<T>::is_exact_zero(x[si])) {
-                U_row_ind_buf.push_back(i);
-                U_val_buf.push_back(x[si]);
-                ++u_cnt;
-            }
-        }
-        U_col_ptr[sj + 1u] = U_col_ptr[sj] + u_cnt;
-
-        // ------------------------------------------------------------------
-        // Step 7: Store L column j (rows j+1..n-1), normalized by pivot.
-        //   Zero entries skipped.
-        //   Row indices produced in ascending order (i=j+1..n-1).
-        // ------------------------------------------------------------------
         Index l_cnt = Index(0);
-        for (Index i = j + Index(1); i < n; ++i) {
+        for (std::size_t pi = 0u; pi < pattern.size(); ++pi) {
+            const Index       i  = pattern[pi];
             const std::size_t si = static_cast<std::size_t>(i);
-            if (mark[si] == j) {
+            if (i < j) {
+                if (mark[si] == j &&
+                    !sparse_lu_scalar_policy<T>::is_exact_zero(x[si])) {
+                    U_row_ind_buf.push_back(i);
+                    U_val_buf.push_back(x[si]);
+                    ++u_cnt;
+                }
+            } else if (i == j) {
+                U_row_ind_buf.push_back(i);
+                U_val_buf.push_back(x[si]);
+                ++u_cnt;
+            } else if (mark[si] == j) {
                 const T l_val = x[si] / pivot_diag;
                 if (!sparse_lu_scalar_policy<T>::is_exact_zero(l_val)) {
                     L_row_ind_buf.push_back(i);
@@ -393,6 +402,7 @@ baseline_sparse_gp_lu_factorize(
                 }
             }
         }
+        U_col_ptr[sj + 1u] = U_col_ptr[sj] + u_cnt;
         L_col_ptr[sj + 1u] = L_col_ptr[sj] + l_cnt;
 
         // ------------------------------------------------------------------
