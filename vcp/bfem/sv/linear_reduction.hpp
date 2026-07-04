@@ -29,6 +29,23 @@
 // weights (skipped when the weight is one) and the additions of combine.
 // Acceptance identity (T-SV-4): reduce(A) == reduce_rows(reduce_cols(A))
 // exactly for exact T.
+//
+// RATIONAL-COEFFICIENT EXTENSION (phase 6, C1-6 -- ADDITIVE ONLY, the
+// integer path above is textually and behaviourally unchanged):
+//  - sv_constraint_q carries exact rational coefficients (the C1 corner
+//    constraints t . grad u = 0 / t^T H t = 0 mix dofs with coordinate-
+//    difference coefficients);
+//  - the overloaded constructor eliminates the rows EXACTLY at the rational
+//    stage (Gauss-Jordan on detail::rational; pivot = the first nonzero in
+//    canonical ascending-dof order -- exactness holds for any nonzero pivot,
+//    determinism is the criterion; rational division stays confined to this
+//    generation stage);
+//  - the embedding weights are converted to T exactly ONCE through
+//    convert_traits (enclose-once; verified bitwise by CI-6): afterwards
+//    reduce/reduce_rows/reduce_cols/expand are multiplications only (weight
+//    one is skipped as in the integer path; T division count stays ZERO);
+//  - the integer +-1 path remains the special case served by the original
+//    constructor (same public API; SV regressions stay bit-invariant).
 
 #ifndef VCP_BFEM_SV_LINEAR_REDUCTION_HPP
 #define VCP_BFEM_SV_LINEAR_REDUCTION_HPP
@@ -43,10 +60,19 @@
 #include <vcp/spmatrix.hpp>
 
 #include <vcp/bfem/fe_space.hpp>          // detail::coo_buffer / spm_adapter
+#include <vcp/bfem/rational.hpp>          // detail::rational (q extension)
+#include <vcp/bfem/convert_traits.hpp>    // enclose-once weights (q extension)
 #include <vcp/bfem/sv/sv_constraint.hpp>
 
 namespace vcp {
 namespace bfem {
+
+// one exact rational constraint row: sum_k coef[k] * x_{dof[k]} = 0
+// (phase 6 additive extension; the integer sv_constraint stays untouched)
+struct sv_constraint_q {
+    std::vector<int> dof;
+    std::vector<detail::rational> coef;
+};
 
 template <typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
 class linear_reduction {
@@ -54,7 +80,8 @@ public:
     typedef vcp::spmatrix<T, SP> spmatrix_t;
 
     linear_reduction(int full_size, std::vector<sv_constraint> rows)
-        : full_(full_size), to_reduced_(), to_full_(), weights_() {
+        : full_(full_size), to_reduced_(), to_full_(), weights_(),
+          qmode_(false), qweights_() {
         if (full_size < 0)
             throw std::invalid_argument("bfem::linear_reduction: negative size");
 
@@ -160,6 +187,123 @@ public:
         }
     }
 
+    // ---- rational-coefficient overload (phase 6 additive extension) ----
+    // Exact rational Gauss-Jordan normal form; pivot = the FIRST nonzero in
+    // canonical ascending-dof order (deterministic; any nonzero is exact).
+    // The embedding weights pass through convert_traits exactly once.
+    linear_reduction(int full_size, const std::vector<sv_constraint_q>& rows)
+        : full_(full_size), to_reduced_(), to_full_(), weights_(),
+          qmode_(true), qweights_() {
+        if (full_size < 0)
+            throw std::invalid_argument("bfem::linear_reduction: negative size");
+        typedef detail::rational rat;
+        typedef std::map<int, rat> qrow;
+        std::vector<qrow> w;
+        w.reserve(rows.size());
+        for (std::size_t k = 0; k < rows.size(); ++k) {
+            const sv_constraint_q& r = rows[k];
+            if (r.dof.size() != r.coef.size() || r.dof.empty())
+                throw std::invalid_argument(
+                    "bfem::linear_reduction: malformed constraint row");
+            qrow m;
+            for (std::size_t s = 0; s < r.dof.size(); ++s) {
+                if (r.dof[s] < 0 || r.dof[s] >= full_size)
+                    throw std::invalid_argument(
+                        "bfem::linear_reduction: dof out of range");
+                if (r.coef[s].is_zero())
+                    throw std::invalid_argument(
+                        "bfem::linear_reduction: zero coefficient");
+                if (!m.insert(std::make_pair(r.dof[s], r.coef[s])).second)
+                    throw std::invalid_argument(
+                        "bfem::linear_reduction: duplicate dof in a row");
+            }
+            w.push_back(m);
+        }
+
+        // exact Gauss-Jordan with canonical-first pivots (rational stage;
+        // the ONLY divisions of the extension happen here, on rationals)
+        std::vector<int> piv(w.size(), -1);
+        std::vector<rat> pivc(w.size());
+        for (std::size_t k = 0; k < w.size(); ++k) {
+            for (std::size_t j = 0; j < k; ++j) {
+                typename qrow::iterator it = w[k].find(piv[j]);
+                if (it == w[k].end()) continue;
+                rat f = it->second / pivc[j];
+                for (typename qrow::const_iterator p = w[j].begin();
+                     p != w[j].end(); ++p) {
+                    if (p->first == piv[j]) {
+                        w[k].erase(p->first);
+                        continue;
+                    }
+                    rat& e = w[k][p->first];
+                    e -= f * p->second;
+                    if (e.is_zero()) w[k].erase(p->first);
+                }
+            }
+            if (w[k].empty())
+                throw std::invalid_argument(
+                    "bfem::linear_reduction: dependent constraint row");
+            // pivot: first nonzero in canonical (ascending dof) order
+            piv[static_cast<std::size_t>(k)] = w[k].begin()->first;
+            pivc[static_cast<std::size_t>(k)] = w[k].begin()->second;
+            for (std::size_t j = 0; j < k; ++j) {
+                typename qrow::iterator it = w[j].find(piv[k]);
+                if (it == w[j].end()) continue;
+                rat f = it->second / pivc[k];
+                for (typename qrow::const_iterator p = w[k].begin();
+                     p != w[k].end(); ++p) {
+                    if (p->first == piv[k]) {
+                        w[j].erase(p->first);
+                        continue;
+                    }
+                    rat& e = w[j][p->first];
+                    e -= f * p->second;
+                    if (e.is_zero()) w[j].erase(p->first);
+                }
+            }
+        }
+
+        // reduced numbering over the kept dofs (identical bookkeeping)
+        to_reduced_.assign(static_cast<std::size_t>(full_size), 0);
+        for (std::size_t k = 0; k < w.size(); ++k)
+            to_reduced_[static_cast<std::size_t>(piv[k])] = -1;
+        int r = 0;
+        to_full_.reserve(static_cast<std::size_t>(full_size) - w.size());
+        for (int i = 0; i < full_size; ++i) {
+            if (to_reduced_[static_cast<std::size_t>(i)] == -1) continue;
+            to_reduced_[static_cast<std::size_t>(i)] = r;
+            to_full_.push_back(i);
+            ++r;
+        }
+
+        // embedding rows: kept dof -> weight one; pivot dof p of row k ->
+        // x_p = -(1/c_p) sum_{j != p} c_j x_j, each weight converted ONCE
+        qweights_.assign(static_cast<std::size_t>(full_size),
+                         std::vector<qentry>());
+        for (int i = 0; i < full_size; ++i) {
+            int ri = to_reduced_[static_cast<std::size_t>(i)];
+            if (ri >= 0) {
+                qentry e;
+                e.col = ri;
+                e.w = T(1);
+                e.one = true;
+                qweights_[static_cast<std::size_t>(i)].push_back(e);
+            }
+        }
+        for (std::size_t k = 0; k < w.size(); ++k) {
+            std::vector<qentry>& row = qweights_[static_cast<std::size_t>(piv[k])];
+            for (typename qrow::const_iterator p = w[k].begin(); p != w[k].end(); ++p) {
+                if (p->first == piv[k]) continue;
+                rat wq = -(p->second / pivc[k]);
+                qentry e;
+                e.col = to_reduced_[static_cast<std::size_t>(p->first)];
+                e.w = convert_traits<T>::from_rational(wq.num(), wq.den());
+                e.one = (wq == rat(1));
+                row.push_back(e);
+            }
+        }
+    }
+
     int full_size() const { return full_; }
     int reduced_size() const { return static_cast<int>(to_full_.size()); }
     int num_constraints() const { return full_ - reduced_size(); }
@@ -181,8 +325,13 @@ public:
         if (A.rowsize() != full_ || A.columnsize() != full_)
             throw std::invalid_argument("bfem::linear_reduction::reduce: size mismatch");
         detail::coo_buffer<T> buf;
-        both_collector col = { this, &buf };
-        detail::spm_adapter<T, SP>::for_each_entry(A, col);
+        if (qmode_) {
+            q_both_collector col = { this, &buf };
+            detail::spm_adapter<T, SP>::for_each_entry(A, col);
+        } else {
+            both_collector col = { this, &buf };
+            detail::spm_adapter<T, SP>::for_each_entry(A, col);
+        }
         buf.combine();
         return detail::spm_adapter<T, SP>::build(reduced_size(), reduced_size(), buf);
     }
@@ -193,8 +342,13 @@ public:
             throw std::invalid_argument(
                 "bfem::linear_reduction::reduce_rows: row size mismatch");
         detail::coo_buffer<T> buf;
-        row_collector col = { this, &buf };
-        detail::spm_adapter<T, SP>::for_each_entry(A, col);
+        if (qmode_) {
+            q_row_collector col = { this, &buf };
+            detail::spm_adapter<T, SP>::for_each_entry(A, col);
+        } else {
+            row_collector col = { this, &buf };
+            detail::spm_adapter<T, SP>::for_each_entry(A, col);
+        }
         buf.combine();
         return detail::spm_adapter<T, SP>::build(reduced_size(), A.columnsize(), buf);
     }
@@ -203,8 +357,13 @@ public:
             throw std::invalid_argument(
                 "bfem::linear_reduction::reduce_cols: column size mismatch");
         detail::coo_buffer<T> buf;
-        col_collector col = { this, &buf };
-        detail::spm_adapter<T, SP>::for_each_entry(A, col);
+        if (qmode_) {
+            q_col_collector col = { this, &buf };
+            detail::spm_adapter<T, SP>::for_each_entry(A, col);
+        } else {
+            col_collector col = { this, &buf };
+            detail::spm_adapter<T, SP>::for_each_entry(A, col);
+        }
         buf.combine();
         return detail::spm_adapter<T, SP>::build(A.rowsize(), reduced_size(), buf);
     }
@@ -216,6 +375,17 @@ public:
                 "bfem::linear_reduction::reduce: vector size mismatch");
         vcp::matrix<T, P> out;
         out.zeros(reduced_size(), 1);
+        if (qmode_) {
+            for (int i = 0; i < full_; ++i) {
+                const std::vector<qentry>& wr =
+                    qweights_[static_cast<std::size_t>(i)];
+                for (std::size_t s = 0; s < wr.size(); ++s) {
+                    if (wr[s].one) out(wr[s].col, 0) += v(i, 0);
+                    else out(wr[s].col, 0) += v(i, 0) * wr[s].w;
+                }
+            }
+            return out;
+        }
         for (int i = 0; i < full_; ++i) {
             const std::vector<std::pair<int, long long> >& wr =
                 weights_[static_cast<std::size_t>(i)];
@@ -232,6 +402,17 @@ public:
                 "bfem::linear_reduction::expand: vector size mismatch");
         vcp::matrix<T, P> out;
         out.zeros(full_, 1);
+        if (qmode_) {
+            for (int i = 0; i < full_; ++i) {
+                const std::vector<qentry>& wr =
+                    qweights_[static_cast<std::size_t>(i)];
+                for (std::size_t s = 0; s < wr.size(); ++s) {
+                    if (wr[s].one) out(i, 0) += v_reduced(wr[s].col, 0);
+                    else out(i, 0) += v_reduced(wr[s].col, 0) * wr[s].w;
+                }
+            }
+            return out;
+        }
         for (int i = 0; i < full_; ++i) {
             const std::vector<std::pair<int, long long> >& wr =
                 weights_[static_cast<std::size_t>(i)];
@@ -249,6 +430,15 @@ private:
     std::vector<int> to_full_;
     // row i of the embedding T: pairs (reduced column, integer weight)
     std::vector<std::vector<std::pair<int, long long> > > weights_;
+    // rational-mode embedding (phase 6 additive extension): weights are the
+    // enclose-once T images of the exact rational elimination
+    struct qentry {
+        int col;
+        T w;
+        bool one;                    // exact rational weight == 1: skip mult
+    };
+    bool qmode_;
+    std::vector<std::vector<qentry> > qweights_;
 
     static T wfac(long long w) { return T(static_cast<int>(w)); }
 
@@ -290,6 +480,54 @@ private:
             for (std::size_t b = 0; b < wj.size(); ++b) {
                 if (wj[b].second == 1LL) buf->push(i, wj[b].first, v);
                 else buf->push(i, wj[b].first, v * wfac(wj[b].second));
+            }
+        }
+    };
+
+    // ---- rational-mode collectors (phase 6 additive extension) ----
+    struct q_both_collector {
+        const linear_reduction* self;
+        detail::coo_buffer<T>* buf;
+        void operator()(int i, int j, const T& v) const {
+            const std::vector<qentry>& wi =
+                self->qweights_[static_cast<std::size_t>(i)];
+            const std::vector<qentry>& wj =
+                self->qweights_[static_cast<std::size_t>(j)];
+            for (std::size_t a = 0; a < wi.size(); ++a) {
+                for (std::size_t b = 0; b < wj.size(); ++b) {
+                    if (wi[a].one && wj[b].one)
+                        buf->push(wi[a].col, wj[b].col, v);
+                    else if (wi[a].one)
+                        buf->push(wi[a].col, wj[b].col, v * wj[b].w);
+                    else if (wj[b].one)
+                        buf->push(wi[a].col, wj[b].col, v * wi[a].w);
+                    else
+                        buf->push(wi[a].col, wj[b].col, v * wi[a].w * wj[b].w);
+                }
+            }
+        }
+    };
+    struct q_row_collector {
+        const linear_reduction* self;
+        detail::coo_buffer<T>* buf;
+        void operator()(int i, int j, const T& v) const {
+            const std::vector<qentry>& wi =
+                self->qweights_[static_cast<std::size_t>(i)];
+            for (std::size_t a = 0; a < wi.size(); ++a) {
+                if (wi[a].one) buf->push(wi[a].col, j, v);
+                else buf->push(wi[a].col, j, v * wi[a].w);
+            }
+        }
+    };
+    struct q_col_collector {
+        const linear_reduction* self;
+        detail::coo_buffer<T>* buf;
+        void operator()(int i, int j, const T& v) const {
+            const std::vector<qentry>& wj =
+                self->qweights_[static_cast<std::size_t>(j)];
+            for (std::size_t b = 0; b < wj.size(); ++b) {
+                if (wj[b].one) buf->push(i, wj[b].col, v);
+                else buf->push(i, wj[b].col, v * wj[b].w);
             }
         }
     };
