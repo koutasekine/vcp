@@ -54,6 +54,7 @@
 #include <vcp/bfem/c1/c1_geometry.hpp>
 #include <vcp/bfem/c1/c1_dofmap.hpp>
 #include <vcp/bfem/c1/c1_element_op.hpp>
+#include <vcp/bfem/detail/scalar_traits.hpp>
 
 namespace vcp {
 namespace bfem {
@@ -91,6 +92,7 @@ public:
         : mesh_(msh), k_(k), topo_(), edge_cache_(), dmaps_(), geom_(),
           op_(), buf_(), loc_(), uloc_(), vloc_(), wloc_(), rloc_(), cws_(),
           gbuf_(), hatbuf_() {
+        bfem_scalar_traits<T>::require();   // C-1 contract (L4, additive)
         detail::c1_check_k(k, "c1_space");
         topo_ = detail::mesh_topology2::build(msh);
         // edge cache FIRST (B-4: |t_e|^2 certification precedes everything;

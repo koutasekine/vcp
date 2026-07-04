@@ -48,7 +48,8 @@
 #include <vcp/bfem/rational.hpp>
 #include <vcp/bfem/multi_index.hpp>
 #include <vcp/bfem/coeff_tables.hpp>
-#include <vcp/bfem/rt/rational_la.hpp>
+#include <vcp/bfem/detail/rational_la.hpp>
+#include <vcp/bfem/detail/table_cache.hpp>
 #include <vcp/bfem/rt/rt_backend3.hpp>    // rt_dof_backend<3> + 3D facet detail
 
 namespace vcp {
@@ -517,11 +518,9 @@ public:
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(k, l);
-        typename std::map<std::pair<int, int>, rt_block_table>::iterator it =
-            s.dmass.find(key);
-        if (it != s.dmass.end()) return it->second;
-        rt_block_table t = build_div_mass(s, k, l);
-        return s.dmass.insert(std::make_pair(key, std::move(t))).first->second;
+        return s.dmass.get_or_build(key, [&]() -> rt_block_table {
+            return build_div_mass(s, k, l);
+        });
     }
 
     // T-R6 (n >= 1)
@@ -540,11 +539,9 @@ public:
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(k, n);
-        typename std::map<std::pair<int, int>, rt_mat_table>::iterator it =
-            s.crossc.find(key);
-        if (it != s.crossc.end()) return it->second;
-        rt_mat_table t = build_cross_contracted(s, k, n);
-        return s.crossc.insert(std::make_pair(key, std::move(t))).first->second;
+        return s.crossc.get_or_build(key, [&]() -> rt_mat_table {
+            return build_cross_contracted(s, k, n);
+        });
     }
 
     // T-R7 (l >= 0; v0.3)
@@ -553,27 +550,26 @@ public:
             throw std::invalid_argument("bfem::rt_registry::inv_mass: l < 0");
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, rt_mat_table>::iterator it = s.invm.find(l);
-        if (it != s.invm.end()) return it->second;
-        rt_mat_table t = build_inv_mass(l);
-        return s.invm.insert(std::make_pair(l, std::move(t))).first->second;
+        return s.invm.get_or_build(l, [&]() -> rt_mat_table {
+            return build_inv_mass(l);
+        });
     }
 
 private:
-    struct state {
-        std::mutex mtx;
-        std::map<int, rt_basis_table> basis;
-        std::map<int, rt_div_table> div;
-        std::map<int, rt_flux_table> flux;
-        std::map<int, rt_block_table> cmass;
-        std::map<std::pair<int, int>, rt_block_table> dmass;
-        std::map<std::pair<int, int>, rt_cross_table> cross;
-        std::map<std::pair<int, int>, rt_mat_table> crossc;
-        std::map<int, rt_mat_table> invm;
+    // L4: shared detail::table_cache vessel (one mutex per D, unchanged)
+    struct maps {
+        detail::table_cache<int, rt_basis_table> basis;
+        detail::table_cache<int, rt_div_table> div;
+        detail::table_cache<int, rt_flux_table> flux;
+        detail::table_cache<int, rt_block_table> cmass;
+        detail::table_cache<std::pair<int, int>, rt_block_table> dmass;
+        detail::table_cache<std::pair<int, int>, rt_cross_table> cross;
+        detail::table_cache<std::pair<int, int>, rt_mat_table> crossc;
+        detail::table_cache<int, rt_mat_table> invm;
     };
+    typedef detail::table_cache_state<maps> state;
     static state& st() {
-        static state s;
-        return s;
+        return detail::table_cache_instance<state>();
     }
     static void check_k(int k, const char* where) {
         if (k < 0) {
@@ -595,36 +591,30 @@ private:
     // ---- locked generation (callers hold s.mtx) ----
 
     static const rt_basis_table& basis_locked(state& s, int k) {
-        typename std::map<int, rt_basis_table>::iterator it = s.basis.find(k);
-        if (it != s.basis.end()) return it->second;
-        rt_basis_table t = build_basis(k);
-        return s.basis.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.basis.get_or_build(k, [&]() -> rt_basis_table {
+            return build_basis(k);
+        });
     }
     static const rt_div_table& div_locked(state& s, int k) {
-        typename std::map<int, rt_div_table>::iterator it = s.div.find(k);
-        if (it != s.div.end()) return it->second;
-        rt_div_table t = build_div(basis_locked(s, k));
-        return s.div.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.div.get_or_build(k, [&]() -> rt_div_table {
+            return build_div(basis_locked(s, k));
+        });
     }
     static const rt_flux_table& flux_locked(state& s, int k) {
-        typename std::map<int, rt_flux_table>::iterator it = s.flux.find(k);
-        if (it != s.flux.end()) return it->second;
-        rt_flux_table t = build_flux(basis_locked(s, k));
-        return s.flux.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.flux.get_or_build(k, [&]() -> rt_flux_table {
+            return build_flux(basis_locked(s, k));
+        });
     }
     static const rt_block_table& cmass_locked(state& s, int k) {
-        typename std::map<int, rt_block_table>::iterator it = s.cmass.find(k);
-        if (it != s.cmass.end()) return it->second;
-        rt_block_table t = build_comp_mass(basis_locked(s, k));
-        return s.cmass.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.cmass.get_or_build(k, [&]() -> rt_block_table {
+            return build_comp_mass(basis_locked(s, k));
+        });
     }
     static const rt_cross_table& cross_locked(state& s, int k, int n) {
         std::pair<int, int> key(k, n);
-        typename std::map<std::pair<int, int>, rt_cross_table>::iterator it =
-            s.cross.find(key);
-        if (it != s.cross.end()) return it->second;
-        rt_cross_table t = build_cross(basis_locked(s, k), n);
-        return s.cross.insert(std::make_pair(key, std::move(t))).first->second;
+        return s.cross.get_or_build(key, [&]() -> rt_cross_table {
+            return build_cross(basis_locked(s, k), n);
+        });
     }
 
     // ---- builders (rational stage; all contractions happen HERE, external

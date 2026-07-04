@@ -50,8 +50,9 @@
 #include <vcp/bfem/coeff_tables.hpp>
 #include <vcp/bfem/convert_traits.hpp>
 #include <vcp/bfem/ref_stiffness.hpp>       // detail::ref_stiff_block_index
-#include <vcp/bfem/rt/rational_la.hpp>
+#include <vcp/bfem/detail/rational_la.hpp>
 #include <vcp/bfem/rt/rt_tables.hpp>        // table shells + rt constants
+#include <vcp/bfem/detail/table_cache.hpp>
 
 namespace vcp {
 namespace bfem {
@@ -434,10 +435,9 @@ public:
         detail::c1_check_k(k, "stiffness");
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, rt_block_table>::iterator it = s.stiff.find(k);
-        if (it != s.stiff.end()) return it->second;
-        rt_block_table t = build_stiffness(s, k);
-        return s.stiff.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.stiff.get_or_build(k, [&]() -> rt_block_table {
+            return build_stiffness(s, k);
+        });
     }
 
     // contracted second-derivative blocks R2^{(p),(q)} =
@@ -446,11 +446,9 @@ public:
         detail::c1_check_k(k, "r2");
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, detail::c1_pair_tbl<detail::rational> >::iterator
-            it = s.r2.find(k);
-        if (it != s.r2.end()) return it->second;
-        detail::c1_pair_tbl<detail::rational> t = build_r2(s, k);
-        return s.r2.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.r2.get_or_build(k, [&]() -> detail::c1_pair_tbl<detail::rational> {
+            return build_r2(s, k);
+        });
     }
 
     // D2C^{(p)} blocks (N_{k-2} x dim), stored as a 6-block table indexed by
@@ -469,11 +467,9 @@ public:
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(a, b);
-        typename std::map<std::pair<int, int>, rt_mat_table>::iterator it =
-            s.massc.find(key);
-        if (it != s.massc.end()) return it->second;
-        rt_mat_table t = build_mass_contracted(s, a, b);
-        return s.massc.insert(std::make_pair(key, std::move(t))).first->second;
+        return s.massc.get_or_build(key, [&]() -> rt_mat_table {
+            return build_mass_contracted(s, a, b);
+        });
     }
 
     // contracted load C^T M^{(k,q)} (dim x N_q), q >= 0
@@ -484,11 +480,9 @@ public:
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(k, q);
-        typename std::map<std::pair<int, int>, rt_mat_table>::iterator it =
-            s.loadc.find(key);
-        if (it != s.loadc.end()) return it->second;
-        rt_mat_table t = build_load_contracted(s, k, q);
-        return s.loadc.insert(std::make_pair(key, std::move(t))).first->second;
+        return s.loadc.get_or_build(key, [&]() -> rt_mat_table {
+            return build_load_contracted(s, k, q);
+        });
     }
 
     // laplacian mixed blocks LM^{(p)} = M^{(l,k-2)} D2C^{(p)} (N_l x dim),
@@ -500,11 +494,9 @@ public:
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(k, l);
-        typename std::map<std::pair<int, int>, rt_block_table>::iterator it =
-            s.lapm.find(key);
-        if (it != s.lapm.end()) return it->second;
-        rt_block_table t = build_lap_mixed(s, k, l);
-        return s.lapm.insert(std::make_pair(key, std::move(t))).first->second;
+        return s.lapm.get_or_build(key, [&]() -> rt_block_table {
+            return build_lap_mixed(s, k, l);
+        });
     }
 
     // T-C3: tangential-derivative combination table W ((k-4) x (k+1))
@@ -512,63 +504,63 @@ public:
         detail::c1_check_k(k, "hermite_w");
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, rt_mat_table>::iterator it = s.herm.find(k);
-        if (it != s.herm.end()) return it->second;
-        detail::rmat W = detail::c1_hermite_w(k);
-        rt_mat_table t = detail::rt_table_access::make_mat(
-            W.rows, W.cols, detail::rmat_flat(W));
-        return s.herm.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.herm.get_or_build(k, [&]() -> rt_mat_table {
+            detail::rmat W = detail::c1_hermite_w(k);
+            rt_mat_table t = detail::rt_table_access::make_mat(
+                W.rows, W.cols, detail::rmat_flat(W));
+            return t;
+        });
     }
 
 private:
-    struct state {
-        std::mutex mtx;
-        std::map<int, rt_mat_table> dofm;
-        std::map<int, rt_mat_table> basis;
-        std::map<int, rt_block_table> stiff;
-        std::map<int, detail::c1_pair_tbl<detail::rational> > r2;
-        std::map<int, rt_block_table> d2c;
-        std::map<std::pair<int, int>, rt_mat_table> massc;
-        std::map<std::pair<int, int>, rt_mat_table> loadc;
-        std::map<std::pair<int, int>, rt_block_table> lapm;
-        std::map<int, rt_mat_table> herm;
+    // L4: shared detail::table_cache vessel (one mutex, unchanged granularity)
+    struct maps {
+        detail::table_cache<int, rt_mat_table> dofm;
+        detail::table_cache<int, rt_mat_table> basis;
+        detail::table_cache<int, rt_block_table> stiff;
+        detail::table_cache<int, detail::c1_pair_tbl<detail::rational> > r2;
+        detail::table_cache<int, rt_block_table> d2c;
+        detail::table_cache<std::pair<int, int>, rt_mat_table> massc;
+        detail::table_cache<std::pair<int, int>, rt_mat_table> loadc;
+        detail::table_cache<std::pair<int, int>, rt_block_table> lapm;
+        detail::table_cache<int, rt_mat_table> herm;
     };
+    typedef detail::table_cache_state<maps> state;
     static state& st() {
-        static state s;
-        return s;
+        return detail::table_cache_instance<state>();
     }
 
     static const rt_mat_table& dofm_locked(state& s, int k) {
-        typename std::map<int, rt_mat_table>::iterator it = s.dofm.find(k);
-        if (it != s.dofm.end()) return it->second;
-        detail::rmat L = detail::c1_dof_matrix(k);
-        rt_mat_table t = detail::rt_table_access::make_mat(
-            L.rows, L.cols, detail::rmat_flat(L));
-        return s.dofm.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.dofm.get_or_build(k, [&]() -> rt_mat_table {
+            detail::rmat L = detail::c1_dof_matrix(k);
+            rt_mat_table t = detail::rt_table_access::make_mat(
+                L.rows, L.cols, detail::rmat_flat(L));
+            return t;
+        });
     }
 
     static const rt_mat_table& basis_locked(state& s, int k) {
-        typename std::map<int, rt_mat_table>::iterator it = s.basis.find(k);
-        if (it != s.basis.end()) return it->second;
-        const rt_mat_table& Lt = dofm_locked(s, k);
-        const int dim = Lt.rows();
-        detail::rmat L(dim, dim);
-        for (int i = 0; i < dim; ++i)
-            for (int j = 0; j < dim; ++j)
-                L.at(i, j) = Lt.at(i, j);
-        detail::rmat Lkeep = L;
-        detail::rmat C = detail::solve_exact(std::move(L),
-                                             detail::rmat::identity(dim));
-        // generation-time duality check (C-T1 at the source)
-        detail::rmat P = detail::mul(Lkeep, C);
-        for (int i = 0; i < dim; ++i)
-            for (int j = 0; j < dim; ++j)
-                if (!(P.at(i, j) == detail::rational(i == j ? 1 : 0)))
-                    throw std::logic_error(
-                        "bfem::c1_registry::basis: duality check failed");
-        rt_mat_table t = detail::rt_table_access::make_mat(
-            C.rows, C.cols, detail::rmat_flat(C));
-        return s.basis.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.basis.get_or_build(k, [&]() -> rt_mat_table {
+            const rt_mat_table& Lt = dofm_locked(s, k);
+            const int dim = Lt.rows();
+            detail::rmat L(dim, dim);
+            for (int i = 0; i < dim; ++i)
+                for (int j = 0; j < dim; ++j)
+                    L.at(i, j) = Lt.at(i, j);
+            detail::rmat Lkeep = L;
+            detail::rmat C = detail::solve_exact(std::move(L),
+                                                 detail::rmat::identity(dim));
+            // generation-time duality check (C-T1 at the source)
+            detail::rmat P = detail::mul(Lkeep, C);
+            for (int i = 0; i < dim; ++i)
+                for (int j = 0; j < dim; ++j)
+                    if (!(P.at(i, j) == detail::rational(i == j ? 1 : 0)))
+                        throw std::logic_error(
+                            "bfem::c1_registry::basis: duality check failed");
+            rt_mat_table t = detail::rt_table_access::make_mat(
+                C.rows, C.cols, detail::rmat_flat(C));
+            return t;
+        });
     }
 
     static detail::rmat basis_rmat_locked(state& s, int k) {
@@ -612,21 +604,21 @@ private:
     }
 
     static const rt_block_table& d2c_locked(state& s, int k) {
-        typename std::map<int, rt_block_table>::iterator it = s.d2c.find(k);
-        if (it != s.d2c.end()) return it->second;
-        using detail::rmat;
-        const rmat C = basis_rmat_locked(s, k);
-        std::vector<std::vector<detail::rational> > blk;
-        blk.reserve(6u);
-        int rows = 0;
-        for (int p = 0; p < 6; ++p) {
-            rmat D = detail::c1_d2c_block(k, C, p);
-            rows = D.rows;
-            blk.push_back(detail::rmat_flat(D));
-        }
-        rt_block_table t = detail::rt_table_access::make_block(
-            rows, C.cols, std::move(blk));
-        return s.d2c.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.d2c.get_or_build(k, [&]() -> rt_block_table {
+            using detail::rmat;
+            const rmat C = basis_rmat_locked(s, k);
+            std::vector<std::vector<detail::rational> > blk;
+            blk.reserve(6u);
+            int rows = 0;
+            for (int p = 0; p < 6; ++p) {
+                rmat D = detail::c1_d2c_block(k, C, p);
+                rows = D.rows;
+                blk.push_back(detail::rmat_flat(D));
+            }
+            rt_block_table t = detail::rt_table_access::make_block(
+                rows, C.cols, std::move(blk));
+            return t;
+        });
     }
 
     static detail::c1_pair_tbl<detail::rational> build_r2(state& s, int k) {
@@ -721,42 +713,40 @@ public:
     static const block_table& stiffness(int k) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, block_table>::iterator it = s.stiff.find(k);
-        if (it != s.stiff.end()) return it->second;
-        block_table t = conv_block6(c1_registry::stiffness(k));
-        return s.stiff.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.stiff.get_or_build(k, [&]() -> block_table {
+            return conv_block6(c1_registry::stiffness(k));
+        });
     }
     static const block_table& d2c(int k) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, block_table>::iterator it = s.d2c.find(k);
-        if (it != s.d2c.end()) return it->second;
-        block_table t = conv_block6(c1_registry::d2c(k));
-        return s.d2c.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.d2c.get_or_build(k, [&]() -> block_table {
+            return conv_block6(c1_registry::d2c(k));
+        });
     }
     static const pair_table& r2(int k) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, pair_table>::iterator it = s.r2.find(k);
-        if (it != s.r2.end()) return it->second;
-        const detail::c1_pair_tbl<detail::rational>& src = c1_registry::r2(k);
-        std::vector<std::vector<T> > blk;
-        blk.reserve(21u);
-        for (int p = 0; p < 6; ++p) {
-            for (int q = p; q < 6; ++q) {
-                rt_block_view<detail::rational> V = src.block(p, q);
-                std::vector<T> w;
-                w.reserve(static_cast<std::size_t>(V.rows())
-                          * static_cast<std::size_t>(V.cols()));
-                for (int i = 0; i < V.rows(); ++i)
-                    for (int j = 0; j < V.cols(); ++j)
-                        w.push_back(conv(V.at(i, j)));
-                blk.push_back(std::move(w));
+        return s.r2.get_or_build(k, [&]() -> pair_table {
+            const detail::c1_pair_tbl<detail::rational>& src = c1_registry::r2(k);
+            std::vector<std::vector<T> > blk;
+            blk.reserve(21u);
+            for (int p = 0; p < 6; ++p) {
+                for (int q = p; q < 6; ++q) {
+                    rt_block_view<detail::rational> V = src.block(p, q);
+                    std::vector<T> w;
+                    w.reserve(static_cast<std::size_t>(V.rows())
+                              * static_cast<std::size_t>(V.cols()));
+                    for (int i = 0; i < V.rows(); ++i)
+                        for (int j = 0; j < V.cols(); ++j)
+                            w.push_back(conv(V.at(i, j)));
+                    blk.push_back(std::move(w));
+                }
             }
-        }
-        pair_table t = detail::c1_table_access::make_pair<T>(
-            src.rows(), src.cols(), std::move(blk));
-        return s.r2.insert(std::make_pair(k, std::move(t))).first->second;
+            pair_table t = detail::c1_table_access::make_pair<T>(
+                src.rows(), src.cols(), std::move(blk));
+            return t;
+        });
     }
     static const mat_table& mass_contracted(int a, int b) {
         return mat_entry2(st().massc, a, b, c1_registry::mass_contracted(a, b));
@@ -768,29 +758,27 @@ public:
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(k, l);
-        typename std::map<std::pair<int, int>, block_table>::iterator it =
-            s.lapm.find(key);
-        if (it != s.lapm.end()) return it->second;
-        block_table t = conv_block6(c1_registry::lap_mixed(k, l));
-        return s.lapm.insert(std::make_pair(key, std::move(t))).first->second;
+        return s.lapm.get_or_build(key, [&]() -> block_table {
+            return conv_block6(c1_registry::lap_mixed(k, l));
+        });
     }
 
 private:
-    struct state {
-        std::mutex mtx;
-        std::map<int, mat_table> dofm;
-        std::map<int, mat_table> basis;
-        std::map<int, mat_table> herm;
-        std::map<int, block_table> stiff;
-        std::map<int, block_table> d2c;
-        std::map<int, pair_table> r2;
-        std::map<std::pair<int, int>, mat_table> massc;
-        std::map<std::pair<int, int>, mat_table> loadc;
-        std::map<std::pair<int, int>, block_table> lapm;
+    // L4: shared detail::table_cache vessel (one mutex per T, unchanged)
+    struct maps {
+        detail::table_cache<int, mat_table> dofm;
+        detail::table_cache<int, mat_table> basis;
+        detail::table_cache<int, mat_table> herm;
+        detail::table_cache<int, block_table> stiff;
+        detail::table_cache<int, block_table> d2c;
+        detail::table_cache<int, pair_table> r2;
+        detail::table_cache<std::pair<int, int>, mat_table> massc;
+        detail::table_cache<std::pair<int, int>, mat_table> loadc;
+        detail::table_cache<std::pair<int, int>, block_table> lapm;
     };
+    typedef detail::table_cache_state<maps> state;
     static state& st() {
-        static state s;
-        return s;
+        return detail::table_cache_instance<state>();
     }
     static T conv(const detail::rational& r) {
         return convert_traits<T>::from_rational(r.num(), r.den());
@@ -824,25 +812,23 @@ private:
                                                    src.block_cols(),
                                                    std::move(blk));
     }
-    static const mat_table& mat_entry(std::map<int, mat_table>& m, int k,
-                                      const rt_mat_table& src) {
+    static const mat_table& mat_entry(detail::table_cache<int, mat_table>& m,
+                                      int k, const rt_mat_table& src) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, mat_table>::iterator it = m.find(k);
-        if (it != m.end()) return it->second;
-        mat_table t = conv_mat(src);
-        return m.insert(std::make_pair(k, std::move(t))).first->second;
+        return m.get_or_build(k, [&]() -> mat_table {
+            return conv_mat(src);
+        });
     }
-    static const mat_table& mat_entry2(std::map<std::pair<int, int>, mat_table>& m,
-                                       int a, int b, const rt_mat_table& src) {
+    static const mat_table& mat_entry2(
+        detail::table_cache<std::pair<int, int>, mat_table>& m,
+        int a, int b, const rt_mat_table& src) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(a, b);
-        typename std::map<std::pair<int, int>, mat_table>::iterator it =
-            m.find(key);
-        if (it != m.end()) return it->second;
-        mat_table t = conv_mat(src);
-        return m.insert(std::make_pair(key, std::move(t))).first->second;
+        return m.get_or_build(key, [&]() -> mat_table {
+            return conv_mat(src);
+        });
     }
 };
 

@@ -30,6 +30,7 @@
 #include <vcp/bfem/geometry.hpp>
 #include <vcp/bfem/element_op.hpp>
 #include <vcp/bfem/bpoly.hpp>
+#include <vcp/bfem/detail/scalar_traits.hpp>
 
 namespace vcp {
 namespace bfem {
@@ -96,6 +97,7 @@ public:
     broken_space(const mesh<D, T>& msh, int l)
         : l_(l), nv_(msh.num_vertices()), nt_(msh.num_elements()),
           nloc_(0), dm_(), geom_(), op_(), buf_(), loc_(), ub_(), vb_() {
+        bfem_scalar_traits<T>::require();   // C-1 contract (L4, additive)
         if (l < 0)
             throw std::invalid_argument("bfem::broken_space: l must be >= 0");
         nloc_ = coeff_registry<D>::indices(l).size();

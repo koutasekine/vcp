@@ -20,6 +20,7 @@
 
 #include <vcp/bfem/rational.hpp>
 #include <vcp/bfem/multi_index.hpp>
+#include <vcp/bfem/detail/table_cache.hpp>
 
 namespace vcp {
 namespace bfem {
@@ -205,10 +206,10 @@ public:
         check_deg(n, "basis_integral");
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, rational>::iterator it = s.integrals.find(n);
-        if (it != s.integrals.end()) return it->second;
-        rational w(detail::bigint(1), detail::binomial_cache::binom(n + D, D));
-        return s.integrals.insert(std::make_pair(n, std::move(w))).first->second;
+        return s.integrals.get_or_build(n, [&]() -> rational {
+            rational w(detail::bigint(1), detail::binomial_cache::binom(n + D, D));
+            return w;
+        });
     }
 
     // T2: precondition a >= 0, b >= 0
@@ -218,11 +219,9 @@ public:
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(a, b);
-        typename std::map<std::pair<int, int>, mass_table<D> >::iterator it =
-            s.mass.find(key);
-        if (it != s.mass.end()) return it->second;
-        mass_table<D> tbl = build_mass(s, a, b);
-        return s.mass.insert(std::make_pair(key, std::move(tbl))).first->second;
+        return s.mass.get_or_build(key, [&]() -> mass_table<D> {
+            return build_mass(s, a, b);
+        });
     }
 
     // T3: precondition m >= n >= 0 (m == n returns the identity table)
@@ -233,11 +232,9 @@ public:
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(n, m);
-        typename std::map<std::pair<int, int>, elevation_table<D> >::iterator it =
-            s.elev.find(key);
-        if (it != s.elev.end()) return it->second;
-        elevation_table<D> tbl = build_elevation(s, n, m);
-        return s.elev.insert(std::make_pair(key, std::move(tbl))).first->second;
+        return s.elev.get_or_build(key, [&]() -> elevation_table<D> {
+            return build_elevation(s, n, m);
+        });
     }
 
     // T4: precondition a >= 0, b >= 0
@@ -247,11 +244,9 @@ public:
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(a, b);
-        typename std::map<std::pair<int, int>, product_table<D> >::iterator it =
-            s.prod.find(key);
-        if (it != s.prod.end()) return it->second;
-        product_table<D> tbl = build_product(s, a, b);
-        return s.prod.insert(std::make_pair(key, std::move(tbl))).first->second;
+        return s.prod.get_or_build(key, [&]() -> product_table<D> {
+            return build_product(s, a, b);
+        });
     }
 
     // U1: shared index_map cache (every layer references the same instance)
@@ -263,17 +258,18 @@ public:
     }
 
 private:
-    struct state {
-        std::mutex mtx;
-        std::map<int, index_map<D> > imaps;
-        std::map<int, rational> integrals;
-        std::map<std::pair<int, int>, mass_table<D> > mass;
-        std::map<std::pair<int, int>, elevation_table<D> > elev;
-        std::map<std::pair<int, int>, product_table<D> > prod;
+    // L4: the vessel is the shared detail::table_cache (one mutex per
+    // registry, unchanged granularity; generation code untouched)
+    struct maps {
+        detail::table_cache<int, index_map<D> > imaps;
+        detail::table_cache<int, rational> integrals;
+        detail::table_cache<std::pair<int, int>, mass_table<D> > mass;
+        detail::table_cache<std::pair<int, int>, elevation_table<D> > elev;
+        detail::table_cache<std::pair<int, int>, product_table<D> > prod;
     };
+    typedef detail::table_cache_state<maps> state;
     static state& st() {
-        static state s;   // C++11 magic static: thread safe initialization
-        return s;
+        return detail::table_cache_instance<state>();
     }
     static void check_deg(int n, const char* where) {
         if (n < 0) {
@@ -286,9 +282,9 @@ private:
 
     // callers must hold s.mtx
     static const index_map<D>& indices_locked(state& s, int n) {
-        typename std::map<int, index_map<D> >::iterator it = s.imaps.find(n);
-        if (it != s.imaps.end()) return it->second;
-        return s.imaps.insert(std::make_pair(n, index_map<D>(n))).first->second;
+        return s.imaps.get_or_build(n, [&]() -> index_map<D> {
+            return index_map<D>(n);
+        });
     }
 
     // unrank all multi indices of degree n once (internal design 5.2:

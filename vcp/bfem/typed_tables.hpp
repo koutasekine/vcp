@@ -22,6 +22,7 @@
 #include <vcp/bfem/multi_index.hpp>
 #include <vcp/bfem/coeff_tables.hpp>
 #include <vcp/bfem/convert_traits.hpp>
+#include <vcp/bfem/detail/table_cache.hpp>
 
 namespace vcp {
 namespace bfem {
@@ -146,95 +147,92 @@ public:
     static const T& basis_integral(int n) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, T>::iterator it = s.integrals.find(n);
-        if (it != s.integrals.end()) return it->second;
-        const rational& w = coeff_registry<D>::basis_integral(n);
-        T v = conv(w);
-        return s.integrals.insert(std::make_pair(n, std::move(v))).first->second;
+        return s.integrals.get_or_build(n, [&]() -> T {
+            const rational& w = coeff_registry<D>::basis_integral(n);
+            T v = conv(w);
+            return v;
+        });
     }
 
     static const typed_mass_table<D, T>& mass(int a, int b) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(a, b);
-        typename std::map<std::pair<int, int>, typed_mass_table<D, T> >::iterator it =
-            s.mass.find(key);
-        if (it != s.mass.end()) return it->second;
-        const mass_table<D>& src = coeff_registry<D>::mass(a, b);
-        std::vector<T> v;
-        v.reserve(static_cast<std::size_t>(src.rows()) * static_cast<std::size_t>(src.cols()));
-        for (int i = 0; i < src.rows(); ++i)
-            for (int j = 0; j < src.cols(); ++j)
-                v.push_back(conv(src.at(i, j)));
-        typed_mass_table<D, T> tbl(a, b, src.rows(), src.cols(), std::move(v));
-        return s.mass.insert(std::make_pair(key, std::move(tbl))).first->second;
+        return s.mass.get_or_build(key, [&]() -> typed_mass_table<D, T> {
+            const mass_table<D>& src = coeff_registry<D>::mass(a, b);
+            std::vector<T> v;
+            v.reserve(static_cast<std::size_t>(src.rows()) * static_cast<std::size_t>(src.cols()));
+            for (int i = 0; i < src.rows(); ++i)
+                for (int j = 0; j < src.cols(); ++j)
+                    v.push_back(conv(src.at(i, j)));
+            typed_mass_table<D, T> tbl(a, b, src.rows(), src.cols(), std::move(v));
+            return tbl;
+        });
     }
 
     static const typed_elevation_table<D, T>& elevation(int n, int m) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(n, m);
-        typename std::map<std::pair<int, int>, typed_elevation_table<D, T> >::iterator it =
-            s.elev.find(key);
-        if (it != s.elev.end()) return it->second;
-        const elevation_table<D>& src = coeff_registry<D>::elevation(n, m);
-        std::vector<int> targets;
-        std::vector<T> coeffs;
-        std::size_t total = static_cast<std::size_t>(src.source_size())
-                            * static_cast<std::size_t>(src.row_length());
-        targets.reserve(total);
-        coeffs.reserve(total);
-        for (int i = 0; i < src.source_size(); ++i) {
-            typename elevation_table<D>::entry_range rr = src.row(i);
-            for (typename elevation_table<D>::entry_iterator p = rr.begin();
-                 p != rr.end(); ++p) {
-                typename elevation_table<D>::entry e = *p;
-                targets.push_back(e.target_rank);
-                coeffs.push_back(conv(*e.coeff));
+        return s.elev.get_or_build(key, [&]() -> typed_elevation_table<D, T> {
+            const elevation_table<D>& src = coeff_registry<D>::elevation(n, m);
+            std::vector<int> targets;
+            std::vector<T> coeffs;
+            std::size_t total = static_cast<std::size_t>(src.source_size())
+                                * static_cast<std::size_t>(src.row_length());
+            targets.reserve(total);
+            coeffs.reserve(total);
+            for (int i = 0; i < src.source_size(); ++i) {
+                typename elevation_table<D>::entry_range rr = src.row(i);
+                for (typename elevation_table<D>::entry_iterator p = rr.begin();
+                     p != rr.end(); ++p) {
+                    typename elevation_table<D>::entry e = *p;
+                    targets.push_back(e.target_rank);
+                    coeffs.push_back(conv(*e.coeff));
+                }
             }
-        }
-        typed_elevation_table<D, T> tbl(n, m, src.source_size(), src.target_size(),
-                                        src.row_length(),
-                                        std::move(targets), std::move(coeffs));
-        return s.elev.insert(std::make_pair(key, std::move(tbl))).first->second;
+            typed_elevation_table<D, T> tbl(n, m, src.source_size(), src.target_size(),
+                                            src.row_length(),
+                                            std::move(targets), std::move(coeffs));
+            return tbl;
+        });
     }
 
     static const typed_product_table<D, T>& product(int a, int b) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(a, b);
-        typename std::map<std::pair<int, int>, typed_product_table<D, T> >::iterator it =
-            s.prod.find(key);
-        if (it != s.prod.end()) return it->second;
-        const product_table<D>& src = coeff_registry<D>::product(a, b);
-        std::vector<T> c;
-        std::vector<int> t;
-        std::size_t total = static_cast<std::size_t>(src.rows())
-                            * static_cast<std::size_t>(src.cols());
-        c.reserve(total);
-        t.reserve(total);
-        for (int i = 0; i < src.rows(); ++i) {
-            for (int j = 0; j < src.cols(); ++j) {
-                c.push_back(conv(src.coeff(i, j)));
-                t.push_back(src.target_rank(i, j));
+        return s.prod.get_or_build(key, [&]() -> typed_product_table<D, T> {
+            const product_table<D>& src = coeff_registry<D>::product(a, b);
+            std::vector<T> c;
+            std::vector<int> t;
+            std::size_t total = static_cast<std::size_t>(src.rows())
+                                * static_cast<std::size_t>(src.cols());
+            c.reserve(total);
+            t.reserve(total);
+            for (int i = 0; i < src.rows(); ++i) {
+                for (int j = 0; j < src.cols(); ++j) {
+                    c.push_back(conv(src.coeff(i, j)));
+                    t.push_back(src.target_rank(i, j));
+                }
             }
-        }
-        typed_product_table<D, T> tbl(a, b, src.rows(), src.cols(),
-                                      std::move(c), std::move(t));
-        return s.prod.insert(std::make_pair(key, std::move(tbl))).first->second;
+            typed_product_table<D, T> tbl(a, b, src.rows(), src.cols(),
+                                          std::move(c), std::move(t));
+            return tbl;
+        });
     }
 
 private:
-    struct state {
-        std::mutex mtx;
-        std::map<int, T> integrals;
-        std::map<std::pair<int, int>, typed_mass_table<D, T> > mass;
-        std::map<std::pair<int, int>, typed_elevation_table<D, T> > elev;
-        std::map<std::pair<int, int>, typed_product_table<D, T> > prod;
+    // L4: shared detail::table_cache vessel (one mutex per D x T, unchanged)
+    struct maps {
+        detail::table_cache<int, T> integrals;
+        detail::table_cache<std::pair<int, int>, typed_mass_table<D, T> > mass;
+        detail::table_cache<std::pair<int, int>, typed_elevation_table<D, T> > elev;
+        detail::table_cache<std::pair<int, int>, typed_product_table<D, T> > prod;
     };
+    typedef detail::table_cache_state<maps> state;
     static state& st() {
-        static state s;
-        return s;
+        return detail::table_cache_instance<state>();
     }
     static T conv(const rational& r) {
         return convert_traits<T>::from_rational(r.num(), r.den());

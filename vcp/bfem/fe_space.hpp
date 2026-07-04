@@ -61,6 +61,7 @@
 #include <vcp/bfem/poly1.hpp>
 #include <vcp/bfem/geometry.hpp>
 #include <vcp/bfem/element_op.hpp>
+#include <vcp/bfem/detail/scalar_traits.hpp>
 
 namespace vcp {
 namespace bfem {
@@ -241,6 +242,7 @@ public:
     fe_space(const mesh<D, T>& msh, int n)
         : mesh_(msh), n_(n), topo_(), dmaps_(), geom_(), op_(),
           buf_(), uloc_(), vloc_(), wloc_(), cws_(), loc_() {
+        bfem_scalar_traits<T>::require();   // C-1 contract (L4, additive)
         if (n < 1)
             throw std::invalid_argument("bfem::fe_space: base degree must be >= 1");
         topo_ = detail::fe_space_backend<D>::topology_type::build(msh);

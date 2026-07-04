@@ -55,7 +55,7 @@
 #include <vcp/bfem/dofmap.hpp>            // general_family_tag
 #include <vcp/bfem/d3/s3_perm.hpp>
 #include <vcp/bfem/d3/topology3.hpp>      // tet_local / face_canonical_beta / mesh_topology3
-#include <vcp/bfem/rt/rational_la.hpp>    // rmat (generation time only)
+#include <vcp/bfem/detail/rational_la.hpp>    // rmat (generation time only)
 
 namespace vcp {
 namespace bfem {

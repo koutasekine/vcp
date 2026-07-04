@@ -6,10 +6,10 @@
 //
 //   R^{(ij)}_{ab} = n^2 * M^{n-1,n-1}[dm(a,i), dm(b,j)]   (0 on vanishing)
 //
-// Only the frozen L0 API (typed mass + derivative_map) is used; the cache is
-// a deliberate copy of the L0 pattern (magic static + mutex + std::map) so
-// that L0 stays frozen (V3; unification is a post-stabilization refactor
-// candidate, internal design 10.3).
+// Only the frozen L0 API (typed mass + derivative_map) is used. The cache
+// vessel is the shared detail::table_cache (the post-stabilization
+// unification announced in internal design 10.3, executed as L4 seam
+// alignment section 10-1; behavior and lock granularity unchanged).
 
 #ifndef VCP_BFEM_REF_STIFFNESS_HPP
 #define VCP_BFEM_REF_STIFFNESS_HPP
@@ -24,6 +24,7 @@
 #include <vcp/bfem/coeff_tables.hpp>
 #include <vcp/bfem/typed_tables.hpp>
 #include <vcp/bfem/bpoly.hpp>   // detail::deriv_cache
+#include <vcp/bfem/detail/table_cache.hpp>
 
 namespace vcp {
 namespace bfem {
@@ -54,20 +55,19 @@ public:
     static const tensor& get(int n) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, tensor>::iterator it = s.tensors.find(n);
-        if (it != s.tensors.end()) return it->second;
-        tensor t = build(n);
-        return s.tensors.insert(std::make_pair(n, std::move(t))).first->second;
+        return s.tensors.get_or_build(n, [&]() -> tensor {
+            return build(n);
+        });
     }
 
 private:
-    struct state {
-        std::mutex mtx;
-        std::map<int, tensor> tensors;
+    // L4: shared detail::table_cache vessel (one mutex per D x T, unchanged)
+    struct maps {
+        table_cache<int, tensor> tensors;
     };
+    typedef table_cache_state<maps> state;
     static state& st() {
-        static state s;
-        return s;
+        return table_cache_instance<state>();
     }
 
     static tensor build(int n) {

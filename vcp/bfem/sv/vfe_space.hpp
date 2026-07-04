@@ -51,6 +51,7 @@
 #include <vcp/bfem/fe_function.hpp>
 #include <vcp/bfem/fe_space.hpp>
 #include <vcp/bfem/geometry.hpp>
+#include <vcp/bfem/detail/scalar_traits.hpp>
 
 namespace vcp {
 namespace bfem {
@@ -122,6 +123,7 @@ public:
     vfe_space(const mesh<D, T>& msh, fe_space<D, T, P, SP>& scalar)
         : scalar_(&scalar), nv_(msh.num_vertices()), nt_(msh.num_elements()),
           geom_() {
+        bfem_scalar_traits<T>::require();   // C-1 contract (L4, additive)
         if (scalar.num_elements() != msh.num_elements())
             throw std::invalid_argument(
                 "bfem::vfe_space: fe_space is not built from this mesh");

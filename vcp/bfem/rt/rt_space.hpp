@@ -60,6 +60,7 @@
 #include <vcp/bfem/rt/rt_tables.hpp>
 #include <vcp/bfem/rt/rt_typed_tables.hpp>
 #include <vcp/bfem/rt/rt_element_op.hpp>
+#include <vcp/bfem/detail/scalar_traits.hpp>
 
 namespace vcp {
 namespace bfem {
@@ -214,6 +215,7 @@ public:
     // fe_space)
     rt_space(const mesh<D, T>& msh, int k)
         : k_(k), topo_(), dm_(), geom_(), op_(), buf_(), sloc_(), loc_() {
+        bfem_scalar_traits<T>::require();   // C-1 contract (L4, additive)
         if (k < 0)
             throw std::invalid_argument("bfem::rt_space: k must be >= 0");
         topo_ = BK::topology_type::build(msh);

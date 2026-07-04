@@ -27,6 +27,7 @@
 #include <vcp/bfem/rational.hpp>
 #include <vcp/bfem/convert_traits.hpp>
 #include <vcp/bfem/rt/rt_tables.hpp>
+#include <vcp/bfem/detail/table_cache.hpp>
 
 namespace vcp {
 namespace bfem {
@@ -72,147 +73,142 @@ public:
     static const basis_table& basis(int k) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, basis_table>::iterator it = s.basis.find(k);
-        if (it != s.basis.end()) return it->second;
-        const rt_basis_table& src = rt_registry<D>::basis(k);
-        std::vector<T> v;
-        v.reserve(static_cast<std::size_t>(src.rows())
-                  * static_cast<std::size_t>(src.cols()));
-        for (int i = 0; i < src.rows(); ++i)
-            for (int j = 0; j < src.cols(); ++j)
-                v.push_back(detail::rt_conv<T>(src.at(i, j)));
-        basis_table t = detail::rt_table_access::make_basis(
-            src.num_comp(), src.order(), src.comp_size(), src.dim(), std::move(v));
-        return s.basis.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.basis.get_or_build(k, [&]() -> basis_table {
+            const rt_basis_table& src = rt_registry<D>::basis(k);
+            std::vector<T> v;
+            v.reserve(static_cast<std::size_t>(src.rows())
+                      * static_cast<std::size_t>(src.cols()));
+            for (int i = 0; i < src.rows(); ++i)
+                for (int j = 0; j < src.cols(); ++j)
+                    v.push_back(detail::rt_conv<T>(src.at(i, j)));
+            basis_table t = detail::rt_table_access::make_basis(
+                src.num_comp(), src.order(), src.comp_size(), src.dim(), std::move(v));
+            return t;
+        });
     }
 
     static const div_table& divergence(int k) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, div_table>::iterator it = s.div.find(k);
-        if (it != s.div.end()) return it->second;
-        const rt_div_table& src = rt_registry<D>::divergence(k);
-        std::vector<T> v;
-        v.reserve(static_cast<std::size_t>(src.rows())
-                  * static_cast<std::size_t>(src.cols()));
-        for (int i = 0; i < src.rows(); ++i)
-            for (int j = 0; j < src.cols(); ++j)
-                v.push_back(detail::rt_conv<T>(src.at(i, j)));
-        div_table t = detail::rt_table_access::make_div(
-            src.order(), src.rows(), src.cols(), std::move(v));
-        return s.div.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.div.get_or_build(k, [&]() -> div_table {
+            const rt_div_table& src = rt_registry<D>::divergence(k);
+            std::vector<T> v;
+            v.reserve(static_cast<std::size_t>(src.rows())
+                      * static_cast<std::size_t>(src.cols()));
+            for (int i = 0; i < src.rows(); ++i)
+                for (int j = 0; j < src.cols(); ++j)
+                    v.push_back(detail::rt_conv<T>(src.at(i, j)));
+            div_table t = detail::rt_table_access::make_div(
+                src.order(), src.rows(), src.cols(), std::move(v));
+            return t;
+        });
     }
 
     static const flux_table& edge_flux(int k) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, flux_table>::iterator it = s.flux.find(k);
-        if (it != s.flux.end()) return it->second;
-        const rt_flux_table& src = rt_registry<D>::edge_flux(k);
-        const int kk = src.order();
-        const int dm = src.dim();
-        const int nfac = src.num_facets();
-        const int pf = src.per_facet();
-        std::vector<T> v;
-        v.reserve(static_cast<std::size_t>(nfac) * static_cast<std::size_t>(pf)
-                  * static_cast<std::size_t>(dm));
-        for (int e = 0; e < nfac; ++e)
-            for (int j = 0; j < pf; ++j)
-                for (int c = 0; c < dm; ++c)
-                    v.push_back(detail::rt_conv<T>(src.at(e, j, c)));
-        flux_table t = detail::rt_table_access::make_flux(kk, dm, nfac, pf,
-                                                          std::move(v));
-        return s.flux.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.flux.get_or_build(k, [&]() -> flux_table {
+            const rt_flux_table& src = rt_registry<D>::edge_flux(k);
+            const int kk = src.order();
+            const int dm = src.dim();
+            const int nfac = src.num_facets();
+            const int pf = src.per_facet();
+            std::vector<T> v;
+            v.reserve(static_cast<std::size_t>(nfac) * static_cast<std::size_t>(pf)
+                      * static_cast<std::size_t>(dm));
+            for (int e = 0; e < nfac; ++e)
+                for (int j = 0; j < pf; ++j)
+                    for (int c = 0; c < dm; ++c)
+                        v.push_back(detail::rt_conv<T>(src.at(e, j, c)));
+            flux_table t = detail::rt_table_access::make_flux(kk, dm, nfac, pf,
+                                                              std::move(v));
+            return t;
+        });
     }
 
     static const block_table& comp_mass(int k) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, block_table>::iterator it = s.cmass.find(k);
-        if (it != s.cmass.end()) return it->second;
-        block_table t = conv_block(rt_registry<D>::comp_mass(k));
-        return s.cmass.insert(std::make_pair(k, std::move(t))).first->second;
+        return s.cmass.get_or_build(k, [&]() -> block_table {
+            return conv_block(rt_registry<D>::comp_mass(k));
+        });
     }
 
     static const block_table& div_mass(int k, int l) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(k, l);
-        typename std::map<std::pair<int, int>, block_table>::iterator it =
-            s.dmass.find(key);
-        if (it != s.dmass.end()) return it->second;
-        block_table t = conv_block(rt_registry<D>::div_mass(k, l));
-        return s.dmass.insert(std::make_pair(key, std::move(t))).first->second;
+        return s.dmass.get_or_build(key, [&]() -> block_table {
+            return conv_block(rt_registry<D>::div_mass(k, l));
+        });
     }
 
     static const cross_table& cross_grad(int k, int n) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(k, n);
-        typename std::map<std::pair<int, int>, cross_table>::iterator it =
-            s.cross.find(key);
-        if (it != s.cross.end()) return it->second;
-        const rt_cross_table& src = rt_registry<D>::cross_grad(k, n);
-        const int nc = src.n_comp();
-        const int nv = src.n_vert();
-        std::vector<std::vector<T> > blk;
-        blk.reserve(static_cast<std::size_t>(nc) * static_cast<std::size_t>(nv));
-        for (int d = 0; d < nc; ++d) {
-            for (int i = 0; i < nv; ++i) {
-                rt_block_view<detail::rational> B = src.block(d, i);
-                std::vector<T> b;
-                b.reserve(static_cast<std::size_t>(B.rows())
-                          * static_cast<std::size_t>(B.cols()));
-                for (int r = 0; r < B.rows(); ++r)
-                    for (int c = 0; c < B.cols(); ++c)
-                        b.push_back(detail::rt_conv<T>(B.at(r, c)));
-                blk.push_back(std::move(b));
+        return s.cross.get_or_build(key, [&]() -> cross_table {
+            const rt_cross_table& src = rt_registry<D>::cross_grad(k, n);
+            const int nc = src.n_comp();
+            const int nv = src.n_vert();
+            std::vector<std::vector<T> > blk;
+            blk.reserve(static_cast<std::size_t>(nc) * static_cast<std::size_t>(nv));
+            for (int d = 0; d < nc; ++d) {
+                for (int i = 0; i < nv; ++i) {
+                    rt_block_view<detail::rational> B = src.block(d, i);
+                    std::vector<T> b;
+                    b.reserve(static_cast<std::size_t>(B.rows())
+                              * static_cast<std::size_t>(B.cols()));
+                    for (int r = 0; r < B.rows(); ++r)
+                        for (int c = 0; c < B.cols(); ++c)
+                            b.push_back(detail::rt_conv<T>(B.at(r, c)));
+                    blk.push_back(std::move(b));
+                }
             }
-        }
-        cross_table t = detail::rt_table_access::make_cross(
-            src.dim(), src.nn(), nv, std::move(blk));
-        return s.cross.insert(std::make_pair(key, std::move(t))).first->second;
+            cross_table t = detail::rt_table_access::make_cross(
+                src.dim(), src.nn(), nv, std::move(blk));
+            return t;
+        });
     }
 
     static const mat_table& cross_grad_contracted(int k, int n) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(k, n);
-        typename std::map<std::pair<int, int>, mat_table>::iterator it =
-            s.crossc.find(key);
-        if (it != s.crossc.end()) return it->second;
-        const rt_mat_table& src = rt_registry<D>::cross_grad_contracted(k, n);
-        mat_table t = detail::rt_table_access::make_mat(
-            src.rows(), src.cols(), detail::rt_conv_vec_mat<T>(src));
-        return s.crossc.insert(std::make_pair(key, std::move(t))).first->second;
+        return s.crossc.get_or_build(key, [&]() -> mat_table {
+            const rt_mat_table& src = rt_registry<D>::cross_grad_contracted(k, n);
+            mat_table t = detail::rt_table_access::make_mat(
+                src.rows(), src.cols(), detail::rt_conv_vec_mat<T>(src));
+            return t;
+        });
     }
 
     static const mat_table& inv_mass(int l) {
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
-        typename std::map<int, mat_table>::iterator it = s.invm.find(l);
-        if (it != s.invm.end()) return it->second;
-        const rt_mat_table& src = rt_registry<D>::inv_mass(l);
-        mat_table t = detail::rt_table_access::make_mat(
-            src.rows(), src.cols(), detail::rt_conv_vec_mat<T>(src));
-        return s.invm.insert(std::make_pair(l, std::move(t))).first->second;
+        return s.invm.get_or_build(l, [&]() -> mat_table {
+            const rt_mat_table& src = rt_registry<D>::inv_mass(l);
+            mat_table t = detail::rt_table_access::make_mat(
+                src.rows(), src.cols(), detail::rt_conv_vec_mat<T>(src));
+            return t;
+        });
     }
 
 private:
-    struct state {
-        std::mutex mtx;
-        std::map<int, basis_table> basis;
-        std::map<int, div_table> div;
-        std::map<int, flux_table> flux;
-        std::map<int, block_table> cmass;
-        std::map<std::pair<int, int>, block_table> dmass;
-        std::map<std::pair<int, int>, cross_table> cross;
-        std::map<std::pair<int, int>, mat_table> crossc;
-        std::map<int, mat_table> invm;
+    // L4: shared detail::table_cache vessel (one mutex per D x T, unchanged)
+    struct maps {
+        detail::table_cache<int, basis_table> basis;
+        detail::table_cache<int, div_table> div;
+        detail::table_cache<int, flux_table> flux;
+        detail::table_cache<int, block_table> cmass;
+        detail::table_cache<std::pair<int, int>, block_table> dmass;
+        detail::table_cache<std::pair<int, int>, cross_table> cross;
+        detail::table_cache<std::pair<int, int>, mat_table> crossc;
+        detail::table_cache<int, mat_table> invm;
     };
+    typedef detail::table_cache_state<maps> state;
     static state& st() {
-        static state s;
-        return s;
+        return detail::table_cache_instance<state>();
     }
 
     static block_table conv_block(const rt_block_table& src) {

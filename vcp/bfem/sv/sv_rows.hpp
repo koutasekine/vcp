@@ -50,7 +50,7 @@
 #include <vcp/bfem/coeff_tables.hpp>
 #include <vcp/bfem/dofmap.hpp>
 #include <vcp/bfem/d3/topology3.hpp>
-#include <vcp/bfem/rt/rational_la.hpp>
+#include <vcp/bfem/detail/rational_la.hpp>
 #include <vcp/bfem/sv/sv_constraint.hpp>
 #include <vcp/bfem/sv/sv_singular.hpp>
 
