@@ -14,6 +14,7 @@
 #include <cstddef>
 #include <limits>
 #include <new>
+#include <set>
 #include <type_traits>
 #include <vector>
 

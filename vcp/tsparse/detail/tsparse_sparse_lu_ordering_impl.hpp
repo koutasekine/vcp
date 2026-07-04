@@ -28,6 +28,10 @@
 #ifndef VCP_TSPARSE_SPARSE_LU_ORDERING_IMPL_HPP
 #define VCP_TSPARSE_SPARSE_LU_ORDERING_IMPL_HPP
 
+// NOTE: this file is textually injected INSIDE namespace vcp; every standard
+// header it needs must already be included by the injecting header BEFORE the
+// namespace opens (tsparse_sparse_lu.hpp includes <set> for SLU-OQ1).  The
+// includes below are no-op guards when that discipline is followed.
 #include <algorithm>
 #include <cstddef>
 #include <type_traits>
@@ -392,6 +396,39 @@ inline bool sparse_lu_amd_lists_equal(const std::vector<Index>& a,
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// SLU-OQ1: ordered candidate set for O(log n) pivot selection.
+//
+// `cand` holds exactly one (degree[i], i) pair for every selectable vertex i
+// (amd: alive && !is_element; colamd: col_alive).  Selection is *cand.begin()
+// = the lexicographic minimum of (degree, index), which is IDENTICAL to the
+// former ascending linear scan with strict-< update (first index attaining
+// the running minimum) -- design F1, so the emitted permutation is
+// bit-identical.  Every degree[] rewrite and every eligibility loss MUST go
+// through these two helpers so the stored degree and the set key never
+// diverge (Phase 0 inventory §2/§3 enumerates all call sites).
+// ---------------------------------------------------------------------------
+template <class Index>
+inline void sparse_lu_ordering_cand_update_degree_(
+    std::set<std::pair<Index, Index> >& cand,
+    std::vector<Index>& degree,
+    const Index i,
+    const Index new_degree)
+{
+    cand.erase(std::make_pair(degree[static_cast<std::size_t>(i)], i));
+    degree[static_cast<std::size_t>(i)] = new_degree;
+    cand.insert(std::make_pair(new_degree, i));
+}
+
+template <class Index>
+inline void sparse_lu_ordering_cand_retire_(
+    std::set<std::pair<Index, Index> >& cand,
+    const std::vector<Index>& degree,
+    const Index i)
+{
+    cand.erase(std::make_pair(degree[static_cast<std::size_t>(i)], i));
+}
+
 template <class Index>
 std::vector<Index> sparse_lu_amd_ordering(
     Index n,
@@ -441,6 +478,13 @@ std::vector<Index> sparse_lu_amd_ordering(
         members[i].push_back(static_cast<Index>(i));
     }
 
+    // SLU-OQ1: ordered candidate set (design D-1).  Invariant: one
+    // (degree[i], i) pair per selectable vertex (alive && !is_element).
+    std::set<std::pair<Index, Index> > cand;
+    for (Index i = Index(0); i < n; ++i) {
+        cand.insert(std::make_pair(degree[static_cast<std::size_t>(i)], i));
+    }
+
     std::vector<Index> order;
     order.reserve(un);
 
@@ -456,15 +500,11 @@ std::vector<Index> sparse_lu_amd_ordering(
 
     while (eliminated < n) {
         // ---- pivot selection: min approximate degree, tie-break smallest index.
-        Index p = Index(-1);
-        Index best = Index(0);
-        for (Index i = Index(0); i < n; ++i) {
-            if (!alive[static_cast<std::size_t>(i)]) continue;
-            if (is_element[static_cast<std::size_t>(i)]) continue;
-            const Index d = degree[static_cast<std::size_t>(i)];
-            if (p < Index(0) || d < best) { p = i; best = d; }
-        }
-        if (p < Index(0)) break;  // defensive: nothing selectable
+        // SLU-OQ1: *cand.begin() = lexicographic min of (degree, index) --
+        // identical to the former ascending linear scan (design F1), O(log n).
+        if (cand.empty()) break;  // defensive (was: p < 0 fallthrough)
+        const Index p = cand.begin()->second;
+        cand.erase(cand.begin());  // p becomes an element below (T-A1)
         const std::size_t up = static_cast<std::size_t>(p);
 
         // ---- form Lp = (A_var[p]) U (U_{e in E_elem[p]} V_elem[e]) \ {p}.
@@ -612,6 +652,7 @@ std::vector<Index> sparse_lu_amd_ordering(
                         sparse_lu_amd_sorted_remove_one(
                             A_var[static_cast<std::size_t>(A_var[uj][s])], j);
                     }
+                    sparse_lu_ordering_cand_retire_(cand, degree, j);  // T-A2
                     alive[uj] = 0;
                     nv[uj] = Index(0);
                     A_var[uj].clear();
@@ -647,7 +688,7 @@ std::vector<Index> sparse_lu_amd_ordering(
             if (dB < d) d = dB;
             if (dA < d) d = dA;
             if (d < Index(0)) d = Index(0);
-            degree[ui] = d;
+            sparse_lu_ordering_cand_update_degree_(cand, degree, lp[t], d);  // W-A2
         }
 
         // ---- emit the original variables represented by p, in member order.
@@ -796,6 +837,13 @@ std::vector<Index> sparse_lu_colamd_ordering(
         col_deg[uj] = cnt;
     }
 
+    // SLU-OQ1: ordered candidate set (design D-1).  Invariant: one
+    // (col_deg[j], j) pair per selectable column (col_alive).
+    std::set<std::pair<Index, Index> > cand;
+    for (Index j = Index(0); j < n; ++j) {
+        cand.insert(std::make_pair(col_deg[static_cast<std::size_t>(j)], j));
+    }
+
     std::vector<Index> order;
     order.reserve(un);
     Index next_elem = n;        // id of the next NEW element to create
@@ -803,14 +851,11 @@ std::vector<Index> sparse_lu_colamd_ordering(
 
     while (eliminated < n) {
         // ---- pivot: minimum external degree, tie-break smallest index (S-5).
-        Index p = Index(-1);
-        Index best = Index(0);
-        for (Index j = Index(0); j < n; ++j) {
-            if (!col_alive[static_cast<std::size_t>(j)]) continue;
-            const Index d = col_deg[static_cast<std::size_t>(j)];
-            if (p < Index(0) || d < best) { p = j; best = d; }
-        }
-        if (p < Index(0)) break;  // defensive
+        // SLU-OQ1: *cand.begin() = lexicographic min of (degree, index) --
+        // identical to the former ascending linear scan (design F1), O(log n).
+        if (cand.empty()) break;  // defensive (was: p < 0 fallthrough)
+        const Index p = cand.begin()->second;
+        cand.erase(cand.begin());  // p is eliminated below (T-C1)
         const std::size_t up = static_cast<std::size_t>(p);
 
         // ---- form Lp = union of V_elem[e] over e in E_col[p], live columns,
@@ -942,6 +987,7 @@ std::vector<Index> sparse_lu_colamd_ordering(
                         sparse_lu_amd_sorted_remove_one(
                             V_elem[static_cast<std::size_t>(E_col[uj][s])], j);
                     }
+                    sparse_lu_ordering_cand_retire_(cand, col_deg, j);  // T-C2
                     col_alive[uj] = 0;
                     nv[uj] = Index(0);
                     E_col[uj].clear();
@@ -969,7 +1015,7 @@ std::vector<Index> sparse_lu_colamd_ordering(
                     cnt += nv[uc];
                 }
             }
-            col_deg[uj] = cnt;
+            sparse_lu_ordering_cand_update_degree_(cand, col_deg, lp[t], cnt);  // W-C2
         }
     }
 
