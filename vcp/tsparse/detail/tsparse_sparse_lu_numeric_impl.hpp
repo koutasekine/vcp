@@ -203,6 +203,16 @@ baseline_sparse_gp_lu_factorize(
     const bool      do_partial_pivot =
         (opt.pivoting == sparse_lu_pivoting::threshold_partial);
 
+    // SLU-NQ2: reverse index  row -> stored L entries currently carrying that
+    // row index.  Maintained only when do_partial_pivot (F1: swaps cannot
+    // occur otherwise).  Each per-row list is sorted by col automatically
+    // (entries are appended while j increases; merge rebuild preserves it).
+    struct l_row_rec { Index col; Index pos; };   // pos: offset into L_*_buf
+    std::vector<std::vector<l_row_rec> > l_rows;  // size n when active
+    if (do_partial_pivot) {
+        l_rows.assign(static_cast<std::size_t>(n), std::vector<l_row_rec>());
+    }
+
     for (Index j = Index(0); j < n; ++j) {
         const std::size_t sj = static_cast<std::size_t>(j);
         pattern.clear();
@@ -320,31 +330,44 @@ baseline_sparse_gp_lu_factorize(
             inv_row_perm[static_cast<std::size_t>(r_j)] = pivot_pos;
             inv_row_perm[static_cast<std::size_t>(r_p)] = j;
 
-            // Swap L entries for rows j and pivot_pos in all previously stored L columns.
-            // Required because rows j and pivot_pos are exchanged: multipliers stored in
-            // L[:,k] for these positions must be updated to reflect the new row order.
-            for (Index k = Index(0); k < j; ++k) {
-                const std::size_t sk2 = static_cast<std::size_t>(k);
-                std::size_t idx_j = static_cast<std::size_t>(-1);
-                std::size_t idx_p = static_cast<std::size_t>(-1);
-                for (Index lp = L_col_ptr[sk2]; lp < L_col_ptr[sk2 + 1u]; ++lp) {
-                    const std::size_t slp = static_cast<std::size_t>(lp);
-                    if (L_row_ind_buf[slp] == j)
-                        idx_j = slp;
-                    else if (L_row_ind_buf[slp] == pivot_pos)
-                        idx_p = slp;
+            // SLU-NQ2: rewire rows j / pivot_pos using the reverse index
+            // instead of scanning every stored L column.  Two-pointer merge
+            // over the (col-sorted) lists reproduces the old per-column
+            // three-case semantics exactly:
+            //   col in both lists  -> swap VALUES (row indices unchanged;
+            //                          list membership unchanged)
+            //   col only in row j  -> rename index j -> pivot_pos; record
+            //                          migrates to pivot_pos's list
+            //   col only in pivot  -> rename pivot_pos -> j; record migrates
+            // Written values and indices are identical to the old full scan,
+            // so the final L buffers remain byte-identical.
+            {
+                std::vector<l_row_rec>& lj = l_rows[sj];
+                std::vector<l_row_rec>& lp = l_rows[sp];
+                std::vector<l_row_rec> nj, np;
+                nj.reserve(lj.size() + lp.size());
+                np.reserve(lj.size() + lp.size());
+                std::size_t a = 0u, b = 0u;
+                while (a < lj.size() || b < lp.size()) {
+                    if (b >= lp.size() ||
+                        (a < lj.size() && lj[a].col < lp[b].col)) {
+                        // col only in row j: rename j -> pivot_pos
+                        L_row_ind_buf[static_cast<std::size_t>(lj[a].pos)] = pivot_pos;
+                        np.push_back(lj[a]); ++a;
+                    } else if (a >= lj.size() || lp[b].col < lj[a].col) {
+                        // col only in pivot row: rename pivot_pos -> j
+                        L_row_ind_buf[static_cast<std::size_t>(lp[b].pos)] = j;
+                        nj.push_back(lp[b]); ++b;
+                    } else {
+                        // both rows in this column: swap values only
+                        std::swap(L_val_buf[static_cast<std::size_t>(lj[a].pos)],
+                                  L_val_buf[static_cast<std::size_t>(lp[b].pos)]);
+                        nj.push_back(lj[a]); ++a;
+                        np.push_back(lp[b]); ++b;
+                    }
                 }
-                if (idx_j != static_cast<std::size_t>(-1) &&
-                    idx_p != static_cast<std::size_t>(-1)) {
-                    // Both rows in column k: swap values (row indices remain)
-                    std::swap(L_val_buf[idx_j], L_val_buf[idx_p]);
-                } else if (idx_j != static_cast<std::size_t>(-1)) {
-                    // Only row j: rename to pivot_pos
-                    L_row_ind_buf[idx_j] = pivot_pos;
-                } else if (idx_p != static_cast<std::size_t>(-1)) {
-                    // Only row pivot_pos: rename to j
-                    L_row_ind_buf[idx_p] = j;
-                }
+                lj.swap(nj);
+                lp.swap(np);
             }
         } else {
             if (mark[sj] != j) {
@@ -398,6 +421,11 @@ baseline_sparse_gp_lu_factorize(
                 if (!sparse_lu_scalar_policy<T>::is_exact_zero(l_val)) {
                     L_row_ind_buf.push_back(i);
                     L_val_buf.push_back(l_val);
+                    // SLU-NQ2: O(1) reverse-index record per stored L entry.
+                    if (do_partial_pivot) {
+                        l_rows[si].push_back(l_row_rec{
+                            j, static_cast<Index>(L_row_ind_buf.size() - 1u) });
+                    }
                     ++l_cnt;
                 }
             }
