@@ -24,6 +24,7 @@
 #include <vcp/tsparse/tsparse_b_inner_lanczos.hpp>
 #include <vcp/tsparse/tsparse_hermitian_lanczos.hpp>
 #include <vcp/tsparse/tsparse_dense_fallback.hpp>
+#include <vcp/tsparse/tsparse_dense_schur_driver.hpp>
 #include <vcp/tsparse/tsparse_dense_linalg.hpp>
 #include <vcp/tsparse/tsparse_eigensolvers.hpp>
 #include <vcp/tsparse/tsparse_solvers.hpp>
@@ -473,6 +474,38 @@ static void check_dense_allowed_(const spmats<_T,_Index>& A, const eig_options<_
 // ---------------------------------------------------------------------------
 // 22. dense_eig_
 // ---------------------------------------------------------------------------
+// EIG-2 Phase 3 (D-13/D-15): the nonsymmetric REAL branch is the new
+// balancing + Hessenberg + real Schur core driver.  The complex-scalar
+// nonsymmetric branch keeps the legacy qr_eig_dense (non-Hermitian complex
+// dense is outside the EIG-2 scope; the real Schur core is real-T only).
+// The symmetric branch (jacobi_eig_dense) is untouched (B-21).
+template <typename _T, typename _Index>
+static eig_result<_T> dense_nonsymmetric_eig_(const std::vector<std::vector<_T> >& dense,
+                                              const eig_options<_T>& options,
+                                              std::true_type /* is_complex */)
+{
+    return convert_dense_result_<_T,_Index>(
+        vcp::tsparse_dense_linalg::qr_eig_dense(dense, options.max_iter, options.tol),
+        eig_solver_method::dense_fallback_explicit);
+}
+
+template <typename _T, typename _Index>
+static eig_result<_T> dense_nonsymmetric_eig_(const std::vector<std::vector<_T> >& dense,
+                                              const eig_options<_T>& options,
+                                              std::false_type /* is_complex */)
+{
+    std::string reason;
+    eig_result<_T> result = convert_dense_result_<_T,_Index>(
+        vcp::tsparse_dense_schur::real_schur_eig_dense(dense, options.tol, reason),
+        eig_solver_method::dense_fallback_explicit);
+    if (!result.converged && !reason.empty()) {
+        result.status         = "not_converged";
+        result.failure_reason = reason;
+        result.message        = reason;
+    }
+    return result;
+}
+
 template <typename _T, typename _Index>
 static eig_result<_T> dense_eig_(std::vector<std::vector<_T> > dense, const eig_options<_T>& options)
 {
@@ -481,9 +514,8 @@ static eig_result<_T> dense_eig_(std::vector<std::vector<_T> > dense, const eig_
         ? convert_dense_result_<_T,_Index>(
               vcp::tsparse_dense_linalg::jacobi_eig_dense(dense, options.max_iter, options.tol),
               eig_solver_method::dense_fallback_explicit)
-        : convert_dense_result_<_T,_Index>(
-              vcp::tsparse_dense_linalg::qr_eig_dense(dense, options.max_iter, options.tol),
-              eig_solver_method::dense_fallback_explicit);
+        : dense_nonsymmetric_eig_<_T,_Index>(dense, options,
+              typename std::integral_constant<bool, spmatrix_is_complex<_T>::value>::type());
     result.method           = eig_solver_method::dense_fallback_explicit;
     result.used_method      = eig_method_to_string_<_T,_Index>(eig_solver_method::dense_fallback_explicit);
     result.used_dense_fallback = true;
