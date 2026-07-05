@@ -450,108 +450,11 @@ struct sparse_lu_info {
     std::size_t supernodal_u_segment_count;    // U_segments.row_ind.size()
     std::size_t supernodal_storage_bytes;      // approximate byte footprint of supernodal storage
 
-    // SLU-8R.3 / SLU-8R.3.1: §17.2(A) supernode-panel left-looking update diagnostics.
-    //
-    // supernode_panel_update_executed: true iff §17.2(A) produced actual (k,j) update
-    //   pairs (update_count > 0 && scatter_count > 0).  SLU-8R.3.1: semantics changed
-    //   from "driver was called" to "actual updates applied".
-    //   false for baseline/auto factors and for matrices with no U off-diagonal structure.
-    //   NOTE: true here does NOT imply true_supernodal_numeric (historical marker; always false).
-    //
-    // supernode_panel_update_driver_called: true iff run_supernode_panel_leftlooking_update
-    //   was called (regardless of whether any updates actually occurred).
-    //   false for baseline/auto factors.
-    //
-    // supernode_panel_update_applied: same semantics as supernode_panel_update_executed.
-    //   true iff update_count > 0 && scatter_count > 0.
-    //
-    // supernode_panel_dense_kernel_called: true iff both trsm AND (gemm OR gemv)
-    //   were called at least once via the sparse_lu_dense_kernel adapter.
-    //
-    // supernode_panel_update_is_numeric_source: ALWAYS false.  Historical sub-phase
-    //   marker from SLU-8R.3 prototype design; genuine numeric source is tracked by
-    //   supernodal_storage_is_numeric_source / supernodal_true_numeric_success.
-    //
-    // supernode_panel_update_count: total (k,j) update pairs applied (update_count).
-    //
-    // supernode_panel_trsm_count: trsm calls via dense kernel adapter.
-    //
-    // supernode_panel_gemm_count: gemm calls via dense kernel adapter.
-    //
-    // supernode_panel_gemv_count: gemv calls (w_j==1) via dense kernel adapter.
-    //
-    // supernode_panel_scatter_count: scatter-back operations (workspace -> storage).
-    //
-    // supernode_panel_update_ticks: nanoseconds for §17.2(A) dense calls.
-    //
-    // supernode_panel_reach_conservative: false in SLU-8R.3.1 (exact U-segment criterion).
-    //
-    // symmetric_pruning_active: ALWAYS false in SLU-8R.3.1 (hook only).
-    //
-    // symmetric_pruning_pruned_edges: ALWAYS 0 in SLU-8R.3.1.
-    bool        supernode_panel_update_executed;
-    bool        supernode_panel_update_driver_called;  // SLU-8R.3.1
-    bool        supernode_panel_update_applied;         // SLU-8R.3.1 (== executed)
-    bool        supernode_panel_dense_kernel_called;    // SLU-8R.3.1
-    bool        supernode_panel_update_is_numeric_source;
-    std::size_t supernode_panel_update_count;
-    std::size_t supernode_panel_trsm_count;
-    std::size_t supernode_panel_gemm_count;
-    std::size_t supernode_panel_gemv_count;
-    std::size_t supernode_panel_scatter_count;          // SLU-8R.3.1
-    std::size_t supernode_panel_update_ticks;
-    bool        supernode_panel_reach_conservative;
-    bool        symmetric_pruning_active;
-    std::size_t symmetric_pruning_pruned_edges;
-
-    // SLU-8R.4: §17.2(B) within-panel factorization diagnostics.
-    //
-    // within_panel_factorization_executed: true iff run_within_panel_factorization
-    //   was called and the factorization loop ran over at least one supernode.
-    //   false for baseline/auto factors.
-    //
-    // within_panel_factorization_completed: true iff ALL supernode panels completed
-    //   without any zero-pivot abort (panels with near-zero are still counted).
-    //
-    // within_panel_factorization_is_numeric_source: ALWAYS false.  Historical
-    //   sub-phase marker from SLU-8R.4 prototype design.  The transitional §17.2(B)
-    //   run (on CSC-bootstrapped storage) is diagnostic; genuine numeric source and
-    //   §18.2 storage-native solve are governed by supernodal_storage_is_numeric_source
-    //   and supernodal_solve_native (set after A_eff-origin factorization, SLU-8R.5.5).
-    //
-    // within_panel_used_getrf: always false (§25 prohibition on getrf as pivot search).
-    //   §17.2(B) pivot search is explicit (not delegated to getrf).
-    //
-    // within_panel_pivot_search_count: explicit pivot searches over active rows.
-    //   NOT delegated to getrf. Each call to select_threshold_pivot increments by 1.
-    //
-    // within_panel_pivot_accept_count: diagonal accepted by threshold test.
-    // within_panel_pivot_reject_count: diagonal rejected; max-abs row used.
-    // within_panel_row_swap_count: row swaps actually applied (pivot_row != diag).
-    // within_panel_scale_count: columns where L-multiplier scaling was applied.
-    // within_panel_ger_count: rank-1 ger updates via dense_kernel adapter.
-    // within_panel_gemm_count: batch gemm updates (unused in SLU-8R.4 scalar path).
-    // within_panel_zero_pivot_count: pivot columns with abs(pivot) <= zero_tolerance.
-    // within_panel_near_zero_pivot_count: columns with abs(pivot) <= near_zero_tolerance.
-    // within_panel_inconclusive_pivot_count: non-finite encountered in active column.
-    // within_panel_update_ticks: nanoseconds for ger adapter calls (§17.2(B) timing).
-    bool        within_panel_factorization_executed;
-    bool        within_panel_factorization_completed;
-    bool        within_panel_factorization_is_numeric_source;
-    bool        within_panel_used_getrf;
-    std::size_t within_panel_pivot_search_count;
-    std::size_t within_panel_pivot_accept_count;
-    std::size_t within_panel_pivot_reject_count;
-    std::size_t within_panel_row_swap_count;
-    std::size_t within_panel_scale_count;
-    std::size_t within_panel_ger_count;
-    std::size_t within_panel_gemm_count;
-    std::size_t within_panel_zero_pivot_count;
-    std::size_t within_panel_near_zero_pivot_count;
-    std::size_t within_panel_inconclusive_pivot_count;
-    std::size_t within_panel_update_ticks;
-    // SLU-8R.4.1: worst pivot event seen during §17.2(B); != success when any abnormal event occurs.
-    within_panel_factor_status within_panel_status;
+    // [SLU-CLN1 C1, 2026-07-05] The transitional §17.2(A)/(B) prototype
+    // diagnostics (supernode_panel_update_* / within_panel_* fields,
+    // symmetric_pruning_* hooks) were REMOVED together with the prototype
+    // pass.  Production §17.2 diagnostics are the supernodal_true_numeric_*
+    // counters below.
 
     // SLU-8R.5.5: True numeric source switch diagnostics.
     //
@@ -683,36 +586,6 @@ struct sparse_lu_info {
           supernodal_panel_value_count(0),
           supernodal_u_segment_count(0),
           supernodal_storage_bytes(0),
-          supernode_panel_update_executed(false),
-          supernode_panel_update_driver_called(false),
-          supernode_panel_update_applied(false),
-          supernode_panel_dense_kernel_called(false),
-          supernode_panel_update_is_numeric_source(false),
-          supernode_panel_update_count(0),
-          supernode_panel_trsm_count(0),
-          supernode_panel_gemm_count(0),
-          supernode_panel_gemv_count(0),
-          supernode_panel_scatter_count(0),
-          supernode_panel_update_ticks(0),
-          supernode_panel_reach_conservative(false),
-          symmetric_pruning_active(false),
-          symmetric_pruning_pruned_edges(0),
-          within_panel_factorization_executed(false),
-          within_panel_factorization_completed(false),
-          within_panel_factorization_is_numeric_source(false),
-          within_panel_used_getrf(false),
-          within_panel_pivot_search_count(0),
-          within_panel_pivot_accept_count(0),
-          within_panel_pivot_reject_count(0),
-          within_panel_row_swap_count(0),
-          within_panel_scale_count(0),
-          within_panel_ger_count(0),
-          within_panel_gemm_count(0),
-          within_panel_zero_pivot_count(0),
-          within_panel_near_zero_pivot_count(0),
-          within_panel_inconclusive_pivot_count(0),
-          within_panel_update_ticks(0),
-          within_panel_status(within_panel_factor_status::not_run),
           supernodal_true_numeric_attempted(false),
           supernodal_true_numeric_success(false),
           supernodal_values_initialized_from_A(false),
@@ -1415,10 +1288,11 @@ solve_baseline_storage_supernode_aware_diag_block(
     const std::vector<T>& b);
 
 // SLU-8R.3: §17.2(A) supernode-panel update statistics.
-// Defined here (not in the impl file) so that sparse_lu_factorization::set_panel_update_info_
-// can use it inline inside the class body.
 // Accumulates counts and timing for trsm + gemm/gemv adapter calls during
-// run_supernode_panel_leftlooking_update().
+// panel updates.  Shared struct: filled by the production true-numeric driver
+// and by test helpers.  (Its original consumer, the transitional driver
+// run_supernode_panel_leftlooking_update + set_panel_update_info_, was
+// removed by SLU-CLN1, 2026-07-05.)
 // SLU-8R.3.1: added driver_called, update_applied, dense_kernel_called.
 struct supernode_panel_update_stats {
     std::size_t panel_count;         // supernodes with non-empty update sets
@@ -1441,7 +1315,7 @@ struct supernode_panel_update_stats {
     std::size_t gemm_dim_hist[8];    // bucket by min(m,n,k); see sparse_lu_info
     bool used_conservative_reach;    // false: exact U-segment criterion used
     bool symmetric_pruning_active;   // ALWAYS false in SLU-8R.3 (hook only)
-    bool driver_called;              // run_supernode_panel_leftlooking_update was called
+    bool driver_called;              // [SLU-CLN1] historical; prototype driver removed (production driver does not set this)
     bool update_applied;             // update_count > 0 && scatter_count > 0
     bool dense_kernel_called;        // trsm > 0 && (gemm + gemv) > 0
 
@@ -1480,7 +1354,7 @@ inline int gemm_dim_bucket(std::size_t d) {
 // can use it inline inside the class body.
 // Accumulates counts and timing for §17.2(B) pivot search, row swap, scale, and ger calls.
 struct within_panel_factor_stats {
-    bool executed;           // run_within_panel_factorization was called
+    bool executed;           // [SLU-CLN1] set by factorize_within_panel_single (production §17.2(B))
     bool completed;          // all panels completed without zero-pivot abort
     bool is_numeric_source;  // always false (historical sub-phase marker; transitional stats)
     bool used_getrf;         // always false (§25 prohibition on getrf as pivot search)
@@ -1820,15 +1694,6 @@ public:
         return info_.supernodal_solve_native;
     }
 
-    // SLU-8R.3: returns true iff §17.2(A) panel update was applied to panel_values.
-    // True for method=supernodal after SLU-8R.3.
-    // NOTE: true does NOT imply true_supernodal_numeric (historical marker; always false).
-    //   panel_values here contain transitional §17.2(A) values on CSC-bootstrapped storage.
-    //   Genuine numeric source is tracked by supernodal_storage_is_numeric_source.
-    bool supernode_panel_update_executed() const {
-        return info_.supernode_panel_update_executed;
-    }
-
     // SLU-10: returns the numeric supernode metadata built from actual CSC L/U.
     // valid() is false for non-supernodal factors.
     const sparse_lu_supernode_numeric<T, Index>& supernode_numeric_info() const {
@@ -1888,6 +1753,15 @@ public:
             vcp::throw_error<vcp::state_error>(
                 "sparse_lu_factorization::solve: factor is not valid (status=",
                 sparse_lu_status_to_string(info_.status), ")");
+        }
+        // [SLU-CLN2 C1, 2026-07-05] Validate the RHS size once for ALL dispatch
+        // priorities.  Priority 1 (supernodal native) previously called the
+        // size-unchecked internal helper directly, silently returning an
+        // indeterminate solution from an out-of-bounds read when
+        // b.size() != n (issue_SLU_native_solve_rhs_size_gap.md).
+        if (static_cast<Index>(b.size()) != info_.n) {
+            vcp::throw_error<vcp::invalid_argument>(
+                "sparse_lu_factorization::solve: b.size() != n");
         }
         // SLU-8R.5.5.1 DISPATCH PRIORITY 1: §18.2 storage-native supernodal solve.
         // Checked BEFORE uses_supernodal_prototype_ so that accepted A_eff-origin
@@ -2019,38 +1893,7 @@ private:
         info.supernodal_panel_value_count             = 0;
         info.supernodal_u_segment_count               = 0;
         info.supernodal_storage_bytes                 = 0;
-        // SLU-8R.3 / SLU-8R.3.1: no panel update for baseline test-injection path.
-        info.supernode_panel_update_executed          = false;
-        info.supernode_panel_update_driver_called     = false;
-        info.supernode_panel_update_applied           = false;
-        info.supernode_panel_dense_kernel_called      = false;
-        info.supernode_panel_update_is_numeric_source = false;
-        info.supernode_panel_update_count             = 0;
-        info.supernode_panel_trsm_count               = 0;
-        info.supernode_panel_gemm_count               = 0;
-        info.supernode_panel_gemv_count               = 0;
-        info.supernode_panel_scatter_count            = 0;
-        info.supernode_panel_update_ticks             = 0;
-        info.supernode_panel_reach_conservative       = false;
-        info.symmetric_pruning_active                 = false;
-        info.symmetric_pruning_pruned_edges           = 0;
-        // SLU-8R.4: no within-panel factorization for baseline test-injection path.
-        info.within_panel_factorization_executed          = false;
-        info.within_panel_factorization_completed         = false;
-        info.within_panel_factorization_is_numeric_source = false;
-        info.within_panel_used_getrf                      = false;
-        info.within_panel_pivot_search_count              = 0;
-        info.within_panel_pivot_accept_count              = 0;
-        info.within_panel_pivot_reject_count              = 0;
-        info.within_panel_row_swap_count                  = 0;
-        info.within_panel_scale_count                     = 0;
-        info.within_panel_ger_count                       = 0;
-        info.within_panel_gemm_count                      = 0;
-        info.within_panel_zero_pivot_count                = 0;
-        info.within_panel_near_zero_pivot_count           = 0;
-        info.within_panel_inconclusive_pivot_count        = 0;
-        info.within_panel_update_ticks                    = 0;
-        info.within_panel_status = within_panel_factor_status::not_run;
+        // [SLU-CLN1 C1] transitional §17.2(A)/(B) prototype fields removed.
         info_ = info;
     }
 
@@ -2143,87 +1986,11 @@ private:
         info_.supernodal_storage_bytes = bytes;
     }
 
-    // SLU-8R.3: store §17.2(A) panel update diagnostics.
-    // Must be called AFTER set_supernodal_storage_info_ so info_ has supernodal fields.
-    //
-    // Populated from supernode_panel_update_stats returned by
-    // run_supernode_panel_leftlooking_update().
-    //
-    // SLU-8R.3 constraints (enforced by construction of the stats struct):
-    //   supernode_panel_update_is_numeric_source is always false (historical sub-phase marker).
-    //   true_supernodal_numeric remains false (historical conformance marker; always false).
-    //   symmetric_pruning_active is always false (hook only in SLU-8R.3).
-    //   At this point, CSC baseline is numeric source; A_eff-origin step follows later.
-    //
-    // dense_kernel_time_ticks is incremented by panel_stats.dense_kernel_ticks so
-    // that §17.2(A) timing accumulates alongside §17.2(A)-pre SLU-8R.1 ticks.
-    void set_panel_update_info_(
-        const sparse_lu_detail::supernode_panel_update_stats& panel_stats,
-        bool panel_update_ran)
-    {
-        // SLU-8R.3.1: driver_called = ran; applied/executed = actual updates.
-        info_.supernode_panel_update_driver_called     = panel_update_ran;
-        info_.supernode_panel_update_applied           = panel_stats.update_applied;
-        info_.supernode_panel_dense_kernel_called      = panel_stats.dense_kernel_called;
-        // executed: now means update_applied (actual updates, not just driver called).
-        info_.supernode_panel_update_executed          = panel_stats.update_applied;
-        // supernode_panel_update_is_numeric_source: false -- historical sub-phase marker.
-        info_.supernode_panel_update_is_numeric_source = false;
-        info_.supernode_panel_update_count             = panel_stats.update_count;
-        info_.supernode_panel_trsm_count               = panel_stats.trsm_count;
-        info_.supernode_panel_gemm_count               = panel_stats.gemm_count;
-        info_.supernode_panel_gemv_count               = panel_stats.gemv_count;
-        info_.supernode_panel_scatter_count            = panel_stats.scatter_count;
-        info_.supernode_panel_update_ticks             = panel_stats.dense_kernel_ticks;
-        info_.supernode_panel_reach_conservative       = panel_stats.used_conservative_reach;
-        // Symmetric pruning hook: always false in SLU-8R.3.1 (not implemented).
-        info_.symmetric_pruning_active                 = false;
-        info_.symmetric_pruning_pruned_edges           = 0;
-        // Accumulate §17.2(A) ticks into the global dense kernel timer.
-        info_.dense_kernel_time_ticks += panel_stats.dense_kernel_ticks;
-    }
-
-    // SLU-8R.4: store §17.2(B) within-panel factorization diagnostics.
-    // Must be called AFTER set_panel_update_info_ so that dense_kernel_time_ticks
-    // already includes §17.2(A) ticks (this adds §17.2(B) on top).
-    //
-    // SLU-8R.4 constraints (enforced by construction of within_panel_factor_stats):
-    //   within_panel_factorization_is_numeric_source is always false (historical sub-phase
-    //     marker; genuine solve path is governed by supernodal_solve_native, set after
-    //     the A_eff-origin factorization step by set_supernodal_solve_info_).
-    //   true_supernodal_numeric remains false (historical conformance marker; always false).
-    //   within_panel_used_getrf is always false (§25 prohibition on getrf as pivot search).
-    //   supernodal_solve_native: not yet finalized here; finalized by set_supernodal_solve_info_
-    //     (called after A_eff-origin step).  §18.2 storage-native solve is implemented.
-    //   Gate 6 is resolved by the subsequent A_eff-origin factorization (SLU-8R.5.5).
-    //   issue_SLU8_contract_violation.md: OPEN.
-    void set_within_panel_factor_info_(
-        const sparse_lu_detail::within_panel_factor_stats& wpf_stats,
-        bool wpf_ran)
-    {
-        info_.within_panel_factorization_executed          = wpf_ran && wpf_stats.executed;
-        info_.within_panel_factorization_completed         = wpf_stats.completed;
-        // Historical sub-phase marker; always false.
-        info_.within_panel_factorization_is_numeric_source = false;
-        // Always false (§25 prohibition on getrf as pivot search).
-        info_.within_panel_used_getrf                      = false;
-        info_.within_panel_pivot_search_count              = wpf_stats.pivot_search_count;
-        info_.within_panel_pivot_accept_count              = wpf_stats.pivot_accept_count;
-        info_.within_panel_pivot_reject_count              = wpf_stats.pivot_reject_count;
-        info_.within_panel_row_swap_count                  = wpf_stats.row_swap_count;
-        info_.within_panel_scale_count                     = wpf_stats.scale_count;
-        info_.within_panel_ger_count                       = wpf_stats.ger_count;
-        info_.within_panel_gemm_count                      = wpf_stats.gemm_count;
-        info_.within_panel_zero_pivot_count                = wpf_stats.zero_pivot_count;
-        info_.within_panel_near_zero_pivot_count           = wpf_stats.near_zero_pivot_count;
-        info_.within_panel_inconclusive_pivot_count        = wpf_stats.inconclusive_pivot_count;
-        info_.within_panel_update_ticks                    = wpf_stats.dense_kernel_ticks;
-        // SLU-8R.4.1: Propagate worst event status. not_run if wpf did not execute.
-        info_.within_panel_status = wpf_ran ? wpf_stats.worst_status
-                                            : within_panel_factor_status::not_run;
-        // Accumulate §17.2(B) ger ticks into global dense kernel timer.
-        info_.dense_kernel_time_ticks += wpf_stats.dense_kernel_ticks;
-    }
+    // [SLU-CLN1 C1, 2026-07-05] set_panel_update_info_ /
+    // set_within_panel_factor_info_ (transitional §17.2(A)/(B) prototype
+    // diagnostics capture) REMOVED together with the prototype pass and the
+    // prototype-only info fields.  Production §17.2 diagnostics are the
+    // supernodal_true_numeric_* counters (set_true_numeric_info_ below).
 
     // SLU-8R.5.5: store true-numeric factorization diagnostics.
     // Called AFTER factorize_supernodal_from_a_eff() returns, passing the
@@ -2428,38 +2195,7 @@ private:
         info.supernodal_solve_status_value = valid_for_native
             ? supernodal_solve_status::storage_native_success
             : supernodal_solve_status::invalid_storage;
-        // Within-panel: not run (test factory bypasses §17.2)
-        info.within_panel_status = within_panel_factor_status::not_run;
-        // All other flags: 0/false
-        info.supernode_panel_update_executed          = false;
-        info.supernode_panel_update_driver_called     = false;
-        info.supernode_panel_update_applied           = false;
-        info.supernode_panel_dense_kernel_called      = false;
-        info.supernode_panel_update_is_numeric_source = false;
-        info.supernode_panel_update_count             = 0;
-        info.supernode_panel_trsm_count               = 0;
-        info.supernode_panel_gemm_count               = 0;
-        info.supernode_panel_gemv_count               = 0;
-        info.supernode_panel_scatter_count            = 0;
-        info.supernode_panel_update_ticks             = 0;
-        info.supernode_panel_reach_conservative       = false;
-        info.symmetric_pruning_active                 = false;
-        info.symmetric_pruning_pruned_edges           = 0;
-        info.within_panel_factorization_executed          = false;
-        info.within_panel_factorization_completed         = false;
-        info.within_panel_factorization_is_numeric_source = false;
-        info.within_panel_used_getrf                      = false;
-        info.within_panel_pivot_search_count              = 0;
-        info.within_panel_pivot_accept_count              = 0;
-        info.within_panel_pivot_reject_count              = 0;
-        info.within_panel_row_swap_count                  = 0;
-        info.within_panel_scale_count                     = 0;
-        info.within_panel_ger_count                       = 0;
-        info.within_panel_gemm_count                      = 0;
-        info.within_panel_zero_pivot_count                = 0;
-        info.within_panel_near_zero_pivot_count           = 0;
-        info.within_panel_inconclusive_pivot_count        = 0;
-        info.within_panel_update_ticks                    = 0;
+        // [SLU-CLN1 C1] transitional §17.2(A)/(B) prototype fields removed.
         info_ = info;
     }
 
@@ -2496,38 +2232,7 @@ private:
         info.supernodal_panel_value_count             = 0;
         info.supernodal_u_segment_count               = 0;
         info.supernodal_storage_bytes                 = 0;
-        // SLU-8R.3 / SLU-8R.3.1: no panel update for baseline/auto path.
-        info.supernode_panel_update_executed          = false;
-        info.supernode_panel_update_driver_called     = false;
-        info.supernode_panel_update_applied           = false;
-        info.supernode_panel_dense_kernel_called      = false;
-        info.supernode_panel_update_is_numeric_source = false;
-        info.supernode_panel_update_count             = 0;
-        info.supernode_panel_trsm_count               = 0;
-        info.supernode_panel_gemm_count               = 0;
-        info.supernode_panel_gemv_count               = 0;
-        info.supernode_panel_scatter_count            = 0;
-        info.supernode_panel_update_ticks             = 0;
-        info.supernode_panel_reach_conservative       = false;
-        info.symmetric_pruning_active                 = false;
-        info.symmetric_pruning_pruned_edges           = 0;
-        // SLU-8R.4: no within-panel factorization for baseline/auto path.
-        info.within_panel_factorization_executed          = false;
-        info.within_panel_factorization_completed         = false;
-        info.within_panel_factorization_is_numeric_source = false;
-        info.within_panel_used_getrf                      = false;
-        info.within_panel_pivot_search_count              = 0;
-        info.within_panel_pivot_accept_count              = 0;
-        info.within_panel_pivot_reject_count              = 0;
-        info.within_panel_row_swap_count                  = 0;
-        info.within_panel_scale_count                     = 0;
-        info.within_panel_ger_count                       = 0;
-        info.within_panel_gemm_count                      = 0;
-        info.within_panel_zero_pivot_count                = 0;
-        info.within_panel_near_zero_pivot_count           = 0;
-        info.within_panel_inconclusive_pivot_count        = 0;
-        info.within_panel_update_ticks                    = 0;
-        info.within_panel_status = within_panel_factor_status::not_run;
+        // [SLU-CLN1 C1] transitional §17.2(A)/(B) prototype fields removed.
         info_ = info;
     }
 
@@ -3448,6 +3153,289 @@ sparse_lu_build_supernode_symbolic_csc(
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// sparse_lu_build_supernode_symbolic_from_l   [SLU-SNA1 P1-B, D-2/D-4]
+//
+// Constructs supernode symbolic metadata for the SUPERNODAL path from the
+// ACTUAL GP L pattern (baseline CSC L, pivoted row space), replacing the
+// A-pattern approximation of sparse_lu_build_supernode_symbolic_csc as the
+// partition source of the supernodal pipeline (D-3: baseline paths keep the
+// A-pattern builder).
+//
+// Motivation (SLU-SNA1 Phase 0): the A-pattern merge rule degenerates via
+// trivially-satisfied empty-set comparisons (below sets both empty), producing
+// width-n (SNQ1) or width-0.065n (SNQ3) supernodes whose w x (w + |L union|)
+// panel envelopes explode.  The L-pattern fundamental rule merges j and j+1 iff
+//   1. j+1 == min below(j)                (L parent adjacency; below(j) nonempty)
+//   2. below(j) \ {j+1} == below(j+1)     (exact SET equality, not counts)
+// where below(j) = { r : L(r, j) != 0 } (strictly lower, pivoted rows).
+// Condition 1 requires a nonempty below(j), so the empty-set degeneracy is
+// structurally impossible.  Condition 2 gives exact nesting within a supernode:
+//   below(first) ⊇ below(first+1) ⊇ ... ⊇ below(last),
+// hence the per-supernode L-row union consumed by the storage bootstrap
+// (build_supernode_numeric_from_csc -> l_row_ind) equals below(first_col)
+// exactly: the panel is the true fill envelope (D-4) with zero slack.
+//
+// Output mirrors sparse_lu_build_supernode_symbolic_csc:
+//   supernode_ptr / column_to_supernode : partition (fundamental + relaxation)
+//   parent[s]  = supernode of min below(last_col_of_s), or -1 (root)
+//   row_ind[s] = sorted unique ORIGINAL row ids (row_perm[new] = old) of
+//                { below(c) : c in supernode } ∪ diagonal block rows.
+//     Mapping to original ids keeps the retained-supernode_info convention
+//     consumed by gate5 accountability (which maps back by inv_row_perm);
+//     coverage of the bootstrap panel rows holds with equality (design §7).
+//   supernode_relaxation: same greedy amalgamation semantics as the A-pattern
+//     builder (added panel slots per column <= relaxation), evaluated on
+//     L-pattern rows.  Default 0 keeps the fundamental partition exactly.
+//
+// Returns invalid (valid==false) if n < 0, CSC L is malformed, or row_perm
+// size mismatches; callers fall back to the A-pattern info in that case.
+// ---------------------------------------------------------------------------
+template <class T, class Index>
+sparse_lu_supernode_symbolic<Index>
+sparse_lu_build_supernode_symbolic_from_l(
+    Index n,
+    const baseline_lu_storage<T, Index>& csc_lu,
+    std::size_t supernode_relaxation = 0u)
+{
+    static_assert(std::is_signed<Index>::value,
+                  "sparse_lu_build_supernode_symbolic_from_l: Index must be signed");
+
+    sparse_lu_supernode_symbolic<Index> result;
+    result.valid = false;
+
+    if (n < Index(0)) return result;
+    if (!sparse_lu_is_valid_csc_storage(csc_lu.L, n, n)) return result;
+
+    const std::size_t un = static_cast<std::size_t>(n);
+    if (csc_lu.row_perm.size() != un) return result;
+
+    if (n == Index(0)) {
+        result.supernode_ptr.push_back(Index(0));
+        result.row_ptr.push_back(Index(0));
+        result.valid = true;
+        return result;
+    }
+
+    // ---- Sorted-unique per-column below sets from actual CSC L ----
+    // below(j) = { r : L(r, j) != 0 }; strictly lower (r > j) by the GP
+    // emission invariant (kept defensively by the r > j filter).
+    std::vector<Index> below_ptr(un + 1u, Index(0));
+    std::vector<Index> below_rows;
+    below_rows.reserve(csc_lu.L.row_ind.size());
+    {
+        std::vector<Index> tmp;
+        for (Index j = Index(0); j < n; ++j) {
+            const std::size_t sj = static_cast<std::size_t>(j);
+            tmp.clear();
+            for (Index k = csc_lu.L.col_ptr[sj];
+                 k < csc_lu.L.col_ptr[sj + 1u]; ++k) {
+                const Index r = csc_lu.L.row_ind[static_cast<std::size_t>(k)];
+                if (r > j) tmp.push_back(r);
+            }
+            std::sort(tmp.begin(), tmp.end());
+            tmp.erase(std::unique(tmp.begin(), tmp.end()), tmp.end());
+            below_ptr[sj] = static_cast<Index>(below_rows.size());
+            below_rows.insert(below_rows.end(), tmp.begin(), tmp.end());
+        }
+        below_ptr[un] = static_cast<Index>(below_rows.size());
+    }
+
+    // ---- Fundamental merge rule on actual L below sets ----
+    const std::size_t n_pairs = un - 1u;
+    std::vector<bool> same_sn(n_pairs, false);
+    for (Index j = Index(0); j + Index(1) < n; ++j) {
+        const std::size_t sj = static_cast<std::size_t>(j);
+        const Index pb = below_ptr[sj];
+        const Index pe = below_ptr[sj + 1u];
+        // Condition 1: below(j) nonempty and its minimum is j+1.
+        if (pb == pe) continue;
+        if (below_rows[static_cast<std::size_t>(pb)] != j + Index(1)) continue;
+        // Condition 2: below(j) \ {j+1} == below(j+1) as sorted sets.
+        const Index qb = below_ptr[sj + 1u];
+        const Index qe = below_ptr[sj + 2u];
+        if ((pe - pb) - Index(1) != (qe - qb)) continue;
+        bool equal = true;
+        for (Index t = Index(0); t < qe - qb; ++t) {
+            if (below_rows[static_cast<std::size_t>(pb + Index(1) + t)] !=
+                below_rows[static_cast<std::size_t>(qb + t)]) {
+                equal = false;
+                break;
+            }
+        }
+        if (equal) same_sn[sj] = true;
+    }
+
+    // ---- Fundamental supernode column boundaries ----
+    std::vector<Index> fundamental_sn_ptr;
+    fundamental_sn_ptr.push_back(Index(0));
+    for (Index j = Index(0); j + Index(1) < n; ++j) {
+        if (!same_sn[static_cast<std::size_t>(j)]) {
+            fundamental_sn_ptr.push_back(j + Index(1));
+        }
+    }
+    fundamental_sn_ptr.push_back(n);
+
+    // ---- Relaxed amalgamation (same semantics as the A-pattern builder):
+    // greedily merge adjacent fundamental supernodes when the merge adds no
+    // more than supernode_relaxation panel slots per column relative to each
+    // fundamental panel footprint ({c} ∪ below(c) per column, pivoted rows).
+    std::vector<Index> sn_ptr = fundamental_sn_ptr;
+    if (supernode_relaxation > 0u && fundamental_sn_ptr.size() > 2u) {
+        const std::size_t nf = fundamental_sn_ptr.size() - 1u;
+
+        std::vector<std::vector<Index> > fund_rows(nf);
+        for (std::size_t f = 0u; f < nf; ++f) {
+            const Index b = fundamental_sn_ptr[f];
+            const Index e = fundamental_sn_ptr[f + 1u];
+            std::vector<Index> rows;
+            for (Index c = b; c < e; ++c) {
+                rows.push_back(c);
+                const std::size_t sc = static_cast<std::size_t>(c);
+                for (Index k = below_ptr[sc]; k < below_ptr[sc + 1u]; ++k) {
+                    rows.push_back(below_rows[static_cast<std::size_t>(k)]);
+                }
+            }
+            std::sort(rows.begin(), rows.end());
+            rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+            fund_rows[f].swap(rows);
+        }
+
+        std::vector<Index> relaxed_sn_ptr;
+        relaxed_sn_ptr.push_back(Index(0));
+
+        std::size_t f = 0u;
+        while (f < nf) {
+            std::vector<Index> current_rows = fund_rows[f];
+            std::size_t next = f + 1u;
+
+            while (next < nf) {
+                std::vector<Index> candidate_rows = current_rows;
+                candidate_rows.insert(candidate_rows.end(),
+                                      fund_rows[next].begin(),
+                                      fund_rows[next].end());
+                std::sort(candidate_rows.begin(), candidate_rows.end());
+                candidate_rows.erase(
+                    std::unique(candidate_rows.begin(), candidate_rows.end()),
+                    candidate_rows.end());
+
+                bool merge_ok = true;
+                for (std::size_t g = f; g <= next && merge_ok; ++g) {
+                    std::size_t added = 0u;
+                    std::size_t ib = 0u;
+                    for (std::size_t ia = 0u; ia < candidate_rows.size(); ++ia) {
+                        const Index r = candidate_rows[ia];
+                        while (ib < fund_rows[g].size() && fund_rows[g][ib] < r) {
+                            ++ib;
+                        }
+                        if (ib >= fund_rows[g].size() || fund_rows[g][ib] != r) {
+                            ++added;
+                            if (added > supernode_relaxation) {
+                                merge_ok = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!merge_ok) break;
+                current_rows.swap(candidate_rows);
+                ++next;
+            }
+
+            relaxed_sn_ptr.push_back(fundamental_sn_ptr[next]);
+            f = next;
+        }
+
+        sn_ptr.swap(relaxed_sn_ptr);
+    }
+
+    const Index nsup = static_cast<Index>(sn_ptr.size()) - Index(1);
+
+    // ---- column_to_supernode ----
+    std::vector<Index> col_to_sn(un, Index(-1));
+    for (Index s = Index(0); s < nsup; ++s) {
+        const std::size_t ss = static_cast<std::size_t>(s);
+        const Index b = sn_ptr[ss];
+        const Index e = sn_ptr[ss + 1u];
+        for (Index c = b; c < e; ++c) {
+            col_to_sn[static_cast<std::size_t>(c)] = s;
+        }
+    }
+
+    // ---- Supernode parent: supernode of min below(last_col), or -1.
+    // min below(last_col) > last_col >= col_end - 1, so the parent column is
+    // always outside supernode s (forward-parent invariant holds); the walk
+    // below is defensive, mirroring the A-pattern builder.
+    std::vector<Index> sn_parent(static_cast<std::size_t>(nsup), Index(-1));
+    for (Index s = Index(0); s < nsup; ++s) {
+        const std::size_t ss = static_cast<std::size_t>(s);
+        Index pcol;
+        {
+            const Index last_col = sn_ptr[ss + 1u] - Index(1);
+            const std::size_t sl = static_cast<std::size_t>(last_col);
+            pcol = (below_ptr[sl] == below_ptr[sl + 1u])
+                       ? Index(-1)
+                       : below_rows[static_cast<std::size_t>(below_ptr[sl])];
+        }
+        if (pcol == Index(-1)) {
+            sn_parent[ss] = Index(-1);
+        } else {
+            Index ps = col_to_sn[static_cast<std::size_t>(pcol)];
+            while (ps == s) {
+                const std::size_t sp = static_cast<std::size_t>(pcol);
+                pcol = (below_ptr[sp] == below_ptr[sp + 1u])
+                           ? Index(-1)
+                           : below_rows[static_cast<std::size_t>(below_ptr[sp])];
+                if (pcol == Index(-1)) { ps = Index(-1); break; }
+                ps = col_to_sn[static_cast<std::size_t>(pcol)];
+            }
+            sn_parent[ss] = ps;
+        }
+    }
+
+    // ---- Row pattern per supernode: union of below(c) over the supernode's
+    // columns plus the diagonal block rows, mapped to ORIGINAL row ids via
+    // row_perm[new] = old, sorted unique.  For the fundamental partition the
+    // union equals below(first_col) by nesting; the union form also stays
+    // correct under relaxation-merged supernodes.
+    std::vector<Index> sn_row_ptr;
+    std::vector<Index> sn_row_ind;
+    sn_row_ptr.push_back(Index(0));
+
+    for (Index s = Index(0); s < nsup; ++s) {
+        const std::size_t ss = static_cast<std::size_t>(s);
+        const Index b = sn_ptr[ss];
+        const Index e = sn_ptr[ss + 1u];
+
+        std::vector<Index> rows;
+        for (Index c = b; c < e; ++c) {
+            rows.push_back(csc_lu.row_perm[static_cast<std::size_t>(c)]);
+            const std::size_t sc = static_cast<std::size_t>(c);
+            for (Index k = below_ptr[sc]; k < below_ptr[sc + 1u]; ++k) {
+                rows.push_back(csc_lu.row_perm[static_cast<std::size_t>(
+                    below_rows[static_cast<std::size_t>(k)])]);
+            }
+        }
+        std::sort(rows.begin(), rows.end());
+        rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+
+        for (std::size_t ri = 0u; ri < rows.size(); ++ri) {
+            sn_row_ind.push_back(rows[ri]);
+        }
+        sn_row_ptr.push_back(static_cast<Index>(sn_row_ind.size()));
+    }
+
+    result.supernode_ptr       = sn_ptr;
+    result.column_to_supernode = col_to_sn;
+    result.parent              = sn_parent;
+    result.row_ptr             = sn_row_ptr;
+    result.row_ind             = sn_row_ind;
+    result.valid               = true;
+
+    return result;
+}
+
 // ===========================================================================
 // SLU-8: Symbolic supernode reach metadata builder
 // ===========================================================================
@@ -3748,7 +3736,12 @@ bool sparse_lu_is_valid_supernode_numeric(
 // Included after tsparse_sparse_lu_supernodal_storage_bootstrap_impl.hpp so
 // that supernodal_lu_storage<T, Index> and sparse_lu_dense_kernel<T> are
 // fully defined and implemented (dense_kernel_impl.hpp included at line ~788).
-// Provides run_supernode_panel_leftlooking_update in namespace sparse_lu_detail.
+// Provides the shared panel-update machinery in namespace sparse_lu_detail:
+// compute_panel_update_set (3-arg), panel workspace gather/apply/scatter,
+// sparse_lu_build_col_to_supernode_, and the SN-OPT helpers.  These are called
+// by the production true-numeric driver (tsparse_sparse_lu_true_numeric_impl.hpp).
+// (The transitional §17.2(A) driver run_supernode_panel_leftlooking_update was
+// removed by SLU-CLN1, 2026-07-05.)
 //
 // SCOPE BOUNDARY:
 //   §17.2(A): IMPLEMENTED (supernode-panel update, trsm + gemm/gemv via adapter).
@@ -3763,7 +3756,12 @@ bool sparse_lu_is_valid_supernode_numeric(
 // Included after tsparse_sparse_lu_supernode_panel_update_impl.hpp so that
 // supernodal_lu_storage<T, Index>, sparse_lu_dense_kernel<T>, and
 // sparse_lu_scalar_policy<T> are all in scope.
-// Provides run_within_panel_factorization in namespace sparse_lu_detail.
+// Provides factorize_within_panel_single and the shared within-panel parts
+// (workspace, pivot search, row swap, L-multiplier scale, rank-1 update,
+// scatter) in namespace sparse_lu_detail, called per-panel by the production
+// true-numeric driver (tsparse_sparse_lu_true_numeric_impl.hpp).
+// (The transitional §17.2(B) driver run_within_panel_factorization was
+// removed by SLU-CLN1, 2026-07-05.)
 //
 // SCOPE BOUNDARY:
 //   §17.2(B): IMPLEMENTED (pivot search over active panel height, threshold pivoting,
@@ -4670,9 +4668,22 @@ sparse_lu_numeric(
             // SLU-10: if explicit supernodal requested, build prototype numeric metadata
             // from actual CSC L/U (not from symbolic panel_row_ind).
             if (opt.method == sparse_lu_method::supernodal) {
+                // SLU-SNA1 P1-B (D-2/D-3/D-4): the supernodal path derives its
+                // partition from the ACTUAL GP L pattern instead of the A-pattern
+                // approximation (whose empty-set merge degeneracy caused SNQ1/SNQ3).
+                // The retained supernode_info is replaced so gate5 / supernode-aware
+                // consumers see the partition the panels actually use (design §7).
+                // Baseline paths keep the A-pattern info set above (D-3); on builder
+                // failure the A-pattern info remains the safe fallback.
+                sparse_lu_supernode_symbolic<Index> sn_sym_l =
+                    sparse_lu_build_supernode_symbolic_from_l(
+                        n, num_result.storage, opt.supernode_relaxation);
+                const sparse_lu_supernode_symbolic<Index>& sn_partition =
+                    sn_sym_l.valid ? sn_sym_l : sym.supernode_info;
+                fac.set_supernode_info_(sn_partition);
                 sparse_lu_supernode_numeric<T, Index> sn_num =
                     sparse_lu_detail::build_supernode_numeric_from_csc(
-                        n, num_result.storage, sym.supernode_info);
+                        n, num_result.storage, sn_partition);
                 // SLU-8R.1: Production dense kernel connection.
                 // Apply adapter to actual U diagonal blocks from CSC-backed sn_num metadata.
                 // At this step, CSC baseline is still numeric source (transitional phase);
@@ -4693,55 +4704,15 @@ sparse_lu_numeric(
                 supernodal_lu_storage<T, Index> sn_storage =
                     sparse_lu_detail::bootstrap_supernodal_storage_from_csc(
                         n, num_result.storage, sn_num, add_alignment_padding);
-                // SLU-8R.3: §17.2(A) supernode-panel left-looking update.
-                // Applied BEFORE set_supernodal_storage_info_ so that panel_values
-                // in the stored supernodal_ contains §17.2(A)-updated values.
-                // SLU-8R.7.1: the "applied" diagnostic is authoritative in
-                // sparse_lu_info (info.supernode_panel_update_applied), set via
-                // set_panel_update_info_ from panel_stats; no storage flag.
-                // true_numeric_source remains false at this transitional-phase step;
-                // resolved by the A_eff-origin factorization (SLU-8R.5.5) below.
-                // CSC baseline is numeric source until that step completes.
-                sparse_lu_detail::supernode_panel_update_stats panel_stats;
-                bool panel_update_ran = false;
-                if (sn_storage.valid) {
-                    panel_stats = sparse_lu_detail::run_supernode_panel_leftlooking_update(
-                        sn_storage);
-                    panel_update_ran = true;
-                }
-                // SLU-8R.4: §17.2(B) within-panel factorization (transitional phase).
-                // Applied AFTER §17.2(A) panel update; modifies panel_values in-place.
-                // true_numeric_source remains false at this transitional step;
-                // resolved by the A_eff-origin factorization (SLU-8R.5.5) below.
-                // within_panel_factorization_is_numeric_source = false (historical marker).
-                // within_panel_used_getrf = false (§25 prohibition, explicit pivot search).
-                sparse_lu_detail::within_panel_factor_stats wpf_stats;
-                bool wpf_ran = false;
-                if (sn_storage.valid) {
-                    wpf_stats = sparse_lu_detail::run_within_panel_factorization(
-                        sn_storage, opt);
-                    wpf_ran = true;
-                }
+                // [SLU-CLN1 C1, 2026-07-05] The transitional §17.2(A)/(B) prototype
+                // pass (run_supernode_panel_leftlooking_update +
+                // run_within_panel_factorization + re-bootstrap) that previously ran
+                // here was REMOVED: its storage mutations were discarded by an
+                // idempotent re-bootstrap (proven bit-exact,
+                // sandbox/tmp/cln1_rebootstrap_idem.cpp), so the production
+                // true-numeric input below is unchanged.  Production §17.2(A)/(B)
+                // diagnostics live in the supernodal_true_numeric_* (tn) counters.
                 fac.set_supernodal_storage_info_(sn_storage);
-                fac.set_panel_update_info_(panel_stats, panel_update_ran);
-                fac.set_within_panel_factor_info_(wpf_stats, wpf_ran);
-                // SLU-8R.7 / R.7.1 B1 repair invariant:
-                // Transitional/prototype §17.2(A)/(B) above may mutate
-                // sn_storage.row_perm (within-panel row swaps in
-                // scatter_within_panel_factor) and supernode row_indices for
-                // diagnostics. Before A_eff-origin true-numeric factorization,
-                // sn_storage is re-bootstrapped from the CSC baseline so the
-                // canonical row_perm is restored and a_eff_lookup returns correct
-                // values. This re-bootstrap boundary separates diagnostic/prototype
-                // storage from the final A_eff-origin true-numeric source storage.
-                // Do not insert row_perm-dependent production logic between this
-                // boundary and sparse_lu_factorize_supernodal_from_a_eff().
-                // SLU-8R.7.1: §17.2(A)/(B) diagnostics were already captured into
-                // sparse_lu_info above; they are NOT re-derived from final storage.
-                if (sn_storage.valid) {
-                    sn_storage = sparse_lu_detail::bootstrap_supernodal_storage_from_csc(
-                        n, num_result.storage, sn_num, add_alignment_padding);
-                }
                 // SLU-MF2: opt-in self-symbolic dense-front structure for the
                 // multifrontal numeric source. Replaces the GP-exact bootstrap
                 // structure with the dense multifrontal (relaxed/AMD) fill so wide
@@ -4903,9 +4874,17 @@ sparse_lu_factorize_with_info(
             // SLU-10: if explicit supernodal requested, build prototype numeric metadata
             // from actual CSC L/U (not from symbolic panel_row_ind).
             if (opt.method == sparse_lu_method::supernodal) {
+                // SLU-SNA1 P1-B (D-2/D-3/D-4): L-pattern partition for the
+                // supernodal path; same wiring as sparse_lu_numeric (see there).
+                sparse_lu_supernode_symbolic<Index> sn_sym_l =
+                    sparse_lu_build_supernode_symbolic_from_l(
+                        info.n, num_result.storage, opt.supernode_relaxation);
+                const sparse_lu_supernode_symbolic<Index>& sn_partition =
+                    sn_sym_l.valid ? sn_sym_l : sym.supernode_info;
+                fac.set_supernode_info_(sn_partition);
                 sparse_lu_supernode_numeric<T, Index> sn_num =
                     sparse_lu_detail::build_supernode_numeric_from_csc(
-                        info.n, num_result.storage, sym.supernode_info);
+                        info.n, num_result.storage, sn_partition);
                 // SLU-8R.1: Production dense kernel connection.
                 // Apply adapter to actual U diagonal blocks from CSC-backed sn_num metadata.
                 // At this step, CSC baseline is still numeric source (transitional phase);
@@ -4926,55 +4905,11 @@ sparse_lu_factorize_with_info(
                 supernodal_lu_storage<T, Index> sn_storage =
                     sparse_lu_detail::bootstrap_supernodal_storage_from_csc(
                         info.n, num_result.storage, sn_num, add_alignment_padding);
-                // SLU-8R.3: §17.2(A) supernode-panel left-looking update.
-                // Applied BEFORE set_supernodal_storage_info_ so that panel_values
-                // in the stored supernodal_ contains §17.2(A)-updated values.
-                // SLU-8R.7.1: the "applied" diagnostic is authoritative in
-                // sparse_lu_info (info.supernode_panel_update_applied), set via
-                // set_panel_update_info_ from panel_stats; no storage flag.
-                // true_numeric_source remains false at this transitional-phase step;
-                // resolved by the A_eff-origin factorization (SLU-8R.5.5) below.
-                // CSC baseline is numeric source until that step completes.
-                sparse_lu_detail::supernode_panel_update_stats panel_stats;
-                bool panel_update_ran = false;
-                if (sn_storage.valid) {
-                    panel_stats = sparse_lu_detail::run_supernode_panel_leftlooking_update(
-                        sn_storage);
-                    panel_update_ran = true;
-                }
-                // SLU-8R.4: §17.2(B) within-panel factorization (transitional phase).
-                // Applied AFTER §17.2(A) panel update; modifies panel_values in-place.
-                // true_numeric_source remains false at this transitional step;
-                // resolved by the A_eff-origin factorization (SLU-8R.5.5) below.
-                // within_panel_factorization_is_numeric_source = false (historical marker).
-                // within_panel_used_getrf = false (§25 prohibition, explicit pivot search).
-                sparse_lu_detail::within_panel_factor_stats wpf_stats;
-                bool wpf_ran = false;
-                if (sn_storage.valid) {
-                    wpf_stats = sparse_lu_detail::run_within_panel_factorization(
-                        sn_storage, opt);
-                    wpf_ran = true;
-                }
+                // [SLU-CLN1 C1, 2026-07-05] Transitional §17.2(A)/(B) prototype pass
+                // REMOVED (see the matching block in sparse_lu_numeric): its output
+                // was discarded by an idempotent re-bootstrap, so the production
+                // true-numeric input below is unchanged.
                 fac.set_supernodal_storage_info_(sn_storage);
-                fac.set_panel_update_info_(panel_stats, panel_update_ran);
-                fac.set_within_panel_factor_info_(wpf_stats, wpf_ran);
-                // SLU-8R.7 / R.7.1 B1 repair invariant:
-                // Transitional/prototype §17.2(A)/(B) above may mutate
-                // sn_storage.row_perm (within-panel row swaps in
-                // scatter_within_panel_factor) and supernode row_indices for
-                // diagnostics. Before A_eff-origin true-numeric factorization,
-                // sn_storage is re-bootstrapped from the CSC baseline so the
-                // canonical row_perm is restored and a_eff_lookup returns correct
-                // values. This re-bootstrap boundary separates diagnostic/prototype
-                // storage from the final A_eff-origin true-numeric source storage.
-                // Do not insert row_perm-dependent production logic between this
-                // boundary and sparse_lu_factorize_supernodal_from_a_eff().
-                // SLU-8R.7.1: §17.2(A)/(B) diagnostics were already captured into
-                // sparse_lu_info above; they are NOT re-derived from final storage.
-                if (sn_storage.valid) {
-                    sn_storage = sparse_lu_detail::bootstrap_supernodal_storage_from_csc(
-                        info.n, num_result.storage, sn_num, add_alignment_padding);
-                }
                 // SLU-MF2: opt-in self-symbolic dense-front structure (see the
                 // matching block in sparse_lu_factorize). Non-destructive.
                 if (sn_storage.valid && opt.supernodal_self_symbolic &&

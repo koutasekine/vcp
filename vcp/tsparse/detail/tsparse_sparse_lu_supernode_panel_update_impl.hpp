@@ -15,9 +15,10 @@
 //     the workspace (before panel rows). Uses u_seg_col_ptr for per-column lookup.
 //   - scatter_panel_workspace: writes U rows back to U_segments and panel rows
 //     back to panel_values.
-//   - run_supernode_panel_leftlooking_update: sets stats.update_applied only when
-//     actual updates occurred (update_count > 0), and sets driver_called/applied/
-//     dense_kernel_called in stats.
+//   - run_supernode_panel_leftlooking_update: [removed by SLU-CLN1, 2026-07-05]
+//     (transitional §17.2(A) driver; see the removal note at the end of this
+//     file. The production driver is the interleaved loop in
+//     tsparse_sparse_lu_true_numeric_impl.hpp.)
 //     SLU-8R.7.1: the §17.2(A) "applied" diagnostic is authoritative in
 //     sparse_lu_info (info.supernode_panel_update_applied), not in storage.
 //
@@ -153,86 +154,11 @@ struct supernode_update_set {
 // Do NOT redefine it here.
 
 // ---------------------------------------------------------------------------
-// compute_panel_update_set<T, Index>
-//
-// SLU-8R.3.1 FIXED panel symbolic reachability: determines the set of prior
-// supernodes that update current supernode j's panel.
-//
-// FIXED CRITERION (U-segment rows):
-//   Supernode k < j updates j iff j's U_segments contain at least one
-//   global row r such that:
-//     supernodes[k].first_col <= r < supernodes[k].first_col + supernodes[k].num_cols
-//
-//   U_segment rows are rows < col_begin_j (off-diagonal U entries for j's columns).
-//   k < j means col_end_k <= col_begin_j, so U_segment rows CAN be in k's range.
-//
-//   This is the correct criterion for §17.2(A): K has a non-zero U connection
-//   to J iff J's U_segment contains a row in K's column range.
-//
-// PREVIOUS BROKEN CRITERION (row_indices):
-//   row_indices contains rows >= col_begin_j. For k < j, k's range is < col_begin_j.
-//   Intersection was always empty → update_count was always 0.
-//
-// Returns: supernode_update_set with updating_supernodes in ascending order.
+// [SLU-CLN1 C1, 2026-07-05] The slow 2-argument compute_panel_update_set
+// (O(nsup) scan per supernode) was REMOVED: dead code since SLU-SNA1 P1-A
+// switched its last caller to the SLU-SN-OPT fast overload below (verified
+// equivalent by sandbox/tmp/sna1_snopt_equiv.cpp ALL_MATCH).
 // ---------------------------------------------------------------------------
-template <class T, class Index>
-supernode_update_set<Index>
-compute_panel_update_set(
-    const supernodal_lu_storage<T, Index>& storage,
-    Index current_supernode)
-{
-    supernode_update_set<Index> result;
-
-    if (!storage.valid) return result;
-    const std::size_t nsup = storage.supernodes.size();
-    const std::size_t j    = static_cast<std::size_t>(current_supernode);
-    if (j >= nsup) return result;
-
-    // Get J's U_segment entry range.
-    if (j + 1u >= storage.U_segments.seg_ptr.size()) return result;
-    const Index j_seg_begin = storage.U_segments.seg_ptr[j];
-    const Index j_seg_end   = storage.U_segments.seg_ptr[j + 1u];
-
-    if (j_seg_begin >= j_seg_end) {
-        // No U_segment rows for J → no prior supernodes can contribute.
-        result.conservative = false;
-        return result;
-    }
-
-    // Collect unique U_segment rows for J (may have duplicates: one per column).
-    std::vector<Index> u_rows_j(
-        storage.U_segments.row_ind.begin() +
-            static_cast<std::ptrdiff_t>(j_seg_begin),
-        storage.U_segments.row_ind.begin() +
-            static_cast<std::ptrdiff_t>(j_seg_end));
-    std::sort(u_rows_j.begin(), u_rows_j.end());
-    u_rows_j.erase(
-        std::unique(u_rows_j.begin(), u_rows_j.end()),
-        u_rows_j.end());
-
-    // For each prior supernode k, check if any U_row_j is in k's column range.
-    for (std::size_t k = 0u; k < j; ++k) {
-        const supernode_desc<Index>& desc_k = storage.supernodes[k];
-        const Index col_begin_k = desc_k.first_col;
-        const Index col_end_k   = col_begin_k + desc_k.num_cols;
-
-        if (col_begin_k >= col_end_k) continue;
-
-        // Binary search in sorted u_rows_j for first row >= col_begin_k.
-        typename std::vector<Index>::const_iterator it =
-            std::lower_bound(u_rows_j.begin(), u_rows_j.end(), col_begin_k);
-
-        if (it != u_rows_j.end() && *it < col_end_k) {
-            result.updating_supernodes.push_back(static_cast<Index>(k));
-        }
-    }
-
-    result.conservative             = false;  // exact U-segment criterion
-    result.symmetric_pruning_active = false;  // SLU-8R.3.1: hook only
-    result.pruned_edges             = 0u;
-
-    return result;
-}
 
 // ---------------------------------------------------------------------------
 // compute_panel_update_set<T, Index>  (SLU-SN-OPT fast overload)
@@ -833,88 +759,47 @@ void scatter_panel_workspace(
 }
 
 // ---------------------------------------------------------------------------
-// run_supernode_panel_leftlooking_update<T, Index>
+// sparse_lu_build_col_to_supernode_<T, Index>
 //
-// SLU-8R.3.1 FIXED top-level §17.2(A) driver.
-//
-// Changes from SLU-8R.3:
-//   - stats.driver_called = true (always set at entry)
-//   - compute_panel_update_set uses U_segment rows → update_count > 0 for
-//     matrices with off-diagonal U structure (previously always 0)
-//   - stats.update_applied = true only when update_count > 0 (SLU-8R.7.1:
-//     authoritative as info.supernode_panel_update_applied; no storage flag)
-//   - stats.update_applied, stats.dense_kernel_called computed at end
-//
-// For each supernode j in forward order:
-//   1. Compute update set via U-segment criterion.
-//   2. If non-empty: gather workspace (U + panel rows).
-//   3. Apply updates from each k in update set (trsm + gemm/gemv via adapter).
-//   4. Scatter updated workspace back to U_segments and panel_values.
-//
-// After completing all supernodes:
-//   stats.update_applied        = (update_count > 0)  [SLU-8R.7.1: info-side]
-//   storage.true_numeric_source = false (unchanged; §17.2(B) PENDING)
+// SLU-SNA1 P1-A: O(n) column -> supernode reverse map for the SLU-SN-OPT fast
+// overload of compute_panel_update_set.  Same logic as the production driver's
+// map construction in tsparse_sparse_lu_true_numeric_impl.hpp (near :715);
+// intentionally duplicated here (SNA1 D-1, type-A minimal-change rule) so the
+// production true-numeric path is not touched.
 // ---------------------------------------------------------------------------
 template <class T, class Index>
-supernode_panel_update_stats
-run_supernode_panel_leftlooking_update(
-    supernodal_lu_storage<T, Index>& storage)
+inline std::vector<Index>
+sparse_lu_build_col_to_supernode_(
+    const supernodal_lu_storage<T, Index>& storage)
 {
-    supernode_panel_update_stats stats;
-    stats.driver_called = true;
-
-    if (!storage.valid) {
-        return stats;
-    }
-
+    const Index n = static_cast<Index>(storage.row_perm.size());
+    std::vector<Index> col_to_supernode(
+        static_cast<std::size_t>(n < Index(0) ? Index(0) : n), Index(-1));
     const std::size_t nsup = storage.supernodes.size();
-
-    for (std::size_t j = 0u; j < nsup; ++j) {
-        const Index j_idx = static_cast<Index>(j);
-
-        supernode_update_set<Index> update_set =
-            compute_panel_update_set(storage, j_idx);
-
-        if (update_set.updating_supernodes.empty()) continue;
-
-        supernode_panel_workspace<T, Index> work;
-        gather_panel_workspace(storage, j_idx, work);
-
-        if (!work.valid) continue;
-
-        for (std::size_t ui = 0u;
-             ui < update_set.updating_supernodes.size(); ++ui)
-        {
-            apply_supernode_panel_update(
-                storage,
-                update_set.updating_supernodes[ui],
-                j_idx,
-                work,
-                stats);
+    for (std::size_t s = 0u; s < nsup; ++s) {
+        const supernode_desc<Index>& d = storage.supernodes[s];
+        const Index cb = d.first_col;
+        const Index ce = cb + d.num_cols;
+        for (Index c = cb; c < ce; ++c) {
+            if (c >= Index(0) &&
+                static_cast<std::size_t>(c) < col_to_supernode.size())
+                col_to_supernode[static_cast<std::size_t>(c)] =
+                    static_cast<Index>(s);
         }
-
-        scatter_panel_workspace(storage, j_idx, work, stats);
-        stats.panel_count++;
     }
-
-    stats.used_conservative_reach   = false;
-    stats.symmetric_pruning_active  = false;
-
-    // Compute derived diagnostics.
-    stats.update_applied    = (stats.update_count > 0u && stats.scatter_count > 0u);
-    stats.dense_kernel_called =
-        (stats.trsm_count > 0u &&
-         (stats.gemm_count > 0u || stats.gemv_count > 0u));
-
-    // SLU-8R.7.1: the §17.2(A) "panel update applied" diagnostic is authoritative
-    // in sparse_lu_info (info.supernode_panel_update_applied), fed from
-    // stats.update_applied below. No storage-resident flag is written: after the
-    // SLU-8R.7 re-bootstrap, final storage is the A_eff-origin true-numeric source
-    // storage, and a storage flag here would be reset by that re-bootstrap.
-    // true_numeric_source remains false (§17.2(B) PENDING).
-
-    return stats;
+    return col_to_supernode;
 }
+
+// ---------------------------------------------------------------------------
+// [SLU-CLN1 C1, 2026-07-05] run_supernode_panel_leftlooking_update (the
+// transitional top-level SS17.2(A) prototype driver) was REMOVED together
+// with the prototype pass in the factorize pipelines: its storage mutations
+// were discarded by an idempotent re-bootstrap (proven bit-exact by
+// sandbox/tmp/cln1_rebootstrap_idem.cpp).  The production SS17.2(A) driver
+// is the interleaved loop in tsparse_sparse_lu_true_numeric_impl.hpp, which
+// consumes the SHARED components above (compute_panel_update_set fast
+// overload, gather/apply/scatter, workspace).
+// ---------------------------------------------------------------------------
 
 } // namespace sparse_lu_detail
 

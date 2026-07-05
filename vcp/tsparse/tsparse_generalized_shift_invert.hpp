@@ -340,14 +340,15 @@ public:
     // sparse_lu_status string + factorization summary (E-A1 E4).
     std::string factorization_diagnostics() const { return factorization_diagnostics_; }
 
-    // G-1.2: sourced from sparse_lu_info::within_panel_zero_pivot_count.
-    // This counter is populated on the supernodal factorization path
-    // (within-panel pivot columns with |pivot| not certifiably above
-    // zero_tolerance); on the baseline GP path zero pivots abort the
-    // factorization and are reported through info().status only, so the
-    // count remains 0 there (no fabricated value).
+    // G-1.2 [REVISED BY SLU-CLN1 C1, 2026-07-05]: previously sourced from
+    // sparse_lu_info::within_panel_zero_pivot_count, a transitional §17.2(B)
+    // prototype diagnostic REMOVED together with the prototype pass.  On the
+    // production paths (supernodal true-numeric AND baseline GP alike) zero
+    // pivots abort the factorization and are reported through info().status,
+    // so a usable factorization always has zero such events; return 0
+    // (no fabricated value), preserving the E-A1 E4 accessor contract.
     std::size_t factorization_zero_pivots() const {
-        return static_cast<std::size_t>(fac_.info().within_panel_zero_pivot_count);
+        return 0u;
     }
 
     // Diagnostic accumulators (E-A1 E4 semantics for the sparse_lu path):
