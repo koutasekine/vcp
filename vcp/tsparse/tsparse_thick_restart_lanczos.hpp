@@ -16,6 +16,22 @@
 //   void operator()(const std::vector<T>& x, std::vector<T>& y) const;
 //
 // options.max_iter = total matrix-vector product budget (main loop only).
+//
+// PRECONDITION (EIG-1 F-6, D-12): Apply must represent a REAL SYMMETRIC
+// operator.  The Apply abstraction cannot verify symmetry at runtime; a
+// violation is made honest by the end-of-run exact-residual acceptance check
+// (EIG-0 C-1): the returned pairs then carry large true residuals and the
+// result is demoted to converged=false / status="residual_check_failed"
+// instead of silent garbage.
+//
+// Termination contract (EIG-1 F-3; EIG-0 C-1/C-2):
+//   converged=true requires (i) k pairs returned, (ii) no unconverged Ritz
+//   candidate certainly inside the returned set at termination
+//   (honest_termination_check_), and (iii) all end-of-run EXACT residuals
+//   pass the acceptance test (residual_acceptance_check_).
+//   Note (EIG-0 C-4): converged=true is a residual claim plus absence of a
+//   visible contradiction; it is NOT a completeness guarantee (Krylov methods
+//   cannot see eigenspaces orthogonal to the start vector).
 
 #pragma once
 
@@ -218,6 +234,24 @@ std::vector<std::vector<T> > build_projected_matrix(
     return M;
 }
 
+// EIG-1 F-3-1 freshness guard: indices (ascending) of the locked pairs that
+// would form the returned target-order prefix k right now.  Used to decide
+// whether the current subspace postdates the last change of the returned set
+// (see the termination check in the main loop).
+template <class T>
+std::vector<std::size_t> locked_prefix_indices(
+    const std::vector<vcp::tsparse::locked_pair<T> >& locked,
+    std::size_t k,
+    eig_target target,
+    const typename vcp::tsparse_scalar::real_type<T>::type& shift)
+{
+    std::vector<T> vals;
+    vals.reserve(locked.size());
+    for (std::size_t i = 0; i < locked.size(); i++) vals.push_back(locked[i].value);
+    // コア実装は tsparse_honest_termination.hpp(1 箇所)。
+    return vcp::tsparse::locked_prefix_indices_(vals, k, target, shift);
+}
+
 // Lift projected eigenvector to full space: u = sum_j basis[j] * y[j]
 template <class T>
 std::vector<T> lift_ritz(
@@ -342,6 +376,19 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
     std::size_t mv_count       = 0;
     std::size_t total_restarts = 0;
 
+    // EIG-1 F-3-1 (EIG-0 C-2): true while termination is held back because an
+    // unconverged Ritz candidate certainly lies inside the would-be returned
+    // prefix k.  Re-evaluated every cycle once locked.size() >= k.
+    bool honest_hold = false;
+
+    // EIG-1 F-3-1 freshness guard: the returned-prefix indices as of the last
+    // basis (re)build.  C-2 may only clear termination on a subspace that was
+    // built orthogonal to a locked set whose returned prefix equals the
+    // current one; otherwise a multi-lock cycle could terminate on evidence
+    // from a spent subspace in which a not-yet-surfaced inner candidate (e.g.
+    // a further multiplicity copy) is invisible (t1 mechanism, D-1).
+    std::vector<std::size_t> locked_prefix_at_restart;
+
     // -----------------------------------------------------------------------
     // Initial starting vector
     // -----------------------------------------------------------------------
@@ -354,7 +401,9 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
     // -----------------------------------------------------------------------
     // Main loop
     // -----------------------------------------------------------------------
-    while (locked.size() < k && mv_count < max_mv) {
+    // EIG-1 F-3-1: keep iterating while the C-2 check holds termination back,
+    // even though locked.size() >= k (the lock set is kept, not discarded).
+    while ((locked.size() < k || honest_hold) && mv_count < max_mv) {
 
         // -------------------------------------------------------------------
         // PHASE 1: Expand Lanczos basis to m_limit steps.
@@ -523,14 +572,22 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
         // -------------------------------------------------------------------
         // PHASE 5: Lock converged pairs via lock_converged_pairs.
         //
-        // At most 1 pair is locked per cycle. This progressive locking ensures
-        // that repeated eigenvalues are discovered in subsequent restarts:
-        // after locking one eigenvector of eigenvalue λ, the next restart
-        // starts from a direction orthogonal to it and can find a second
-        // linearly independent eigenvector with the same eigenvalue.
+        // EIG-1 F-1 (D-9 root fix): every candidate that converged in this
+        // cycle is locked, in target order (active_rp preserves the
+        // target-sorted sel_order).  Locking may exceed k; what is returned
+        // is decided by the final target-ordered prefix-k selection
+        // (take_locked_prefix).  Repeated eigenvalues are still discovered
+        // progressively because each new cycle orthogonalizes against all
+        // locked vectors.
         // -------------------------------------------------------------------
+        // EIG-1 F-3-1: set when this cycle changed the returned prefix while
+        // locked.size() >= k; the following restart must then start from a
+        // fresh random direction (see PHASE 6).
+        bool fresh_restart_needed = false;
+
+        std::vector<vcp::tsparse::ritz_pair<T> > active_rp;
+        std::size_t n_locked_now = 0;
         {
-            std::vector<vcp::tsparse::ritz_pair<T> > active_rp;
             active_rp.reserve(ritz_sel.size());
             for (std::size_t i = 0; i < ritz_sel.size(); i++) {
                 vcp::tsparse::ritz_pair<T> rp;
@@ -541,16 +598,58 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
                 rp.converged         = ritz_sel[i].converged;
                 active_rp.push_back(rp);
             }
-            const std::size_t remaining = k - locked.size();
-            vcp::tsparse::lock_converged_pairs(
-                active_rp, locked, std::min(remaining, std::size_t(1)));
+            n_locked_now = vcp::tsparse::lock_converged_pairs(
+                active_rp, locked, active_rp.size());
         }
-        if (locked.size() >= k) break;
+        if (locked.size() >= k) {
+            // ---------------------------------------------------------------
+            // EIG-1 F-3-1 (EIG-0 C-2, honest stopping rule): do not terminate
+            // while an unconverged active candidate certainly lies inside
+            // (more target-preferred than) the worst value of the would-be
+            // returned prefix k.  The lock set is kept and iteration
+            // continues; if the budget runs out first, the result is an
+            // honest not_converged (max_iter_exhausted).
+            //
+            // Freshness guard: if this cycle changed the returned prefix,
+            // the current candidates were computed in a subspace that did not
+            // yet know the final locked set, so an inner candidate (e.g. a
+            // further multiplicity copy) may simply not have surfaced yet.
+            // Termination then waits for at least one verification cycle
+            // whose subspace was built orthogonal to the current prefix.
+            // Locks OUTSIDE the prefix do not retrigger verification, so
+            // outward-converging cycles cannot stall termination forever.
+            // ---------------------------------------------------------------
+            const std::vector<std::size_t> cur_prefix =
+                trl_detail::locked_prefix_indices(locked, k, target, shift);
+            const bool prefix_fresh = (cur_prefix == locked_prefix_at_restart);
+            const bool no_inner_unconverged =
+                vcp::tsparse::honest_termination_check_(
+                    active_rp, locked, k, target, shift);
+            honest_hold = !(no_inner_unconverged && prefix_fresh);
+            if (!honest_hold) break;
+            // Blind-spot probe: when the value check sees no inner
+            // unconverged candidate BUT the subspace predates the current
+            // prefix, the evidence may be blind — a single Krylov sequence
+            // sees at most one direction per eigenspace, so a further
+            // multiplicity copy of a locked value can stay invisible forever
+            // (t1 mechanism).  The next restart then starts from a fresh
+            // random direction orthogonal to the current locked set (the
+            // progressive-locking multiplicity discovery, promoted to a
+            // termination requirement).
+            // If an inner unconverged candidate IS visible, keep the normal
+            // thick restart instead so its convergence progress is retained
+            // (lap2d second-copy mechanism) — probing here would destroy it.
+            if (no_inner_unconverged && !prefix_fresh) fresh_restart_needed = true;
+        }
 
         // -------------------------------------------------------------------
         // PHASE 6: Thick restart (Wu & Simon 2000).
         //
-        // Retain unconverged Ritz pairs (max max_retained).
+        // EIG-1 F-2 (invariant, B-15): a Ritz pair judged converged is never
+        // silently discarded.  Retention takes everything NOT locked this
+        // cycle, regardless of its converged flag.  With F-1's uncapped
+        // locking the converged-but-unlocked set is empty by construction;
+        // this code pins the invariant against future locking policy changes.
         // Coupling:  c_j = beta_overflow * y_j[m_actual-1]
         // v_new = z_overflow, orthogonalized against locked via Phase 1 helper.
         // -------------------------------------------------------------------
@@ -559,9 +658,25 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
 
         std::vector<ritz_data_t> retained;
         retained.reserve(std::min(k_want, max_retained));
-        for (std::size_t i = 0;
-             i < ritz_sel.size() && retained.size() < max_retained; i++) {
-            if (!ritz_sel[i].converged) retained.push_back(ritz_sel[i]);
+        {
+            std::size_t conv_seen = 0;
+            for (std::size_t i = 0;
+                 i < ritz_sel.size() && retained.size() < max_retained; i++) {
+                bool locked_this_cycle = false;
+                if (ritz_sel[i].converged) {
+                    // lock_converged_pairs took the first n_locked_now
+                    // converged entries in active (= sel) order.
+                    if (conv_seen < n_locked_now) locked_this_cycle = true;
+                    conv_seen++;
+                }
+                if (locked_this_cycle) continue;
+                // Verification cycle: drop UNCONVERGED retained pairs so the
+                // restart is a fresh random probe orthogonal to locked
+                // (multiplicity discovery).  B-15 only protects converged
+                // pairs; those are still retained even here.
+                if (fresh_restart_needed && !ritz_sel[i].converged) continue;
+                retained.push_back(ritz_sel[i]);
+            }
         }
 
         const std::size_t k_ret = retained.size();
@@ -578,7 +693,7 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
             new_alpha.push_back(retained[i].value);
         }
 
-        if (k_ret > 0 && beta_overflow > small_tol) {
+        if (k_ret > 0 && beta_overflow > small_tol && !fresh_restart_needed) {
             std::vector<T> v_new = z_overflow;
 
             // Orthogonalize v_new against locked using Phase 1 helper
@@ -635,6 +750,12 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
         beta      = new_beta;
         k_restart = k_ret;
 
+        // EIG-1 F-3-1 freshness guard: the basis just built is (and will be
+        // kept, via reorthogonalize) orthogonal to the current locked set;
+        // record which returned prefix that subspace knows about.
+        locked_prefix_at_restart =
+            trl_detail::locked_prefix_indices(locked, k, target, shift);
+
         result.iterations++;
         total_restarts++;
 
@@ -643,7 +764,8 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
     // -----------------------------------------------------------------------
     // Budget flag (captured before re-evaluation calls)
     // -----------------------------------------------------------------------
-    const bool budget_exhausted = (mv_count >= max_mv) && (locked.size() < k);
+    const bool budget_exhausted =
+        (mv_count >= max_mv) && (locked.size() < k || honest_hold);
 
     // -----------------------------------------------------------------------
     // Re-evaluate actual residuals via apply(): ||Av - lambda*v||
@@ -714,7 +836,17 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
     result.converged_count        = result.returned_count;
 
     // Convergence is based on the clamped k (not k_original).
-    if (result.returned_count >= k) {
+    //
+    // EIG-1 F-3 (EIG-0 C-1/C-2): converged=true requires
+    //   (i)  k pairs returned,
+    //   (ii) no honest-termination hold at exit (C-2), and
+    //   (iii) the end-of-run EXACT residuals of all returned pairs pass the
+    //        acceptance test (C-1: res_abs <= tol or res_rel <= tol,
+    //        scale = 1 + |theta|).  This also demotes non-symmetric misuse
+    //        (D-12) to an honest failure instead of silent garbage.
+    if (result.returned_count >= k && !honest_hold &&
+        vcp::tsparse::residual_acceptance_check_(
+            result.residuals_absolute, result.residuals_relative, tol)) {
         result.converged = true;
         result.status    = "converged";
         result.message   = "thick_restart_lanczos converged";
@@ -726,6 +858,20 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
                 "matrix-vector product budget exhausted before full convergence";
         }
         result.message = "thick_restart_lanczos: budget exhausted";
+    } else if (result.returned_count >= k) {
+        // k pairs are present but the converged claim was refused by C-1/C-2.
+        // Values and residuals are still returned as diagnostics (B-15: the
+        // locked pairs are not discarded).
+        result.converged = false;
+        result.status    = "residual_check_failed";
+        if (result.failure_reason.empty()) {
+            result.failure_reason = honest_hold
+                ? "unconverged candidate inside returned set at termination (C-2)"
+                : "end-of-run exact residual failed acceptance (C-1)";
+        }
+        result.message =
+            "thick_restart_lanczos: converged claim rejected by exact residual "
+            "/ honest termination check";
     } else {
         result.converged = false;
         result.status    = "failed";

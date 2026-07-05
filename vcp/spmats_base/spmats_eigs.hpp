@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include <vcp/spmats_base/spmats_eigs_types.hpp>
+#include <vcp/tsparse/tsparse_honest_termination.hpp>
 #include <vcp/tsparse/tsparse_lanczos.hpp>
 #include <vcp/tsparse/tsparse_arnoldi.hpp>
 #include <vcp/tsparse/tsparse_factorization.hpp>
@@ -619,7 +620,8 @@ static eig_result<_T> lanczos_package_to_result_(
     const vcp::tsparse_lanczos::lanczos_result_package<_T, ApplyA>& pkg,
     const spmats<_T,_Index>& self,
     const std::size_t k,
-    const eig_solver_method method)
+    const eig_solver_method method,
+    const typename vcp::tsparse_scalar::real_type<_T>::type& tol)
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
     (void)sizeof(scalar_real_type);
@@ -642,17 +644,66 @@ static eig_result<_T> lanczos_package_to_result_(
             *std::max_element(pkg.residuals_abs.begin(), pkg.residuals_abs.end());
     }
     populate_real_complex_eigenvalues_<_T,_Index>(result);
+    bool exact_residual_rejected = false;
     if (!result.eigenvectors.empty()) {
         spmats<_T,_Index> A = self.as_csr();
         result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
         result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
+        // EIG-1 F-4/F-5 (EIG-0 C-1): 直前で再計算した「元の A に対する λ 空間の
+        // 厳密残差」を converged 判定へ反映する(降格のみ — false を true には
+        // しない)。shift-invert lanczos では内側反復は μ 空間だが、受理は
+        // この λ 空間残差で判定する(G-2.1 承認案 ①〜④)。
+        if (result.converged &&
+            !vcp::tsparse::residual_acceptance_check_(
+                result.residuals_absolute, result.residuals_relative, tol)) {
+            exact_residual_rejected = true;
+            result.converged = false;
+            result.failure_reason =
+                "end-of-run exact residual (lambda space) failed acceptance (C-1)";
+        }
     }
     set_eig_diagnostics_<_T,_Index>(result, method, result.returned_count, result.matrix_vector_products,
         result.breakdown_reason, result.failure_reason);
+    if (exact_residual_rejected) result.status = "residual_check_failed";
     result.used_shift_invert = (method == eig_solver_method::shift_invert_lanczos
                              || method == eig_solver_method::shift_invert_arnoldi);
     set_result_counts_<_T,_Index>(result, k);
     return result;
+}
+
+// ---------------------------------------------------------------------------
+// demote_arnoldi_core_converged_claim_   (EIG-1 F-5; G-2.1 承認 案 (a))
+//
+// EIG-0 C-2(返却集合の内側に未収束候補が certainly 存在しないこと)は
+// converged=true の必要条件だが、arnoldi コアは active 候補集合を結果
+// パッケージとして輸出しておらず(かつ B-13 により編集禁止・EIG-3 で置換予定)、
+// arnoldi コア shift-invert 経路の back-half では C-2 を評価できない。
+// したがって同経路の converged 主張は正直な not_converged へ降格する。
+//
+// 判定順序(a-2): まず λ 空間の厳密残差受理(C-1)を評価し、
+//   C-1 不合格 → status="residual_check_failed"
+//   C-1 合格かつ C-2 証拠なし → (a-1) の明示文言で降格
+// 値と λ 空間厳密残差は診断として結果に残る(B-15)。enum 追加なし(文字列のみ)。
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static void demote_arnoldi_core_converged_claim_(
+    eig_result<_T>& result,
+    const typename vcp::tsparse_scalar::real_type<_T>::type& tol)
+{
+    const bool would_claim = result.converged;
+    result.converged = false;
+    if (!would_claim) return;   // 元々 not_converged: 触らない
+    if (!vcp::tsparse::residual_acceptance_check_(
+            result.residuals_absolute, result.residuals_relative, tol)) {
+        result.status = "residual_check_failed";
+        result.failure_reason =
+            "end-of-run exact residual (lambda space) failed acceptance (C-1)";
+    } else {
+        result.status = "not_converged";
+        result.failure_reason =
+            "C-2 evidence unavailable on arnoldi-core shift-invert path (pending EIG-3)";
+    }
+    result.message = result.failure_reason;
 }
 
 // ---------------------------------------------------------------------------
@@ -1175,7 +1226,7 @@ static eig_result<_T> shift_invert_lanczos_drive_(const spmats<_T,_Index>& self,
             pkg.eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
         }
     }
-    return lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::shift_invert_lanczos);
+    return lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::shift_invert_lanczos, options.tol);
 }
 
 // --- back half #2: standard shift-invert Arnoldi ---------------------------
@@ -1426,6 +1477,9 @@ shift_invert_arnoldi_sparse_lu_(const spmats<_T,_Index>& self,
     result.converged = pkg_converged && result.eigenvalues.size() >= k;
     set_eig_diagnostics_<_T,_Index>(result, eig_solver_method::shift_invert_arnoldi, result.used_subspace_dim,
         result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
+    // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の converged 主張は C-1 判定後、
+    // C-2 証拠なしとして正直に降格する。
+    demote_arnoldi_core_converged_claim_<_T,_Index>(result, options.tol);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -1503,6 +1557,8 @@ generalized_shift_invert_sparse_lu_(const spmats<_T,_Index>& self,
         if (promoted_from_lanczos)
             result.used_method = "shift_invert_arnoldi(promoted_from_lanczos)";
     }
+    // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の降格(一般化 λ 残差で C-1)。
+    demote_arnoldi_core_converged_claim_<_T,_Index>(result, options.tol);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -1679,7 +1735,7 @@ static eig_result<_T> lanczos_eigs_new_(const spmats<_T,_Index>& self,
         options.random_seed, options.random_start,
         options.target, shift_val, options.compute_residual_history, apply);
 
-    return lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::lanczos);
+    return lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::lanczos, options.tol);
 }
 
 // ---------------------------------------------------------------------------
@@ -1791,6 +1847,9 @@ static eig_result<_T> shift_invert_arnoldi_eigs_(const spmats<_T,_Index>& self,
         set_eig_diagnostics_<_T,_Index>(result, eig_solver_method::shift_invert_arnoldi, result.used_subspace_dim,
             result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
     }
+    // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の降格(legacy ilu0_gmres 分岐も
+    // 同じ正直化を受ける — 嘘の解消は両分岐共通)。
+    demote_arnoldi_core_converged_claim_<_T,_Index>(result, options.tol);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -1961,6 +2020,8 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_(const spmats<_T,_In
         if (promoted_from_lanczos)
             result.used_method = "shift_invert_arnoldi(promoted_from_lanczos)";
     }
+    // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の降格(legacy 一般化分岐)。
+    demote_arnoldi_core_converged_claim_<_T,_Index>(result, options.tol);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -2197,7 +2258,7 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
             pkg.eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
     }
 
-    eig_result<_T> result = lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::shift_invert_lanczos);
+    eig_result<_T> result = lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::shift_invert_lanczos, options.tol);
     result.used_method = "shift_invert_lanczos+user_preconditioner";
     result.linear_solves = linear_solve_count;
     result.inner_iterations = inner_iteration_count;
@@ -2383,6 +2444,8 @@ static eig_result<_T> shift_invert_arnoldi_eigs_with_prec_(
         if (result.failure_reason.empty()) result.failure_reason = "Arnoldi shift-invert did not converge";
         result.message = result.failure_reason;
     }
+    // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の降格(preconditioner 変種)。
+    demote_arnoldi_core_converged_claim_<_T,_Index>(result, options.tol);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -2586,6 +2649,8 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
             result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
         result.used_method = used_method_str;
     }
+    // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の降格(一般化 preconditioner 変種)。
+    demote_arnoldi_core_converged_claim_<_T,_Index>(result, options.tol);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }

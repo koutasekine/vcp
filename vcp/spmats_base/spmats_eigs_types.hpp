@@ -178,6 +178,18 @@ namespace vcp {
 
 	// -----------------------------------------------------------------------
 	// eig_result<T>
+	//
+	// Meaning of converged == true (EIG-0 contract, C-1/C-2/C-4):
+	//   (C-1) every returned eigenpair satisfies the residual acceptance test
+	//         re-evaluated with the EXACT operator at termination, and
+	//   (C-2) at termination no unconverged Ritz candidate was certainly
+	//         visible inside (more target-preferred than) the returned set.
+	//   (C-4) converged == true is NOT a completeness guarantee: Krylov
+	//         subspace methods cannot see eigenspaces orthogonal to the start
+	//         vector, so "the k target-side eigenvalues were all found" cannot
+	//         be certified by any such solver.  Rigorous enclosure /
+	//         completeness belongs to a future verification layer
+	//         (Lehmann-Goerisch line), not to this flag.
 	// -----------------------------------------------------------------------
 
 	template <class T> struct eig_result {

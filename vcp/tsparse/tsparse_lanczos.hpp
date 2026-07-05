@@ -18,6 +18,7 @@
 #include <vcp/tsparse/tsparse_dense_linalg.hpp>
 #include <vcp/tsparse/tsparse_eigs.hpp>
 #include <vcp/tsparse/tsparse_eigensolvers.hpp>
+#include <vcp/tsparse/tsparse_honest_termination.hpp>
 #include <vcp/tsparse/tsparse_projected_eigensolver.hpp>
 #include <vcp/tsparse/tsparse_scalar.hpp>
 
@@ -172,8 +173,18 @@ lanczos_result_package<T, ApplyA> lanczos_eigs(
 	unsigned int seed_counter = random_start ? random_seed : 0u;
 
 	for (std::size_t restart = 0; restart <= max_restarts; restart++) {
-		if (locked_vals.size() >= k) break;
+		// EIG-1 F-4: 終了は本ループ末尾の honest termination ゲート
+		// (C-2 + freshness)だけが宣言する。locked >= k でも検証未了なら
+		// 継続する(max_restarts 到達で正直な非収束)。
 		res.restarts = restart;
+
+		// freshness ガードの基準: このリスタートの部分空間は「今の locked
+		// 集合」に直交して構築される。その時点の返却予定 prefix を記録し、
+		// ゲートでは「このリスタート中に prefix が変化していない」ことを
+		// 要求する(prefix 外のロックは対象外 — 外側候補の逐次ロックが
+		// 検証を永遠に再要求する暴走を防ぐ)。
+		const std::vector<std::size_t> prefix_at_restart_start =
+			vcp::tsparse::locked_prefix_indices_(locked_vals, k, target, shift_val);
 
 		// Build starting vector orthogonal to locked vectors
 		std::vector<T> v0 = deterministic_start_vector<T>(n, seed_counter);
@@ -189,8 +200,17 @@ lanczos_result_package<T, ApplyA> lanczos_eigs(
 		}
 
 		// Run Lanczos from v0
-		const std::size_t m_active = std::min(n - locked_vals.size(), m_limit);
-		if (m_active == 0) break;
+		const std::size_t m_active = std::min(
+			(n > locked_vals.size()) ? (n - locked_vals.size()) : std::size_t(0),
+			m_limit);
+		if (m_active == 0) {
+			// locked が全空間を張った: 部分空間に候補は存在し得ないので
+			// C-2 は自明に成立する(空の active 集合)。k 個そろっていれば
+			// 正直に converged としてよい(C-1 はロック時の厳密残差 +
+			// 呼び出し側の λ 空間受理検査が守る)。
+			if (locked_vals.size() >= k) res.converged = true;
+			break;
+		}
 
 		std::vector<std::vector<T> > basis;
 		basis.reserve(m_active + 1);
@@ -278,14 +298,18 @@ lanczos_result_package<T, ApplyA> lanczos_eigs(
 		for (std::size_t i = 0; i < small.eigenvalues.size(); i++) {
 			ceigs.push_back(std::complex<R>(tsparse_scalar::real_part(small.eigenvalues[i]), R(0)));
 		}
-		const std::size_t k_remaining = k - locked_vals.size();
+		// EIG-1 F-4: locked >= k の検証リスタートでも 1 ロック可能にする
+		// (size_t underflow 対策込み)。1 リスタート 1 ロックは多重度発見
+		// 機構として維持する。
+		const std::size_t k_remaining = (locked_vals.size() < k)
+			? (k - locked_vals.size()) : std::size_t(1);
 		std::vector<std::size_t> sel = tsparse_eigensolvers::select_ritz_indices<T>(
 			ceigs, std::min(m, k_remaining + m), target, shift_val);
 
 		// Check convergence for each selected Ritz pair.
 		// Lock at most ONE new pair per restart so that repeated eigenvalues
 		// are found on subsequent restarts (each with a new deflated start vector).
-		for (std::size_t si = 0; si < sel.size() && locked_vals.size() < k; si++) {
+		for (std::size_t si = 0; si < sel.size(); si++) {
 			const std::size_t idx = sel[si];
 			if (idx >= small.eigenvectors.size()) continue;
 
@@ -339,9 +363,44 @@ lanczos_result_package<T, ApplyA> lanczos_eigs(
 		}
 
 		if (locked_vals.size() >= k) {
-			res.converged = true;
-			res.breakdown_reason = bd_reason;
-			break;
+			// ---------------------------------------------------------------
+			// EIG-1 F-4 (EIG-0 C-2 + freshness): converged は次の両方が成立
+			// する場合にのみ宣言する。
+			//  (i)  freshness — このリスタート中に返却予定 prefix k が変化して
+			//       いない。公開 lanczos は毎リスタートが locked 直交の新規
+			//       ランダム開始なので、prefix 不変のリスタートの候補 =
+			//       現在の返却集合を知る新鮮な部分空間からの証拠である。
+			//       prefix を変えるロック(新規参入)が起きた直後の候補は
+			//       多重度コピーの盲点を持ち得る(TRL の t1 機構と同じ)ため
+			//       次の検証リスタートを待つ。prefix 外のロックは検証を
+			//       再要求しない(外側候補の逐次ロックによる暴走防止)。
+			//  (ii) 現部分空間の候補に、返却予定 prefix k の最悪値より内側の
+			//       未収束候補が certainly 存在しない(共通コア検査)。
+			// 残差未評価の候補(ロック break 後の未走査分)も未収束扱い
+			// (保守側)。不成立なら検証リスタートを継続し、max_restarts
+			// 到達で正直な非収束になる。
+			// ---------------------------------------------------------------
+			const std::vector<std::size_t> prefix_now =
+				vcp::tsparse::locked_prefix_indices_(locked_vals, k, target, shift_val);
+			const bool prefix_fresh = (prefix_now == prefix_at_restart_start);
+			if (prefix_fresh) {
+				std::vector<T> cand_vals;
+				std::vector<bool> cand_conv;
+				cand_vals.reserve(sel.size());
+				cand_conv.reserve(sel.size());
+				for (std::size_t si = 0; si < sel.size(); si++) {
+					const std::size_t idx = sel[si];
+					if (idx >= small.eigenvalues.size()) continue;
+					cand_vals.push_back(small.eigenvalues[idx]);
+					cand_conv.push_back(false);
+				}
+				if (vcp::tsparse::honest_termination_check_(
+						cand_vals, cand_conv, locked_vals, k, target, shift_val)) {
+					res.converged = true;
+					res.breakdown_reason = bd_reason;
+					break;
+				}
+			}
 		}
 	}
 

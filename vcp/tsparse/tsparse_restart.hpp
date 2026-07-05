@@ -16,6 +16,8 @@
 
 #include <vcp/error.hpp>
 #include <vcp/tsparse/tsparse_scalar.hpp>
+#include <vcp/tsparse/tsparse_eigen_selection.hpp>
+#include <vcp/tsparse/tsparse_honest_termination.hpp>
 #include <vcp/spmatrix.hpp>
 
 namespace vcp {
@@ -257,6 +259,53 @@ std::vector<locked_pair<T> > take_locked_prefix(
 	const std::size_t take = (k < locked.size()) ? k : locked.size();
 	return std::vector<locked_pair<T> >(locked.begin(), locked.begin() + static_cast<std::ptrdiff_t>(take));
 }
+
+// ---------------------------------------------------------------------------
+// honest_termination_check_   (EIG-1 F-3-1 / F-4; EIG-0 C-2)
+//
+// コア実装は tsparse_honest_termination.hpp の 1 箇所のみ(コピー禁止)。
+// ここには locked_pair / ritz_pair を扱う thin overload だけを置く。
+// ---------------------------------------------------------------------------
+template <class T>
+bool honest_termination_check_(
+	const std::vector<T>& active_values,
+	const std::vector<bool>& active_converged,
+	const std::vector<locked_pair<T> >& locked,
+	const std::size_t k,
+	const eig_target target,
+	const typename vcp::tsparse_scalar::real_type<T>::type& shift)
+{
+	std::vector<T> locked_values;
+	locked_values.reserve(locked.size());
+	for (std::size_t i = 0; i < locked.size(); i++) {
+		locked_values.push_back(locked[i].value);
+	}
+	return honest_termination_check_(
+		active_values, active_converged, locked_values, k, target, shift);
+}
+
+// ritz_pair 版の thin overload(TRL / lanczos 系の active 集合をそのまま渡す)
+template <class T>
+bool honest_termination_check_(
+	const std::vector<ritz_pair<T> >& active,
+	const std::vector<locked_pair<T> >& locked,
+	const std::size_t k,
+	const eig_target target,
+	const typename vcp::tsparse_scalar::real_type<T>::type& shift)
+{
+	std::vector<T> values;
+	std::vector<bool> conv;
+	values.reserve(active.size());
+	conv.reserve(active.size());
+	for (std::size_t i = 0; i < active.size(); i++) {
+		values.push_back(active[i].value);
+		conv.push_back(active[i].converged);
+	}
+	return honest_termination_check_(values, conv, locked, k, target, shift);
+}
+
+// residual_acceptance_check_(EIG-0 C-1)のコア実装も
+// tsparse_honest_termination.hpp にある(同 namespace vcp::tsparse)。
 
 // ---------------------------------------------------------------------------
 // append_locked_to_result
