@@ -559,6 +559,79 @@ bool swap_adjacent_blocks(std::vector<std::vector<T> >& Tm,
     return true;
 }
 
+// ---------------------------------------------------------------------------
+// EIG-4 T-3 helpers (allow_complex_pairs opt-in only; unreachable when the
+// option is false).  Ordering loops are hand-rolled (P6: module scalars are
+// not passed to SWO-based std algorithms).
+// ---------------------------------------------------------------------------
+
+// target-order selection over (re, im) items where an item with im>0 is a
+// complex pair occupying 2 slots.  Fills at least k_slots slots (keep-together:
+// a straddling pair extends the fill to k_slots+1).  Returns selected indices
+// in target order; empty result = not enough slots available.
+template <class R>
+std::vector<std::size_t> select_slot_indices_pairs(
+    const std::vector<R>& re,
+    const std::vector<R>& im,
+    const std::size_t k_slots,
+    const vcp::eig_target target,
+    const R& shift)
+{
+    typedef std::complex<R> C;
+    const std::size_t m = re.size();
+    std::vector<std::size_t> out;
+    if (k_slots == 0) return out;
+    const bool prefer_large =
+        (target == vcp::eig_target::largest_magnitude ||
+         target == vcp::eig_target::largest_algebraic);
+    std::vector<R> key(m, R(0));
+    std::size_t total = 0;
+    for (std::size_t i = 0; i < m; i++) {
+        key[i] = vcp::tsparse_eigen_selection::target_distance(
+            C(re[i], im[i]), target, shift);
+        total += (im[i] > R(0)) ? 2 : 1;
+    }
+    if (total < k_slots) return out;
+    std::vector<bool> used(m, false);
+    std::size_t filled = 0;
+    while (filled < k_slots) {
+        std::size_t best = m;
+        for (std::size_t i = 0; i < m; i++) {
+            if (used[i]) continue;
+            if (best == m) { best = i; continue; }
+            const bool better = prefer_large ? (key[i] > key[best])
+                                             : (key[i] < key[best]);
+            if (better) best = i;
+        }
+        if (best == m) break;
+        used[best] = true;
+        out.push_back(best);
+        filled += (im[best] > R(0)) ? 2 : 1;
+    }
+    if (filled < k_slots) { out.clear(); }
+    return out;
+}
+
+// worst (k_slots-th, slot-weighted) target key over pooled (re, im) values.
+// Returns false when the pool holds fewer than k_slots slots.
+template <class R>
+bool pool_worst_key_pairs(
+    const std::vector<R>& re,
+    const std::vector<R>& im,
+    const std::size_t k_slots,
+    const vcp::eig_target target,
+    const R& shift,
+    R& worst_key_out)
+{
+    const std::vector<std::size_t> sel =
+        select_slot_indices_pairs<R>(re, im, k_slots, target, shift);
+    if (sel.empty()) return false;
+    typedef std::complex<R> C;
+    worst_key_out = vcp::tsparse_eigen_selection::target_distance(
+        C(re[sel.back()], im[sel.back()]), target, shift);
+    return true;
+}
+
 } // namespace ks_detail
 
 // ===========================================================================
@@ -669,8 +742,20 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
         std::vector<T> vec;
         R res_abs;
         R res_rel;
+        // EIG-4 T-3 (allow_complex_pairs only): im > 0 marks a complex pair
+        // occupying 2 slots; vec holds u and vec2 holds v of x = u + i v.
+        // Always im == 0 / vec2 empty when the opt-in is off.
+        R im = R(0);
+        std::vector<T> vec2;
     };
     std::vector<pool_pair_t> pool;
+    // slot count of the pool (pairs count 2).  Equal to pool.size() whenever
+    // allow_complex_pairs is off (no pair is ever pooled then).
+    std::size_t pool_slots = 0;
+    // EIG-4 T-3 opt-in gate (D4-3 / B-27): all pair-returning branches below
+    // are reachable only when this is true.
+    const bool allow_pairs = options.allow_complex_pairs;
+    std::size_t returned_pair_count = 0;
     // Orthonormal basis of span(pool vectors).  Eigenvectors of a nonnormal
     // operator are mutually non-orthogonal, so the independence test and the
     // pool-orthogonal starts must project onto this basis, NOT Gram-Schmidt
@@ -720,6 +805,9 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
         std::vector<T> v;
         R res_abs;
         R res_rel;
+        // EIG-4 T-3: second column (imaginary part v of x = u + i v) for a
+        // complex-pair block; empty for real blocks / when opt-in is off.
+        std::vector<T> v2;
     };
 
     // =========================================================================
@@ -735,14 +823,14 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
             v_next.clear();
             pending_verification = false;
             subspace_exhausted = false;
-            pool_complete_at_start = (pool.size() >= k_eff);
+            pool_complete_at_start = (pool_slots >= k_eff);
             // deterministic start, orthogonalized against span(pool)
             std::vector<T> v0;
             if (!kd::fresh_orthogonal_direction(pool_onb, pool_onb.size(), n, seed,
                                                 floor_tol, v0)) {
                 // the pool spans (numerically) the whole space: nothing new can
                 // be scanned — declare from the pool if it is complete
-                if (pool.size() >= k_eff) { declare_from_pool = true; break; }
+                if (pool_slots >= k_eff) { declare_from_pool = true; break; }
                 result.converged = false;
                 result.status = "failed";
                 result.failure_reason = "no start direction available (pool-orthogonal)";
@@ -1286,7 +1374,18 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
         {
             R pool_worst_key = R(0);
             bool have_pool_ref = false;
-            if (pool.size() >= k_eff) {
+            if (allow_pairs) {
+                // EIG-4 T-3: slot-aware worst key over pooled (re, im) values
+                if (pool_slots >= k_eff) {
+                    std::vector<R> pre, pim;
+                    for (std::size_t i = 0; i < pool.size(); i++) {
+                        pre.push_back(vcp::tsparse_scalar::real_part(pool[i].theta));
+                        pim.push_back(pool[i].im);
+                    }
+                    have_pool_ref = kd::pool_worst_key_pairs<R>(
+                        pre, pim, k_eff, target, shift_val, pool_worst_key);
+                }
+            } else if (pool.size() >= k_eff) {
                 std::vector<R> pv2;
                 for (std::size_t i = 0; i < pool.size(); i++)
                     pv2.push_back(vcp::tsparse_scalar::real_part(pool[i].theta));
@@ -1315,7 +1414,9 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
                     if (bconv[bi]) cx_conv_inner = true;
                 }
             }
-            if (cx_conv_inner) {
+            // EIG-4 T-3 (B-27): with the opt-in ON the D3-2 veto is lifted --
+            // converged pairs inside the window become returnable below.
+            if (cx_conv_inner && !allow_pairs) {
                 complex_window_reject = true;
                 complex_window_count = cx_count;
                 result.converged = false;
@@ -1324,15 +1425,23 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
         }
 
         // prefix all real and bound-converged?  attempt declaration
+        // (EIG-4 T-3: with the opt-in ON, bound-converged 2x2 pair blocks are
+        // also declaration-eligible)
         bool prefix_ready = (slots >= k);
         for (std::size_t i = 0; prefix_ready && i < prefix_blocks.size(); i++) {
             const std::size_t bi = prefix_blocks[i];
-            if (bsize[bi] != 1 || !bconv[bi]) prefix_ready = false;
+            const bool size_ok = (bsize[bi] == 1)
+                              || (allow_pairs && bsize[bi] == 2);
+            if (!size_ok || !bconv[bi]) prefix_ready = false;
         }
 
         if (prefix_ready) {
-            // exact C-1 verification of the k prefix pairs (budget-gated)
-            if (mv_count + prefix_blocks.size() > max_mv) {
+            // exact C-1 verification of the k prefix pairs (budget-gated;
+            // pair blocks need one apply per column = 2)
+            std::size_t prefix_cols = 0;
+            for (std::size_t i = 0; i < prefix_blocks.size(); i++)
+                prefix_cols += bsize[prefix_blocks[i]];
+            if (mv_count + prefix_cols > max_mv) {
                 budget_exhausted = true;
                 result.converged = false;
                 break;
@@ -1342,6 +1451,7 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
             for (std::size_t i = 0; i < prefix_blocks.size(); i++) {
                 const std::size_t bi = prefix_blocks[i];
                 const std::vector<std::vector<T> >& Y = yof[bi];
+                if (bsize[bi] == 1) {
                 // T-basis -> V-basis: z = U * y (Y lives in the reordered
                 // Schur coordinates; the state basis is V = (basis) with
                 // S = U T U^T), then v = V z.
@@ -1377,6 +1487,78 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
                     final_cands[bi].converged = false;
                     break;
                 }
+                } else {
+                // EIG-4 T-3 (allow_pairs only; prefix_ready forbids 2x2
+                // otherwise): lift BOTH columns of Y -- Tm Y = Y Bblk, so
+                // W = V (U Y) spans the invariant plane with A W ~= W Bblk.
+                // Transform Bblk to the standard rotation form via the real
+                // 2x2 eigenbasis E: Bblk E = E [[p, q], [-q, p]] (real
+                // arithmetic only, D4-3), then verify the exact pair residual
+                // || A [u v] - [u v] [[p, q], [-q, p]] ||_F.
+                const std::size_t p0 = bpos[bi];
+                std::vector<std::vector<T> > w(2, std::vector<T>(n, T(0)));
+                for (std::size_t j = 0; j < 2; j++) {
+                    std::vector<T> z(M, T(0));
+                    for (std::size_t r2 = 0; r2 < M; r2++) {
+                        T s(0);
+                        for (std::size_t t = 0; t < Y.size(); t++) s += U[r2][t] * Y[t][j];
+                        z[r2] = s;
+                    }
+                    for (std::size_t r2 = 0; r2 < M; r2++) {
+                        const T zr = z[r2];
+                        for (std::size_t ii = 0; ii < n; ii++) w[j][ii] += V[r2][ii] * zr;
+                    }
+                }
+                const T s11 = Tm[p0][p0],     s12 = Tm[p0][p0 + 1];
+                const T s21 = Tm[p0 + 1][p0], s22 = Tm[p0 + 1][p0 + 1];
+                const T pr = bre[bi];
+                const T qi = bim[bi];   // > 0 (certified pair)
+                // real 2x2 eigenbasis of Bblk for lambda = p + i q
+                T e_r0, e_r1, e_i0, e_i1;
+                if (!(abs_value(s12) < abs_value(s21))) {
+                    e_r0 = s12; e_r1 = pr - s11; e_i0 = T(0); e_i1 = qi;
+                } else {
+                    e_r0 = pr - s22; e_r1 = s21; e_i0 = qi; e_i1 = T(0);
+                }
+                std::vector<T> u(n), v2c(n);
+                for (std::size_t ii = 0; ii < n; ii++) {
+                    u[ii]   = w[0][ii] * e_r0 + w[1][ii] * e_r1;
+                    v2c[ii] = w[0][ii] * e_i0 + w[1][ii] * e_i1;
+                }
+                const R un = vcp::tsparse_scalar::real_norm_value(u);
+                const R vn2 = vcp::tsparse_scalar::real_norm_value(v2c);
+                const R pn = sqrt_value(un * un + vn2 * vn2);
+                if (!(pn > R(0))) { all_pass = false; bconv[bi] = false; break; }
+                for (std::size_t ii = 0; ii < n; ii++) { u[ii] /= T(pn); v2c[ii] /= T(pn); }
+                std::vector<T> Au, Av2;
+                apply(u, Au);
+                apply(v2c, Av2);
+                mv_count += 2;
+                R rs(0);
+                for (std::size_t ii = 0; ii < n; ii++) {
+                    const T d1 = Au[ii]  - (pr * u[ii]   - qi * v2c[ii]);
+                    const T d2 = Av2[ii] - (qi * u[ii]   + pr * v2c[ii]);
+                    const R a1 = abs_value(d1);
+                    const R a2 = abs_value(d2);
+                    rs += a1 * a1 + a2 * a2;
+                }
+                const R ra = sqrt_value(rs);
+                const R mag = sqrt_value(
+                    vcp::tsparse_scalar::real_part(pr) * vcp::tsparse_scalar::real_part(pr)
+                  + vcp::tsparse_scalar::real_part(qi) * vcp::tsparse_scalar::real_part(qi));
+                const R rrel = ra / (R(1) + mag);
+                lifted[i].v.swap(u);
+                lifted[i].v2.swap(v2c);
+                lifted[i].res_abs = ra;
+                lifted[i].res_rel = rrel;
+                const bool acc = (ra <= tol) || (rrel <= tol);
+                if (!acc) {
+                    all_pass = false;
+                    bconv[bi] = false;
+                    final_cands[bi].converged = false;
+                    break;
+                }
+                }
             }
             if (all_pass) {
                 // C-2 on the remaining candidates (shared complex check)
@@ -1401,8 +1583,22 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
                         ac.push_back(acct);
                     }
                 }
-                const bool c2_ok = vcp::tsparse::honest_termination_check_complex_<R>(
-                    ar, ai, ac, locked_vals, k, target, shift_val);
+                bool c2_ok;
+                if (allow_pairs) {
+                    // EIG-4 T-3: pair-aware locked worst key (shared additive
+                    // check; magnitude targets weigh a pair by hypot(re, im))
+                    std::vector<R> locked_im2;
+                    for (std::size_t i = 0; i < prefix_blocks.size(); i++) {
+                        const std::size_t bi = prefix_blocks[i];
+                        locked_im2.push_back((bsize[bi] == 2)
+                            ? vcp::tsparse_scalar::real_part(bim[bi]) : R(0));
+                    }
+                    c2_ok = vcp::tsparse::honest_termination_check_complex_pairs_<R>(
+                        ar, ai, ac, locked_vals, locked_im2, k, target, shift_val);
+                } else {
+                    c2_ok = vcp::tsparse::honest_termination_check_complex_<R>(
+                        ar, ai, ac, locked_vals, k, target, shift_val);
+                }
                 if (c2_ok) {
                     const bool structurally_complete = (M >= n) || subspace_exhausted;
                     if (structurally_complete && pool.empty()) {
@@ -1412,10 +1608,26 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
                         diag.c2_evidence.fresh = true;
                         for (std::size_t i = 0; i < prefix_blocks.size(); i++) {
                             const std::size_t bi = prefix_blocks[i];
+                            if (bsize[bi] == 1) {
                             result.eigenvalues.push_back(bre[bi]);
                             result.eigenvectors.push_back(lifted[i].v);
                             result.residuals_absolute.push_back(lifted[i].res_abs);
                             result.residuals_relative.push_back(lifted[i].res_rel);
+                            if (allow_pairs) result.eigenvalues_imag.push_back(T(0));
+                            } else {
+                            // EIG-4 T-3: adjacent (re, re) / (+im, -im) / (u, v)
+                            result.eigenvalues.push_back(bre[bi]);
+                            result.eigenvalues.push_back(bre[bi]);
+                            result.eigenvalues_imag.push_back(bim[bi]);
+                            result.eigenvalues_imag.push_back(-bim[bi]);
+                            result.eigenvectors.push_back(lifted[i].v);
+                            result.eigenvectors.push_back(lifted[i].v2);
+                            result.residuals_absolute.push_back(lifted[i].res_abs);
+                            result.residuals_absolute.push_back(lifted[i].res_abs);
+                            result.residuals_relative.push_back(lifted[i].res_rel);
+                            result.residuals_relative.push_back(lifted[i].res_rel);
+                            returned_pair_count++;
+                            }
                         }
                         break;
                     }
@@ -1429,7 +1641,18 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
                         // current pool prefix worst key (if complete)
                         R pool_worst_key = R(0);
                         bool have_pool_ref = false;
-                        {
+                        if (allow_pairs) {
+                            // EIG-4 T-3: slot-aware worst key over (re, im)
+                            if (pool_slots >= k_eff) {
+                                std::vector<R> pre2, pim2;
+                                for (std::size_t i2 = 0; i2 < pool.size(); i2++) {
+                                    pre2.push_back(vcp::tsparse_scalar::real_part(pool[i2].theta));
+                                    pim2.push_back(pool[i2].im);
+                                }
+                                have_pool_ref = kd::pool_worst_key_pairs<R>(
+                                    pre2, pim2, k_eff, target, shift_val, pool_worst_key);
+                            }
+                        } else {
                             if (pool.size() >= k_eff) {
                                 std::vector<R> pv2;
                                 for (std::size_t i2 = 0; i2 < pool.size(); i2++)
@@ -1446,15 +1669,21 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
                         }
                         for (std::size_t i = 0; i < prefix_blocks.size(); i++) {
                             const std::size_t bi = prefix_blocks[i];
+                            const bool is_pair = (bsize[bi] == 2);   // allow_pairs only
                             const R th_r = vcp::tsparse_scalar::real_part(bre[bi]);
+                            const R th_i = is_pair ? vcp::tsparse_scalar::real_part(bim[bi]) : R(0);
                             {
                                 R a2 = th_r; if (a2 < R(0)) a2 = -a2;
+                                if (is_pair) {
+                                    const R m2 = sqrt_value(th_r * th_r + th_i * th_i);
+                                    if (m2 > a2) a2 = m2;
+                                }
                                 if (a2 > val_scale_seen) val_scale_seen = a2;
                             }
                             bool needed = !have_pool_ref;
                             if (have_pool_ref) {
                                 const R key = vcp::tsparse_eigen_selection::target_distance(
-                                    std::complex<R>(th_r, R(0)), target, shift_val);
+                                    std::complex<R>(th_r, th_i), target, shift_val);
                                 needed = prefer_large ? (key > pool_worst_key)
                                                       : (key < pool_worst_key);
                             }
@@ -1469,17 +1698,50 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
                                         w[ii] -= T(c2v) * pool_onb[j2][ii];
                                 }
                             const R rind = vcp::tsparse_scalar::real_norm_value(w);
-                            if (rind >= tau_add || pool.empty()) {
+                            // pair: the second column may carry the new content
+                            // even when the first is covered (2D subspace)
+                            std::vector<T> w2;
+                            R rind2 = R(0);
+                            if (is_pair) {
+                                w2 = lifted[i].v2;
+                                for (int pass = 0; pass < 2; pass++) {
+                                    for (std::size_t j2 = 0; j2 < pool_onb.size(); j2++) {
+                                        const R c2v = vcp::tsparse_scalar::real_dot_value(pool_onb[j2], w2);
+                                        for (std::size_t ii = 0; ii < n; ii++)
+                                            w2[ii] -= T(c2v) * pool_onb[j2][ii];
+                                    }
+                                    if (rind > R(0)) {
+                                        const R cw = vcp::tsparse_scalar::real_dot_value(w, w2) / (rind * rind);
+                                        for (std::size_t ii = 0; ii < n; ii++)
+                                            w2[ii] -= T(cw) * w[ii];
+                                    }
+                                }
+                                rind2 = vcp::tsparse_scalar::real_norm_value(w2);
+                            }
+                            const bool fresh_dir = is_pair
+                                ? (rind >= tau_add || rind2 >= tau_add || pool.empty())
+                                : (rind >= tau_add || pool.empty());
+                            if (fresh_dir) {
                                 pool_pair_t pp;
                                 pp.theta = bre[bi];
                                 pp.vec = lifted[i].v;
                                 pp.res_abs = lifted[i].res_abs;
                                 pp.res_rel = lifted[i].res_rel;
+                                if (is_pair) {
+                                    pp.im = th_i;
+                                    pp.vec2 = lifted[i].v2;
+                                }
                                 pool.push_back(pp);
+                                pool_slots += is_pair ? 2 : 1;
                                 if (rind > R(0)) {
                                     std::vector<T> q2 = w;
                                     for (std::size_t ii = 0; ii < n; ii++) q2[ii] /= T(rind);
                                     pool_onb.push_back(q2);
+                                }
+                                if (is_pair && rind2 > R(0)) {
+                                    std::vector<T> q3 = w2;
+                                    for (std::size_t ii = 0; ii < n; ii++) q3[ii] /= T(rind2);
+                                    pool_onb.push_back(q3);
                                 }
                                 if (have_pool_ref) added_inner = true;
                             } else {
@@ -1494,6 +1756,12 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
                                 }
                                 R dv = th_r - vcp::tsparse_scalar::real_part(pool[jbest].theta);
                                 if (dv < R(0)) dv = -dv;
+                                if (is_pair) {
+                                    // value consistency must include the imaginary part
+                                    R dvi = th_i - pool[jbest].im;
+                                    if (dvi < R(0)) dvi = -dvi;
+                                    dv += dvi;
+                                }
                                 const R eps_match = R(10) * (lifted[i].res_abs + pool[jbest].res_abs
                                                              + rind * R(4) * val_scale_seen);
                                 if (!(dv <= eps_match)) dependent_inconsistent = true;
@@ -1514,12 +1782,12 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
                             }
                         } else if (added_inner || !pool_complete_at_start) {
                             stable_confirms = 0;
-                        } else if (pool.size() >= k_eff) {
+                        } else if (pool_slots >= k_eff) {
                             // this solve started orthogonal to a complete pool and
                             // added nothing certainly-inner: fresh confirmation
                             stable_confirms++;
                         }
-                        if (stable_confirms >= 1 && pool.size() >= k_eff) {
+                        if (stable_confirms >= 1 && pool_slots >= k_eff) {
                             declare_from_pool = true;
                             break;
                         }
@@ -1677,7 +1945,101 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
     }   // main loop
 
     // ---- declaration from the pool (confirmed by a fresh orthogonal solve) --
-    if (declare_from_pool && !declared_converged) {
+    if (declare_from_pool && !declared_converged && allow_pairs) {
+        // EIG-4 T-3: slot-aware pool declaration (pairs occupy 2 slots;
+        // keep-together on a straddled pair returns k_eff + 1 values).
+        std::vector<R> pre3, pim3;
+        for (std::size_t i = 0; i < pool.size(); i++) {
+            pre3.push_back(vcp::tsparse_scalar::real_part(pool[i].theta));
+            pim3.push_back(pool[i].im);
+        }
+        const std::vector<std::size_t> sel =
+            kd::select_slot_indices_pairs<R>(pre3, pim3, k_eff, target, shift_val);
+        std::size_t need_mv = 0;
+        for (std::size_t i = 0; i < sel.size(); i++)
+            need_mv += (pool[sel[i]].im > R(0)) ? 2 : 1;
+        if (!sel.empty() && mv_count + need_mv <= max_mv) {
+            bool all_ok = true;
+            struct outp_t { std::vector<T> u, v; R ra, rrel; bool pair; T re, im; };
+            std::vector<outp_t> outp;
+            for (std::size_t i = 0; i < sel.size() && all_ok; i++) {
+                const pool_pair_t& pp = pool[sel[i]];
+                outp_t o;
+                o.pair = (pp.im > R(0));
+                o.re = pp.theta;
+                o.im = T(pp.im);
+                if (!o.pair) {
+                    std::vector<T> Av;
+                    apply(pp.vec, Av);
+                    mv_count++;
+                    std::vector<T> rr(n);
+                    for (std::size_t ii = 0; ii < n; ii++)
+                        rr[ii] = Av[ii] - pp.theta * pp.vec[ii];
+                    o.ra = vcp::tsparse_scalar::real_norm_value(rr);
+                    o.rrel = o.ra / (R(1) + abs_value(vcp::tsparse_scalar::real_part(pp.theta)));
+                    o.u = pp.vec;
+                } else {
+                    std::vector<T> Au, Av2;
+                    apply(pp.vec, Au);
+                    apply(pp.vec2, Av2);
+                    mv_count += 2;
+                    R rs(0);
+                    for (std::size_t ii = 0; ii < n; ii++) {
+                        const T d1 = Au[ii]  - (pp.theta * pp.vec[ii]  - T(pp.im) * pp.vec2[ii]);
+                        const T d2 = Av2[ii] - (T(pp.im) * pp.vec[ii]  + pp.theta * pp.vec2[ii]);
+                        const R a1 = abs_value(d1);
+                        const R a2 = abs_value(d2);
+                        rs += a1 * a1 + a2 * a2;
+                    }
+                    o.ra = sqrt_value(rs);
+                    const R thr = vcp::tsparse_scalar::real_part(pp.theta);
+                    o.rrel = o.ra / (R(1) + sqrt_value(thr * thr + pp.im * pp.im));
+                    o.u = pp.vec;
+                    o.v = pp.vec2;
+                }
+                if (!((o.ra <= tol) || (o.rrel <= tol))) { all_ok = false; break; }
+                outp.push_back(o);
+            }
+            if (all_ok) {
+                declared_converged = true;
+                diag.c2_evidence.fresh = true;
+                for (std::size_t i = 0; i < outp.size(); i++) {
+                    const outp_t& o = outp[i];
+                    if (!o.pair) {
+                        result.eigenvalues.push_back(o.re);
+                        result.eigenvalues_imag.push_back(T(0));
+                        result.eigenvectors.push_back(o.u);
+                        result.residuals_absolute.push_back(o.ra);
+                        result.residuals_relative.push_back(o.rrel);
+                    } else {
+                        result.eigenvalues.push_back(o.re);
+                        result.eigenvalues.push_back(o.re);
+                        result.eigenvalues_imag.push_back(o.im);
+                        result.eigenvalues_imag.push_back(-o.im);
+                        result.eigenvectors.push_back(o.u);
+                        result.eigenvectors.push_back(o.v);
+                        result.residuals_absolute.push_back(o.ra);
+                        result.residuals_absolute.push_back(o.ra);
+                        result.residuals_relative.push_back(o.rrel);
+                        result.residuals_relative.push_back(o.rrel);
+                        returned_pair_count++;
+                    }
+                }
+            } else {
+                result.converged = false;
+                result.status = "residual_check_failed";
+                result.failure_reason =
+                    "end-of-run exact residual re-check failed on a pooled pair (C-1)";
+            }
+        } else if (!sel.empty()) {
+            budget_exhausted = true;
+            result.converged = false;
+        } else {
+            result.converged = false;
+            result.status = "failed";
+            result.failure_reason = "pool ordering shorter than k (internal)";
+        }
+    } else if (declare_from_pool && !declared_converged) {
         std::vector<R> pv2;
         for (std::size_t i = 0; i < pool.size(); i++)
             pv2.push_back(vcp::tsparse_scalar::real_part(pool[i].theta));
@@ -1772,6 +2134,11 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
     diag.final_compressed = S;
     diag.final_coupling = coup;
     diag.final_residual_vector = v_next;
+
+    // EIG-4 T-3: complex-pair API surface -- populated only when the opt-in
+    // actually returned pairs (all-real returns keep the legacy empty shape)
+    if (returned_pair_count == 0) result.eigenvalues_imag.clear();
+    result.complex_pair_count = returned_pair_count;
 
     // counts and status
     result.returned_real_count = result.eigenvalues.size();

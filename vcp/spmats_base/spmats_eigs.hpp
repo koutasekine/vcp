@@ -17,6 +17,7 @@
 #include <vcp/tsparse/tsparse_honest_termination.hpp>
 #include <vcp/tsparse/tsparse_lanczos.hpp>
 #include <vcp/tsparse/tsparse_krylov_schur.hpp>   // EIG-3: arnoldi/si successor
+#include <vcp/tsparse/tsparse_thick_restart_lanczos.hpp>   // EIG-4: TRL promotion (T-1/T-2)
 #include <vcp/tsparse/tsparse_factorization.hpp>
 #include <vcp/tsparse/tsparse_preconditioner.hpp>
 #include <vcp/tsparse/tsparse_eigen_selection.hpp>
@@ -30,6 +31,22 @@
 #include <vcp/tsparse/tsparse_solvers.hpp>
 // NOTE: spmats.hpp includes this file after spmats<_T,_Index> is defined.
 // Do NOT #include <vcp/spmats.hpp> here to avoid circular dependency.
+
+// EIG-4: forward declarations for the TRL driver symbols.  When a TU includes
+// tsparse_thick_restart_lanczos.hpp FIRST, its include chain (tsparse_restart
+// -> spmatrix -> spmats -> this header) re-enters before the driver namespace
+// is populated (the include above is then a guard no-op).  The dispatch
+// wrappers below only need these declarations to parse; instantiation happens
+// after the full driver definition is available in the TU.
+namespace vcp {
+namespace tsparse_experimental {
+template <typename T> struct trl_is_real_floating;
+template <class Apply, class T>
+vcp::eig_result<T> thick_restart_lanczos_eigs(
+    const Apply& apply, std::size_t n, std::size_t k,
+    const vcp::eig_options<T>& options);
+} // namespace tsparse_experimental
+} // namespace vcp
 
 namespace vcp {
 
@@ -64,6 +81,46 @@ static bool is_symmetric_value_(const spmats<_T,_Index>& A, const typename vcp::
                 mirrored = val[static_cast<std::size_t>(it - inner.begin())];
             }
             if (vcp::tsparse_scalar::abs_value(val[static_cast<std::size_t>(p)] - mirrored) > tol) return false;
+        }
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// 1b. is_certainly_symmetric_   (EIG-4 T-2; B-28 の唯一の実装)
+//
+// auto_select の対称判定: 決定的・O(nnz log nnz)・T の素の == のみを使う。
+// GT1 P1 の比較規約により、kv::interval の == は certainly 等号(両端点一致の
+// 退化区間同士でのみ真)なので、認証不能な対称性は自動的に false(= KS 側)に
+// 落ちる。「たぶん対称」で TRL に送ることはできない。片側欠落エントリは
+// 明示格納値 T(0) との certainly 等号で判定する(明示ゼロの片側パターンは
+// 対称と認証できる)。tol ベースの is_symmetric_value_(明示 lanczos の
+// 入口検査)とは役割が異なり、置き換えない(B-26)。
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static bool is_certainly_symmetric_(const spmats<_T,_Index>& A)
+{
+    if (A.rowsize() != A.columnsize()) return false;
+    spmats<_T,_Index> C = A.as_csr();
+    const std::vector<_Index>& outer = C.outer_index();
+    const std::vector<_Index>& inner = C.inner_index();
+    const std::vector<_T>& val = C.values();
+    for (_Index i = 0; i < C.rowsize(); i++) {
+        for (_Index p = outer[static_cast<std::size_t>(i)]; p < outer[static_cast<std::size_t>(i + 1)]; p++) {
+            const _Index j = inner[static_cast<std::size_t>(p)];
+            if (i == j) continue;
+            const _Index first = outer[static_cast<std::size_t>(j)];
+            const _Index last  = outer[static_cast<std::size_t>(j + 1)];
+            const typename std::vector<_Index>::const_iterator begin = inner.begin() + first;
+            const typename std::vector<_Index>::const_iterator end   = inner.begin() + last;
+            typename std::vector<_Index>::const_iterator it = std::lower_bound(begin, end, i);
+            _T mirrored = _T(0);
+            if (it != end && *it == i) {
+                mirrored = val[static_cast<std::size_t>(it - inner.begin())];
+            }
+            // certainly ==(interval では退化区間の一致のみ真)。否定は
+            // 「等しいと保証できない」= 非対称側(KS)へ倒す(B-28)。
+            if (!(val[static_cast<std::size_t>(p)] == mirrored)) return false;
         }
     }
     return true;
@@ -107,6 +164,9 @@ static std::string eig_method_to_string_(const eig_solver_method m)
     case eig_solver_method::shift_invert_lanczos:     return "shift_invert_lanczos";
     case eig_solver_method::shift_invert_arnoldi:     return "shift_invert_arnoldi";
     case eig_solver_method::dense_fallback_explicit:  return "dense_fallback_explicit";
+    case eig_solver_method::thick_restart_lanczos:    return "thick_restart_lanczos";
+    case eig_solver_method::krylov_schur:             return "krylov_schur";
+    case eig_solver_method::auto_select:              return "auto_select";
     }
     return "unknown";
 }
@@ -300,6 +360,49 @@ static void select_eigenpairs_(eig_result<_T>& result,
 }
 
 // ---------------------------------------------------------------------------
+// 9b. select_eigenpairs_aligned_   (EIG-4 T-2、auto_select の dense 分岐専用)
+//
+// 既存 select_eigenpairs_ は末尾の swap ガードが「選択前サイズ == 選択後
+// サイズ」を要求するため、k < n の選択で eigenvectors / residuals が
+// **未選択のまま残る**(値とベクトルの対応が壊れる既存挙動)。明示経路は
+// B-26 によりバイト同一維持(既知問題として起票)とし、auto 経路は本整列版
+// を使う: 構築した選択済み配列を無条件に採用する。
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static void select_eigenpairs_aligned_(eig_result<_T>& result,
+                                       const std::size_t k,
+                                       const eig_target target,
+                                       const typename vcp::tsparse_scalar::real_type<_T>::type& shift)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    const std::vector<std::size_t> order =
+        vcp::tsparse_eigen_selection::select_real_eigenpairs(result.eigenvalues, k, target, shift);
+    const bool have_vectors = (result.eigenvectors.size()       == result.eigenvalues.size());
+    const bool have_resabs  = (result.residuals_absolute.size() == result.eigenvalues.size());
+    const bool have_resrel  = (result.residuals_relative.size() == result.eigenvalues.size());
+    std::vector<_T> values;
+    std::vector<std::vector<_T> > vectors;
+    std::vector<scalar_real_type> residuals_abs;
+    std::vector<scalar_real_type> residuals_rel;
+    for (std::size_t i = 0; i < order.size(); i++) {
+        const std::size_t j = order[i];
+        values.push_back(result.eigenvalues[j]);
+        if (have_vectors) vectors.push_back(result.eigenvectors[j]);
+        if (have_resabs)  residuals_abs.push_back(result.residuals_absolute[j]);
+        if (have_resrel)  residuals_rel.push_back(result.residuals_relative[j]);
+    }
+    result.eigenvalues.swap(values);
+    if (have_vectors) result.eigenvectors.swap(vectors);
+    else              result.eigenvectors.clear();
+    if (have_resabs) result.residuals_absolute.swap(residuals_abs);
+    else             result.residuals_absolute.clear();
+    if (have_resrel) result.residuals_relative.swap(residuals_rel);
+    else             result.residuals_relative.clear();
+    populate_real_complex_eigenvalues_<_T,_Index>(result);
+    set_result_counts_<_T,_Index>(result, k);
+}
+
+// ---------------------------------------------------------------------------
 // 11. dot_value_
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
@@ -339,6 +442,27 @@ frobenius_norm_value_(const spmats<_T,_Index>& A)
         s += a * a;
     }
     return vcp::tsparse_scalar::sqrt_value(s);
+}
+
+// ---------------------------------------------------------------------------
+// 13b. matrix_inf_norm_value_   (EIG-4 T-4: 改訂 C-1 scale 用の決定的 ‖A‖∞)
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static typename vcp::tsparse_scalar::real_type<_T>::type
+matrix_inf_norm_value_(const spmats<_T,_Index>& A)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    spmats<_T,_Index> C = A.as_csr();
+    const std::vector<_Index>& outer = C.outer_index();
+    const std::vector<_T>& val = C.values();
+    scalar_real_type best(0);
+    for (_Index i = 0; i < C.rowsize(); i++) {
+        scalar_real_type s(0);
+        for (_Index p = outer[static_cast<std::size_t>(i)]; p < outer[static_cast<std::size_t>(i + 1)]; p++)
+            s += vcp::tsparse_scalar::abs_value(val[static_cast<std::size_t>(p)]);
+        if (s > best) best = s;
+    }
+    return best;
 }
 
 // ---------------------------------------------------------------------------
@@ -685,9 +809,17 @@ static eig_result<_T> lanczos_package_to_result_(
         // 厳密残差」を converged 判定へ反映する(降格のみ — false を true には
         // しない)。shift-invert lanczos では内側反復は μ 空間だが、受理は
         // この λ 空間残差で判定する(G-2.1 承認案 ①〜④)。
+        // EIG-4 T-4 (D4-4 / R-1): 受理は「既存式 ∨ res_abs ≤ tol·scale」、
+        // scale = max(1+|θ|, ‖A‖∞ 厳密値)(共有ヘルパ。緩和方向のみ — B-29)
+        std::vector<scalar_real_type> theta_abs_c1;
+        theta_abs_c1.reserve(result.eigenvalues.size());
+        for (std::size_t i2 = 0; i2 < result.eigenvalues.size(); i2++)
+            theta_abs_c1.push_back(vcp::tsparse_scalar::abs_value(
+                vcp::tsparse_scalar::real_part(result.eigenvalues[i2])));
         if (result.converged &&
-            !vcp::tsparse::residual_acceptance_check_(
-                result.residuals_absolute, result.residuals_relative, tol)) {
+            !vcp::tsparse::residual_acceptance_check_scaled_(
+                result.residuals_absolute, result.residuals_relative, tol,
+                theta_abs_c1, matrix_inf_norm_value_<_T,_Index>(A))) {
             exact_residual_rejected = true;
             result.converged = false;
             result.failure_reason =
@@ -757,6 +889,33 @@ static void lambda_c1_acceptance_gate_(eig_result<_T>& result,
     if (!result.converged) return;
     if (!vcp::tsparse::residual_acceptance_check_(
             result.residuals_absolute, result.residuals_relative, tol)) {
+        result.converged = false;
+        result.status = "residual_check_failed";
+        result.failure_reason =
+            "end-of-run exact residual (lambda space) failed acceptance (C-1)";
+        result.message = result.failure_reason;
+    }
+}
+
+// EIG-4 T-4 (D4-4 / R-1): 標準問題用の改訂 scale 版(A x = λ x の si 経路)。
+// 受理は共有ヘルパ residual_acceptance_check_scaled_(既存式 ∨ tol·scale、
+// scale = max(1+|θ|, ‖A‖∞))。一般化経路(A x = λ B x)は残差の意味が異なる
+// ため従来ゲート(上)を維持する(緩和は標準経路のみ — 遷移許容集合 §3)。
+template <typename _T, typename _Index>
+static void lambda_c1_acceptance_gate_(eig_result<_T>& result,
+    const typename vcp::tsparse_scalar::real_type<_T>::type& tol,
+    const spmats<_T,_Index>& A_for_scale)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    if (!result.converged) return;
+    std::vector<scalar_real_type> theta_abs_c1;
+    theta_abs_c1.reserve(result.eigenvalues.size());
+    for (std::size_t i = 0; i < result.eigenvalues.size(); i++)
+        theta_abs_c1.push_back(vcp::tsparse_scalar::abs_value(
+            vcp::tsparse_scalar::real_part(result.eigenvalues[i])));
+    if (!vcp::tsparse::residual_acceptance_check_scaled_(
+            result.residuals_absolute, result.residuals_relative, tol,
+            theta_abs_c1, matrix_inf_norm_value_<_T,_Index>(A_for_scale))) {
         result.converged = false;
         result.status = "residual_check_failed";
         result.failure_reason =
@@ -1235,9 +1394,33 @@ static eig_result<_T> hermitian_lanczos_eigs_impl_(const spmats<_T,_Index>& self
 template <typename _T, typename _Index>
 static eig_result<_T> complex_standard_eigs_with_info_(const spmats<_T,_Index>& self,
                                                          const std::size_t k,
-                                                         const eig_options<_T>& options)
+                                                         const eig_options<_T>& options_in)
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    // EIG-4 T-2 (R-4 と同趣旨): 複素 T の auto_select は旧既定(lanczos =
+    // hermitian 経路)へ正規化する(挙動は旧既定と同一)。実 T 専用の
+    // thick_restart_lanczos / krylov_schur は正直拒否。以下の本体は
+    // options 名の付け替えのみで無変更(B-26)。
+    eig_options<_T> options_norm = options_in;
+    if (options_norm.method == eig_solver_method::auto_select)
+        options_norm.method = eig_solver_method::lanczos;
+    if (k > 0
+     && (options_norm.method == eig_solver_method::thick_restart_lanczos
+      || options_norm.method == eig_solver_method::krylov_schur)) {
+        eig_result<_T> result;
+        result.requested_count = k;
+        result.converged = false;
+        result.status = "unsupported_complex_non_hermitian";
+        result.failure_reason =
+            "thick_restart_lanczos / krylov_schur are real-scalar drivers;"
+            " for complex Hermitian matrices use method=lanczos";
+        result.message = result.failure_reason;
+        result.method = options_norm.method;
+        result.used_method = eig_method_to_string_<_T,_Index>(options_norm.method);
+        set_result_counts_<_T,_Index>(result, k);
+        return result;
+    }
+    const eig_options<_T>& options = options_norm;
     if (k == 0) {
         eig_result<_T> result;
         result.requested_count = 0;
@@ -1669,7 +1852,7 @@ shift_invert_arnoldi_sparse_lu_(const spmats<_T,_Index>& self,
     // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
     // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
     // Lambda-space C-1 remains the final acceptance gate.
-    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
+    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self);   // EIG-4 T-4: 標準 si は改訂 scale
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -2053,7 +2236,7 @@ static eig_result<_T> shift_invert_arnoldi_eigs_(const spmats<_T,_Index>& self,
     // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
     // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
     // Lambda-space C-1 remains the final acceptance gate.
-    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
+    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self);   // EIG-4 T-4: 標準 si は改訂 scale
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -2118,6 +2301,341 @@ static eig_result<_T> arnoldi_eigs_new_(const spmats<_T,_Index>& self,
     }
     return arnoldi_ks_drive_<_T,_Index>(self, k, options,
         typename std::integral_constant<bool, spmatrix_is_complex<_T>::value>::type());
+}
+
+// ---------------------------------------------------------------------------
+// EIG-4 T-1: explicit thick_restart_lanczos / krylov_schur wrappers.
+//
+// Low-level explicit selection (D4-1): the TRL wrapper does NOT reject
+// nonsymmetric input up front (same convention as the v1 `trl` cases) --
+// misuse is demoted to an honest failure by the TRL end-of-run exact C-1
+// check (D-12 line).  The driver-internal used_method strings
+// ("thick_restart_lanczos_experimental" / "krylov_schur") are left unchanged
+// for direct-driver callers; only the dispatch-level result is renamed.
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static eig_result<_T> trl_drive_(const spmats<_T,_Index>& /*self*/,
+                                 const std::size_t k,
+                                 const eig_options<_T>& /*options*/,
+                                 std::false_type /* trl_supported */)
+{
+    // Fence for scalar types the TRL driver cannot instantiate (complex and
+    // non-builtin real scalars: kv::dd / kv::mpfr / kv::interval -- the
+    // driver static_asserts trl_is_real_floating).  Honest explicit refusal
+    // (C-5); the auto_select routing never reaches this (it sends such
+    // scalars to the KS side), only explicit method=thick_restart_lanczos.
+    eig_result<_T> result;
+    result.requested_count = k;
+    result.converged = false;
+    result.status = "unsupported";
+    result.failure_reason =
+        "thick_restart_lanczos: scalar type unsupported (builtin real"
+        " floating-point only); use krylov_schur or lanczos";
+    result.message = result.failure_reason;
+    result.method = eig_solver_method::thick_restart_lanczos;
+    result.used_method = "thick_restart_lanczos";
+    set_result_counts_<_T,_Index>(result, k);
+    return result;
+}
+
+template <typename _T, typename _Index>
+static eig_result<_T> trl_drive_(const spmats<_T,_Index>& self,
+                                 const std::size_t k,
+                                 const eig_options<_T>& options,
+                                 std::true_type /* trl_supported */)
+{
+    spmats<_T,_Index> A = self.as_csr();
+    const std::size_t n = static_cast<std::size_t>(self.rowsize());
+    struct apply_fn {
+        const spmats<_T,_Index>* mat;
+        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { y = mat->mul_vec(x); }
+    };
+    apply_fn apply_op = { &A };
+    eig_result<_T> result =
+        vcp::tsparse_experimental::thick_restart_lanczos_eigs<apply_fn, _T>(
+            apply_op, n, k, options);
+    result.method = eig_solver_method::thick_restart_lanczos;
+    result.used_method = "thick_restart_lanczos";
+    return result;
+}
+
+template <typename _T, typename _Index>
+static eig_result<_T> trl_eigs_new_(const spmats<_T,_Index>& self,
+                                    const std::size_t k,
+                                    const eig_options<_T>& options)
+{
+    return trl_drive_<_T,_Index>(self, k, options,
+        typename std::integral_constant<bool,
+            vcp::tsparse_experimental::trl_is_real_floating<_T>::value>::type());
+}
+
+template <typename _T, typename _Index>
+static eig_result<_T> ks_explicit_eigs_(const spmats<_T,_Index>& self,
+                                        const std::size_t k,
+                                        const eig_options<_T>& options)
+{
+    eig_result<_T> result = arnoldi_ks_drive_<_T,_Index>(self, k, options,
+        typename std::integral_constant<bool, spmatrix_is_complex<_T>::value>::type());
+    result.method = eig_solver_method::krylov_schur;
+    result.used_method = "krylov_schur";
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// EIG-4 T-3: dense return path with complex-pair opt-in (real scalars only;
+// reached only when options.allow_complex_pairs == true -- B-27).
+// Selection is pair-aware slot filling (keep-together: a straddled pair
+// returns k+1 values -- R-6).  converged carries the full-spectrum verdict of
+// real_schur_eig_dense_pairs (legacy dense acceptance scale).
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static eig_result<_T> dense_pairs_eig_impl_(const std::vector<std::vector<_T> >& /*dense*/,
+                                            const std::size_t k,
+                                            const eig_options<_T>& /*options*/,
+                                            std::true_type /* is_complex */)
+{
+    // Fence: complex scalars never reach the pairs path (runtime guarded).
+    eig_result<_T> result;
+    result.requested_count = k;
+    result.converged = false;
+    result.status = "unsupported";
+    result.failure_reason = "allow_complex_pairs: complex scalar unsupported";
+    return result;
+}
+
+template <typename _T, typename _Index>
+static eig_result<_T> dense_pairs_eig_impl_(const std::vector<std::vector<_T> >& dense,
+                                            const std::size_t k,
+                                            const eig_options<_T>& options,
+                                            std::false_type /* is_complex */)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    std::string reason;
+    vcp::tsparse_dense_schur::real_schur_pairs_output<_T> po;
+    vcp::tsparse_dense_linalg::dense_eigen_result<_T> base =
+        vcp::tsparse_dense_schur::real_schur_eig_dense_pairs(dense, options.tol, reason, po);
+
+    eig_result<_T> result;
+    result.requested_count = k;
+    result.iterations = base.iterations;
+    result.complex_eigenvalues = base.complex_eigenvalues;
+    result.residual_norm_absolute = base.residual_norm;
+
+    const std::size_t nreal = base.eigenvalues.size();
+    std::vector<scalar_real_type> re, im;
+    for (std::size_t i = 0; i < nreal; i++) {
+        re.push_back(vcp::tsparse_scalar::real_part(base.eigenvalues[i]));
+        im.push_back(scalar_real_type(0));
+    }
+    for (std::size_t j = 0; j < po.pair_re.size(); j++) {
+        re.push_back(vcp::tsparse_scalar::real_part(po.pair_re[j]));
+        im.push_back(vcp::tsparse_scalar::real_part(po.pair_im[j]));
+    }
+    const std::vector<std::size_t> sel =
+        vcp::tsparse_experimental::ks_detail::select_slot_indices_pairs<scalar_real_type>(
+            re, im, k, options.target,
+            vcp::tsparse_scalar::real_part(options.shift));
+    std::size_t pair_count = 0;
+    for (std::size_t s = 0; s < sel.size(); s++) {
+        const std::size_t idx = sel[s];
+        if (idx < nreal) {
+            result.eigenvalues.push_back(base.eigenvalues[idx]);
+            result.eigenvalues_imag.push_back(_T(0));
+            if (idx < base.eigenvectors.size())
+                result.eigenvectors.push_back(base.eigenvectors[idx]);
+            if (idx < base.residuals.size()) {
+                result.residuals_absolute.push_back(base.residuals[idx]);
+                result.residuals_relative.push_back(base.residuals[idx]
+                    / (scalar_real_type(1)
+                       + vcp::tsparse_scalar::abs_value(base.eigenvalues[idx])));
+            }
+        } else {
+            const std::size_t j = idx - nreal;
+            result.eigenvalues.push_back(po.pair_re[j]);
+            result.eigenvalues.push_back(po.pair_re[j]);
+            result.eigenvalues_imag.push_back(po.pair_im[j]);
+            result.eigenvalues_imag.push_back(-po.pair_im[j]);
+            result.eigenvectors.push_back(po.pair_u[j]);
+            result.eigenvectors.push_back(po.pair_v[j]);
+            const scalar_real_type mag = vcp::tsparse_scalar::sqrt_value(
+                vcp::tsparse_scalar::real_part(po.pair_re[j]) * vcp::tsparse_scalar::real_part(po.pair_re[j])
+              + vcp::tsparse_scalar::real_part(po.pair_im[j]) * vcp::tsparse_scalar::real_part(po.pair_im[j]));
+            result.residuals_absolute.push_back(po.pair_res[j]);
+            result.residuals_absolute.push_back(po.pair_res[j]);
+            result.residuals_relative.push_back(po.pair_res[j] / (scalar_real_type(1) + mag));
+            result.residuals_relative.push_back(po.pair_res[j] / (scalar_real_type(1) + mag));
+            pair_count++;
+        }
+    }
+    if (pair_count == 0) result.eigenvalues_imag.clear();
+    result.complex_pair_count = pair_count;
+
+    result.converged = base.converged && !sel.empty();
+    if (result.converged) {
+        result.status = "converged";
+        result.message = "converged";
+    } else {
+        result.status = "not_converged";
+        result.failure_reason = reason.empty()
+            ? "dense (complex-pair opt-in) did not satisfy the acceptance test"
+            : reason;
+        result.message = result.failure_reason;
+    }
+    result.method = eig_solver_method::dense_fallback_explicit;
+    result.used_method = eig_method_to_string_<_T,_Index>(eig_solver_method::dense_fallback_explicit);
+    result.used_dense_fallback = true;
+    set_result_counts_<_T,_Index>(result, k);
+    return result;
+}
+
+template <typename _T, typename _Index>
+static eig_result<_T> dense_pairs_eig_(const std::vector<std::vector<_T> >& dense,
+                                       const std::size_t k,
+                                       const eig_options<_T>& options)
+{
+    return dense_pairs_eig_impl_<_T,_Index>(dense, k, options,
+        typename std::integral_constant<bool, spmatrix_is_complex<_T>::value>::type());
+}
+
+// ---------------------------------------------------------------------------
+// EIG-4 T-2: auto_select dense branch.
+//
+// The jacobi / real-Schur split uses the SAME certainly check as the auto
+// symmetric routing (B-28; approved R-5) -- NOT the tol-fuzzy
+// is_dense_symmetric of the explicit dense_fallback_explicit path (which is
+// untouched, B-26).  The symmetric branch applies the jacobi rotation-budget
+// floor max(max_iter, eig_auto_jacobi_budget_factor*n^2) (G-1.1 c-1): the
+// dense route is mv-free (outside B-1), and the floor realizes the D4-2
+// intent that the dense region answers deterministically; adversarial
+// spectra beyond the floor end in an HONEST not_converged.
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static eig_result<_T> auto_dense_eigs_(const spmats<_T,_Index>& A,
+                                       const std::size_t k,
+                                       const eig_options<_T>& options,
+                                       const bool certainly_sym)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    const std::size_t n = static_cast<std::size_t>(A.rowsize());
+    std::vector<std::vector<_T> > dense = to_dense_impl_<_T,_Index>(A);
+    eig_result<_T> result;
+    if (certainly_sym) {
+        const std::size_t floor_budget = eig_auto_jacobi_budget_factor * n * n;
+        const std::size_t budget = (options.max_iter > floor_budget)
+            ? options.max_iter : floor_budget;
+        result = convert_dense_result_<_T,_Index>(
+            vcp::tsparse_dense_linalg::jacobi_eig_dense(dense, budget, options.tol),
+            eig_solver_method::dense_fallback_explicit);
+    } else {
+        // EIG-4 T-3 (additive, B-27): opt-in complex pairs (real scalars)
+        if (options.allow_complex_pairs && !spmatrix_is_complex<_T>::value) {
+            return dense_pairs_eig_<_T,_Index>(dense, k, options);
+        }
+        result = dense_nonsymmetric_eig_<_T,_Index>(dense, options,
+            typename std::integral_constant<bool, spmatrix_is_complex<_T>::value>::type());
+    }
+    result.method = eig_solver_method::dense_fallback_explicit;
+    result.used_method = eig_method_to_string_<_T,_Index>(eig_solver_method::dense_fallback_explicit);
+    result.used_dense_fallback = true;
+    // aligned selection (9b): the auto default must return value/vector pairs
+    // that actually correspond (the legacy helper's guard skips the vector
+    // trim -- kept byte-identical on explicit paths per B-26, issue filed)
+    select_eigenpairs_aligned_<_T,_Index>(result, k, options.target, options.shift);
+    // EIG-4: exact end-of-run residuals of the RETURNED pairs against the
+    // sparse A (C-1 spirit on the new default path; the jacobi/Schur internal
+    // verdicts are additionally gated below -- demotion only, never promotion)
+    if (!result.eigenvectors.empty()
+        && result.eigenvectors.size() == result.eigenvalues.size()) {
+        result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
+        result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
+        if (result.converged) {
+            std::vector<scalar_real_type> theta_abs_c1;
+            theta_abs_c1.reserve(result.eigenvalues.size());
+            for (std::size_t i = 0; i < result.eigenvalues.size(); i++)
+                theta_abs_c1.push_back(vcp::tsparse_scalar::abs_value(
+                    vcp::tsparse_scalar::real_part(result.eigenvalues[i])));
+            // dense の既存受理スケール(tol·10n)を含めて広義に判定する
+            scalar_real_type anorm = matrix_inf_norm_value_<_T,_Index>(A);
+            const scalar_real_type tol10n =
+                options.tol * scalar_real_type(static_cast<int>(n) * 10);
+            if (tol10n > options.tol * anorm) anorm = tol10n / options.tol;
+            if (!vcp::tsparse::residual_acceptance_check_scaled_(
+                    result.residuals_absolute, result.residuals_relative,
+                    options.tol, theta_abs_c1, anorm)) {
+                result.converged = false;
+                result.status = "residual_check_failed";
+                result.failure_reason =
+                    "end-of-run exact residual failed acceptance (C-1, auto dense)";
+                result.message = result.failure_reason;
+            }
+        }
+    }
+    set_result_counts_<_T,_Index>(result, k);
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// EIG-4 T-2 (D4-2): auto_select routing.  ADDITIVE dispatch only (B-26):
+// every branch re-enters an existing path or a new wrapper; no pre-existing
+// branch is rewritten.  used_method wraps the routed diagnostic as
+// "auto_select(<routed>)" for mechanical routing verification (v2 suite).
+//
+//   1. use_shift == true                  -> legacy default shift path
+//      (method := shift_invert_lanczos, E-A1 LU; identical to the old
+//      lanczos-default + use_shift behavior)
+//   2. n <= eig_auto_dense_threshold and dense conversion permitted
+//                                          -> dense (jacobi / real Schur by
+//                                             the B-28 certainly check)
+//   3. certainly symmetric (hint or check) -> thick_restart_lanczos
+//   4. otherwise (incl. uncertifiable)     -> krylov_schur (B-28: KS is
+//                                             correct for symmetric input too)
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static eig_result<_T> auto_select_eigs_(const spmats<_T,_Index>& A,
+                                        const std::size_t k,
+                                        const eig_options<_T>& options)
+{
+    const std::size_t n = static_cast<std::size_t>(A.rowsize());
+
+    if (options.use_shift) {
+        eig_options<_T> active = options;
+        active.method = eig_solver_method::shift_invert_lanczos;
+        eig_result<_T> result = lanczos_eigs_new_<_T,_Index>(A, k, active);
+        result.method = eig_solver_method::auto_select;
+        result.used_method = "auto_select(" + result.used_method + ")";
+        return result;
+    }
+
+    if (n <= eig_auto_dense_threshold
+        && options.allow_dense_conversion
+        && n * n <= options.max_dense_size) {
+        const bool sym = (options.structure == matrix_structure_hint::symmetric)
+            || (options.structure == matrix_structure_hint::auto_detect
+                && is_certainly_symmetric_<_T,_Index>(A));
+        eig_result<_T> result = auto_dense_eigs_<_T,_Index>(A, k, options, sym);
+        result.method = eig_solver_method::auto_select;
+        result.used_method = "auto_select(" + result.used_method + ")";
+        return result;
+    }
+
+    bool sym;
+    if (options.structure == matrix_structure_hint::symmetric)     sym = true;
+    else if (options.structure == matrix_structure_hint::general)  sym = false;
+    else sym = is_certainly_symmetric_<_T,_Index>(A);
+
+    // B-28 と同方向の保守則: TRL が対応しないスカラー型(kv::dd / kv::mpfr /
+    // kv::interval — 組込み浮動小数点以外)は対称でも KS 側に倒す(KS は
+    // 対称入力でも正しく、汎用スカラーで動く。auto が型を理由に拒否結果へ
+    // ルートすることはない)。
+    const bool trl_ok =
+        vcp::tsparse_experimental::trl_is_real_floating<_T>::value;
+
+    eig_result<_T> result = (sym && trl_ok)
+        ? trl_eigs_new_<_T,_Index>(A, k, options)
+        : ks_explicit_eigs_<_T,_Index>(A, k, options);
+    result.method = eig_solver_method::auto_select;
+    result.used_method = "auto_select(" + result.used_method + ")";
+    return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -2645,7 +3163,7 @@ static eig_result<_T> shift_invert_arnoldi_eigs_with_prec_(
     // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
     // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
     // Lambda-space C-1 remains the final acceptance gate.
-    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
+    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self);   // EIG-4 T-4: 標準 si は改訂 scale
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -2931,6 +3449,14 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
     if (active.max_iter == 0 || active.tol <= scalar_real_type(0)) {
         vcp::throw_error<vcp::invalid_argument>("spmats::eigs: invalid iteration option");
     }
+    // EIG-4 T-1/T-2: additive dispatch branches (B-26 -- the pre-existing
+    // branches below are untouched).  auto_select is the new default (D4-2).
+    if (active.method == eig_solver_method::auto_select)
+        return auto_select_eigs_<_T,_Index>(A, k, active);
+    if (active.method == eig_solver_method::thick_restart_lanczos)
+        return trl_eigs_new_<_T,_Index>(A, k, active);
+    if (active.method == eig_solver_method::krylov_schur)
+        return ks_explicit_eigs_<_T,_Index>(A, k, active);
     if (active.method == eig_solver_method::lanczos
      || active.method == eig_solver_method::shift_invert_lanczos)
         return lanczos_eigs_new_<_T,_Index>(A, k, active);
@@ -2947,6 +3473,13 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
         vcp::throw_error<vcp::dimension_error>("spmats::eig: matrix must be square");
     check_dense_allowed_<_T,_Index>(A, active, "spmats::eig");
     std::vector<std::vector<_T> > dense = to_dense_impl_<_T,_Index>(A);
+    // EIG-4 T-3 (additive, B-27): opt-in complex pairs on the explicit dense
+    // path (real scalars, nonsymmetric spectra only -- the legacy branch
+    // below is untouched when the opt-in is off).
+    if (active.allow_complex_pairs && !spmatrix_is_complex<_T>::value
+        && !vcp::tsparse_dense_linalg::is_dense_symmetric(dense, active.tol * scalar_real_type(10))) {
+        return dense_pairs_eig_<_T,_Index>(dense, k, active);
+    }
     eig_result<_T> result = dense_eig_<_T,_Index>(dense, active);
     result.used_dense_fallback = true;
     select_eigenpairs_<_T,_Index>(result, k, active.target, active.shift);
@@ -2981,11 +3514,16 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
             "spmats::eigs_with_info(with preconditioner): invalid iteration option");
     }
     const scalar_real_type sigma = active.shift;
+    // EIG-4 T-2: auto_select + use_shift on the preconditioner overload
+    // follows the legacy default (lanczos) shift-invert path (additive OR
+    // clauses only; the non-shift auto_select falls into the existing
+    // unsupported_preconditioner branch below).
     const bool is_shift_invert =
         (active.method == eig_solver_method::shift_invert_lanczos)
         || (active.method == eig_solver_method::shift_invert_arnoldi)
         || (active.use_shift && active.method == eig_solver_method::lanczos)
-        || (active.use_shift && active.method == eig_solver_method::arnoldi);
+        || (active.use_shift && active.method == eig_solver_method::arnoldi)
+        || (active.use_shift && active.method == eig_solver_method::auto_select);
 
     if (!is_shift_invert) {
         eig_result<_T> result;
@@ -3007,13 +3545,19 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
 
     const bool use_lanczos =
         (active.method == eig_solver_method::shift_invert_lanczos)
-        || (active.use_shift && active.method == eig_solver_method::lanczos);
+        || (active.use_shift && active.method == eig_solver_method::lanczos)
+        || (active.use_shift && active.method == eig_solver_method::auto_select);
 
     eig_result<_T> result;
     if (use_lanczos)
         result = shift_invert_lanczos_eigs_with_prec_<_T,_Index>(A, k, active, sigma, M);
     else
         result = shift_invert_arnoldi_eigs_with_prec_<_T,_Index>(A, k, active, sigma, M);
+    // EIG-4 T-2: routing diagnostic for the auto branch (additive)
+    if (options.method == eig_solver_method::auto_select) {
+        result.method = eig_solver_method::auto_select;
+        result.used_method = "auto_select(" + result.used_method + ")";
+    }
     set_result_counts_<_T,_Index>(result, k);
     return result;
     } catch (const vcp::error&) {
@@ -3030,11 +3574,18 @@ template <typename _T, typename _Index>
 eig_result<_T> policy_generalized_eigs_with_info(const spmats<_T,_Index>& A,
                                                    const spmats<_T,_Index>& B,
                                                    const std::size_t k,
-                                                   const eig_options<_T>& options)
+                                                   const eig_options<_T>& options_in)
 {
     // SLU-GT1 D6 net (same convention as policy_eigs_with_info).
     try {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    // EIG-4 T-2 (R-4, 設計 §4「一般化 不変」): 一般化 eigs の auto_select は
+    // 入口で旧既定(lanczos)へ正規化し、挙動・診断文字列とも旧既定と同一に
+    // する。以下の本体は options 名の付け替えのみで無変更(B-26)。
+    eig_options<_T> options_norm = options_in;
+    if (options_norm.method == eig_solver_method::auto_select)
+        options_norm.method = eig_solver_method::lanczos;
+    const eig_options<_T>& options = options_norm;
     if (k == 0) return make_empty_eigs_success_<_T,_Index>(A, options);
     if (spmatrix_is_complex<_T>::value)
         return complex_generalized_eigs_unsupported_<_T,_Index>(k, options);
@@ -3123,12 +3674,18 @@ template <typename _T, typename _Index, class Preconditioner>
 eig_result<_T> policy_generalized_eigs_with_info(const spmats<_T,_Index>& A,
                                                    const spmats<_T,_Index>& B,
                                                    const std::size_t k,
-                                                   const eig_options<_T>& options,
+                                                   const eig_options<_T>& options_in,
                                                    const Preconditioner& M)
 {
     // SLU-GT1 D6 net (same convention as policy_eigs_with_info).
     try {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    // EIG-4 T-2 (R-4): 一般化の auto_select = 旧既定(lanczos)正規化(上の
+    // 無前処理 overload と同一規則。本体無変更)。
+    eig_options<_T> options_norm = options_in;
+    if (options_norm.method == eig_solver_method::auto_select)
+        options_norm.method = eig_solver_method::lanczos;
+    const eig_options<_T>& options = options_norm;
     if (k == 0) { (void)B; (void)M; return make_empty_eigs_success_<_T,_Index>(A, options); }
     if (spmatrix_is_complex<_T>::value)
         return complex_generalized_eigs_unsupported_<_T,_Index>(k, options);

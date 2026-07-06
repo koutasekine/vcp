@@ -152,6 +152,89 @@ bool honest_termination_check_complex_(
 }
 
 // ---------------------------------------------------------------------------
+// honest_termination_check_complex_pairs_   (EIG-4 T-3。純追加 — 既存 2 関数は不変)
+//
+// 返却集合(locked)に複素共役対を含む場合の C-2 検査。locked の各項目は
+// 実固有値(im = 0、1 スロット)または複素対(im > 0 の代表 1 エントリ、
+// 2 スロット)。worst key は「target 順に並べた locked をスロット数 k_slots
+// まで埋めたときの最後の項目」の target_distance(complex(re, im))。
+// active 側の certainly-inner 規則は honest_termination_check_complex_ と同一。
+//
+// 順序付けは半順序許容の自前選択ループで行う(P6: モジュールスカラー R を
+// std::sort 等の SWO 前提アルゴリズムに渡さない)。比較は certainly であり、
+// indeterminate は「より優先とは言えない」側に落ちる(選択が保守化するだけで
+// 嘘側には倒れない — 最終防衛は C-1 の厳密残差)。
+// ---------------------------------------------------------------------------
+template <class R>
+bool honest_termination_check_complex_pairs_(
+	const std::vector<R>& active_real,
+	const std::vector<R>& active_imag,
+	const std::vector<bool>& active_converged,
+	const std::vector<R>& locked_real,
+	const std::vector<R>& locked_imag,
+	const std::size_t k_slots,
+	const eig_target target,
+	const R& shift)
+{
+	typedef std::complex<R> complex_type;
+
+	if (k_slots == 0) return true;
+	if (locked_real.size() != locked_imag.size()) return false;
+
+	const bool prefer_large =
+		(target == eig_target::largest_magnitude ||
+		 target == eig_target::largest_algebraic);
+
+	// locked 項目の key とスロット数
+	const std::size_t m = locked_real.size();
+	std::vector<R> key(m, R(0));
+	std::vector<std::size_t> slots(m, 1);
+	std::size_t total_slots = 0;
+	for (std::size_t i = 0; i < m; i++) {
+		key[i] = vcp::tsparse_eigen_selection::target_distance(
+			complex_type(locked_real[i], locked_imag[i]), target, shift);
+		if (locked_imag[i] > R(0)) slots[i] = 2;
+		total_slots += slots[i];
+	}
+	if (total_slots < k_slots) return false;   // 返却不足のままの宣言は不正直
+
+	// target 順の自前選択(P6 準拠の線形走査。同格は最小インデックス)
+	std::vector<bool> used(m, false);
+	std::size_t filled = 0;
+	R worst_key = R(0);
+	bool have_worst = false;
+	while (filled < k_slots) {
+		std::size_t best = m;
+		for (std::size_t i = 0; i < m; i++) {
+			if (used[i]) continue;
+			if (best == m) { best = i; continue; }
+			const bool better = prefer_large ? (key[i] > key[best])
+			                                 : (key[i] < key[best]);
+			if (better) best = i;
+		}
+		if (best == m) break;   // 全消費(total_slots 検査済みなので到達しない)
+		used[best] = true;
+		filled += slots[best];
+		worst_key = key[best];
+		have_worst = true;
+	}
+	if (!have_worst) return false;
+
+	std::size_t n_active = active_real.size();
+	if (active_imag.size() < n_active) n_active = active_imag.size();
+	if (active_converged.size() < n_active) n_active = active_converged.size();
+	for (std::size_t i = 0; i < n_active; i++) {
+		if (active_converged[i]) continue;
+		const R akey = vcp::tsparse_eigen_selection::target_distance(
+			complex_type(active_real[i], active_imag[i]), target, shift);
+		const bool certainly_inner = prefer_large ? (akey > worst_key)
+		                                          : (akey < worst_key);
+		if (certainly_inner) return false;
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // locked_prefix_indices_   (EIG-1 F-3-1 / F-4 の freshness ガード用ヘルパ)
 //
 // 返却予定の target 順 prefix k を構成する locked インデックス(昇順)。
@@ -197,6 +280,62 @@ bool residual_acceptance_check_(
 		const bool accepted = (residuals_absolute[i] <= tol) ||
 		                      (residuals_relative[i] <= tol);
 		if (!accepted) return false;
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// EIG-4 T-4 (D4-4、R-1 改訂式): 改訂 C-1 受理スケールの唯一の定義(B-29:
+// scale 定義の分散・重複を禁止。ソルバー側での再定義は不可)。
+//
+//   scale(|θ|, ‖A‖_est) = max(1 + |θ|, ‖A‖_est)
+//
+// 受理は「既存受理(res_abs ≤ tol ∨ res_rel ≤ tol)∨ res_abs ≤ tol·scale」。
+// 既存受理式を 1 ビットも変えない OR 追加なので厳密に広義緩和であり、
+// 許される v1 遷移は「正直 NONCONV → 正解 OK」のみ(遷移許容集合 = {t1b})。
+//
+// ‖A‖_est の経路別定義(この 1 箇所に集約・文書化):
+//   - 行列を所持する dispatch 層の最終ゲート(lanczos_package_to_result_ /
+//     lambda_c1_acceptance_gate_): ‖A‖∞ の厳密値(O(nnz)、決定的)
+//   - TRL(apply 抽象、行列非所持): 実行全体で観測した射影 3 重対角の
+//     ∞ ノルム走行最大 max_i(|β_{i-1}| + |α_i| + |β_i|)。|α_i|,|β_i| ≤ ‖A‖₂
+//     より高々 3‖A‖₂(対称では ≤ 3‖A‖∞)の決定的推定であり、‖A‖∞ の厳密値
+//     とは一致しない(経路間で scale 値は同一でない — G-1.1 R-1 付記)。
+//     追加 apply ゼロ・実行軌跡不変。
+//   - KS ドライバの実行中受理は従来 scale(1 + |θ|)のまま(契約より厳しい
+//     側は C-1 の含意を破らない。実行中受理の緩和は実行軌跡と mv を変え
+//     v1 に宣言外差分を作るため行わない — 遷移許容集合文書 §3)
+//   - dense 経路は従来の受理スケール(max(tol, tol·10n))を維持(既存定義の
+//     踏襲。EIG-0 C-1 の「各ソルバーの既存定義を文書化」条項)
+// ---------------------------------------------------------------------------
+template <class R>
+R c1_revised_scale_(const R& theta_abs, const R& anorm_est)
+{
+	R s = R(1) + theta_abs;
+	if (anorm_est > s) s = anorm_est;
+	return s;
+}
+
+// 最終 verdict ゲート用の改訂受理(成功宣言側 = certified-≤、GT1 P1/B-16。
+// interval では indeterminate が失敗側 = 正直な非収束に落ちる)。
+template <class R>
+bool residual_acceptance_check_scaled_(
+	const std::vector<R>& residuals_absolute,
+	const std::vector<R>& residuals_relative,
+	const R& tol,
+	const std::vector<R>& theta_abs,
+	const R& anorm_est)
+{
+	const std::size_t m = residuals_absolute.size();
+	if (m == 0) return false;
+	if (residuals_relative.size() != m) return false;
+	if (theta_abs.size() != m) return false;
+	for (std::size_t i = 0; i < m; i++) {
+		const bool legacy = (residuals_absolute[i] <= tol) ||
+		                    (residuals_relative[i] <= tol);
+		const bool revised = (residuals_absolute[i]
+		    <= tol * c1_revised_scale_<R>(theta_abs[i], anorm_est));
+		if (!(legacy || revised)) return false;
 	}
 	return true;
 }

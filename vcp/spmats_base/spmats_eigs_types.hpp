@@ -134,9 +134,15 @@ namespace vcp {
 		// Default construction = auto_select / threshold_partial /
 		// iterative_refinement = true (D-3).
 		vcp::sparse_lu_options<T> shift_invert_lu;
+		// EIG-4 T-3 (D4-3, opt-in; B-27): when true, the Krylov-Schur and
+		// dense return paths MAY return converged complex-conjugate pairs via
+		// eig_result::eigenvalues_imag / complex_pair_count.  When false
+		// (default) the honest complex-pair refusal (EIG-3 D3-2) is preserved
+		// bit-for-bit.
+		bool allow_complex_pairs;
 
 		eig_options()
-			: method(eig_solver_method::lanczos),
+			: method(eig_solver_method::auto_select),
 			  structure(matrix_structure_hint::auto_detect),
 			  target(eig_target::smallest_algebraic),
 			  tol(vcp::tsparse_scalar::decimal_power_negative<real_type>(12)),
@@ -146,7 +152,8 @@ namespace vcp {
 			  orthogonalization(orthogonalization_method::modified_gram_schmidt),
 			  random_seed(0), random_start(false),
 			  compute_residual_history(false),
-			  shift_invert_solver(eig_shift_invert_solver::sparse_lu) {}
+			  shift_invert_solver(eig_shift_invert_solver::sparse_lu),
+			  allow_complex_pairs(false) {}
 	};
 
 	// -----------------------------------------------------------------------
@@ -196,6 +203,19 @@ namespace vcp {
 		typedef typename vcp::tsparse_scalar::real_type<T>::type real_type;
 		typedef typename eig_value_traits<T>::complex_type eigenvalue_type;
 		std::vector<T> eigenvalues;
+		// EIG-4 T-3 (D4-3, WR/WI): imaginary parts of the returned values.
+		// Empty (default) = all returned values are real (bit-compatible with
+		// the pre-EIG-4 result).  Non-empty = same length as `eigenvalues`;
+		// complex-conjugate pairs are ADJACENT with the real_schur_result
+		// convention: entries (i, i+1) carry (re, re) in `eigenvalues` and
+		// (+im, -im) here, and eigenvectors[i] / eigenvectors[i+1] hold the
+		// real / imaginary parts u, v of the eigenvector x = u + i*v of the
+		// (+im) eigenvalue (pair residual: || A [u v] - [u v] B ||_F with
+		// B = [[re, im], [-im, re]]).  Populated only when
+		// eig_options::allow_complex_pairs == true.
+		std::vector<T> eigenvalues_imag;
+		// Number of returned complex-conjugate pairs (0 unless opt-in).
+		std::size_t complex_pair_count;
 		std::vector<eigenvalue_type> complex_eigenvalues;
 		std::vector<std::vector<T> > eigenvectors;
 		bool converged;
@@ -254,7 +274,8 @@ namespace vcp {
 		std::size_t factorization_zero_pivots;
 
 		eig_result()
-			: eigenvalues(), complex_eigenvalues(), eigenvectors(),
+			: eigenvalues(), eigenvalues_imag(), complex_pair_count(0),
+			  complex_eigenvalues(), eigenvectors(),
 			  converged(false), requested_count(0), returned_count(0),
 			  returned_real_count(0), returned_complex_count(0), converged_count(0),
 			  iterations(0), matrix_vector_products(0), linear_solves(0),

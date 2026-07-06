@@ -270,6 +270,112 @@ namespace vcp {
 				return true;
 			}
 
+			// ---------------------------------------------------------------
+			// EIG-4 T-3 helpers (allow_complex_pairs opt-in; the legacy
+			// real_schur_eig_dense below is byte-untouched)
+			// ---------------------------------------------------------------
+
+			// small dense Gaussian solve with partial pivoting (nun <= 4).
+			// false = pivot not certifiably nonzero (caller falls back to an
+			// honest per-pair failure).
+			template <typename T>
+			bool gauss_solve_small_(std::vector<std::vector<T> > M2,
+			                        std::vector<T> b, std::vector<T>& x) {
+				typedef typename tsparse_scalar::real_type<T>::type R;
+				using tsparse_scalar::abs_value;
+				const std::size_t nn = M2.size();
+				for (std::size_t c = 0; c < nn; c++) {
+					std::size_t piv = c;
+					R best = abs_value(M2[c][c]);
+					for (std::size_t r0 = c + 1; r0 < nn; r0++) {
+						const R a = abs_value(M2[r0][c]);
+						if (a > best) { best = a; piv = r0; }
+					}
+					if (!(best > R(0))) return false;
+					if (piv != c) { std::swap(M2[piv], M2[c]); std::swap(b[piv], b[c]); }
+					for (std::size_t r0 = c + 1; r0 < nn; r0++) {
+						const T f = M2[r0][c] / M2[c][c];
+						for (std::size_t c2 = c; c2 < nn; c2++) M2[r0][c2] -= f * M2[c][c2];
+						b[r0] -= f * b[c];
+					}
+				}
+				x.assign(nn, T(0));
+				for (std::size_t r0 = nn; r0-- > 0;) {
+					T s = b[r0];
+					for (std::size_t c2 = r0 + 1; c2 < nn; c2++) s -= M2[r0][c2] * x[c2];
+					x[r0] = s / M2[r0][r0];
+				}
+				return true;
+			}
+
+			// 2-column invariant subspace of the quasi-triangular S for the
+			// 2x2 block at rows/cols (p, p+1):  S Y = Y B,  Y[p..p+1] = I2,
+			// rows above solved upward in REAL arithmetic (D4-3: no complex
+			// scalar type).  1x1 pivot row j: y_j (B - S_jj I) = rhs_j (2x2
+			// solve; det = (mean-S_jj)^2 + q^2 > 0 for a certified pair).
+			// 2x2 pivot block C: Sylvester C X - X B = -RHS (4x4 solve).
+			// false = some pivot not certifiably solvable (honest failure).
+			template <typename T>
+			bool schur_pair_subspace_(const std::vector<std::vector<T> >& S,
+			                          const std::size_t p,
+			                          std::vector<std::vector<T> >& Y) {
+				typedef typename tsparse_scalar::real_type<T>::type R;
+				using tsparse_scalar::abs_value;
+				const T b11 = S[p][p],     b12 = S[p][p + 1];
+				const T b21 = S[p + 1][p], b22 = S[p + 1][p + 1];
+				Y.assign(p + 2, std::vector<T>(2, T(0)));
+				Y[p][0] = T(1); Y[p + 1][1] = T(1);
+				std::size_t j = p;
+				while (j > 0) {
+					const bool two = (j >= 2) && !is_exact_zero_(S[j - 1][j - 2]);
+					if (!two) {
+						const std::size_t r0 = j - 1;
+						T rhs0(0), rhs1(0);
+						for (std::size_t t = r0 + 1; t < p + 2; t++) {
+							rhs0 += S[r0][t] * Y[t][0];
+							rhs1 += S[r0][t] * Y[t][1];
+						}
+						// y (B - s I) = -(rhs0, rhs1)
+						const T s = S[r0][r0];
+						const T a11 = b11 - s, a21 = b21;
+						const T a12 = b12,     a22 = b22 - s;
+						const T det = a11 * a22 - a21 * a12;
+						if (!(abs_value(det) > R(0))) return false;
+						Y[r0][0] = (-rhs0 * a22 + rhs1 * a21) / det;
+						Y[r0][1] = (-rhs1 * a11 + rhs0 * a12) / det;
+						j = r0;
+					} else {
+						const std::size_t q0 = j - 2;
+						std::vector<std::vector<T> > Rhs(2, std::vector<T>(2, T(0)));
+						for (std::size_t i = 0; i < 2; i++)
+							for (std::size_t t = j; t < p + 2; t++) {
+								Rhs[i][0] += S[q0 + i][t] * Y[t][0];
+								Rhs[i][1] += S[q0 + i][t] * Y[t][1];
+							}
+						// C X - X B = -Rhs  (X 2x2, row-major unknowns)
+						std::vector<std::vector<T> > M4(4, std::vector<T>(4, T(0)));
+						std::vector<T> rv(4, T(0));
+						const T Bb[2][2] = { { b11, b12 }, { b21, b22 } };
+						for (std::size_t i = 0; i < 2; i++)
+							for (std::size_t c2 = 0; c2 < 2; c2++) {
+								const std::size_t row = i * 2 + c2;
+								rv[row] = -Rhs[i][c2];
+								for (std::size_t t = 0; t < 2; t++)
+									M4[row][t * 2 + c2] += S[q0 + i][q0 + t];
+								for (std::size_t t = 0; t < 2; t++)
+									M4[row][i * 2 + t] -= Bb[t][c2];
+							}
+						std::vector<T> xv;
+						if (!gauss_solve_small_<T>(M4, rv, xv)) return false;
+						for (std::size_t i = 0; i < 2; i++)
+							for (std::size_t c2 = 0; c2 < 2; c2++)
+								Y[q0 + i][c2] = xv[i * 2 + c2];
+						j = q0;
+					}
+				}
+				return true;
+			}
+
 		} // namespace dense_schur_detail
 
 		// Full-spectrum dense nonsymmetric eigensolver.  `reason` receives a
@@ -395,6 +501,226 @@ namespace vcp {
 				reason = "complex conjugate pairs present (" + std::to_string(complex_pairs)
 				       + "): real-only dense eig_result cannot return them as converged pairs"
 				         " (complex eigenpair API = EIG-3/EIG-4); honest not_converged";
+			} else if (!residuals_pass) {
+				result.converged = false;
+				reason = vectors_ok ? "" : "eigenvector back-substitution not certifiable";
+			} else {
+				result.converged = true;
+			}
+
+			vcp::tsparse_dense_linalg::sort_eigenpairs(result);
+			return result;
+		}
+
+		// -------------------------------------------------------------------
+		// EIG-4 T-3 (allow_complex_pairs opt-in): full-spectrum dense
+		// nonsymmetric eigensolver WITH complex-pair return.  The legacy
+		// real_schur_eig_dense above is byte-untouched (B-26/B-27); this
+		// function reuses the same detail helpers and repeats its skeleton
+		// with the pair extension.  All arithmetic is real (D4-3).
+		//
+		// Pair convention (matches eig_result::eigenvalues_imag):
+		//   pair_re/pair_im (im > 0), pair_u/pair_v = real/imag parts of the
+		//   eigenvector x = u + i v of the (+im) eigenvalue, normalized by
+		//   sqrt(||u||^2 + ||v||^2) = 1.  pair_res = Frobenius residual
+		//   || A [u v] - [u v] [[re, im], [-im, re]] ||_F vs the ORIGINAL A.
+		// -------------------------------------------------------------------
+		template <typename T>
+		struct real_schur_pairs_output {
+			typedef typename tsparse_scalar::real_type<T>::type R;
+			std::vector<T> pair_re;
+			std::vector<T> pair_im;                     // > 0
+			std::vector<std::vector<T> > pair_u;
+			std::vector<std::vector<T> > pair_v;
+			std::vector<R> pair_res;
+			bool pairs_ok;
+			real_schur_pairs_output() : pairs_ok(true) {}
+		};
+
+		template <typename T>
+		vcp::tsparse_dense_linalg::dense_eigen_result<T>
+		real_schur_eig_dense_pairs(const std::vector<std::vector<T> >& A_in,
+		                           const typename tsparse_scalar::real_type<T>::type& tol,
+		                           std::string& reason,
+		                           real_schur_pairs_output<T>& pairs) {
+			typedef typename tsparse_scalar::real_type<T>::type R;
+			using tsparse_scalar::abs_value;
+			namespace det = dense_schur_detail;
+
+			vcp::tsparse_dense_linalg::dense_eigen_result<T> result;
+			pairs = real_schur_pairs_output<T>();
+			reason.clear();
+			const std::size_t m = A_in.size();
+			if (m == 0) { result.converged = true; return result; }
+
+			// 1. balancing / 2. Hessenberg / 3. real Schur core (legacy steps)
+			std::vector<std::vector<T> > B = A_in;
+			std::vector<T> d;
+			det::balance_radix2_(B, d);
+			std::vector<std::vector<T> > Q0;
+			if (!det::hessenberg_reduce_(B, Q0)) {
+				result.converged = false;
+				reason = "hessenberg reduction not certifiable for this scalar type";
+				return result;
+			}
+			vcp::tsparse_real_schur::real_schur_result<T> schur =
+				vcp::tsparse_real_schur::real_schur_decompose<T>(B, true);
+			result.iterations = schur.iterations;
+			if (!schur.success) {
+				result.converged = false;
+				reason = "real Schur core: " + schur.failure_reason;
+				return result;
+			}
+
+			// 4. classify blocks (legacy) + collect pair positions
+			std::vector<std::size_t> real_positions, pair_positions;
+			for (std::size_t p = 0; p < m; p++) {
+				if (det::is_exact_zero_(schur.eig_imag[p])) real_positions.push_back(p);
+				else if (p + 1 < m) { pair_positions.push_back(p); p++; }
+			}
+			result.complex_eigenvalues.reserve(m);
+			for (std::size_t p = 0; p < m; p++) {
+				result.complex_eigenvalues.push_back(
+					typename vcp::tsparse_dense_linalg::dense_eigen_result<T>::eigenvalue_type(
+						tsparse_scalar::real_part(schur.eig_real[p]),
+						tsparse_scalar::real_part(schur.eig_imag[p])));
+			}
+
+			// 5. real eigenvectors (legacy loop)
+			bool vectors_ok = true;
+			for (std::size_t idx = 0; idx < real_positions.size(); idx++) {
+				const std::size_t p = real_positions[idx];
+				const T lambda = schur.eig_real[p];
+				std::vector<T> y;
+				std::vector<T> v(m, T(0));
+				bool ok = det::schur_real_eigenvector_(schur.schur_form, p, lambda, y);
+				if (ok) {
+					std::vector<T> w(m, T(0));
+					for (std::size_t r0 = 0; r0 < m; r0++) {
+						T s(0);
+						for (std::size_t t = 0; t <= p; t++) s += schur.schur_vectors[r0][t] * y[t];
+						w[r0] = s;
+					}
+					for (std::size_t r0 = 0; r0 < m; r0++) {
+						T s(0);
+						for (std::size_t t = 0; t < m; t++) s += Q0[r0][t] * w[t];
+						v[r0] = s;
+					}
+					for (std::size_t r0 = 0; r0 < m; r0++) v[r0] = d[r0] * v[r0];
+					const R nv = tsparse_scalar::real_norm_value(v);
+					if (nv > R(0)) {
+						for (std::size_t r0 = 0; r0 < m; r0++) v[r0] = v[r0] / T(nv);
+					} else {
+						ok = false;
+					}
+				}
+				if (!ok) {
+					vectors_ok = false;
+					v.assign(m, T(0));
+				}
+				result.eigenvalues.push_back(lambda);
+				result.eigenvectors.push_back(v);
+			}
+
+			// 5b. complex-pair invariant planes: Y (S-coords) -> W = D Q0 Z Y,
+			//     then the real 2x2 eigenbasis E of the block maps W to the
+			//     standard-rotation pair columns [u v].
+			for (std::size_t idx = 0; idx < pair_positions.size(); idx++) {
+				const std::size_t p = pair_positions[idx];
+				const T pr = schur.eig_real[p];
+				const T qi = schur.eig_imag[p];    // +im entry of the pair
+				std::vector<std::vector<T> > Y;
+				if (!det::schur_pair_subspace_<T>(schur.schur_form, p, Y)) {
+					pairs.pairs_ok = false;
+					continue;
+				}
+				std::vector<std::vector<T> > W(2, std::vector<T>(m, T(0)));
+				for (std::size_t j = 0; j < 2; j++) {
+					std::vector<T> w(m, T(0));
+					for (std::size_t r0 = 0; r0 < m; r0++) {
+						T s(0);
+						for (std::size_t t = 0; t < p + 2 && t < m; t++)
+							s += schur.schur_vectors[r0][t] * Y[t][j];
+						w[r0] = s;
+					}
+					for (std::size_t r0 = 0; r0 < m; r0++) {
+						T s(0);
+						for (std::size_t t = 0; t < m; t++) s += Q0[r0][t] * w[t];
+						W[j][r0] = d[r0] * s;
+					}
+				}
+				const T s11 = schur.schur_form[p][p],     s12 = schur.schur_form[p][p + 1];
+				const T s21 = schur.schur_form[p + 1][p], s22 = schur.schur_form[p + 1][p + 1];
+				T e_r0, e_r1, e_i0, e_i1;
+				if (!(abs_value(s12) < abs_value(s21))) {
+					e_r0 = s12; e_r1 = pr - s11; e_i0 = T(0); e_i1 = qi;
+				} else {
+					e_r0 = pr - s22; e_r1 = s21; e_i0 = qi; e_i1 = T(0);
+				}
+				std::vector<T> u(m), v(m);
+				for (std::size_t r0 = 0; r0 < m; r0++) {
+					u[r0] = W[0][r0] * e_r0 + W[1][r0] * e_r1;
+					v[r0] = W[0][r0] * e_i0 + W[1][r0] * e_i1;
+				}
+				const R un = tsparse_scalar::real_norm_value(u);
+				const R vn = tsparse_scalar::real_norm_value(v);
+				const R pn = tsparse_scalar::sqrt_value(un * un + vn * vn);
+				if (!(pn > R(0))) { pairs.pairs_ok = false; continue; }
+				for (std::size_t r0 = 0; r0 < m; r0++) { u[r0] = u[r0] / T(pn); v[r0] = v[r0] / T(pn); }
+				// exact pair residual vs the ORIGINAL matrix
+				R rs(0);
+				for (std::size_t r0 = 0; r0 < m; r0++) {
+					T au(0), av(0);
+					for (std::size_t t = 0; t < m; t++) {
+						au += A_in[r0][t] * u[t];
+						av += A_in[r0][t] * v[t];
+					}
+					const T d1 = au - (pr * u[r0] - qi * v[r0]);
+					const T d2 = av - (qi * u[r0] + pr * v[r0]);
+					const R a1 = abs_value(d1);
+					const R a2 = abs_value(d2);
+					rs += a1 * a1 + a2 * a2;
+				}
+				pairs.pair_re.push_back(pr);
+				pairs.pair_im.push_back(qi);
+				pairs.pair_u.push_back(u);
+				pairs.pair_v.push_back(v);
+				pairs.pair_res.push_back(tsparse_scalar::sqrt_value(rs));
+			}
+
+			// 6. C-1 residuals of the real pairs (legacy)
+			R max_res(0);
+			result.residuals.reserve(result.eigenvalues.size());
+			for (std::size_t idx = 0; idx < result.eigenvalues.size(); idx++) {
+				const std::vector<T>& v = result.eigenvectors[idx];
+				const T lambda = result.eigenvalues[idx];
+				std::vector<T> rvec(m, T(0));
+				for (std::size_t r0 = 0; r0 < m; r0++) {
+					T s(0);
+					for (std::size_t t = 0; t < m; t++) s += A_in[r0][t] * v[t];
+					rvec[r0] = s - lambda * v[r0];
+				}
+				const R rn = tsparse_scalar::real_norm_value(rvec);
+				result.residuals.push_back(rn);
+				if (rn > max_res) max_res = rn;
+			}
+			for (std::size_t i = 0; i < pairs.pair_res.size(); i++)
+				if (pairs.pair_res[i] > max_res) max_res = pairs.pair_res[i];
+			result.residual_norm = max_res;
+
+			// 7. verdict: legacy dense acceptance scale max(tol, tol*n*10),
+			//    with pairs counted in (a pair that could not be certifiably
+			//    lifted keeps converged = false; honest reason)
+			R residual_limit = tol;
+			{
+				const R tol_n = tol * R(static_cast<int>(m) * 10);
+				if (tol_n > residual_limit) residual_limit = tol_n;
+			}
+			const bool residuals_pass = !(max_res > residual_limit) && vectors_ok;
+			if (!pairs.pairs_ok) {
+				result.converged = false;
+				reason = "complex-pair invariant subspace not certifiable"
+				         " (pivot failure in the pair back-substitution)";
 			} else if (!residuals_pass) {
 				result.converged = false;
 				reason = vectors_ok ? "" : "eigenvector back-substitution not certifiable";

@@ -368,6 +368,9 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
     // k_restart = number of retained Ritz vectors at start of current cycle
     std::size_t k_restart = 0;
 
+    // EIG-4 T-4: running projected-operator infinity-norm estimate (shared
+    // C-1 scale input; updated once per restart, zero extra applies)
+    R anorm_est_run = R(0);
     // beta_overflow = ||z|| from last expansion step (Wu & Simon f_m)
     // z_overflow   = z / ||z|| (unit-norm overflow Lanczos vector)
     R               beta_overflow = R(0);
@@ -478,6 +481,17 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
 
         const std::vector<std::vector<T> > T_proj =
             trl_detail::build_projected_matrix(alpha, beta, k_restart);
+
+        // EIG-4 T-4: running ||A|| estimate = max over restarts of the
+        // projected operator's infinity norm (definition documented at the
+        // shared helper, tsparse_honest_termination.hpp).  Zero extra applies;
+        // the run trajectory is untouched (final-acceptance input only).
+        for (std::size_t i2 = 0; i2 < T_proj.size(); i2++) {
+            R rowsum(0);
+            for (std::size_t j2 = 0; j2 < T_proj[i2].size(); j2++)
+                rowsum += vcp::tsparse_scalar::abs_value(T_proj[i2][j2]);
+            if (rowsum > anorm_est_run) anorm_est_run = rowsum;
+        }
 
         const std::size_t proj_iter =
             std::max<std::size_t>(m_actual * m_actual * 300, std::size_t(3000));
@@ -841,12 +855,21 @@ thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_with_diagnostics(
     //   (i)  k pairs returned,
     //   (ii) no honest-termination hold at exit (C-2), and
     //   (iii) the end-of-run EXACT residuals of all returned pairs pass the
-    //        acceptance test (C-1: res_abs <= tol or res_rel <= tol,
-    //        scale = 1 + |theta|).  This also demotes non-symmetric misuse
-    //        (D-12) to an honest failure instead of silent garbage.
+    //        acceptance test.  EIG-4 T-4 (D4-4 / R-1): the acceptance is the
+    //        legacy test (res_abs <= tol or res_rel <= tol, scale = 1+|theta|)
+    //        OR res_abs <= tol * max(1+|theta|, anorm_est_run) via the shared
+    //        helper (strictly a relaxation -- B-29; anorm_est_run = running
+    //        projected-operator infinity norm, see the helper's docs).  This
+    //        still demotes non-symmetric misuse (D-12) to an honest failure.
+    std::vector<R> theta_abs_c1;
+    theta_abs_c1.reserve(result.eigenvalues.size());
+    for (std::size_t i = 0; i < result.eigenvalues.size(); i++)
+        theta_abs_c1.push_back(vcp::tsparse_scalar::abs_value(
+            vcp::tsparse_scalar::real_part(result.eigenvalues[i])));
     if (result.returned_count >= k && !honest_hold &&
-        vcp::tsparse::residual_acceptance_check_(
-            result.residuals_absolute, result.residuals_relative, tol)) {
+        vcp::tsparse::residual_acceptance_check_scaled_(
+            result.residuals_absolute, result.residuals_relative, tol,
+            theta_abs_c1, anorm_est_run)) {
         result.converged = true;
         result.status    = "converged";
         result.message   = "thick_restart_lanczos converged";
