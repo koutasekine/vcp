@@ -307,7 +307,7 @@ static void sort_eigenpairs_(eig_result<_T>& result)
 }
 
 // ---------------------------------------------------------------------------
-// 10. populate_real_complex_eigenvalues_  (declared before select_eigenpairs_ which calls it)
+// 10. populate_real_complex_eigenvalues_  (declared before select_eigenpairs_aligned_ which calls it)
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 static void populate_real_complex_eigenvalues_(eig_result<_T>& result)
@@ -324,49 +324,14 @@ static void populate_real_complex_eigenvalues_(eig_result<_T>& result)
 }
 
 // ---------------------------------------------------------------------------
-// 9. select_eigenpairs_
-// ---------------------------------------------------------------------------
-template <typename _T, typename _Index>
-static void select_eigenpairs_(eig_result<_T>& result,
-                                const std::size_t k,
-                                const eig_target target,
-                                const typename vcp::tsparse_scalar::real_type<_T>::type& shift
-                                    = typename vcp::tsparse_scalar::real_type<_T>::type(0))
-{
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    const std::vector<std::size_t> order =
-        vcp::tsparse_eigen_selection::select_real_eigenpairs(result.eigenvalues, k, target, shift);
-    std::vector<_T> values;
-    std::vector<std::vector<_T> > vectors;
-    std::vector<scalar_real_type> residuals_abs;
-    std::vector<scalar_real_type> residuals_rel;
-    values.reserve(order.size());
-    if (result.eigenvectors.size() == result.eigenvalues.size())       vectors.reserve(order.size());
-    if (result.residuals_absolute.size() == result.eigenvalues.size()) residuals_abs.reserve(order.size());
-    if (result.residuals_relative.size() == result.eigenvalues.size()) residuals_rel.reserve(order.size());
-    for (std::size_t i = 0; i < order.size(); i++) {
-        const std::size_t j = order[i];
-        values.push_back(result.eigenvalues[j]);
-        if (result.eigenvectors.size()       == result.eigenvalues.size()) vectors.push_back(result.eigenvectors[j]);
-        if (result.residuals_absolute.size() == result.eigenvalues.size()) residuals_abs.push_back(result.residuals_absolute[j]);
-        if (result.residuals_relative.size() == result.eigenvalues.size()) residuals_rel.push_back(result.residuals_relative[j]);
-    }
-    result.eigenvalues.swap(values);
-    if (result.eigenvectors.size()       == vectors.size())       result.eigenvectors.swap(vectors);
-    if (result.residuals_absolute.size() == residuals_abs.size()) result.residuals_absolute.swap(residuals_abs);
-    if (result.residuals_relative.size() == residuals_rel.size()) result.residuals_relative.swap(residuals_rel);
-    populate_real_complex_eigenvalues_<_T,_Index>(result);
-    set_result_counts_<_T,_Index>(result, k);
-}
-
-// ---------------------------------------------------------------------------
-// 9b. select_eigenpairs_aligned_   (EIG-4 T-2、auto_select の dense 分岐専用)
+// 9. select_eigenpairs_aligned_   (EIG-4 T-2 導入、EIG-4.1 で唯一の選択実装)
 //
-// 既存 select_eigenpairs_ は末尾の swap ガードが「選択前サイズ == 選択後
-// サイズ」を要求するため、k < n の選択で eigenvectors / residuals が
-// **未選択のまま残る**(値とベクトルの対応が壊れる既存挙動)。明示経路は
-// B-26 によりバイト同一維持(既知問題として起票)とし、auto 経路は本整列版
-// を使う: 構築した選択済み配列を無条件に採用する。
+// 値・ベクトル・残差を同一置換で選択する(構築した選択済み配列を無条件に
+// 採用し、非対応の配列はクリアする)。旧 select_eigenpairs_ は末尾の swap
+// ガードが「選択前サイズ == 選択後サイズ」を要求し、k < n の選択で
+// eigenvectors / residuals が未選択のまま残る嘘クラス欠陥(D-16)を持って
+// いたため、EIG-4.1 で全呼び出し面(実 dense・complex dense の 2 箇所)を
+// 本整列版へ統一の上、旧実装を削除した。
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 static void select_eigenpairs_aligned_(eig_result<_T>& result,
@@ -1498,7 +1463,7 @@ static eig_result<_T> complex_standard_eigs_with_info_(const spmats<_T,_Index>& 
         eig_result<_T> result = dense_eig_<_T,_Index>(dense, options);
         result.used_dense_fallback = true;
         result.requested_count = k;
-        select_eigenpairs_<_T,_Index>(result, k, options.target, options.shift);
+        select_eigenpairs_aligned_<_T,_Index>(result, k, options.target, options.shift);
         set_result_counts_<_T,_Index>(result, k);
         return result;
     }
@@ -3482,7 +3447,7 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
     }
     eig_result<_T> result = dense_eig_<_T,_Index>(dense, active);
     result.used_dense_fallback = true;
-    select_eigenpairs_<_T,_Index>(result, k, active.target, active.shift);
+    select_eigenpairs_aligned_<_T,_Index>(result, k, active.target, active.shift);
     set_result_counts_<_T,_Index>(result, k);
     return result;
     } catch (const vcp::error&) {
