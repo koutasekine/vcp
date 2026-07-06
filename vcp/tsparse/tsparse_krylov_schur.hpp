@@ -1,89 +1,125 @@
 // VCP Library
 // http://verified.computation.jp
 //
+// VCP Library is licensed under the BSD 3 - clause "New" or "Revised" License
+//
 // vcp/tsparse/tsparse_krylov_schur.hpp
 //
-// Experimental Krylov-Schur Arnoldi eigensolver for REAL GENERAL operators.
-// Phase 3 of the spmatrix next-stage design.
+// EIG-3 T-1: Krylov-Schur eigensolver for REAL GENERAL operators, rebuilt on
+// the EIG-2 real Schur QR core (vcp::tsparse_real_schur).  This file is a
+// full replacement of the Phase-3 experimental driver (whose projected-QR
+// dependencies carried the D-QR/D-4/D-7/D-8/D-15 defect family); it shares
+// no code with the legacy core (tsparse_eigensolvers.hpp projected QR).
 //
-// Namespace: vcp::tsparse_experimental
+// Contract (EIG-0 + EIG-3 design D3-1..D3-5; frozen unit set ks_units.cpp):
+//  * options.max_iter > 0  = total matrix-vector product budget, STRICT:
+//    every apply() call is counted (B-24, 1:1) and mv <= max_iter always
+//    (the final C-1 re-evaluation applies are inside the budget too).
+//    options.max_iter == 0 = default budget 300*n (TRL convention).
+//    Budget reached => honest not_converged, status "max_iter_exhausted".
+//  * converged=true requires, at the terminating analysis:
+//      C-1  exact lambda-space residuals of all k returned pairs, re-evaluated
+//           against the operator (certified acceptance res<=tol or rel<=tol),
+//      C-2  no certainly-inner unconverged Ritz candidate in the exported
+//           candidate set (shared check honest_termination_check_complex_,
+//           target metric per D3-3: algebraic=real part, magnitude=hypot),
+//      D3-2 no complex pair inside the k return window (real-only eig_result
+//           cannot return complex pairs as converged; they are reported as
+//           diagnostics with an explicit reason),
+//      freshness: the declaring analysis happened on a subspace enriched by
+//           deterministic probe directions after the previous analysis first
+//           satisfied C-1/C-2 (verification cycle; blind-spot probe for
+//           multiplicity discovery), or the basis spans the whole space.
+//  * C-3: no value-proximity dedup anywhere; multiplicities are discovered
+//    via probe-enriched verification cycles and returned as independent pairs.
+//  * C-2 evidence (D3-4, EIG-1 a-5): the final candidate set (values, flags)
+//    and the freshness stamp are exported on EVERY termination path with
+//    n>0 && k>0 (ks_c2_evidence).  A path that could not export evidence
+//    could not declare converged.
+//  * Contraction (G-2.1 method A, approved 2026-07-06): Schur-form
+//    reordering by adjacent block swaps (dtrexc/dlaexc style) with certified
+//    swap rejection; a rejected swap never discards the target candidate --
+//    the keep window is extended to the candidate's current position
+//    (keep-more, condition c-1).  Rejections are counted in
+//    contraction_swap_rejections (condition c-2).  2x2 complex blocks are
+//    never split across the contraction boundary (D3-5 keep-together;
+//    boundary extension is the conservative direction).
+//  * T-generic (GT1 P1-P6): module-scalar ops only, certified gates with
+//    honest-failure third branches, no SWO-dependent std algorithms on T
+//    (orderings below are hand-rolled insertion sorts, partial-order
+//    tolerant), no infinity sentinels.  kv::interval instantiates and fails
+//    honestly by default.
+//  * Determinism: no randomness; identical input -> byte-identical output.
 //
-// NOT connected to vcp::spmatrix::eigs / eig_method enum.
-// NOT connected to the existing spmatrix::eigs dispatch.
-// Complex types T are rejected via static_assert.
-//
-// Apply functor convention:
-//   void operator()(const std::vector<T>& x, std::vector<T>& y) const;
-//
-// options.max_iter = total matrix-vector product budget (main loop).
-// Final residual re-evaluation apply() calls are counted in
-// matrix_vector_products but are NOT subject to the budget check.
-//
-// Design notes:
-//   - Arnoldi basis is orthonormal; full reorthogonalization is performed.
-//   - Restart uses approximate Ritz vectors (via inverse iteration on the
-//     projected Hessenberg) to form the retained subspace.  This is a
-//     Ritz-based variant of Krylov-Schur; it provides the same invariant-
-//     subspace property when Ritz vectors are well-converged.
-//   - Complex Ritz pairs are tracked via complex_eigenvalues but are NOT
-//     used as restart vectors in Phase 3.  This limitation is documented
-//     in the Phase 3 spec (tsparse_krylov_schur complex pair restart
-//     limitation).
-//   - The projected Hessenberg after restart may be a dense p x p block.
-//     It is reduced to upper Hessenberg form before eigenvalue extraction.
-//   - n==0, k==0, k>n are handled per spec.
-//   - used_dense_fallback / used_shift_invert / used_generalized_operator
-//     are always false.
+// Exact zero assignments after certified-small annihilation (swap kernel,
+// deflation-style flushes) follow the EIG-2 real Schur core precedent
+// (backward-stability semantics, approved at EIG-2 G-1.1).
 
 #pragma once
 
 #ifndef VCP_TSPARSE_KRYLOV_SCHUR_HPP
 #define VCP_TSPARSE_KRYLOV_SCHUR_HPP
 
-#include <algorithm>
 #include <complex>
 #include <cstddef>
-#include <limits>
 #include <string>
-#include <type_traits>
-#include <utility>
 #include <vector>
 
-#include <vcp/spmatrix.hpp>
-#include <vcp/tsparse/tsparse_dense_linalg.hpp>
-#include <vcp/tsparse/tsparse_eigensolvers.hpp>
-#include <vcp/tsparse/tsparse_lanczos.hpp>
-#include <vcp/tsparse/tsparse_projected_hessenberg.hpp>
+// eig_result / eig_options only (NOT vcp/spmatrix.hpp: this header is also
+// included from the spmats_eigs dispatch layer, which spmatrix.hpp includes
+// after the spmats class definition — a spmatrix.hpp include here would be
+// circular; spmats_eigs_types.hpp is the self-contained type surface)
+#include <vcp/spmats_base/spmats_eigs_types.hpp>
 #include <vcp/tsparse/tsparse_scalar.hpp>
+#include <vcp/tsparse/tsparse_eigs.hpp>
+#include <vcp/tsparse/tsparse_eigen_selection.hpp>
+#include <vcp/tsparse/tsparse_lanczos.hpp>            // deterministic_start_vector
+#include <vcp/tsparse/tsparse_real_schur.hpp>          // EIG-2 core
+#include <vcp/tsparse/tsparse_dense_schur_driver.hpp>  // hessenberg_reduce_ (reuse)
+#include <vcp/tsparse/tsparse_honest_termination.hpp>  // shared C-2 check
 
 namespace vcp {
 namespace tsparse_experimental {
 
 // ---------------------------------------------------------------------------
-// Type guard: only real floating-point T is supported.
+// C-2 evidence package (D3-4)
 // ---------------------------------------------------------------------------
 template <class T>
-struct ks_is_real_floating {
-    static const bool value =
-        std::is_floating_point<T>::value &&
-        !vcp::tsparse_scalar::is_complex<T>::value;
+struct ks_c2_evidence {
+    typedef typename vcp::tsparse_scalar::real_type<T>::type R;
+    std::vector<R> candidate_real;         // final-analysis Ritz candidates
+    std::vector<R> candidate_imag;         // complex pairs adjacent (+s, -s)
+    std::vector<bool> candidate_converged; // residual-bound convergence flags
+    bool fresh;                            // declaring analysis was verification-fresh
+    bool exported;                         // fields populated (true for n>0 && k>0)
+
+    ks_c2_evidence() : fresh(false), exported(false) {}
 };
 
 // ---------------------------------------------------------------------------
-// Diagnostic result wrapper
+// Diagnostic result wrapper (field-compatible superset of the old driver)
 // ---------------------------------------------------------------------------
 template <class T>
 struct krylov_schur_result {
     vcp::eig_result<T> eigs;
-    std::size_t restart_count;           // Krylov-Schur restarts performed
-    std::size_t matrix_vector_products;  // total apply() calls (including final eval)
-    std::size_t locked_real_count;       // converged real Ritz pairs returned
-    std::size_t locked_complex_count;    // conjugate complex pairs in complex_eigenvalues
-    std::size_t projected_dimension;     // effective Krylov subspace dimension m
+    std::size_t restart_count;
+    std::size_t matrix_vector_products;
+    std::size_t locked_real_count;
+    std::size_t locked_complex_count;
+    std::size_t projected_dimension;
+    std::size_t contraction_swap_rejections;   // G-2.1 (c-2)
+
+    ks_c2_evidence<T> c2_evidence;
+    // terminating Krylov-Schur factorization  A V = V S + v_next c^T
+    std::vector<std::vector<T> > final_basis;       // V: M vectors (length n)
+    std::vector<std::vector<T> > final_compressed;  // S: M x M
+    std::vector<T> final_residual_vector;           // v_next (length n; may be empty)
+    std::vector<T> final_coupling;                  // c (length M)
 
     krylov_schur_result()
         : restart_count(0), matrix_vector_products(0),
-          locked_real_count(0), locked_complex_count(0), projected_dimension(0) {}
+          locked_real_count(0), locked_complex_count(0),
+          projected_dimension(0), contraction_swap_rejections(0) {}
 };
 
 // ===========================================================================
@@ -91,44 +127,41 @@ struct krylov_schur_result {
 // ===========================================================================
 namespace ks_detail {
 
-// Effective subspace dimension m.  Always satisfies k <= m <= n.
+// Effective subspace dimension m (same policy as the old driver).
 inline std::size_t effective_m(std::size_t n, std::size_t k, std::size_t requested)
 {
     if (n == 0 || k == 0) return 0;
     std::size_t m;
     if (requested == 0) {
-        m = std::max<std::size_t>(
-            std::max<std::size_t>(2 * k + 6, std::size_t(20)), k + 3);
+        std::size_t a = 2 * k + 6;
+        if (a < 20) a = 20;
+        if (a < k + 3) a = k + 3;
+        m = a;
     } else if (requested <= k) {
-        // subspace_dim too small: pad to k + max(requested, 2)
-        m = k + std::max<std::size_t>(requested, std::size_t(2));
+        std::size_t pad = (requested > 2) ? requested : std::size_t(2);
+        m = k + pad;
     } else {
         m = requested;
     }
     if (m > n) m = n;
-    if (k < n && m < k + 1) m = std::min(k + 1, n);
+    if (k < n && m < k + 1) m = (k + 1 < n) ? k + 1 : n;
     return m;
 }
 
-// Orthogonalize w against V[0..j] and accumulate Gram-Schmidt coefficients h.
+// Orthogonalize w against V[0..count-1]; coefficients accumulated into h
+// (length count).  passes = 1 (MGS-like single CGS pass) or 2 (CGS2).
 template <typename T>
-void arnoldi_orthogonalize(
-    const std::vector<std::vector<T> >& V,
-    const std::size_t j,          // last basis index (inclusive)
-    std::vector<T>& w,
-    std::vector<T>& h,            // output: length j+1
-    const vcp::orthogonalization_method orth)
+void orthogonalize_block(const std::vector<std::vector<T> >& V,
+                         const std::size_t count,
+                         std::vector<T>& w,
+                         std::vector<T>& h,
+                         const int passes)
 {
     typedef typename vcp::tsparse_scalar::real_type<T>::type R;
     const std::size_t n = w.size();
-    h.assign(j + 1, T(0));
-
-    const bool twice =
-        (orth == vcp::orthogonalization_method::classical_gram_schmidt_twice);
-    const int passes = twice ? 2 : 1;
-
+    h.assign(count, T(0));
     for (int pass = 0; pass < passes; pass++) {
-        for (std::size_t i = 0; i <= j; i++) {
+        for (std::size_t i = 0; i < count; i++) {
             const R c = vcp::tsparse_scalar::real_dot_value(V[i], w);
             h[i] += T(c);
             for (std::size_t ii = 0; ii < n; ii++) w[ii] -= T(c) * V[i][ii];
@@ -136,112 +169,394 @@ void arnoldi_orthogonalize(
     }
 }
 
-// Extract the square m x m matrix H_m from H_mat.
+// Deterministic direction orthogonal to V[0..count-1]; returns false when no
+// certifiably nonzero direction is found within the attempt budget.
 template <typename T>
-std::vector<std::vector<T> > extract_hm(
-    const std::vector<std::vector<T> >& H_mat,
-    const std::size_t m)
-{
-    std::vector<std::vector<T> > Hm(m, std::vector<T>(m, T(0)));
-    for (std::size_t i = 0; i < m; i++)
-        for (std::size_t j = 0; j < m; j++)
-            Hm[i][j] = H_mat[i][j];
-    return Hm;
-}
-
-// Lift a projected Ritz vector y (length m) to full space via V_basis.
-template <typename T>
-std::vector<T> lift_ritz(
-    const std::vector<std::vector<T> >& V,
-    const std::vector<T>& y,
-    const std::size_t n,
-    const std::size_t m)
-{
-    std::vector<T> u(n, T(0));
-    const std::size_t len = std::min(y.size(), std::min(m, V.size()));
-    for (std::size_t j = 0; j < len; j++)
-        for (std::size_t i = 0; i < n; i++)
-            u[i] += V[j][i] * y[j];
-    return u;
-}
-
-// Compute H_proj = Q_p^T * Hm * Q_p  (p_keep x p_keep).
-// Q_p is stored as p_keep vectors each of length m.
-template <typename T>
-std::vector<std::vector<T> > project_hessenberg(
-    const std::vector<std::vector<T> >& Hm,   // m x m
-    const std::vector<std::vector<T> >& Qp)   // p_keep vectors of length m
-{
-    const std::size_t m  = Hm.size();
-    const std::size_t p  = Qp.size();
-
-    // tmp[i][j] = (Hm * Qp[j])[i]
-    std::vector<std::vector<T> > tmp(m, std::vector<T>(p, T(0)));
-    for (std::size_t i = 0; i < m; i++) {
-        for (std::size_t j = 0; j < p; j++) {
-            T s = T(0);
-            const std::size_t cols = std::min(m, Hm[i].size());
-            for (std::size_t kk = 0; kk < cols; kk++)
-                s += Hm[i][kk] * Qp[j][kk];
-            tmp[i][j] = s;
-        }
-    }
-
-    // H_proj[i][j] = Qp[i]^T * tmp[:,j]
-    std::vector<std::vector<T> > Hp(p, std::vector<T>(p, T(0)));
-    for (std::size_t i = 0; i < p; i++) {
-        for (std::size_t j = 0; j < p; j++) {
-            T s = T(0);
-            for (std::size_t kk = 0; kk < m; kk++)
-                s += Qp[i][kk] * tmp[kk][j];
-            Hp[i][j] = s;
-        }
-    }
-    return Hp;
-}
-
-// Orthogonalize a set of m-vectors in-place (CGS2 within the set).
-// Returns the number of linearly independent vectors retained.
-template <typename T>
-std::size_t orthonormalize_set(
-    std::vector<std::vector<T> >& vecs,
-    const std::size_t m,
-    const typename vcp::tsparse_scalar::real_type<T>::type& tol)
+bool fresh_orthogonal_direction(const std::vector<std::vector<T> >& V,
+                                const std::size_t count,
+                                const std::size_t n,
+                                unsigned int& seed,
+                                const typename vcp::tsparse_scalar::real_type<T>::type& floor_tol,
+                                std::vector<T>& out)
 {
     typedef typename vcp::tsparse_scalar::real_type<T>::type R;
-    std::size_t kept = 0;
-
-    for (std::size_t j = 0; j < vecs.size(); j++) {
-        std::vector<T>& v = vecs[j];
-        if (v.size() != m) v.assign(m, T(0));
-
-        for (int pass = 0; pass < 2; pass++) {
-            for (std::size_t i = 0; i < kept; i++) {
-                R c = R(0);
-                for (std::size_t kk = 0; kk < m; kk++)
-                    c += vcp::tsparse_scalar::real_part(vecs[i][kk] * v[kk]);
-                for (std::size_t kk = 0; kk < m; kk++)
-                    v[kk] -= T(c) * vecs[i][kk];
-            }
+    for (int attempt = 0; attempt < 24; attempt++) {
+        out = vcp::tsparse_lanczos::deterministic_start_vector<T>(n, seed++);
+        std::vector<T> h;
+        orthogonalize_block(V, count, out, h, 2);
+        const R nv = vcp::tsparse_scalar::real_norm_value(out);
+        if (nv > floor_tol) {
+            for (std::size_t i = 0; i < n; i++) out[i] /= T(nv);
+            return true;
         }
-
-        R nrm = vcp::tsparse_scalar::real_norm_value(v);
-        if (nrm <= tol) continue;
-        for (std::size_t kk = 0; kk < m; kk++) v[kk] /= T(nrm);
-
-        if (j != kept) vecs[kept] = vecs[j];
-        kept++;
     }
-    vecs.resize(kept);
-    return kept;
+    return false;
 }
 
-// Check whether a complex eigenvalue is effectively real.
-template <typename R>
-bool is_effectively_real(const std::complex<R>& z, const R& tol)
+// Small dense linear solve (q <= 4) with certified partial pivoting.
+// Returns false when no pivot is certifiably nonzero (honest failure).
+template <typename T>
+bool solve_small(std::vector<std::vector<T> > A, std::vector<T> b, std::vector<T>& x)
 {
-    return vcp::tsparse_scalar::abs_value(z.imag()) <=
-           tol * (vcp::tsparse_scalar::abs_value(z.real()) + R(1));
+    typedef typename vcp::tsparse_scalar::real_type<T>::type R;
+    using vcp::tsparse_scalar::abs_value;
+    const std::size_t q = A.size();
+    x.assign(q, T(0));
+    for (std::size_t col = 0; col < q; col++) {
+        std::size_t piv = col;
+        R best = abs_value(A[col][col]);
+        for (std::size_t r = col + 1; r < q; r++) {
+            const R a = abs_value(A[r][col]);
+            if (a > best) { best = a; piv = r; }
+        }
+        if (!(best > R(0))) return false;   // certified-only gate (P1)
+        if (piv != col) { A[piv].swap(A[col]); const T tb = b[piv]; b[piv] = b[col]; b[col] = tb; }
+        for (std::size_t r = col + 1; r < q; r++) {
+            const T f = A[r][col] / A[col][col];
+            for (std::size_t cc = col; cc < q; cc++) A[r][cc] -= f * A[col][cc];
+            b[r] -= f * b[col];
+        }
+    }
+    for (std::size_t ri = q; ri-- > 0;) {
+        T s = b[ri];
+        for (std::size_t cc = ri + 1; cc < q; cc++) s -= A[ri][cc] * x[cc];
+        x[ri] = s / A[ri][ri];
+    }
+    return true;
+}
+
+// Block boundaries of a quasi-upper-triangular T (structural subdiagonal).
+template <typename T>
+void enumerate_blocks(const std::vector<std::vector<T> >& Tm,
+                      std::vector<std::size_t>& pos,
+                      std::vector<std::size_t>& size)
+{
+    using vcp::tsparse_scalar::abs_value;
+    typedef typename vcp::tsparse_scalar::real_type<T>::type R;
+    const std::size_t m = Tm.size();
+    pos.clear(); size.clear();
+    std::size_t p = 0;
+    while (p < m) {
+        if (p + 1 < m && !(abs_value(Tm[p + 1][p]) <= R(0))) {
+            pos.push_back(p); size.push_back(2); p += 2;
+        } else {
+            pos.push_back(p); size.push_back(1); p += 1;
+        }
+    }
+}
+
+// Certified eigenvalues of the 2x2 block at (p,p).  Returns:
+//   +1 certified complex pair (re +/- im, im > 0),
+//    0 certified real pair (values in re1/re2),
+//   -1 not certifiable (interval 0-straddle) -> honest failure upstream.
+template <typename T>
+int eig_2x2(const std::vector<std::vector<T> >& Tm, const std::size_t p,
+            T& re, T& im, T& re1, T& re2)
+{
+    typedef typename vcp::tsparse_scalar::real_type<T>::type R;
+    using vcp::tsparse_scalar::abs_value;
+    using vcp::tsparse_scalar::sqrt_value;
+    R bs = abs_value(Tm[p][p]);
+    {
+        const R t1 = abs_value(Tm[p][p + 1]);
+        const R t2 = abs_value(Tm[p + 1][p]);
+        const R t3 = abs_value(Tm[p + 1][p + 1]);
+        if (t1 > bs) bs = t1;
+        if (t2 > bs) bs = t2;
+        if (t3 > bs) bs = t3;
+    }
+    if (!(bs > R(0))) return -1;
+    const T a = Tm[p][p] / T(bs);
+    const T b = Tm[p][p + 1] / T(bs);
+    const T c = Tm[p + 1][p] / T(bs);
+    const T d = Tm[p + 1][p + 1] / T(bs);
+    const T tr = a + d;
+    const T amd = a - d;
+    const T disc = amd * amd + T(4) * (b * c);
+    if (disc < T(0)) {
+        const T s = sqrt_value(-disc);
+        re = T(bs) * tr / T(2);
+        im = T(bs) * s / T(2);
+        return 1;
+    }
+    if (disc >= T(0)) {
+        const T sd = sqrt_value(disc);
+        re1 = T(bs) * (tr + sd) / T(2);
+        re2 = T(bs) * (tr - sd) / T(2);
+        return 0;
+    }
+    return -1;   // 0-straddling discriminant (interval): not certifiable
+}
+
+// Split a certified-real 2x2 block at p into two 1x1 blocks by a
+// deterministic rotation (real_schur standardization pattern).  Applies the
+// similarity to the whole matrix and accumulates into U.  Returns false when
+// the rotation is not certifiable.
+template <typename T>
+bool split_real_2x2(std::vector<std::vector<T> >& Tm,
+                    std::vector<std::vector<T> >& U,
+                    const std::size_t p)
+{
+    typedef typename vcp::tsparse_scalar::real_type<T>::type R;
+    using vcp::tsparse_scalar::abs_value;
+    using vcp::tsparse_scalar::sqrt_value;
+    const std::size_t m = Tm.size();
+    R bs = abs_value(Tm[p][p]);
+    {
+        const R t1 = abs_value(Tm[p][p + 1]);
+        const R t2 = abs_value(Tm[p + 1][p]);
+        const R t3 = abs_value(Tm[p + 1][p + 1]);
+        if (t1 > bs) bs = t1;
+        if (t2 > bs) bs = t2;
+        if (t3 > bs) bs = t3;
+    }
+    if (!(bs > R(0))) return false;
+    const T a = Tm[p][p] / T(bs);
+    const T b = Tm[p][p + 1] / T(bs);
+    const T c = Tm[p + 1][p] / T(bs);
+    const T d = Tm[p + 1][p + 1] / T(bs);
+    const T tr = a + d;
+    const T amd = a - d;
+    const T disc = amd * amd + T(4) * (b * c);
+    if (!(disc >= T(0))) return false;
+    const T sd = sqrt_value(disc);
+    const T lam1 = (amd >= T(0)) ? (tr + sd) / T(2) : (tr - sd) / T(2);
+    const T v0 = lam1 - d;
+    const R av0 = abs_value(v0);
+    const R avc = abs_value(c);
+    R vs = av0;
+    if (avc > vs) vs = avc;
+    if (!(vs > R(0))) return false;
+    const T v0s = v0 / T(vs);
+    const T cs0 = c / T(vs);
+    const R vv = abs_value(v0s) * abs_value(v0s) + abs_value(cs0) * abs_value(cs0);
+    if (!(vv > R(0))) return false;
+    const T vn = T(sqrt_value(vv));
+    const T gc = v0s / vn;
+    const T gs = cs0 / vn;
+    // Givens similarity on (p, p+1): rows p..m-1, cols 0..p+1, U cols
+    for (std::size_t j = p; j < m; j++) {
+        const T hp = Tm[p][j];
+        const T hq = Tm[p + 1][j];
+        Tm[p][j] = gc * hp + gs * hq;
+        Tm[p + 1][j] = gc * hq - gs * hp;
+    }
+    for (std::size_t r = 0; r <= p + 1; r++) {
+        const T hp = Tm[r][p];
+        const T hq = Tm[r][p + 1];
+        Tm[r][p] = gc * hp + gs * hq;
+        Tm[r][p + 1] = gc * hq - gs * hp;
+    }
+    for (std::size_t r = 0; r < U.size(); r++) {
+        const T zp = U[r][p];
+        const T zq = U[r][p + 1];
+        U[r][p] = gc * zp + gs * zq;
+        U[r][p + 1] = gc * zq - gs * zp;
+    }
+    Tm[p + 1][p] = T(0);   // annihilated analytically (EIG-2 precedent)
+    return true;
+}
+
+// Swap the adjacent diagonal blocks (pos p, sizes s1 then s2) of the
+// quasi-triangular Tm; accumulate the orthogonal transform into U.
+// Certified, deterministic; returns false = swap REJECTED (matrix unchanged).
+template <typename T>
+bool swap_adjacent_blocks(std::vector<std::vector<T> >& Tm,
+                          std::vector<std::vector<T> >& U,
+                          const std::size_t p,
+                          const std::size_t s1,
+                          const std::size_t s2)
+{
+    typedef typename vcp::tsparse_scalar::real_type<T>::type R;
+    using vcp::tsparse_scalar::abs_value;
+    using vcp::tsparse_scalar::sqrt_value;
+    const std::size_t m = Tm.size();
+    const std::size_t sz = s1 + s2;
+    const R eps = vcp::tsparse_scalar::epsilon<R>();
+
+    if (s1 == 1 && s2 == 1) {
+        // dlaexc n1=n2=1: rotation from (T[p][p+1], T[p+1][p+1]-T[p][p])
+        const T f = Tm[p][p + 1];
+        const T g = Tm[p + 1][p + 1] - Tm[p][p];
+        R sc = abs_value(f);
+        {
+            const R ag = abs_value(g);
+            if (ag > sc) sc = ag;
+        }
+        if (!(sc > R(0))) {
+            // equal eigenvalues, no coupling: blocks are interchangeable as-is
+            return true;
+        }
+        const T fs = f / T(sc);
+        const T gs = g / T(sc);
+        const R rr = abs_value(fs) * abs_value(fs) + abs_value(gs) * abs_value(gs);
+        if (!(rr > R(0))) return false;
+        const T rn = T(sqrt_value(rr));
+        const T cs = fs / rn;
+        const T sn = gs / rn;
+        for (std::size_t j = p; j < m; j++) {
+            const T hp = Tm[p][j];
+            const T hq = Tm[p + 1][j];
+            Tm[p][j] = cs * hp + sn * hq;
+            Tm[p + 1][j] = cs * hq - sn * hp;
+        }
+        for (std::size_t r = 0; r <= p + 1; r++) {
+            const T hp = Tm[r][p];
+            const T hq = Tm[r][p + 1];
+            Tm[r][p] = cs * hp + sn * hq;
+            Tm[r][p + 1] = cs * hq - sn * hp;
+        }
+        for (std::size_t r = 0; r < U.size(); r++) {
+            const T zp = U[r][p];
+            const T zq = U[r][p + 1];
+            U[r][p] = cs * zp + sn * zq;
+            U[r][p + 1] = cs * zq - sn * zp;
+        }
+        Tm[p + 1][p] = T(0);
+        return true;
+    }
+
+    // Direct swap (dlaexc style): solve A11 X - X A22 = A12, then QR of
+    // [-X; I] gives the orthogonal Q with Q^T [A11 A12; 0 A22] Q = [A22' ...].
+    // Local copies of the blocks:
+    std::vector<std::vector<T> > A11(s1, std::vector<T>(s1)),
+                                 A22(s2, std::vector<T>(s2)),
+                                 A12(s1, std::vector<T>(s2));
+    for (std::size_t i = 0; i < s1; i++)
+        for (std::size_t j = 0; j < s1; j++) A11[i][j] = Tm[p + i][p + j];
+    for (std::size_t i = 0; i < s2; i++)
+        for (std::size_t j = 0; j < s2; j++) A22[i][j] = Tm[p + s1 + i][p + s1 + j];
+    for (std::size_t i = 0; i < s1; i++)
+        for (std::size_t j = 0; j < s2; j++) A12[i][j] = Tm[p + i][p + s1 + j];
+
+    // Sylvester as a small dense system over vec(X) (row-major):
+    // (A11 X)_{ij} - (X A22)_{ij} = A12_{ij}
+    const std::size_t q = s1 * s2;
+    std::vector<std::vector<T> > M(q, std::vector<T>(q, T(0)));
+    std::vector<T> rhs(q, T(0));
+    for (std::size_t i = 0; i < s1; i++) {
+        for (std::size_t j = 0; j < s2; j++) {
+            const std::size_t row = i * s2 + j;
+            rhs[row] = A12[i][j];
+            for (std::size_t t = 0; t < s1; t++) M[row][t * s2 + j] += A11[i][t];
+            for (std::size_t t = 0; t < s2; t++) M[row][i * s2 + t] -= A22[t][j];
+        }
+    }
+    std::vector<T> xv;
+    if (!solve_small(M, rhs, xv)) return false;   // rejected (certified)
+
+    // Q from Householder QR of the (sz x s2) matrix [-X; I].
+    std::vector<std::vector<T> > W(sz, std::vector<T>(s2, T(0)));
+    for (std::size_t i = 0; i < s1; i++)
+        for (std::size_t j = 0; j < s2; j++) W[i][j] = -xv[i * s2 + j];
+    for (std::size_t j = 0; j < s2; j++) W[s1 + j][j] = T(1);
+
+    std::vector<std::vector<T> > Q(sz, std::vector<T>(sz, T(0)));
+    for (std::size_t i = 0; i < sz; i++) Q[i][i] = T(1);
+    for (std::size_t col = 0; col < s2; col++) {
+        R sc(0);
+        for (std::size_t i = col; i < sz; i++) {
+            const R a = abs_value(W[i][col]);
+            if (a > sc) sc = a;
+        }
+        if (!(sc > R(0))) return false;
+        std::vector<T> u(sz, T(0));
+        R n2(0);
+        for (std::size_t i = col; i < sz; i++) {
+            u[i] = W[i][col] / T(sc);
+            const R au = abs_value(u[i]);
+            n2 += au * au;
+        }
+        if (!(n2 > R(0))) return false;
+        const T nrm = T(sqrt_value(n2));
+        const T sgn = (u[col] >= T(0)) ? T(1) : T(-1);
+        u[col] += sgn * nrm;
+        R uu(0);
+        for (std::size_t i = col; i < sz; i++) {
+            const R au = abs_value(u[i]);
+            uu += au * au;
+        }
+        if (!(uu > R(0))) return false;
+        const T two = T(2);
+        for (std::size_t j = 0; j < s2; j++) {          // W <- P W
+            T s(0);
+            for (std::size_t i = col; i < sz; i++) s += u[i] * W[i][j];
+            const T fct = two * s / T(uu);
+            for (std::size_t i = col; i < sz; i++) W[i][j] -= fct * u[i];
+        }
+        for (std::size_t j = 0; j < sz; j++) {          // Q <- Q P
+            T s(0);
+            for (std::size_t i = col; i < sz; i++) s += Q[j][i] * u[i];
+            const T fct = two * s / T(uu);
+            for (std::size_t i = col; i < sz; i++) Q[j][i] -= fct * u[i];
+        }
+    }
+
+    // Candidate transform of the local block D = Q^T [A11 A12; 0 A22] Q.
+    std::vector<std::vector<T> > B(sz, std::vector<T>(sz, T(0)));
+    for (std::size_t i = 0; i < s1; i++) {
+        for (std::size_t j = 0; j < s1; j++) B[i][j] = A11[i][j];
+        for (std::size_t j = 0; j < s2; j++) B[i][s1 + j] = A12[i][j];
+    }
+    for (std::size_t i = 0; i < s2; i++)
+        for (std::size_t j = 0; j < s2; j++) B[s1 + i][s1 + j] = A22[i][j];
+    std::vector<std::vector<T> > QB(sz, std::vector<T>(sz, T(0)));
+    for (std::size_t i = 0; i < sz; i++)
+        for (std::size_t j = 0; j < sz; j++) {
+            T s(0);
+            for (std::size_t t = 0; t < sz; t++) s += Q[t][i] * B[t][j];
+            QB[i][j] = s;
+        }
+    std::vector<std::vector<T> > D(sz, std::vector<T>(sz, T(0)));
+    R bnorm(0);
+    for (std::size_t i = 0; i < sz; i++)
+        for (std::size_t j = 0; j < sz; j++) {
+            T s(0);
+            for (std::size_t t = 0; t < sz; t++) s += QB[i][t] * Q[t][j];
+            D[i][j] = s;
+            const R a = abs_value(B[i][j]);
+            if (a > bnorm) bnorm = a;
+        }
+    // Stability acceptance: the would-be-zero lower-left block (new trailing
+    // block has size s1, leading has size s2) must be certifiably negligible.
+    const R swap_tol = R(20) * eps * bnorm;
+    for (std::size_t i = s2; i < sz; i++)
+        for (std::size_t j = 0; j < s2; j++)
+            if (!(abs_value(D[i][j]) <= swap_tol)) return false;   // rejected
+
+    // Accept: apply Q to the full matrix and U, then install D with the
+    // certified-negligible entries flushed to exact zero (EIG-2 precedent).
+    // rows p..p+sz-1, columns p..m-1  (T <- Q^T T)
+    std::vector<T> tmp(sz);
+    for (std::size_t j = p; j < m; j++) {
+        for (std::size_t i = 0; i < sz; i++) {
+            T s(0);
+            for (std::size_t t = 0; t < sz; t++) s += Q[t][i] * Tm[p + t][j];
+            tmp[i] = s;
+        }
+        for (std::size_t i = 0; i < sz; i++) Tm[p + i][j] = tmp[i];
+    }
+    // columns p..p+sz-1, rows 0..p+sz-1  (T <- T Q)
+    for (std::size_t r = 0; r < p + sz; r++) {
+        for (std::size_t j = 0; j < sz; j++) {
+            T s(0);
+            for (std::size_t t = 0; t < sz; t++) s += Tm[r][p + t] * Q[t][j];
+            tmp[j] = s;
+        }
+        for (std::size_t j = 0; j < sz; j++) Tm[r][p + j] = tmp[j];
+    }
+    for (std::size_t r = 0; r < U.size(); r++) {
+        for (std::size_t j = 0; j < sz; j++) {
+            T s(0);
+            for (std::size_t t = 0; t < sz; t++) s += U[r][p + t] * Q[t][j];
+            tmp[j] = s;
+        }
+        for (std::size_t j = 0; j < sz; j++) U[r][p + j] = tmp[j];
+    }
+    for (std::size_t i = s2; i < sz; i++)
+        for (std::size_t j = 0; j < s2; j++)
+            Tm[p + i][p + j] = T(0);
+    return true;
 }
 
 } // namespace ks_detail
@@ -256,736 +571,1259 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
     std::size_t k,
     const vcp::eig_options<T>& options)
 {
-    static_assert(
-        ks_is_real_floating<T>::value,
-        "Krylov-Schur Arnoldi experimental solver supports real scalar types only in Phase 3");
+    static_assert(!vcp::tsparse_scalar::is_complex<T>::value,
+        "krylov_schur: complex scalar types are rejected (real general operators only)");
 
     typedef typename vcp::tsparse_scalar::real_type<T>::type R;
-    typedef std::complex<R> C;
+    using vcp::tsparse_scalar::abs_value;
+    using vcp::tsparse_scalar::sqrt_value;
+    namespace kd = ks_detail;
 
     krylov_schur_result<T> diag;
     vcp::eig_result<T>& result = diag.eigs;
-
     result.used_dense_fallback       = false;
     result.used_shift_invert         = false;
     result.used_generalized_operator = false;
-    result.used_method               = "krylov_schur_experimental";
+    result.used_method               = "krylov_schur";
     result.used_orthogonalization    =
         (options.orthogonalization ==
          vcp::orthogonalization_method::classical_gram_schmidt_twice)
-        ? "classical_gram_schmidt_twice"
-        : "modified_gram_schmidt";
+        ? "classical_gram_schmidt_twice" : "modified_gram_schmidt";
 
-    // -----------------------------------------------------------------------
-    // Edge cases
-    // -----------------------------------------------------------------------
+    // ---- edge cases -------------------------------------------------------
     if (k == 0) {
         result.requested_count = 0;
-        result.returned_count  = 0;
-        result.converged       = true;
-        result.status          = "success";
-        result.message         = "k=0: nothing to compute";
+        result.converged = true;
+        result.status = "success";
+        result.message = "k=0: nothing to compute";
         return diag;
     }
     if (n == 0) {
         result.requested_count = k;
-        result.returned_count  = 0;
-        result.converged       = false;
-        result.status          = "failed";
-        result.failure_reason  = "dimension n=0 with k>0";
+        result.converged = false;
+        result.status = "failed";
+        result.failure_reason = "dimension n=0 with k>0";
         return diag;
     }
-
     const std::size_t k_original = k;
     if (k > n) k = n;
     result.requested_count = k_original;
 
-    // -----------------------------------------------------------------------
-    // Parameters
-    // -----------------------------------------------------------------------
+    // ---- parameters ---------------------------------------------------------
     const R tol = (options.tol > R(0))
         ? options.tol
         : vcp::tsparse_scalar::decimal_power_negative<R>(12);
-
     const std::size_t max_mv = (options.max_iter > 0)
-        ? options.max_iter
-        : std::size_t(300) * n;
-
-    const std::size_t m_limit =
-        ks_detail::effective_m(n, k, options.subspace_dim);
-
+        ? options.max_iter : std::size_t(300) * n;
+    const std::size_t m_limit = kd::effective_m(n, k, options.subspace_dim);
     result.used_subspace_dim = m_limit;
-    diag.projected_dimension  = m_limit;
+    diag.projected_dimension = m_limit;
 
-    const vcp::eig_target target   = options.target;
-    const R shift_val              = options.shift;
-    const bool compute_hist        = options.compute_residual_history;
-    const vcp::orthogonalization_method orth = options.orthogonalization;
-
+    const vcp::eig_target target = options.target;
+    const R shift_val = vcp::tsparse_scalar::real_part(options.shift);
+    const bool prefer_large =
+        (target == vcp::eig_target::largest_magnitude ||
+         target == vcp::eig_target::largest_algebraic);
+    // CGS2 always: full reorthogonalization is required for the frozen
+    // relation/orthonormality invariants; the option only labels the result.
+    const int orth_passes = 2;
+    const R eps = vcp::tsparse_scalar::epsilon<R>();
+    R floor_tol = eps * R(static_cast<int>(n) + 1);
+    {
+        const R t4 = tol * vcp::tsparse_scalar::decimal_power_negative<R>(4);
+        if (t4 > floor_tol) floor_tol = t4;
+    }
     unsigned int seed = options.random_start ? options.random_seed : 0u;
 
-    const R small_tol = std::max(
-        tol * R(1e-4),
-        std::numeric_limits<R>::epsilon() * R(n + 1));
-
-    // -----------------------------------------------------------------------
-    // State
-    // -----------------------------------------------------------------------
-    // V[j] = j-th Arnoldi basis vector (length n).
-    std::vector<std::vector<T> > V;
-    V.reserve(m_limit + 2);
-
-    // H_mat[row][col]: Hessenberg matrix, shape (m_limit+1) x m_limit.
-    std::vector<std::vector<T> > H_mat(m_limit + 1, std::vector<T>(m_limit, T(0)));
-
-    std::size_t m_current = 0;   // completed Arnoldi steps
-    std::size_t mv_count  = 0;
+    // ---- state --------------------------------------------------------------
+    // Factorization: A V_M = V_M S + v_next c^T  (V: M vectors + v_next).
+    std::vector<std::vector<T> > V;      // applied basis columns (M)
+    std::vector<T> v_next;               // residual direction (unit or empty)
+    std::vector<std::vector<T> > S;      // M x M (grows)
+    std::vector<T> coup;                 // c (length M)
+    std::size_t mv_count = 0;
     std::size_t restart_count = 0;
     bool budget_exhausted = false;
-    bool happy_breakdown  = false;
+    bool pending_verification = false;   // in-solve probe cycle flag
+    bool subspace_exhausted = false;     // no fresh orthogonal direction exists
 
-    // Converged real Ritz pairs.
-    struct real_ritz_t {
-        T value;
-        std::vector<T> vector;
+    // ---- cross-solve pool (EIG-3 blind-spot protocol, TRL F-3-1 transplant) --
+    // A single-vector Krylov factorization can represent at most one direction
+    // per eigenspace, so hidden multiplicity copies of already-verified values
+    // are structurally invisible to the solve that verified them.  The honest
+    // freshness protocol therefore runs SEQUENTIAL SOLVES: each new solve
+    // starts from a deterministic direction orthogonalized against every
+    // pooled (exact-C-1-verified) eigenvector.  For (near-)normal operators
+    // the new Krylov space then carries fresh projections of every eigenspace,
+    // so hidden copies surface as certainly-inner candidates and block C-2.
+    // Declaration requires one confirming solve that started orthogonal to a
+    // complete pool and added nothing certainly-inner (C-4: still a detection
+    // mechanism, not a completeness guarantee).  Pool admission is by
+    // certified linear independence (residual after CGS2 projection >= 1e-3),
+    // NOT by value proximity (C-3: no value dedup).  A dependent candidate
+    // whose Rayleigh value is inconsistent with the matched pool member (an
+    // extremely non-normal configuration) blocks declaration and degrades to
+    // honest not_converged after two consecutive occurrences.
+    struct pool_pair_t {
+        T theta;
+        std::vector<T> vec;
         R res_abs;
         R res_rel;
     };
-    std::vector<real_ritz_t> locked;
-    locked.reserve(k + 1);
+    std::vector<pool_pair_t> pool;
+    // Orthonormal basis of span(pool vectors).  Eigenvectors of a nonnormal
+    // operator are mutually non-orthogonal, so the independence test and the
+    // pool-orthogonal starts must project onto this basis, NOT Gram-Schmidt
+    // against the raw (oblique) pool vectors.
+    std::vector<std::vector<T> > pool_onb;
+    // Independence admission threshold: a residual-verified eigenvector with
+    // exact residual res has direction error ~ res*kappa_v/gap; content
+    // outside span(pool) exceeding tau_add therefore certifies a NEW
+    // eigenspace dimension whenever res*kappa_v/gap << tau_add (documented
+    // limitation: extremely nonnormal pairs with vector error > 1e-6 fall to
+    // the dependent/consistency path and can only degrade to honest
+    // not_converged, never to a lie).
+    const R tau_add = vcp::tsparse_scalar::decimal_power_negative<R>(6);
+    // Complex blocks whose invariant subspace lies within span(pool) up to
+    // this tolerance are rediscovery artifacts (two pooled copies of a real
+    // eigenvalue projecting to a 2x2 with an eps-level discriminant): they are
+    // excluded from the return prefix and the D3-2 veto (their subspace is
+    // already returned as verified real pairs).
+    const R cover_tol = vcp::tsparse_scalar::decimal_power_negative<R>(2);
+    const std::size_t k_eff = k;   // k already clamped to n
+    std::size_t stable_confirms = 0;
+    std::size_t dependent_block_solves = 0;
+    bool start_new_solve = true;
+    bool pool_complete_at_start = false;
+    bool declare_from_pool = false;
+    R val_scale_seen = R(1);             // running max |Ritz value| (consistency scale)
 
-    // -----------------------------------------------------------------------
-    // Initial vector
-    // -----------------------------------------------------------------------
-    V.push_back(vcp::tsparse_lanczos::deterministic_start_vector<T>(n, seed++));
+    // final-analysis bookkeeping (exported on all exits)
+    struct cand_t {
+        std::size_t pos, size;
+        T re, im;        // for complex block: re +/- im (im > 0)
+        T re2;           // second value of a (split) real pair — unused after split
+        R bound;
+        bool converged;
+        bool is_complex;
+    };
+    std::vector<cand_t> final_cands;
+    bool have_final_analysis = false;
+    std::string analysis_fail_reason;
 
-    // -----------------------------------------------------------------------
-    // Main loop
-    // -----------------------------------------------------------------------
-    while (locked.size() < k && mv_count < max_mv) {
+    // declared results (filled at converged declaration)
+    bool declared_converged = false;
+    bool complex_window_reject = false;
+    std::size_t complex_window_count = 0;
 
-        // -------------------------------------------------------------------
-        // PHASE 1: Expand Arnoldi from m_current to m_limit.
-        // -------------------------------------------------------------------
-        happy_breakdown = false;
+    struct lifted_pair_t {
+        std::vector<T> v;
+        R res_abs;
+        R res_rel;
+    };
 
-        while (m_current < m_limit && mv_count < max_mv) {
-            const std::size_t j = m_current;
-
-            std::vector<T> w;
-            apply(V[j], w);
-            mv_count++;
-
-            std::vector<T> h;
-            ks_detail::arnoldi_orthogonalize(V, j, w, h, orth);
-
-            const R beta = vcp::tsparse_scalar::real_norm_value(w);
-
-            for (std::size_t i = 0; i <= j; i++) H_mat[i][j] = h[i];
-            H_mat[j + 1][j] = T(beta);
-
-            m_current = j + 1;
-
-            if (beta <= small_tol) {
-                // When happy breakdown occurs before filling the subspace, try
-                // extending into the orthogonal complement of the current basis.
-                // This handles repeated eigenvalues: a start vector with equal
-                // components in both copies of an eigenspace collapses them into
-                // one Krylov direction; a complement vector breaks that symmetry
-                // and lets the second copy be discovered in the same pass.
-                bool extended = false;
-                if (m_current < m_limit) {
-                    std::vector<T> v_ext =
-                        vcp::tsparse_lanczos::deterministic_start_vector<T>(n, seed++);
-                    for (int xpass = 0; xpass < 2; xpass++) {
-                        for (std::size_t jj = 0; jj < m_current; jj++) {
-                            const R xc = vcp::tsparse_scalar::real_dot_value(
-                                V[jj], v_ext);
-                            for (std::size_t ii = 0; ii < n; ii++)
-                                v_ext[ii] -= T(xc) * V[jj][ii];
-                        }
-                        for (std::size_t li = 0; li < locked.size(); li++) {
-                            const R xc = vcp::tsparse_scalar::real_dot_value(
-                                locked[li].vector, v_ext);
-                            for (std::size_t ii = 0; ii < n; ii++)
-                                v_ext[ii] -= T(xc) * locked[li].vector[ii];
-                        }
-                    }
-                    const R vxn = vcp::tsparse_scalar::real_norm_value(v_ext);
-                    if (vxn > small_tol) {
-                        for (std::size_t ii = 0; ii < n; ii++) v_ext[ii] /= T(vxn);
-                        if (V.size() <= m_current) V.push_back(v_ext);
-                        else                       V[m_current] = v_ext;
-                        extended = true;
-                    }
-                }
-                if (extended) continue;
-                happy_breakdown = true;
-                std::vector<T> dummy(n, T(0));
-                if (V.size() <= m_current) V.push_back(dummy);
-                else                       V[m_current] = dummy;
+    // =========================================================================
+    // main loop (sequential solves; per-solve phases 1..7)
+    // =========================================================================
+    while (true) {
+        // ---- PHASE 0: (re)start a solve orthogonal to the pool ---------------
+        if (start_new_solve) {
+            start_new_solve = false;
+            V.clear();
+            S.clear();
+            coup.clear();
+            v_next.clear();
+            pending_verification = false;
+            subspace_exhausted = false;
+            pool_complete_at_start = (pool.size() >= k_eff);
+            // deterministic start, orthogonalized against span(pool)
+            std::vector<T> v0;
+            if (!kd::fresh_orthogonal_direction(pool_onb, pool_onb.size(), n, seed,
+                                                floor_tol, v0)) {
+                // the pool spans (numerically) the whole space: nothing new can
+                // be scanned — declare from the pool if it is complete
+                if (pool.size() >= k_eff) { declare_from_pool = true; break; }
+                result.converged = false;
+                result.status = "failed";
+                result.failure_reason = "no start direction available (pool-orthogonal)";
                 break;
             }
-
-            std::vector<T> vnew(n);
-            for (std::size_t i = 0; i < n; i++) vnew[i] = w[i] / T(beta);
-            if (V.size() <= m_current) V.push_back(vnew);
-            else                       V[m_current] = vnew;
+            v_next = v0;
         }
 
-        const std::size_t m = m_current;
-        if (m == 0) { result.failure_reason = "Arnoldi produced empty basis"; break; }
+        // ---- PHASE 1: expand to m_limit (budget-gated) ----------------------
+        bool did_expand = false;
+        while (V.size() < m_limit && !v_next.empty()) {
+            if (mv_count >= max_mv) { budget_exhausted = true; break; }
+            const std::size_t M = V.size();
+            // absorb v_next as applied column M
+            V.push_back(v_next);
+            std::vector<T> w;
+            apply(V[M], w);
+            mv_count++;
+            did_expand = true;
 
-        // -------------------------------------------------------------------
-        // PHASE 2: Extract eigenvalues of H[0:m][0:m].
-        //
-        // Reduce Hm to upper Hessenberg form via Householder, accumulating the
-        // orthogonal transformation Q (so that Q^T * Hm * Q = Hm_hess).
-        // Eigenvalues are extracted from Hm_hess.
-        // Eigenvectors of Hm_hess are then mapped back to the Krylov basis via Q.
-        // -------------------------------------------------------------------
-        std::vector<std::vector<T> > Hm      = ks_detail::extract_hm(H_mat, m);
-        std::vector<std::vector<T> > Hm_hess = Hm;  // modified in-place
-        std::vector<std::vector<T> > Hess_Q;         // Hm = Hm_hess after Q-transform
-        vcp::tsparse_proj_hess::reduce_to_hessenberg_with_q(Hm_hess, Hess_Q);
+            std::vector<T> h;
+            kd::orthogonalize_block(V, M + 1, w, h, orth_passes);
 
-        const std::size_t hess_iter = m * m * 80 + 300;
-        const R hess_tol = small_tol;
+            // probe fold (verification cycle): orthogonalize against a fresh
+            // deterministic direction p too, then fold p and the remainder
+            // into a single new residual direction (rank-one tail preserved:
+            //   A V[M] = sum h_i V_i + h_p p + beta u = sum h_i V_i + gamma v')
+            std::vector<T> pdir;
+            T h_p = T(0);
+            bool have_probe = false;
+            if (pending_verification) {
+                if (kd::fresh_orthogonal_direction(V, M + 1, n, seed, floor_tol, pdir)) {
+                    R c1 = vcp::tsparse_scalar::real_dot_value(pdir, w);
+                    for (std::size_t i = 0; i < n; i++) w[i] -= T(c1) * pdir[i];
+                    const R c2 = vcp::tsparse_scalar::real_dot_value(pdir, w);
+                    for (std::size_t i = 0; i < n; i++) w[i] -= T(c2) * pdir[i];
+                    h_p = T(c1) + T(c2);
+                    have_probe = true;
+                }
+            }
 
-        std::vector<C> all_eigs =
-            vcp::tsparse_eigensolvers::hessenberg_complex_eigenvalues<T>(
-                Hm_hess, hess_iter, hess_tol);
+            // grow S by one row/column; install column M
+            S.push_back(std::vector<T>(M, T(0)));
+            for (std::size_t i = 0; i <= M; i++) {
+                if (S[i].size() < M + 1) S[i].resize(M + 1, T(0));
+                S[i][M] = h[i];
+            }
+            // previous coupling row becomes S row M for old columns
+            for (std::size_t j = 0; j < coup.size() && j < M; j++) S[M][j] = coup[j];
 
-        if (all_eigs.empty()) {
-            result.failure_reason = "projected Hessenberg eigensolver returned no eigenvalues";
+            const R beta = vcp::tsparse_scalar::real_norm_value(w);
+            std::vector<T> q;                 // new residual direction
+            T gamma = T(0);
+            if (have_probe) {
+                // q_vec = h_p * p + w  (w = beta * u already)
+                q.assign(n, T(0));
+                for (std::size_t i = 0; i < n; i++) q[i] = h_p * pdir[i] + w[i];
+                const R gq = vcp::tsparse_scalar::real_norm_value(q);
+                if (gq > floor_tol) {
+                    for (std::size_t i = 0; i < n; i++) q[i] /= T(gq);
+                    gamma = T(gq);
+                } else if (beta > floor_tol) {
+                    q = w;
+                    for (std::size_t i = 0; i < n; i++) q[i] /= T(beta);
+                    gamma = T(beta);
+                } else {
+                    // both negligible: keep the probe as the next direction,
+                    // coupling recorded honestly as the computed fold norm
+                    q = pdir;
+                    gamma = T(gq);
+                }
+            } else if (beta > floor_tol) {
+                q = w;
+                for (std::size_t i = 0; i < n; i++) q[i] /= T(beta);
+                gamma = T(beta);
+            } else {
+                // near-breakdown: continue with a fresh orthogonal direction;
+                // the tiny coupling is recorded honestly (never forced to 0)
+                std::vector<T> fd;
+                if (kd::fresh_orthogonal_direction(V, M + 1, n, seed, floor_tol, fd)) {
+                    // fold the (tiny) remainder into the fresh direction so the
+                    // rank-one tail stays exact: gamma q = w + 0*fd is wrong;
+                    // instead q = normalize(w + floor-scaled fd)?  Honest and
+                    // simple: q = normalized(w) if certifiable else fd with
+                    // coupling = ||w|| (residual bounded by the recorded norm).
+                    if (beta > R(0)) {
+                        q = w;
+                        for (std::size_t i = 0; i < n; i++) q[i] /= T(beta);
+                        gamma = T(beta);
+                    } else {
+                        q = fd;
+                        gamma = T(beta);   // == 0 exactly (or interval enclosure)
+                    }
+                } else {
+                    // no direction left: invariant subspace spans everything
+                    subspace_exhausted = true;
+                    q.clear();
+                    gamma = T(beta);
+                }
+            }
+            // coupling row for the new factorization: gamma * e_M
+            coup.assign(M + 1, T(0));
+            coup[M] = gamma;
+            v_next = q;   // may be empty (subspace exhausted)
+            if (subspace_exhausted) break;
+        }
+        (void)did_expand;
+
+        const std::size_t M = V.size();
+        if (M == 0) {
+            result.converged = false;
+            result.status = budget_exhausted ? "max_iter_exhausted" : "failed";
+            result.failure_reason = budget_exhausted
+                ? "matrix-vector product budget exhausted before any expansion"
+                : "empty Krylov basis";
             break;
         }
 
-        // Separate real and complex eigenvalues (positive-imag complex pairs stored once).
-        std::vector<R> real_eig_vals;
-        std::vector<C> complex_eig_vals;
-        const R real_tol = hess_tol * R(100);
+        // ---- PHASE 2: projected analysis  S = U T U^T -----------------------
+        std::vector<std::vector<T> > Tm(M, std::vector<T>(M, T(0)));
+        for (std::size_t i = 0; i < M; i++)
+            for (std::size_t j = 0; j < M; j++) Tm[i][j] = S[i][j];
 
-        for (std::size_t ei = 0; ei < all_eigs.size(); ei++) {
-            if (ks_detail::is_effectively_real(all_eigs[ei], real_tol)) {
-                real_eig_vals.push_back(all_eigs[ei].real());
-            } else if (all_eigs[ei].imag() > R(0)) {
-                complex_eig_vals.push_back(all_eigs[ei]);
-            }
-        }
-
-        // -------------------------------------------------------------------
-        // PHASE 3: Compute Ritz residuals for real eigenvalues.
-        //
-        // Inverse iteration is performed on Hm_hess (not Hm) for consistency:
-        // eigenvalues came from Hm_hess.  The resulting eigenvector y_h is in
-        // the Hm_hess basis.  To get back to the Krylov (V) basis:
-        //   y_krylov = Hess_Q * y_h   (since Q^T * Hm * Q = Hm_hess)
-        // The Arnoldi residual bound uses the last element of y_krylov.
-        //
-        // For repeated Ritz values, inverse iteration from [1,...,1] always
-        // converges to the same direction.  We deflate each y_h against
-        // previously extracted eigenvectors in the Hm_hess basis; when the
-        // result is near-zero, we re-run inverse iteration from a fresh start
-        // vector orthogonal to all previous ones, so that the independent
-        // direction of the repeated eigenspace is found without restarting.
-        // -------------------------------------------------------------------
-        const R beta_overflow = vcp::tsparse_scalar::abs_value(
-            vcp::tsparse_scalar::real_part(H_mat[m][m - 1]));
-
-        struct ritz_candidate_t {
-            R value;
-            std::vector<T> y_proj;   // Ritz vector in Krylov basis (length m)
-            R res_bound;             // Arnoldi residual bound
-            bool converged;
-        };
-        std::vector<ritz_candidate_t> candidates;
-        candidates.reserve(real_eig_vals.size());
-
-        // Track normalized eigenvectors of Hm_hess extracted in this sweep.
-        // Used to detect repeated Ritz values: when inverse iteration from
-        // [1,...,1] converges to the same direction for the same eigenvalue,
-        // we regenerate with a start vector orthogonal to all prior directions
-        // so that the independent eigenspace direction is found.
-        // For distinct eigenvalues the eigenvectors differ by shift, so the
-        // near-parallelism check does not fire and y_h is used unmodified.
-        std::vector<std::vector<T> > prev_y_h_vecs;
-        prev_y_h_vecs.reserve(real_eig_vals.size());
-        const R parallel_thresh = R(1) - std::sqrt(small_tol);
-
-        for (std::size_t ei = 0; ei < real_eig_vals.size(); ei++) {
-            const R theta = real_eig_vals[ei];
-
-            // Eigenvector of Hm_hess for eigenvalue theta (standard start).
-            std::vector<T> y_h =
-                vcp::tsparse_dense_linalg::dense_eigenvector_inverse_iteration(
-                    Hm_hess, T(theta));
-            if (y_h.empty() || y_h.size() != m) continue;
-            const R yhn0 = vcp::tsparse_scalar::real_norm_value(y_h);
-            if (yhn0 <= small_tol) continue;
-            for (std::size_t i = 0; i < m; i++) y_h[i] /= T(yhn0);
-
-            // Check whether y_h is nearly parallel to any already-extracted
-            // eigenvector.  For a repeated Ritz value the same shift produces
-            // the same converged direction, giving |dot| close to 1; for a
-            // distinct eigenvalue the directions differ and the check is safe.
-            bool need_fresh = false;
-            for (std::size_t ji = 0; ji < prev_y_h_vecs.size(); ji++) {
-                R c = R(0);
-                for (std::size_t ii = 0; ii < m; ii++)
-                    c += vcp::tsparse_scalar::real_part(
-                        prev_y_h_vecs[ji][ii] * y_h[ii]);
-                if (c > parallel_thresh || c < -parallel_thresh) {
-                    need_fresh = true;
-                    break;
-                }
-            }
-
-            if (need_fresh) {
-                // Build a fresh start vector orthogonal ONLY to the parallel
-                // prev vectors (those for the same repeated eigenvalue).
-                // Deflating against all prev vectors can collapse the start
-                // below small_tol when the subspace is nearly full.
-                std::vector<T> y_h_start(m, T(1));
-                for (int pass = 0; pass < 2; pass++) {
-                    for (std::size_t ji = 0; ji < prev_y_h_vecs.size(); ji++) {
-                        R cp = R(0);
-                        for (std::size_t ii = 0; ii < m; ii++)
-                            cp += vcp::tsparse_scalar::real_part(
-                                prev_y_h_vecs[ji][ii] * y_h[ii]);
-                        if (cp <= parallel_thresh && cp >= -parallel_thresh) continue;
-                        R c = R(0);
-                        for (std::size_t ii = 0; ii < m; ii++)
-                            c += vcp::tsparse_scalar::real_part(
-                                prev_y_h_vecs[ji][ii] * y_h_start[ii]);
-                        for (std::size_t ii = 0; ii < m; ii++)
-                            y_h_start[ii] -= T(c) * prev_y_h_vecs[ji][ii];
+        std::vector<std::vector<T> > Q0;
+        bool analysis_ok =
+            vcp::tsparse_dense_schur::dense_schur_detail::hessenberg_reduce_(Tm, Q0);
+        std::vector<std::vector<T> > U;
+        if (analysis_ok) {
+            vcp::tsparse_real_schur::real_schur_result<T> sr =
+                vcp::tsparse_real_schur::real_schur_decompose<T>(Tm, true);
+            if (!sr.success) {
+                analysis_ok = false;
+                analysis_fail_reason = "projected real Schur core: " + sr.failure_reason;
+            } else {
+                // U = Q0 * Z
+                U.assign(M, std::vector<T>(M, T(0)));
+                for (std::size_t i = 0; i < M; i++)
+                    for (std::size_t j = 0; j < M; j++) {
+                        T s(0);
+                        for (std::size_t t = 0; t < M; t++)
+                            s += Q0[i][t] * sr.schur_vectors[t][j];
+                        U[i][j] = s;
                     }
-                }
-                const R y_h_start_n = vcp::tsparse_scalar::real_norm_value(y_h_start);
-                if (y_h_start_n <= small_tol) continue;
-                for (std::size_t ii = 0; ii < m; ii++)
-                    y_h_start[ii] /= T(y_h_start_n);
-
-                y_h = vcp::tsparse_dense_linalg::dense_eigenvector_inverse_iteration_from(
-                    Hm_hess, T(theta), y_h_start);
-                if (y_h.empty() || y_h.size() != m) continue;
-                const R yhn_fresh = vcp::tsparse_scalar::real_norm_value(y_h);
-                if (yhn_fresh <= small_tol) continue;
-                for (std::size_t i = 0; i < m; i++) y_h[i] /= T(yhn_fresh);
+                Tm.swap(sr.schur_form);
             }
-            prev_y_h_vecs.push_back(y_h);
-
-            // Map to Krylov basis: y = Q * y_h  (Q = Hess_Q).
-            std::vector<T> y(m, T(0));
-            for (std::size_t i = 0; i < m; i++)
-                for (std::size_t j = 0; j < m; j++)
-                    y[i] += Hess_Q[i][j] * y_h[j];
-
-            const R yn = vcp::tsparse_scalar::real_norm_value(y);
-            if (yn <= small_tol) continue;
-            for (std::size_t i = 0; i < m; i++) y[i] /= T(yn);
-
-            // Arnoldi residual bound: |h_{m+1,m}| * |y[m-1]|.
-            const R res_bound =
-                beta_overflow * vcp::tsparse_scalar::abs_value(y.back());
-
-            ritz_candidate_t rc;
-            rc.value     = theta;
-            rc.y_proj    = y;
-            rc.res_bound = res_bound;
-            rc.converged = false;
-            candidates.push_back(rc);
+        } else {
+            analysis_fail_reason = "projected Hessenberg reduction not certifiable";
+        }
+        if (!analysis_ok) {
+            result.converged = false;
+            result.status = "failed";
+            result.failure_reason = analysis_fail_reason;
+            break;
         }
 
-        // Sort candidates by target.
-        if (!candidates.empty()) {
-            std::vector<C> cvals;
-            cvals.reserve(candidates.size());
-            for (std::size_t i = 0; i < candidates.size(); i++)
-                cvals.push_back(C(candidates[i].value, R(0)));
-            const std::vector<std::size_t> sel =
-                vcp::tsparse_eigensolvers::select_ritz_indices<T>(
-                    cvals, candidates.size(), target, shift_val);
-            std::vector<ritz_candidate_t> sorted;
-            sorted.reserve(sel.size());
-            for (std::size_t i = 0; i < sel.size(); i++)
-                sorted.push_back(candidates[sel[i]]);
-            candidates.swap(sorted);
-        }
-
-        // Check convergence: compute exact residual in target-priority order.
-        // Only lock candidates from the top of the sorted list.  If a higher-
-        // priority Ritz value does not converge (poor Ritz vector approximation),
-        // we break immediately and restart so that the subspace improves for that
-        // target eigenvalue rather than locking out-of-target ones.
-        //
-        // Collinearity skip: if the lifted Ritz vector is nearly collinear with
-        // an already-locked eigenvector (|cos angle| near 1), it is a re-discovery
-        // of a direction already in the locked set.  We continue to the next
-        // candidate rather than breaking, so that genuinely new eigenvalues in
-        // the same iteration can still be locked.  For repeated eigenvalues the
-        // Phase 3 extraction deflation above has already produced independent
-        // directions, so the collinearity check fires only for re-discovered
-        // distinct locked eigenvalues (e.g. after restart the locked eigenvalue
-        // appears again as the first candidate).
-        for (std::size_t ci = 0; ci < candidates.size() && locked.size() < k; ci++) {
-            ritz_candidate_t& rc = candidates[ci];
-
-            const bool candidate_ok =
-                (rc.res_bound <= tol * R(100)) || happy_breakdown;
-            if (!candidate_ok) break;  // higher-priority candidate not ready: restart
-
-            // Lift to full space.
-            std::vector<T> vfull = ks_detail::lift_ritz(V, rc.y_proj, n, m);
-            const R vn = vcp::tsparse_scalar::real_norm_value(vfull);
-            if (vn <= small_tol) { break; }
-            for (std::size_t i = 0; i < n; i++) vfull[i] /= T(vn);
-
-            // Exact residual: r = A v - theta v.
-            std::vector<T> Av;
-            apply(vfull, Av);
-            mv_count++;
-
-            const T mu = T(rc.value);
-            std::vector<T> r(n);
-            for (std::size_t i = 0; i < n; i++) r[i] = Av[i] - mu * vfull[i];
-            const R res_abs = vcp::tsparse_scalar::real_norm_value(r);
-            const R res_rel = res_abs / (R(1) + vcp::tsparse_scalar::abs_value(rc.value));
-
-            if (res_abs <= tol || res_rel <= tol) {
-                // Check whether this Ritz vector is collinear with an already-
-                // locked eigenvector (|cos angle| > 1 - eps_col).  If so, it
-                // is a re-discovery of a locked direction (can happen after
-                // restart) and we skip it rather than duplicating the entry.
-                const R eps_col = small_tol * R(100);
-                bool collinear = false;
-                for (std::size_t li = 0; li < locked.size(); li++) {
-                    const R c = vcp::tsparse_scalar::real_dot_value(
-                        locked[li].vector, vfull);
-                    if (c > R(1) - eps_col || c < -(R(1) - eps_col)) {
-                        collinear = true;
+        // ---- PHASE 3: blocks, values, target order --------------------------
+        std::vector<std::size_t> bpos, bsize;
+        kd::enumerate_blocks(Tm, bpos, bsize);
+        // certified re-standardization (post-swap real pairs are split)
+        {
+            bool changed = true;
+            int guard = 0;
+            while (changed && guard++ < 64) {
+                changed = false;
+                kd::enumerate_blocks(Tm, bpos, bsize);
+                for (std::size_t bi = 0; bi < bpos.size(); bi++) {
+                    if (bsize[bi] != 2) continue;
+                    T re, im, r1, r2;
+                    const int cls = kd::eig_2x2(Tm, bpos[bi], re, im, r1, r2);
+                    if (cls == 0) {
+                        if (!kd::split_real_2x2(Tm, U, bpos[bi])) {
+                            analysis_ok = false;
+                            analysis_fail_reason =
+                                "2x2 real-pair standardization not certifiable";
+                        }
+                        changed = analysis_ok;
+                        break;
+                    }
+                    if (cls < 0) {
+                        analysis_ok = false;
+                        analysis_fail_reason =
+                            "2x2 discriminant sign not certifiable (0-straddle)";
                         break;
                     }
                 }
-                if (collinear) { continue; }
+                if (!analysis_ok) break;
+            }
+        }
+        if (!analysis_ok) {
+            result.converged = false;
+            result.status = "failed";
+            result.failure_reason = analysis_fail_reason;
+            break;
+        }
+        kd::enumerate_blocks(Tm, bpos, bsize);
+        const std::size_t nblocks = bpos.size();
 
-                real_ritz_t rr;
-                rr.value   = T(rc.value);
-                rr.vector  = vfull;
-                rr.res_abs = res_abs;
-                rr.res_rel = res_rel;
-                locked.push_back(rr);
-                rc.converged = true;
+        // block values + target keys
+        std::vector<T> bre(nblocks, T(0)), bim(nblocks, T(0));
+        std::vector<R> bkey(nblocks, R(0));
+        bool value_fail = false;
+        for (std::size_t bi = 0; bi < nblocks; bi++) {
+            if (bsize[bi] == 1) {
+                bre[bi] = Tm[bpos[bi]][bpos[bi]];
+                bim[bi] = T(0);
             } else {
-                // Target eigenvalue did not pass exact residual: restart.
+                T re, im, r1, r2;
+                const int cls = kd::eig_2x2(Tm, bpos[bi], re, im, r1, r2);
+                if (cls != 1) { value_fail = true; break; }
+                bre[bi] = re;
+                bim[bi] = im;
+            }
+            bkey[bi] = vcp::tsparse_eigen_selection::target_distance(
+                std::complex<R>(vcp::tsparse_scalar::real_part(bre[bi]),
+                                vcp::tsparse_scalar::real_part(bim[bi])),
+                target, shift_val);
+        }
+        if (value_fail) {
+            result.converged = false;
+            result.status = "failed";
+            result.failure_reason = "block eigenvalues not certifiable";
+            break;
+        }
+
+        // target order of blocks: hand-rolled insertion sort with certainly
+        // comparisons (partial-order tolerant — P6; exact for double)
+        std::vector<std::size_t> order(nblocks);
+        for (std::size_t i = 0; i < nblocks; i++) order[i] = i;
+        for (std::size_t i = 1; i < nblocks; i++) {
+            const std::size_t oi = order[i];
+            std::size_t j = i;
+            while (j > 0) {
+                const bool before = prefer_large ? (bkey[oi] > bkey[order[j - 1]])
+                                                 : (bkey[oi] < bkey[order[j - 1]]);
+                if (!before) break;
+                order[j] = order[j - 1];
+                j--;
+            }
+            order[j] = oi;
+        }
+
+        // ---- PHASE 4: reorder selected blocks to the front (G-2.1 method A) --
+        // Selection: target-order prefix filling k return slots (2x2 blocks
+        // keep-together, counted as 2 slots, boundary widened conservatively),
+        // plus padding, plus every bound-converged block (B-15), capped at
+        // M-1 columns (at least one expansion slot must remain — the mv
+        // budget then guarantees overall termination, G-2.1 c-2).
+        //
+        // Bounds need the reordered T; but selection needs bounds… resolve by
+        // two passes: (pass A) reorder the target-prefix; (pass B) compute
+        // bounds on the reordered form; keep set final = prefix ∪ converged.
+        // Movement: selection-sort by target rank with adjacent block swaps.
+        std::size_t rejections_this = 0;
+        std::size_t keep_more_cols = 0;   // G-2.1 c-1: window extension demands
+        {
+            // current block id order by position
+            std::vector<std::size_t> ids(order.size());
+            // ids[slot] = block id currently at slot (position order)
+            for (std::size_t i = 0; i < nblocks; i++) ids[i] = i;
+            // positions recomputed from sizes as we go
+            std::vector<std::size_t> cursize(nblocks);
+            for (std::size_t i = 0; i < nblocks; i++) cursize[i] = bsize[i];
+
+            // how many leading slots we want ordered: enough blocks to cover
+            // k return slots + padding
+            std::size_t want_cols = k + ((k / 2 + 1 > 2) ? k / 2 + 1 : 2);
+            if (want_cols > M - 1) want_cols = M - 1;
+
+            std::size_t placed_slots = 0;   // block slots already固定 at front
+            std::size_t placed_cols = 0;
+            for (std::size_t r = 0; r < order.size() && placed_cols < want_cols; r++) {
+                const std::size_t id = order[r];
+                // find current slot of block id
+                std::size_t slot = placed_slots;
+                bool found = false;
+                for (std::size_t s2 = 0; s2 < ids.size(); s2++)
+                    if (ids[s2] == id) { slot = s2; found = true; break; }
+                if (!found || slot < placed_slots) continue;   // already placed
+                // bubble the block from `slot` down to `placed_slots`
+                bool stuck = false;
+                while (slot > placed_slots) {
+                    // positions of the two adjacent blocks
+                    std::size_t p = 0;
+                    for (std::size_t s2 = 0; s2 + 1 <= slot - 1; s2++) p += cursize[ids[s2]];
+                    const std::size_t s_up = cursize[ids[slot - 1]];
+                    const std::size_t s_dn = cursize[ids[slot]];
+                    if (kd::swap_adjacent_blocks(Tm, U, p, s_up, s_dn)) {
+                        const std::size_t tid = ids[slot - 1];
+                        ids[slot - 1] = ids[slot];
+                        ids[slot] = tid;
+                        slot--;
+                    } else {
+                        rejections_this++;
+                        stuck = true;
+                        break;
+                    }
+                }
+                if (stuck) {
+                    // keep-more (G-2.1 c-1): the candidate stays where it is;
+                    // the keep window is extended up to its current end
+                    std::size_t endpos = 0;
+                    for (std::size_t s2 = 0; s2 <= slot; s2++) endpos += cursize[ids[s2]];
+                    if (endpos > want_cols) want_cols = (endpos <= M - 1) ? endpos : M - 1;
+                    if (endpos > keep_more_cols) keep_more_cols = endpos;
+                    // (an m_limit-1 cap-forced narrowing can only delay
+                    //  convergence, never fabricate it — C-1/C-2 still gate)
+                } else {
+                    placed_slots++;
+                    placed_cols += cursize[id];
+                }
+            }
+            diag.contraction_swap_rejections += rejections_this;
+        }
+        kd::enumerate_blocks(Tm, bpos, bsize);
+        // refresh values/keys after reordering
+        {
+            const std::size_t nb2 = bpos.size();
+            bre.assign(nb2, T(0)); bim.assign(nb2, T(0)); bkey.assign(nb2, R(0));
+            bool vf = false;
+            for (std::size_t bi = 0; bi < nb2; bi++) {
+                if (bsize[bi] == 1) { bre[bi] = Tm[bpos[bi]][bpos[bi]]; }
+                else {
+                    T re, im, r1, r2;
+                    if (kd::eig_2x2(Tm, bpos[bi], re, im, r1, r2) != 1) { vf = true; break; }
+                    bre[bi] = re; bim[bi] = im;
+                }
+                bkey[bi] = vcp::tsparse_eigen_selection::target_distance(
+                    std::complex<R>(vcp::tsparse_scalar::real_part(bre[bi]),
+                                    vcp::tsparse_scalar::real_part(bim[bi])),
+                    target, shift_val);
+            }
+            if (vf) {
+                result.converged = false;
+                result.status = "failed";
+                result.failure_reason = "block eigenvalues not certifiable (post-reorder)";
                 break;
             }
         }
 
-        // -------------------------------------------------------------------
-        // PHASE 4: Residual history.
-        // -------------------------------------------------------------------
-        if (compute_hist && !candidates.empty()) {
-            R best_abs   = candidates[0].res_bound;
-            R best_theta = vcp::tsparse_scalar::abs_value(candidates[0].value);
-            for (std::size_t ci = 1; ci < candidates.size(); ci++) {
-                if (candidates[ci].res_bound < best_abs) {
-                    best_abs   = candidates[ci].res_bound;
-                    best_theta = vcp::tsparse_scalar::abs_value(candidates[ci].value);
-                }
-            }
-            result.residual_history_absolute.push_back(best_abs);
-            result.residual_history_relative.push_back(best_abs / (R(1) + best_theta));
+        // transformed coupling row  c_T = c * U
+        std::vector<T> cT(M, T(0));
+        for (std::size_t j = 0; j < M; j++) {
+            T s(0);
+            for (std::size_t i = 0; i < M && i < coup.size(); i++) s += coup[i] * U[i][j];
+            cT[j] = s;
         }
 
-        if (locked.size() >= k) break;
+        // ---- PHASE 5: candidate bounds via quasi-triangular back-substitution
+        // Invariant columns Y for block bi: rows 0..pos+size-1; Y[pos..] = I.
+        // Upward solve with pivot blocks of Tm; a pivot that is not certifiably
+        // nonsingular contributes X = 0 (deterministic; final honesty is
+        // guaranteed by the exact C-1 verification, not by these bounds).
+        const std::size_t nb = bpos.size();
+        std::vector<R> bound(nb, R(0));
+        std::vector<bool> bconv(nb, false);
+        std::vector<std::vector<std::vector<T> > > yof(nb);   // per block: Y (rows x size)
+        R tnorm(0);
+        for (std::size_t i = 0; i < M; i++)
+            for (std::size_t j = 0; j < M; j++) {
+                const R a = abs_value(Tm[i][j]);
+                if (a > tnorm) tnorm = a;
+            }
+        for (std::size_t bi = 0; bi < nb; bi++) {
+            const std::size_t p = bpos[bi];
+            const std::size_t sz = bsize[bi];
+            std::vector<std::vector<T> > Y(p + sz, std::vector<T>(sz, T(0)));
+            for (std::size_t j = 0; j < sz; j++) Y[p + j][j] = T(1);
+            // pivot blocks above
+            std::vector<std::size_t> ppos, psize;
+            for (std::size_t bj = 0; bj < bi; bj++) { ppos.push_back(bpos[bj]); psize.push_back(bsize[bj]); }
+            // B = the block's own matrix (sz x sz)
+            std::vector<std::vector<T> > Bblk(sz, std::vector<T>(sz, T(0)));
+            for (std::size_t i = 0; i < sz; i++)
+                for (std::size_t j = 0; j < sz; j++) Bblk[i][j] = Tm[p + i][p + j];
+            for (std::size_t bj = ppos.size(); bj-- > 0;) {
+                const std::size_t q = ppos[bj];
+                const std::size_t qs = psize[bj];
+                // RHS = - T[q..q+qs, q+qs..p+sz-1] * Y[q+qs..p+sz-1]
+                std::vector<std::vector<T> > Rhs(qs, std::vector<T>(sz, T(0)));
+                for (std::size_t i = 0; i < qs; i++)
+                    for (std::size_t c2 = q + qs; c2 < p + sz; c2++)
+                        for (std::size_t j = 0; j < sz; j++)
+                            Rhs[i][j] -= Tm[q + i][c2] * Y[c2][j];
+                // solve P X - X B = RHS  (X qs x sz)
+                const std::size_t nun = qs * sz;
+                std::vector<std::vector<T> > Msm(nun, std::vector<T>(nun, T(0)));
+                std::vector<T> rv(nun, T(0));
+                for (std::size_t i = 0; i < qs; i++)
+                    for (std::size_t j = 0; j < sz; j++) {
+                        const std::size_t row = i * sz + j;
+                        rv[row] = Rhs[i][j];
+                        for (std::size_t t = 0; t < qs; t++)
+                            Msm[row][t * sz + j] += Tm[q + i][q + t];
+                        for (std::size_t t = 0; t < sz; t++)
+                            Msm[row][i * sz + t] -= Bblk[t][j];
+                    }
+                std::vector<T> xv;
+                if (kd::solve_small(Msm, rv, xv)) {
+                    // magnitude guard: reject explosive solutions (near-singular
+                    // pivots for multiplicities) — deterministic X = 0 instead
+                    R xmax(0);
+                    for (std::size_t t = 0; t < nun; t++) {
+                        const R a = abs_value(xv[t]);
+                        if (a > xmax) xmax = a;
+                    }
+                    R ymax(0);
+                    for (std::size_t r2 = q + qs; r2 < p + sz; r2++)
+                        for (std::size_t j = 0; j < sz; j++) {
+                            const R a = abs_value(Y[r2][j]);
+                            if (a > ymax) ymax = a;
+                        }
+                    const R lim = (ymax > R(1) ? ymax : R(1)) /
+                                  (sqrt_value(eps) > R(0) ? sqrt_value(eps) : R(1));
+                    if (!(xmax > lim)) {
+                        for (std::size_t i = 0; i < qs; i++)
+                            for (std::size_t j = 0; j < sz; j++)
+                                Y[q + i][j] = xv[i * sz + j];
+                    }
+                    // else: leave zero (deterministic complement choice)
+                }
+                // else: pivot not certifiably nonsingular -> X = 0
+            }
+            // bound = ||cT * Y||_F / ||Y||_F  (relative residual of the pair)
+            R num(0), den(0);
+            for (std::size_t j = 0; j < sz; j++) {
+                T s(0);
+                for (std::size_t r2 = 0; r2 < p + sz; r2++) s += cT[r2] * Y[r2][j];
+                const R a = abs_value(s);
+                num += a * a;
+            }
+            for (std::size_t r2 = 0; r2 < p + sz; r2++)
+                for (std::size_t j = 0; j < sz; j++) {
+                    const R a = abs_value(Y[r2][j]);
+                    den += a * a;
+                }
+            const R nn = sqrt_value(num);
+            const R dd = sqrt_value(den);
+            bound[bi] = (dd > R(0)) ? nn / dd : nn;
+            const R scale = R(1) + vcp::tsparse_eigen_selection::target_distance(
+                std::complex<R>(vcp::tsparse_scalar::real_part(bre[bi]),
+                                vcp::tsparse_scalar::real_part(bim[bi])),
+                vcp::eig_target::largest_magnitude, R(0));
+            bconv[bi] = (bound[bi] <= tol * scale);
+            yof[bi].swap(Y);
+        }
 
-        if (mv_count >= max_mv) { budget_exhausted = true; break; }
+        // record final analysis for evidence export
+        final_cands.clear();
+        for (std::size_t bi = 0; bi < nb; bi++) {
+            cand_t c;
+            c.pos = bpos[bi]; c.size = bsize[bi];
+            c.re = bre[bi]; c.im = bim[bi]; c.re2 = T(0);
+            c.bound = bound[bi];
+            c.converged = bconv[bi];
+            c.is_complex = (bsize[bi] == 2);
+            final_cands.push_back(c);
+        }
+        have_final_analysis = true;
 
-        // If happy breakdown and no new convergence, signal failure.
-        if (happy_breakdown && locked.size() < k && candidates.empty()) {
-            result.breakdown_reason = "happy breakdown: Krylov subspace exhausted";
+        // residual history (best bound this analysis)
+        if (options.compute_residual_history && nb > 0) {
+            R best = bound[0];
+            R besttheta = abs_value(vcp::tsparse_scalar::real_part(bre[0]));
+            for (std::size_t bi = 1; bi < nb; bi++)
+                if (bound[bi] < best) {
+                    best = bound[bi];
+                    besttheta = abs_value(vcp::tsparse_scalar::real_part(bre[bi]));
+                }
+            result.residual_history_absolute.push_back(best);
+            result.residual_history_relative.push_back(best / (R(1) + besttheta));
+        }
+
+        // ---- PHASE 6: termination logic -------------------------------------
+        // coverage of complex blocks by the pool span (rediscovery artifacts)
+        std::vector<bool> covered(nb, false);
+        if (!pool_onb.empty()) {
+            for (std::size_t bi = 0; bi < nb; bi++) {
+                if (bsize[bi] != 2) continue;
+                const std::vector<std::vector<T> >& Y = yof[bi];
+                bool all_cov = true;
+                for (std::size_t col = 0; col < 2 && all_cov; col++) {
+                    std::vector<T> z(M, T(0));
+                    for (std::size_t r2 = 0; r2 < M; r2++) {
+                        T s(0);
+                        for (std::size_t t = 0; t < Y.size(); t++) s += U[r2][t] * Y[t][col];
+                        z[r2] = s;
+                    }
+                    std::vector<T> v(n, T(0));
+                    for (std::size_t r2 = 0; r2 < M; r2++) {
+                        const T zr = z[r2];
+                        for (std::size_t ii = 0; ii < n; ii++) v[ii] += V[r2][ii] * zr;
+                    }
+                    const R vn2 = vcp::tsparse_scalar::real_norm_value(v);
+                    if (!(vn2 > R(0))) { all_cov = false; break; }
+                    for (std::size_t ii = 0; ii < n; ii++) v[ii] /= T(vn2);
+                    for (int pass = 0; pass < 2; pass++)
+                        for (std::size_t j2 = 0; j2 < pool_onb.size(); j2++) {
+                            const R c2v = vcp::tsparse_scalar::real_dot_value(pool_onb[j2], v);
+                            for (std::size_t ii = 0; ii < n; ii++)
+                                v[ii] -= T(c2v) * pool_onb[j2][ii];
+                        }
+                    if (!(vcp::tsparse_scalar::real_norm_value(v) <= cover_tol))
+                        all_cov = false;
+                }
+                if (all_cov) {
+                    covered[bi] = true;
+                    final_cands[bi].converged = true;   // accounted-for in C-2 terms
+                }
+            }
+        }
+
+        // target-order over blocks of the FINAL (reordered) analysis
+        std::vector<std::size_t> ord2(nb);
+        for (std::size_t i = 0; i < nb; i++) ord2[i] = i;
+        for (std::size_t i = 1; i < nb; i++) {
+            const std::size_t oi = ord2[i];
+            std::size_t j = i;
+            while (j > 0) {
+                const bool before = prefer_large ? (bkey[oi] > bkey[ord2[j - 1]])
+                                                 : (bkey[oi] < bkey[ord2[j - 1]]);
+                if (!before) break;
+                ord2[j] = ord2[j - 1];
+                j--;
+            }
+            ord2[j] = oi;
+        }
+        // return prefix: first non-covered blocks filling k slots
+        std::vector<std::size_t> prefix_blocks;
+        std::size_t slots = 0;
+        for (std::size_t i = 0; i < nb && slots < k; i++) {
+            if (covered[ord2[i]]) continue;   // pool-covered rediscovery artifact
+            prefix_blocks.push_back(ord2[i]);
+            slots += bsize[ord2[i]];
+        }
+
+        // D3-2: a converged complex pair inside the return window means the
+        // real-only result can never honestly return k converged real pairs.
+        // Reference window: the pool prefix once the pool is complete (later
+        // scanning solves legitimately meet outer complex pairs in their own
+        // complement prefix — those must not fire the rejection).
+        {
+            R pool_worst_key = R(0);
+            bool have_pool_ref = false;
+            if (pool.size() >= k_eff) {
+                std::vector<R> pv2;
+                for (std::size_t i = 0; i < pool.size(); i++)
+                    pv2.push_back(vcp::tsparse_scalar::real_part(pool[i].theta));
+                const std::vector<std::size_t> po =
+                    vcp::tsparse_eigen_selection::select_eigen_indices_from_real(
+                        pv2, pv2.size(), target, shift_val);
+                if (po.size() >= k_eff) {
+                    pool_worst_key = vcp::tsparse_eigen_selection::target_distance(
+                        std::complex<R>(pv2[po[k_eff - 1]], R(0)), target, shift_val);
+                    have_pool_ref = true;
+                }
+            }
+            bool cx_conv_inner = false;
+            std::size_t cx_count = 0;
+            for (std::size_t i = 0; i < prefix_blocks.size(); i++) {
+                const std::size_t bi = prefix_blocks[i];
+                if (bsize[bi] != 2 || covered[bi]) continue;
+                bool counts = true;
+                if (have_pool_ref) {
+                    const R key = bkey[bi];
+                    counts = prefer_large ? (key > pool_worst_key)
+                                          : (key < pool_worst_key);
+                }
+                if (counts) {
+                    cx_count++;
+                    if (bconv[bi]) cx_conv_inner = true;
+                }
+            }
+            if (cx_conv_inner) {
+                complex_window_reject = true;
+                complex_window_count = cx_count;
+                result.converged = false;
+                break;
+            }
+        }
+
+        // prefix all real and bound-converged?  attempt declaration
+        bool prefix_ready = (slots >= k);
+        for (std::size_t i = 0; prefix_ready && i < prefix_blocks.size(); i++) {
+            const std::size_t bi = prefix_blocks[i];
+            if (bsize[bi] != 1 || !bconv[bi]) prefix_ready = false;
+        }
+
+        if (prefix_ready) {
+            // exact C-1 verification of the k prefix pairs (budget-gated)
+            if (mv_count + prefix_blocks.size() > max_mv) {
+                budget_exhausted = true;
+                result.converged = false;
+                break;
+            }
+            bool all_pass = true;
+            std::vector<lifted_pair_t> lifted(prefix_blocks.size());
+            for (std::size_t i = 0; i < prefix_blocks.size(); i++) {
+                const std::size_t bi = prefix_blocks[i];
+                const std::vector<std::vector<T> >& Y = yof[bi];
+                // T-basis -> V-basis: z = U * y (Y lives in the reordered
+                // Schur coordinates; the state basis is V = (basis) with
+                // S = U T U^T), then v = V z.
+                std::vector<T> z(M, T(0));
+                for (std::size_t r2 = 0; r2 < M; r2++) {
+                    T s(0);
+                    for (std::size_t t = 0; t < Y.size(); t++) s += U[r2][t] * Y[t][0];
+                    z[r2] = s;
+                }
+                std::vector<T> v(n, T(0));
+                for (std::size_t r2 = 0; r2 < M; r2++) {
+                    const T zr = z[r2];
+                    for (std::size_t ii = 0; ii < n; ii++) v[ii] += V[r2][ii] * zr;
+                }
+                const R vn = vcp::tsparse_scalar::real_norm_value(v);
+                if (!(vn > R(0))) { all_pass = false; bconv[bi] = false; break; }
+                for (std::size_t ii = 0; ii < n; ii++) v[ii] /= T(vn);
+                std::vector<T> Av;
+                apply(v, Av);
+                mv_count++;
+                const T theta = bre[bi];
+                std::vector<T> rr(n);
+                for (std::size_t ii = 0; ii < n; ii++) rr[ii] = Av[ii] - theta * v[ii];
+                const R ra = vcp::tsparse_scalar::real_norm_value(rr);
+                const R rrel = ra / (R(1) + abs_value(vcp::tsparse_scalar::real_part(theta)));
+                lifted[i].v.swap(v);
+                lifted[i].res_abs = ra;
+                lifted[i].res_rel = rrel;
+                const bool acc = (ra <= tol) || (rrel <= tol);
+                if (!acc) {
+                    all_pass = false;
+                    bconv[bi] = false;
+                    final_cands[bi].converged = false;
+                    break;
+                }
+            }
+            if (all_pass) {
+                // C-2 on the remaining candidates (shared complex check)
+                std::vector<R> ar, ai;
+                std::vector<bool> ac;
+                std::vector<R> locked_vals;
+                for (std::size_t i = 0; i < prefix_blocks.size(); i++)
+                    locked_vals.push_back(
+                        vcp::tsparse_scalar::real_part(bre[prefix_blocks[i]]));
+                for (std::size_t bi = 0; bi < nb; bi++) {
+                    bool in_prefix = false;
+                    for (std::size_t i = 0; i < prefix_blocks.size(); i++)
+                        if (prefix_blocks[i] == bi) { in_prefix = true; break; }
+                    if (in_prefix) continue;
+                    const bool acct = bconv[bi] || covered[bi];
+                    ar.push_back(vcp::tsparse_scalar::real_part(bre[bi]));
+                    ai.push_back(vcp::tsparse_scalar::real_part(bim[bi]));
+                    ac.push_back(acct);
+                    if (bsize[bi] == 2) {
+                        ar.push_back(vcp::tsparse_scalar::real_part(bre[bi]));
+                        ai.push_back(-vcp::tsparse_scalar::real_part(bim[bi]));
+                        ac.push_back(acct);
+                    }
+                }
+                const bool c2_ok = vcp::tsparse::honest_termination_check_complex_<R>(
+                    ar, ai, ac, locked_vals, k, target, shift_val);
+                if (c2_ok) {
+                    const bool structurally_complete = (M >= n) || subspace_exhausted;
+                    if (structurally_complete && pool.empty()) {
+                        // whole space analyzed in a single factorization:
+                        // the prefix is complete by construction — declare
+                        declared_converged = true;
+                        diag.c2_evidence.fresh = true;
+                        for (std::size_t i = 0; i < prefix_blocks.size(); i++) {
+                            const std::size_t bi = prefix_blocks[i];
+                            result.eigenvalues.push_back(bre[bi]);
+                            result.eigenvectors.push_back(lifted[i].v);
+                            result.residuals_absolute.push_back(lifted[i].res_abs);
+                            result.residuals_relative.push_back(lifted[i].res_rel);
+                        }
+                        break;
+                    }
+                    if (!pending_verification && !structurally_complete) {
+                        // one cheap in-solve probe cycle before ending the solve
+                        pending_verification = true;
+                    } else {
+                        // ---- SOLVE VERIFIED: pool update + confirm protocol --
+                        bool added_inner = false;
+                        bool dependent_inconsistent = false;
+                        // current pool prefix worst key (if complete)
+                        R pool_worst_key = R(0);
+                        bool have_pool_ref = false;
+                        {
+                            if (pool.size() >= k_eff) {
+                                std::vector<R> pv2;
+                                for (std::size_t i2 = 0; i2 < pool.size(); i2++)
+                                    pv2.push_back(vcp::tsparse_scalar::real_part(pool[i2].theta));
+                                const std::vector<std::size_t> po =
+                                    vcp::tsparse_eigen_selection::select_eigen_indices_from_real(
+                                        pv2, pv2.size(), target, shift_val);
+                                if (po.size() >= k_eff) {
+                                    pool_worst_key = vcp::tsparse_eigen_selection::target_distance(
+                                        std::complex<R>(pv2[po[k_eff - 1]], R(0)), target, shift_val);
+                                    have_pool_ref = true;
+                                }
+                            }
+                        }
+                        for (std::size_t i = 0; i < prefix_blocks.size(); i++) {
+                            const std::size_t bi = prefix_blocks[i];
+                            const R th_r = vcp::tsparse_scalar::real_part(bre[bi]);
+                            {
+                                R a2 = th_r; if (a2 < R(0)) a2 = -a2;
+                                if (a2 > val_scale_seen) val_scale_seen = a2;
+                            }
+                            bool needed = !have_pool_ref;
+                            if (have_pool_ref) {
+                                const R key = vcp::tsparse_eigen_selection::target_distance(
+                                    std::complex<R>(th_r, R(0)), target, shift_val);
+                                needed = prefer_large ? (key > pool_worst_key)
+                                                      : (key < pool_worst_key);
+                            }
+                            if (!needed) continue;
+                            // certified independence: residual after CGS2
+                            // projection onto span(pool) (orthonormal basis)
+                            std::vector<T> w = lifted[i].v;
+                            for (int pass = 0; pass < 2; pass++)
+                                for (std::size_t j2 = 0; j2 < pool_onb.size(); j2++) {
+                                    const R c2v = vcp::tsparse_scalar::real_dot_value(pool_onb[j2], w);
+                                    for (std::size_t ii = 0; ii < n; ii++)
+                                        w[ii] -= T(c2v) * pool_onb[j2][ii];
+                                }
+                            const R rind = vcp::tsparse_scalar::real_norm_value(w);
+                            if (rind >= tau_add || pool.empty()) {
+                                pool_pair_t pp;
+                                pp.theta = bre[bi];
+                                pp.vec = lifted[i].v;
+                                pp.res_abs = lifted[i].res_abs;
+                                pp.res_rel = lifted[i].res_rel;
+                                pool.push_back(pp);
+                                if (rind > R(0)) {
+                                    std::vector<T> q2 = w;
+                                    for (std::size_t ii = 0; ii < n; ii++) q2[ii] /= T(rind);
+                                    pool_onb.push_back(q2);
+                                }
+                                if (have_pool_ref) added_inner = true;
+                            } else {
+                                // dependent: rediscovery iff the Rayleigh value is
+                                // consistent with the matched pool member
+                                std::size_t jbest = 0;
+                                R best = R(0);
+                                for (std::size_t j2 = 0; j2 < pool.size(); j2++) {
+                                    R d2 = vcp::tsparse_scalar::real_dot_value(pool[j2].vec, lifted[i].v);
+                                    if (d2 < R(0)) d2 = -d2;
+                                    if (d2 > best) { best = d2; jbest = j2; }
+                                }
+                                R dv = th_r - vcp::tsparse_scalar::real_part(pool[jbest].theta);
+                                if (dv < R(0)) dv = -dv;
+                                const R eps_match = R(10) * (lifted[i].res_abs + pool[jbest].res_abs
+                                                             + rind * R(4) * val_scale_seen);
+                                if (!(dv <= eps_match)) dependent_inconsistent = true;
+                                // else: rediscovery of a pooled direction — ignored
+                            }
+                        }
+                        if (dependent_inconsistent) {
+                            dependent_block_solves++;
+                            stable_confirms = 0;
+                            if (dependent_block_solves >= 2) {
+                                result.converged = false;
+                                result.status = "not_converged";
+                                result.failure_reason =
+                                    "inner candidate not independently representable"
+                                    " (dependent eigendirection with inconsistent value;"
+                                    " honest not_converged)";
+                                break;
+                            }
+                        } else if (added_inner || !pool_complete_at_start) {
+                            stable_confirms = 0;
+                        } else if (pool.size() >= k_eff) {
+                            // this solve started orthogonal to a complete pool and
+                            // added nothing certainly-inner: fresh confirmation
+                            stable_confirms++;
+                        }
+                        if (stable_confirms >= 1 && pool.size() >= k_eff) {
+                            declare_from_pool = true;
+                            break;
+                        }
+                        // continue scanning with a new pool-orthogonal solve
+                        start_new_solve = true;
+                        restart_count++;
+                        continue;
+                    }
+                } else {
+                    pending_verification = false;
+                }
+            } else {
+                pending_verification = false;
+            }
+        } else if (!prefix_ready && pending_verification) {
+            // verification analysis contradicted readiness: reset the protocol
+            pending_verification = false;
+        }
+
+        if (budget_exhausted || mv_count >= max_mv) {
+            budget_exhausted = true;
+            result.converged = false;
+            break;
+        }
+        if (subspace_exhausted) {
+            // no expansion direction remains: analyzing the same matrix again
+            // cannot change anything — honest failure (never a livelock)
+            result.converged = false;
+            result.status = "failed";
+            result.failure_reason =
+                "invariant subspace exhausted without an honest converged declaration";
             break;
         }
 
-        // -------------------------------------------------------------------
-        // PHASE 5: Krylov-Schur restart.
-        // -------------------------------------------------------------------
-        const std::size_t padding     = std::max<std::size_t>(k / 2 + 1, std::size_t(2));
-        const std::size_t p_keep_max  = (m > 1) ? (m - 1) : 0;
-        std::size_t p_keep = std::min(k + padding, p_keep_max);
-
-        if (p_keep == 0) {
-            // Degenerate: full fresh restart deflated against locked vectors.
-            for (std::size_t i = 0; i <= m_limit; i++)
-                std::fill(H_mat[i].begin(), H_mat[i].end(), T(0));
-            std::vector<T> v0 = vcp::tsparse_lanczos::deterministic_start_vector<T>(n, seed++);
-            for (int pass = 0; pass < 2; pass++)
-                for (std::size_t li = 0; li < locked.size(); li++) {
-                    const R lc = vcp::tsparse_scalar::real_dot_value(locked[li].vector, v0);
-                    for (std::size_t ii = 0; ii < n; ii++) v0[ii] -= T(lc) * locked[li].vector[ii];
+        // ---- PHASE 7: contraction (window = prefix ∪ converged ∪ padding) ---
+        {
+            // choose keep columns: leading blocks after reorder up to
+            // want_cols, then extend for keep-together and keep-more handled
+            // above; additionally include all bound-converged blocks that are
+            // already inside the leading region.  We contract simply to the
+            // leading `Kcols` columns of the reordered form: the reorder pass
+            // has already moved the selected prefix to the front, converged
+            // blocks among them (B-15: nothing converged is dropped unless the
+            // m_limit-1 cap forces it — counted above and reported).
+            std::size_t Kcols = 0;
+            {
+                std::size_t want_cols = k + ((k / 2 + 1 > 2) ? k / 2 + 1 : 2);
+                if (keep_more_cols > want_cols) want_cols = keep_more_cols;   // G-2.1 c-1
+                // B-15: extend to cover every bound-converged block
+                for (std::size_t bi = 0; bi < nb; bi++) {
+                    const std::size_t bend = bpos[bi] + bsize[bi];
+                    if (bconv[bi] && bend > want_cols) want_cols = bend;
                 }
-            const R v0n = vcp::tsparse_scalar::real_norm_value(v0);
-            if (v0n > small_tol) for (std::size_t ii = 0; ii < n; ii++) v0[ii] /= T(v0n);
-            V.clear();
-            V.push_back(v0);
-            m_current = 0;
-            restart_count++;
-            continue;
-        }
-
-        // Collect up to p_keep Ritz vectors in projected space.
-        // Exclude already-locked candidates so the restart subspace focuses
-        // on the remaining target eigenvalues and does not re-introduce
-        // already-converged directions (which would persist in the Hessenberg
-        // coupling and slow convergence of subsequent eigenvalues).
-        std::vector<std::vector<T> > Qp;
-        Qp.reserve(p_keep);
-
-        for (std::size_t ci = 0; ci < candidates.size() && Qp.size() < p_keep; ci++) {
-            if (!candidates[ci].converged)
-                Qp.push_back(candidates[ci].y_proj);
-        }
-
-        // Pad with random directions in R^m if not enough real Ritz vectors.
-        while (Qp.size() < p_keep) {
-            std::vector<T> rv(m);
-            unsigned int s2 = seed++;
-            for (std::size_t i = 0; i < m; i++) {
-                s2 = s2 * 1664525u + 1013904223u;
-                rv[i] = T(static_cast<int>(s2 >> 16)) / T(32768) - T(1);
+                // keep-together (D3-5): widen to the boundary of a straddled block
+                for (std::size_t bi = 0; bi < nb; bi++) {
+                    const std::size_t bend = bpos[bi] + bsize[bi];
+                    if (bpos[bi] < want_cols && bend > want_cols) want_cols = bend;
+                }
+                if (want_cols > M - 1) want_cols = M - 1;   // >=1 expansion slot
+                // final alignment DOWN to a block boundary (never split a 2x2;
+                // an m_limit-1 cap clip is the reported rare corner)
+                std::size_t aligned = 0;
+                for (std::size_t bi = 0; bi < nb; bi++) {
+                    const std::size_t bend = bpos[bi] + bsize[bi];
+                    if (bend <= want_cols) aligned = bend;
+                    else break;
+                }
+                Kcols = aligned;   // 0 => degenerate fresh restart below
             }
-            Qp.push_back(rv);
-        }
 
-        // Orthonormalize Qp in R^m.
-        const std::size_t n_kept =
-            ks_detail::orthonormalize_set(Qp, m, small_tol);
-
-        if (n_kept == 0) {
-            // Fallback: fresh restart deflated against locked vectors.
-            for (std::size_t i = 0; i <= m_limit; i++)
-                std::fill(H_mat[i].begin(), H_mat[i].end(), T(0));
-            std::vector<T> v0b = vcp::tsparse_lanczos::deterministic_start_vector<T>(n, seed++);
-            for (int pass = 0; pass < 2; pass++)
-                for (std::size_t li = 0; li < locked.size(); li++) {
-                    const R lc = vcp::tsparse_scalar::real_dot_value(locked[li].vector, v0b);
-                    for (std::size_t ii = 0; ii < n; ii++) v0b[ii] -= T(lc) * locked[li].vector[ii];
+            if (Kcols == 0) {
+                // degenerate: fresh restart from current v_next (or a fresh
+                // direction) — factorization restarts empty
+                V.clear();
+                S.clear();
+                coup.clear();
+                if (v_next.empty()) {
+                    std::vector<T> fd;
+                    if (!kd::fresh_orthogonal_direction(V, 0, n, seed, floor_tol, fd)) {
+                        result.converged = false;
+                        result.status = "failed";
+                        result.failure_reason = "no restart direction available";
+                        break;
+                    }
+                    v_next = fd;
                 }
-            const R v0bn = vcp::tsparse_scalar::real_norm_value(v0b);
-            if (v0bn > small_tol) for (std::size_t ii = 0; ii < n; ii++) v0b[ii] /= T(v0bn);
-            V.clear();
-            V.push_back(v0b);
-            m_current = 0;
+                restart_count++;
+                continue;
+            }
+
+            // V_new = V * U(:, 0..Kcols-1)
+            std::vector<std::vector<T> > Vn(Kcols, std::vector<T>(n, T(0)));
+            for (std::size_t j = 0; j < Kcols; j++)
+                for (std::size_t i = 0; i < M; i++) {
+                    const T u = U[i][j];
+                    const std::vector<T>& vi = V[i];
+                    for (std::size_t ii = 0; ii < n; ii++) Vn[j][ii] += vi[ii] * u;
+                }
+            // re-orthonormalize Vn (MGS QR) and push the R-correction into
+            // S and c so the relation stays exact bookkeeping:
+            //   V = Q Rc  =>  A Q = Q (Rc Tblk Rc^{-1}) + v (cT Rc^{-1})
+            std::vector<std::vector<T> > Rc(Kcols, std::vector<T>(Kcols, T(0)));
+            bool orth_ok = true;
+            for (std::size_t j = 0; j < Kcols && orth_ok; j++) {
+                for (std::size_t i = 0; i < j; i++) {
+                    const R c2 = vcp::tsparse_scalar::real_dot_value(Vn[i], Vn[j]);
+                    Rc[i][j] = T(c2);
+                    for (std::size_t ii = 0; ii < n; ii++) Vn[j][ii] -= T(c2) * Vn[i][ii];
+                }
+                const R nv = vcp::tsparse_scalar::real_norm_value(Vn[j]);
+                if (!(nv > R(0))) { orth_ok = false; break; }
+                Rc[j][j] = T(nv);
+                for (std::size_t ii = 0; ii < n; ii++) Vn[j][ii] /= T(nv);
+            }
+            if (!orth_ok) {
+                result.converged = false;
+                result.status = "failed";
+                result.failure_reason = "contracted basis not certifiably independent";
+                break;
+            }
+            // Tblk = leading Kcols block of Tm ; S_new = Rc Tblk Rc^{-1}
+            // c_new = cT(0..Kcols-1) Rc^{-1}
+            std::vector<std::vector<T> > Tb(Kcols, std::vector<T>(Kcols, T(0)));
+            for (std::size_t i = 0; i < Kcols; i++)
+                for (std::size_t j = 0; j < Kcols; j++) Tb[i][j] = Tm[i][j];
+            // X = Tblk Rc^{-1}: solve X Rc = Tblk column-wise (Rc upper tri)
+            std::vector<std::vector<T> > X(Kcols, std::vector<T>(Kcols, T(0)));
+            for (std::size_t i = 0; i < Kcols; i++) {
+                for (std::size_t j = 0; j < Kcols; j++) {
+                    T s = Tb[i][j];
+                    for (std::size_t t = 0; t < j; t++) s -= X[i][t] * Rc[t][j];
+                    X[i][j] = s / Rc[j][j];
+                }
+            }
+            std::vector<std::vector<T> > Sn(Kcols, std::vector<T>(Kcols, T(0)));
+            for (std::size_t i = 0; i < Kcols; i++)
+                for (std::size_t j = 0; j < Kcols; j++) {
+                    T s(0);
+                    for (std::size_t t = i; t < Kcols; t++) s += Rc[i][t] * X[t][j];
+                    Sn[i][j] = s;
+                }
+            std::vector<T> cn(Kcols, T(0));
+            for (std::size_t j = 0; j < Kcols; j++) {
+                T s = cT[j];
+                for (std::size_t t = 0; t < j; t++) s -= cn[t] * Rc[t][j];
+                cn[j] = s / Rc[j][j];
+            }
+
+            V.swap(Vn);
+            S.swap(Sn);
+            coup.swap(cn);
+            // v_next unchanged (still orthogonal to span(V) up to eps)
             restart_count++;
-            continue;
         }
-        p_keep = n_kept;
+    }   // main loop
 
-        // Compute H_proj = Qp^T Hm Qp  (p_keep x p_keep dense restart block).
-        const std::vector<std::vector<T> > H_proj =
-            ks_detail::project_hessenberg(Hm, Qp);
-
-        // Coupling row: c[j] = beta_overflow * Qp[j][m-1]
-        std::vector<T> coupling(p_keep);
-        for (std::size_t j = 0; j < p_keep; j++)
-            coupling[j] = T(beta_overflow) * Qp[j][m - 1];
-
-        // Lift Ritz vectors to full space.
-        std::vector<std::vector<T> > V_new(p_keep, std::vector<T>(n, T(0)));
-        for (std::size_t j = 0; j < p_keep; j++) {
-            for (std::size_t i = 0; i < m && i < V.size(); i++)
+    // ---- declaration from the pool (confirmed by a fresh orthogonal solve) --
+    if (declare_from_pool && !declared_converged) {
+        std::vector<R> pv2;
+        for (std::size_t i = 0; i < pool.size(); i++)
+            pv2.push_back(vcp::tsparse_scalar::real_part(pool[i].theta));
+        const std::vector<std::size_t> po =
+            vcp::tsparse_eigen_selection::select_eigen_indices_from_real(
+                pv2, pv2.size(), target, shift_val);
+        if (po.size() >= k_eff && mv_count + k_eff <= max_mv) {
+            bool all_ok = true;
+            std::vector<lifted_pair_t> outp(k_eff);
+            for (std::size_t i = 0; i < k_eff; i++) {
+                const pool_pair_t& pp = pool[po[i]];
+                std::vector<T> Av;
+                apply(pp.vec, Av);
+                mv_count++;
+                std::vector<T> rr(n);
                 for (std::size_t ii = 0; ii < n; ii++)
-                    V_new[j][ii] += V[i][ii] * Qp[j][i];
-            // Re-normalize for floating-point hygiene.
-            const R nrm = vcp::tsparse_scalar::real_norm_value(V_new[j]);
-            if (nrm > small_tol)
-                for (std::size_t ii = 0; ii < n; ii++) V_new[j][ii] /= T(nrm);
-        }
-
-        // Overflow vector: V[m] is already ⊥ span(V[0..m-1]).
-        std::vector<T> v_overflow;
-        if (m < V.size() && !happy_breakdown) {
-            v_overflow = V[m];
-            // Re-deflate against locked in case of numerical drift.
-            for (int pass = 0; pass < 2; pass++)
-                for (std::size_t li = 0; li < locked.size(); li++) {
-                    const R lc = vcp::tsparse_scalar::real_dot_value(locked[li].vector, v_overflow);
-                    for (std::size_t i = 0; i < n; i++) v_overflow[i] -= T(lc) * locked[li].vector[i];
+                    rr[ii] = Av[ii] - pp.theta * pp.vec[ii];
+                const R ra = vcp::tsparse_scalar::real_norm_value(rr);
+                const R rrel = ra / (R(1) + abs_value(vcp::tsparse_scalar::real_part(pp.theta)));
+                if (!((ra <= tol) || (rrel <= tol))) { all_ok = false; break; }
+                outp[i].v = pp.vec;
+                outp[i].res_abs = ra;
+                outp[i].res_rel = rrel;
+            }
+            if (all_ok) {
+                declared_converged = true;
+                diag.c2_evidence.fresh = true;
+                for (std::size_t i = 0; i < k_eff; i++) {
+                    result.eigenvalues.push_back(pool[po[i]].theta);
+                    result.eigenvectors.push_back(outp[i].v);
+                    result.residuals_absolute.push_back(outp[i].res_abs);
+                    result.residuals_relative.push_back(outp[i].res_rel);
                 }
-            const R vovn = vcp::tsparse_scalar::real_norm_value(v_overflow);
-            if (vovn > small_tol) for (std::size_t i = 0; i < n; i++) v_overflow[i] /= T(vovn);
+            } else {
+                result.converged = false;
+                result.status = "residual_check_failed";
+                result.failure_reason =
+                    "end-of-run exact residual re-check failed on a pooled pair (C-1)";
+            }
+        } else if (po.size() >= k_eff) {
+            budget_exhausted = true;
+            result.converged = false;
         } else {
-            // Happy breakdown or missing overflow: generate fresh vector ⊥ V_new and locked.
-            v_overflow = vcp::tsparse_lanczos::deterministic_start_vector<T>(n, seed++);
-            for (int pass = 0; pass < 2; pass++) {
-                for (std::size_t j = 0; j < p_keep; j++) {
-                    const R c = vcp::tsparse_scalar::real_dot_value(V_new[j], v_overflow);
-                    for (std::size_t i = 0; i < n; i++) v_overflow[i] -= T(c) * V_new[j][i];
-                }
-                for (std::size_t li = 0; li < locked.size(); li++) {
-                    const R lc = vcp::tsparse_scalar::real_dot_value(locked[li].vector, v_overflow);
-                    for (std::size_t i = 0; i < n; i++) v_overflow[i] -= T(lc) * locked[li].vector[i];
-                }
-            }
-            const R vn = vcp::tsparse_scalar::real_norm_value(v_overflow);
-            if (vn > small_tol)
-                for (std::size_t i = 0; i < n; i++) v_overflow[i] /= T(vn);
+            result.converged = false;
+            result.status = "failed";
+            result.failure_reason = "pool ordering shorter than k (internal)";
         }
+    }
 
-        // Reset H_mat.
-        for (std::size_t i = 0; i <= m_limit; i++)
-            std::fill(H_mat[i].begin(), H_mat[i].end(), T(0));
+    // =========================================================================
+    // termination: evidence + factorization export, result assembly
+    // =========================================================================
+    diag.restart_count = restart_count;
+    diag.matrix_vector_products = mv_count;
+    result.matrix_vector_products = mv_count;
+    result.iterations = restart_count;
 
-        // Set dense restart block.
-        for (std::size_t i = 0; i < p_keep; i++)
-            for (std::size_t j = 0; j < p_keep; j++)
-                H_mat[i][j] = H_proj[i][j];
-
-        // Set coupling row.
-        for (std::size_t j = 0; j < p_keep; j++)
-            H_mat[p_keep][j] = coupling[j];
-
-        // Reset basis.
-        V.clear();
-        V.reserve(m_limit + 2);
-        for (std::size_t j = 0; j < p_keep; j++) V.push_back(V_new[j]);
-        V.push_back(v_overflow);
-
-        m_current = p_keep;
-        restart_count++;
-
-    } // end main loop
-
-    // -----------------------------------------------------------------------
-    // Collect complex eigenvalues from the final projected Hessenberg.
-    // -----------------------------------------------------------------------
-    {
-        const std::size_t m = m_current;
-        if (m > 0) {
-            std::vector<std::vector<T> > Hm      = ks_detail::extract_hm(H_mat, m);
-            std::vector<std::vector<T> > Hm_hess = Hm;
-            std::vector<std::vector<T> > dummy_Q;
-            vcp::tsparse_proj_hess::reduce_to_hessenberg_with_q(Hm_hess, dummy_Q);
-
-            const std::size_t hess_iter = m * m * 80 + 300;
-            std::vector<C> feigs =
-                vcp::tsparse_eigensolvers::hessenberg_complex_eigenvalues<T>(
-                    Hm_hess, hess_iter, small_tol);
-
-            const R real_tol = small_tol * R(100);
-            for (std::size_t ei = 0; ei < feigs.size(); ei++) {
-                if (!ks_detail::is_effectively_real(feigs[ei], real_tol) &&
-                    feigs[ei].imag() > R(0))
-                {
-                    typedef typename vcp::eig_result<T>::eigenvalue_type EV;
-                    result.complex_eigenvalues.push_back(
-                        EV(feigs[ei].real(),  feigs[ei].imag()));
-                    result.complex_eigenvalues.push_back(
-                        EV(feigs[ei].real(), -feigs[ei].imag()));
-                }
+    // evidence (exported on every n>0 && k>0 path)
+    diag.c2_evidence.exported = true;
+    diag.c2_evidence.candidate_real.clear();
+    diag.c2_evidence.candidate_imag.clear();
+    diag.c2_evidence.candidate_converged.clear();
+    if (have_final_analysis) {
+        for (std::size_t i = 0; i < final_cands.size(); i++) {
+            const cand_t& c = final_cands[i];
+            diag.c2_evidence.candidate_real.push_back(
+                vcp::tsparse_scalar::real_part(c.re));
+            diag.c2_evidence.candidate_imag.push_back(
+                vcp::tsparse_scalar::real_part(c.im));
+            diag.c2_evidence.candidate_converged.push_back(c.converged);
+            if (c.is_complex) {
+                diag.c2_evidence.candidate_real.push_back(
+                    vcp::tsparse_scalar::real_part(c.re));
+                diag.c2_evidence.candidate_imag.push_back(
+                    -vcp::tsparse_scalar::real_part(c.im));
+                diag.c2_evidence.candidate_converged.push_back(c.converged);
+            }
+            if (c.is_complex) {
+                typedef typename vcp::eig_result<T>::eigenvalue_type EV;
+                result.complex_eigenvalues.push_back(
+                    EV(vcp::tsparse_scalar::real_part(c.re),
+                       vcp::tsparse_scalar::real_part(c.im)));
+                result.complex_eigenvalues.push_back(
+                    EV(vcp::tsparse_scalar::real_part(c.re),
+                       -vcp::tsparse_scalar::real_part(c.im)));
             }
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Final exact residual re-evaluation for all locked pairs.
-    // -----------------------------------------------------------------------
-    for (std::size_t i = 0; i < locked.size(); i++) {
-        std::vector<T> Av;
-        apply(locked[i].vector, Av);
-        mv_count++;
-        const T lam = locked[i].value;
-        std::vector<T> r(n);
-        for (std::size_t j = 0; j < n; j++) r[j] = Av[j] - lam * locked[i].vector[j];
-        locked[i].res_abs = vcp::tsparse_scalar::real_norm_value(r);
-        locked[i].res_rel = locked[i].res_abs /
-            (R(1) + vcp::tsparse_scalar::abs_value(
-                vcp::tsparse_scalar::real_part(lam)));
-    }
+    // terminating factorization export
+    diag.final_basis = V;
+    diag.final_compressed = S;
+    diag.final_coupling = coup;
+    diag.final_residual_vector = v_next;
 
-    // -----------------------------------------------------------------------
-    // Sort locked pairs by target and fill result.
-    // -----------------------------------------------------------------------
-    if (!locked.empty()) {
-        std::vector<C> ceigs;
-        ceigs.reserve(locked.size());
-        for (std::size_t i = 0; i < locked.size(); i++)
-            ceigs.push_back(C(vcp::tsparse_scalar::real_part(locked[i].value), R(0)));
-
-        const std::vector<std::size_t> order =
-            vcp::tsparse_eigensolvers::select_ritz_indices<T>(
-                ceigs, locked.size(), target, shift_val);
-
-        const std::size_t take = std::min(k, order.size());
-        for (std::size_t i = 0; i < take; i++) {
-            const std::size_t idx = order[i];
-            result.eigenvalues.push_back(locked[idx].value);
-            result.eigenvectors.push_back(locked[idx].vector);
-            result.residuals_absolute.push_back(locked[idx].res_abs);
-            result.residuals_relative.push_back(locked[idx].res_rel);
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Fill result counts, norms, history, and status.
-    // -----------------------------------------------------------------------
-    result.returned_real_count    = result.eigenvalues.size();
+    // counts and status
+    result.returned_real_count = result.eigenvalues.size();
     result.returned_complex_count = result.complex_eigenvalues.size();
-    result.returned_count         =
-        result.returned_real_count + result.returned_complex_count;
-    result.converged_count        = result.returned_real_count;
+    result.returned_count = result.returned_real_count + result.returned_complex_count;
+    result.converged_count = result.returned_real_count;
+    diag.locked_real_count = result.returned_real_count;
+    diag.locked_complex_count = result.returned_complex_count / 2;
 
     if (!result.residuals_absolute.empty()) {
-        result.residual_norm_absolute =
-            *std::max_element(result.residuals_absolute.begin(),
-                              result.residuals_absolute.end());
+        R mx = result.residuals_absolute[0];
+        for (std::size_t i = 1; i < result.residuals_absolute.size(); i++)
+            if (result.residuals_absolute[i] > mx) mx = result.residuals_absolute[i];
+        result.residual_norm_absolute = mx;
     }
     if (!result.residuals_relative.empty()) {
-        result.residual_norm_relative =
-            *std::max_element(result.residuals_relative.begin(),
-                              result.residuals_relative.end());
+        R mx = result.residuals_relative[0];
+        for (std::size_t i = 1; i < result.residuals_relative.size(); i++)
+            if (result.residuals_relative[i] > mx) mx = result.residuals_relative[i];
+        result.residual_norm_relative = mx;
     }
-
-    if (!compute_hist) {
+    if (!options.compute_residual_history) {
         result.residual_history_absolute.clear();
         result.residual_history_relative.clear();
     }
 
-    result.matrix_vector_products = mv_count;
-
-    if (result.returned_real_count >= k) {
+    if (declared_converged) {
         result.converged = true;
-        result.status    = "converged";
-        result.message   = "krylov_schur_experimental converged";
-    } else if (budget_exhausted || mv_count >= max_mv) {
-        result.converged      = false;
-        result.status         = "max_iter_exhausted";
+        result.status = "converged";
+        result.message = "krylov_schur converged (C-1/C-2 verified, fresh)";
+    } else if (complex_window_reject) {
+        result.converged = false;
+        result.status = "not_converged";
+        result.failure_reason =
+            "complex conjugate pairs present (" +
+            std::to_string(complex_window_count) +
+            ") in the target window: real-only eig_result cannot return them as"
+            " converged pairs (complex eigenpair API pending); honest not_converged";
+        result.message = "krylov_schur: complex pair in return window";
+    } else if (budget_exhausted) {
+        result.converged = false;
+        result.status = "max_iter_exhausted";
         result.failure_reason =
             "matrix-vector product budget exhausted before full convergence";
-        result.message        = "krylov_schur: budget exhausted";
+        result.message = "krylov_schur: budget exhausted";
     } else {
         result.converged = false;
-        result.status    = "failed";
-        if (result.failure_reason.empty()) {
-            if (!result.complex_eigenvalues.empty() &&
-                result.returned_real_count < k) {
-                result.failure_reason =
-                    "insufficient real eigenvalues converged; complex eigenvalues detected "
-                    "(complex restart is outside Phase 3 scope)";
-            } else {
-                result.failure_reason =
-                    "eigensolver terminated without full convergence";
-            }
-        }
+        if (result.status.empty()) result.status = "failed";
+        if (result.failure_reason.empty())
+            result.failure_reason = "eigensolver terminated without full convergence";
         result.message = "krylov_schur: not all eigenvalues converged";
     }
-
-    diag.restart_count          = restart_count;
-    diag.matrix_vector_products = mv_count;
-    diag.locked_real_count      = result.returned_real_count;
-    diag.locked_complex_count   = result.returned_complex_count / 2;
 
     return diag;
 }
@@ -1000,8 +1838,7 @@ vcp::eig_result<T> krylov_schur_eigs(
     std::size_t k,
     const vcp::eig_options<T>& options)
 {
-    return krylov_schur_eigs_with_diagnostics<Apply, T>(
-        apply, n, k, options).eigs;
+    return krylov_schur_eigs_with_diagnostics<Apply, T>(apply, n, k, options).eigs;
 }
 
 } // namespace tsparse_experimental

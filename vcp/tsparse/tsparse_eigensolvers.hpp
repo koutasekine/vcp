@@ -2,6 +2,21 @@
 // http ://verified.computation.jp
 //
 // VCP Library is licensed under the BSD 3 - clause "New" or "Revised" License
+//
+// EIG-3 T-5 (G-2.2 approved 2026-07-06): the projected Hessenberg QR pair in
+// this header (francis_qr_step / hessenberg_complex_eigenvalues) is a LEGACY
+// EXHIBIT carrying the D-QR/D-4/D-15 defect family.  Production consumers
+// were reduced to zero (old KS/arnoldi drivers replaced by the rebuilt
+// Krylov-Schur driver on the EIG-2 real Schur core); the two functions are
+// retained ONLY to keep the frozen red probe (real_schur_red_probe.cpp,
+// SHA-256 f5bfb6a4...) buildable and as the test subject of the GT1.1
+// certified units (slu_gt1_1_certified_eig_units.cpp) and the q1/q1n
+// reproducer probes.  The complex nonsymmetric dense legacy is a SEPARATE
+// lineage (qr_eig_dense in tsparse_dense_linalg.hpp, tracked by
+// eig_dense_complex_legacy_issue.md) and does not call these functions.
+// ADDING NEW CONSUMERS OF THESE TWO FUNCTIONS IS FORBIDDEN (reviewer-approval
+// matter).  The shared helpers of this header (selection, orthogonalization,
+// tridiagonal utilities) remain in production use by the lanczos family.
 
 #pragma once
 
@@ -198,18 +213,18 @@ namespace vcp {
 			return tsparse_dense_linalg::jacobi_eig_dense(Tm, projected_iter, tol);
 		}
 
-		template <typename T>
-		tsparse_dense_linalg::dense_eigen_result<T> extract_arnoldi_ritz(const arnoldi_factorization<T>& decomp,
-		                                                                const std::size_t projected_iter,
-		                                                                const typename tsparse_scalar::real_type<T>::type& tol) {
-			const std::vector<std::vector<T> > Hm = square_hessenberg(decomp.hessenberg, decomp.basis_size);
-			return tsparse_dense_linalg::is_dense_symmetric(Hm, tsparse_scalar::decimal_power_negative<typename tsparse_scalar::real_type<T>::type>(10))
-				? tsparse_dense_linalg::jacobi_eig_dense(Hm, projected_iter, tol)
-				: tsparse_dense_linalg::qr_eig_dense(Hm, projected_iter, tol);
-		}
+		// (extract_arnoldi_ritz was deleted here: zero consumers after the
+		//  EIG-2 dense driver replacement — EIG-3 T-5 / G-2.2)
 
 		// -----------------------------------------------------------------------
 		// Francis double-shift QR step on upper Hessenberg H[0..n-1][0..n-1]
+		//
+		// LEGACY EXHIBIT (EIG-3 T-5 / G-2.2 c-2): carries the D-QR freeze defect
+		// (silent no-op on negligible bulge column, no exceptional shifts).
+		// Zero production consumers since EIG-3; called only by
+		// hessenberg_complex_eigenvalues below.  DO NOT ADD NEW CONSUMERS
+		// (reviewer-approval matter).  The production replacement is
+		// vcp::tsparse_real_schur::real_schur_decompose (EIG-2 core).
 		// -----------------------------------------------------------------------
 		template <typename T>
 		void francis_qr_step(std::vector<std::vector<T> >& H, const std::size_t n) {
@@ -272,6 +287,18 @@ namespace vcp {
 	// -----------------------------------------------------------------------
 	// Extract all eigenvalues (complex) from an upper Hessenberg matrix.
 	// Never throws; returns complex<R> values.
+	//
+	// LEGACY EXHIBIT (EIG-3 T-5 / G-2.2 c-2): carries the D-QR/D-4/D-15 defect
+	// family (bottom-2-only deflation with a tol^2 absolute floor, cap burning,
+	// silent diagonal fallback).  Zero production consumers since EIG-3;
+	// retained ONLY for (i) the frozen red probe real_schur_red_probe.cpp
+	// (SHA-256 f5bfb6a4..., B-19) whose buildability must be preserved,
+	// (ii) the GT1.1 certified units (slu_gt1_1_certified_eig_units.cpp) whose
+	// test subject is this function's certified three-branch, and (iii) the
+	// q1/q1n reproducer probes.  The complex nonsymmetric dense legacy is a
+	// separate lineage (qr_eig_dense; eig_dense_complex_legacy_issue.md) and
+	// does not call this function.  DO NOT ADD NEW CONSUMERS (reviewer-approval
+	// matter).  Production replacement: vcp::tsparse_real_schur.
 	// -----------------------------------------------------------------------
 	template <typename T>
 	std::vector<std::complex<typename tsparse_scalar::real_type<T>::type> >

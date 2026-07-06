@@ -16,7 +16,7 @@
 #include <vcp/spmats_base/spmats_eigs_types.hpp>
 #include <vcp/tsparse/tsparse_honest_termination.hpp>
 #include <vcp/tsparse/tsparse_lanczos.hpp>
-#include <vcp/tsparse/tsparse_arnoldi.hpp>
+#include <vcp/tsparse/tsparse_krylov_schur.hpp>   // EIG-3: arnoldi/si successor
 #include <vcp/tsparse/tsparse_factorization.hpp>
 #include <vcp/tsparse/tsparse_preconditioner.hpp>
 #include <vcp/tsparse/tsparse_eigen_selection.hpp>
@@ -739,6 +739,146 @@ static void demote_arnoldi_core_converged_claim_(
 }
 
 // ---------------------------------------------------------------------------
+// EIG-3 T-3: shift-invert back-halves on the rebuilt Krylov-Schur core.
+//
+// The KS driver (tsparse_krylov_schur.hpp) enforces C-1 (exact mu-space
+// residuals), C-2 (shared honest_termination_check_complex_), D3-2 (complex
+// pairs never returned as converged) and freshness internally, and exports
+// the C-2 evidence (D3-4 / EIG-1 a-5).  The back-half additionally
+// RE-EVALUATES the shared C-2 check on the exported evidence (design D3-4:
+// "back-half passes the evidence to the shared check"), then the lambda-space
+// C-1 acceptance below remains the final outer gate.  This lifts the EIG-1
+// arnoldi-core demotion (demote_arnoldi_core_converged_claim_, now unused).
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static void lambda_c1_acceptance_gate_(eig_result<_T>& result,
+    const typename vcp::tsparse_scalar::real_type<_T>::type& tol)
+{
+    if (!result.converged) return;
+    if (!vcp::tsparse::residual_acceptance_check_(
+            result.residuals_absolute, result.residuals_relative, tol)) {
+        result.converged = false;
+        result.status = "residual_check_failed";
+        result.failure_reason =
+            "end-of-run exact residual (lambda space) failed acceptance (C-1)";
+        result.message = result.failure_reason;
+    }
+}
+
+// Field-compatible package (mirrors the consumed subset of the old
+// arnoldi_result_package) produced by the KS core in mu space.
+template <typename _T>
+struct ks_mu_pkg_ {
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type R;
+    std::vector<_T> eigenvalues;                     // mu space
+    std::vector<std::vector<_T> > eigenvectors;
+    std::vector<R> history_abs;
+    std::vector<R> history_rel;
+    std::vector<std::pair<R, R> > complex_eigenvalues;  // lambda space (re, +im)
+    std::size_t iterations;
+    std::size_t mv_count;
+    std::size_t converged_count;
+    std::size_t used_subspace_dim;
+    std::string breakdown_reason;
+    std::string failure_reason;
+    // Always false: the KS core already folds the complex-window verdict into
+    // `converged` + failure_reason (D3-2); the legacy has_complex gating of
+    // the old back-halves must not re-fire on mere complex diagnostics.
+    bool has_complex;
+    bool converged;   // KS converged AND back-half C-2 evidence re-check
+    ks_mu_pkg_() : iterations(0), mv_count(0), converged_count(0),
+                   used_subspace_dim(0), has_complex(false), converged(false) {}
+};
+
+template <typename _T, class Apply>
+static ks_mu_pkg_<_T> ks_mu_core_drive_impl_(const std::size_t /*n*/, const std::size_t /*k*/,
+                                             const eig_options<_T>& /*options*/,
+                                             const typename vcp::tsparse_scalar::real_type<_T>::type& /*sigma*/,
+                                             Apply& /*apply_si*/,
+                                             std::true_type /* is_complex */)
+{
+    // Fence for complex instantiations (runtime dispatch never reaches here).
+    ks_mu_pkg_<_T> pkg;
+    pkg.failure_reason = "shift-invert krylov_schur core: complex scalar unsupported";
+    return pkg;
+}
+
+template <typename _T, class Apply>
+static ks_mu_pkg_<_T> ks_mu_core_drive_impl_(const std::size_t n, const std::size_t k,
+                                             const eig_options<_T>& options,
+                                             const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
+                                             Apply& apply_si,
+                                             std::false_type /* is_complex */)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type R;
+    eig_options<_T> mu_opts = options;
+    mu_opts.method = eig_solver_method::arnoldi;
+    mu_opts.target = eig_target::largest_magnitude;   // inner target (mu space)
+    mu_opts.shift = R(0);
+    mu_opts.use_shift = false;
+    // options.max_iter passes through as the TOTAL inner-apply budget
+    // (D-6 unification; the old max_iter*(k+1) restart expansion is deleted).
+    vcp::tsparse_experimental::krylov_schur_result<_T> d =
+        vcp::tsparse_experimental::krylov_schur_eigs_with_diagnostics<Apply, _T>(
+            apply_si, n, k, mu_opts);
+
+    ks_mu_pkg_<_T> pkg;
+    pkg.eigenvalues = d.eigs.eigenvalues;
+    pkg.eigenvectors = d.eigs.eigenvectors;
+    pkg.history_abs = d.eigs.residual_history_absolute;
+    pkg.history_rel = d.eigs.residual_history_relative;
+    pkg.iterations = d.eigs.iterations;
+    pkg.mv_count = d.eigs.matrix_vector_products;
+    pkg.converged_count = d.eigs.converged_count;
+    pkg.used_subspace_dim = d.eigs.used_subspace_dim;
+    pkg.breakdown_reason = d.eigs.breakdown_reason;
+    pkg.failure_reason = d.eigs.failure_reason;
+    // complex diagnostics: transform mu -> lambda = 1/mu + sigma when the
+    // modulus is certifiably positive (pairs are stored adjacent +s/-s in the
+    // KS result; export one (re, +im) entry per pair, legacy convention)
+    for (std::size_t i = 0; i + 1 < d.eigs.complex_eigenvalues.size(); i += 2) {
+        const R a = d.eigs.complex_eigenvalues[i].real();
+        const R b = d.eigs.complex_eigenvalues[i].imag();
+        const R den = a * a + b * b;
+        if (den > R(0)) {
+            const R re = a / den + sigma;
+            R im = -b / den;
+            if (im < R(0)) im = -im;
+            pkg.complex_eigenvalues.push_back(std::pair<R, R>(re, im));
+        } else {
+            R babs = b; if (babs < R(0)) babs = -babs;
+            pkg.complex_eigenvalues.push_back(std::pair<R, R>(a, babs));
+        }
+    }
+    // D3-4: re-evaluate the shared C-2 check on the exported evidence
+    bool evid_ok = false;
+    if (d.eigs.converged && d.c2_evidence.exported && d.c2_evidence.fresh) {
+        std::vector<R> mu_locked;
+        for (std::size_t i = 0; i < d.eigs.eigenvalues.size(); i++)
+            mu_locked.push_back(vcp::tsparse_scalar::real_part(d.eigs.eigenvalues[i]));
+        evid_ok = vcp::tsparse::honest_termination_check_complex_<R>(
+            d.c2_evidence.candidate_real, d.c2_evidence.candidate_imag,
+            d.c2_evidence.candidate_converged, mu_locked,
+            mu_locked.size(), eig_target::largest_magnitude, R(0));
+        if (!evid_ok && pkg.failure_reason.empty())
+            pkg.failure_reason =
+                "back-half C-2 re-check on exported evidence failed";
+    }
+    pkg.converged = d.eigs.converged && evid_ok;
+    return pkg;
+}
+
+template <typename _T, class Apply>
+static ks_mu_pkg_<_T> ks_mu_core_drive_(const std::size_t n, const std::size_t k,
+                                        const eig_options<_T>& options,
+                                        const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
+                                        Apply& apply_si)
+{
+    return ks_mu_core_drive_impl_<_T, Apply>(n, k, options, sigma, apply_si,
+        typename std::integral_constant<bool, spmatrix_is_complex<_T>::value>::type());
+}
+
+// ---------------------------------------------------------------------------
 // validate_eig_input_
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
@@ -1069,7 +1209,17 @@ static eig_result<_T> hermitian_lanczos_eigs_impl_(const spmats<_T,_Index>& self
         const spmats<_T,_Index>* mat;
         void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { y = mat->mul_vec(x); }
     } apply_op = { &A };
-    const std::size_t max_restarts_l = (sdim > 0) ? (options.max_iter / sdim + k + 1) : options.max_iter;
+    // EIG-3 T-4 (D-6, Q1 ruling 2026-07-06): max_iter is the TOTAL mv budget on
+    // every path.  Pure unit conversion to restarts with the worst per-restart
+    // cost 2*sdim (expansion sdim + lock-scan exact residuals <= sdim;
+    // tsparse_lanczos.hpp mv_count++ sites); the inflation term "+ k + 1" is
+    // deleted.  The restart loop is INCLUSIVE (restart <= max_restarts), so a
+    // floor of 0 already yields one restart; no max(1,.) floor (it would
+    // double the minimum work and break the bound for max_iter < 2*sdim).
+    // Machine-checked overshoot bound: mv <= max_iter + 2*sdim.
+    const std::size_t max_restarts_l = (sdim > 0)
+        ? options.max_iter / (2 * sdim)
+        : options.max_iter;
     vcp::tsparse_hermitian_lanczos::hermitian_lanczos_result<_T> pkg =
         vcp::tsparse_hermitian_lanczos::hermitian_lanczos_eigs<_T, apply_fn>(
             n, k, sdim, max_restarts_l, options.tol,
@@ -1246,7 +1396,17 @@ static eig_result<_T> shift_invert_lanczos_drive_(const spmats<_T,_Index>& self,
     const std::size_t sdim = (options.subspace_dim == 0)
         ? std::max(k + 5, std::min(n, std::size_t(30)))
         : options.subspace_dim;
-    const std::size_t max_restarts_si = (sdim > 0) ? (options.max_iter / sdim + k + 1) : options.max_iter;
+    // EIG-3 T-4 (D-6, Q1 ruling 2026-07-06): max_iter is the TOTAL mv budget on
+    // every path.  Pure unit conversion to restarts with the worst per-restart
+    // cost 2*sdim (expansion sdim + lock-scan exact residuals <= sdim;
+    // tsparse_lanczos.hpp mv_count++ sites); the inflation term "+ k + 1" is
+    // deleted.  The restart loop is INCLUSIVE (restart <= max_restarts), so a
+    // floor of 0 already yields one restart; no max(1,.) floor (it would
+    // double the minimum work and break the bound for max_iter < 2*sdim).
+    // Machine-checked overshoot bound: mv <= max_iter + 2*sdim.
+    const std::size_t max_restarts_si = (sdim > 0)
+        ? options.max_iter / (2 * sdim)
+        : options.max_iter;
     auto pkg = vcp::tsparse_lanczos::lanczos_eigs_standard<_T, Apply>(
         n, k, sdim, max_restarts_si, options.tol,
         options.random_seed, options.random_start,
@@ -1273,15 +1433,11 @@ static eig_result<_T> shift_invert_arnoldi_drive_(const spmats<_T,_Index>& self,
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
     spmats<_T,_Index> A = self.as_csr();
     const std::size_t n = static_cast<std::size_t>(self.rowsize());
-    const std::size_t sdim = (options.subspace_dim == 0)
-        ? std::max(k + 5, std::min(n, std::size_t(30)))
-        : options.subspace_dim;
-    const vcp::tsparse_arnoldi::arnoldi_result_package<_T> pkg =
-        vcp::tsparse_arnoldi::arnoldi_eigs_standard<_T>(
-            n, k, sdim, options.max_iter + options.max_iter * k,
-            options.tol, options.orthogonalization, true, true,
-            options.random_seed, options.random_start, eig_target::largest_magnitude, scalar_real_type(0),
-            options.compute_residual_history, apply_si);
+    // EIG-3 T-3: KS core in mu space (old arnoldi core + max_iter*(k+1)
+    // expansion deleted; options.max_iter = total inner-apply budget)
+    const ks_mu_pkg_<_T> pkg =
+        ks_mu_core_drive_<_T>(n, k, options, sigma, apply_si);
+    const std::size_t sdim = pkg.used_subspace_dim;
     eig_result<_T> result;
     result.requested_count = k;
     result.method = eig_solver_method::shift_invert_arnoldi;
@@ -1304,6 +1460,12 @@ static eig_result<_T> shift_invert_arnoldi_drive_(const spmats<_T,_Index>& self,
     result.eigenvectors = pkg.eigenvectors;
     result.used_shift_invert = true;
     result.used_dense_fallback = false;
+    for (std::size_t i = 0; i < pkg.complex_eigenvalues.size(); i++) {
+        result.complex_eigenvalues.push_back(
+            typename eig_result<_T>::eigenvalue_type(
+                pkg.complex_eigenvalues[i].first,
+                pkg.complex_eigenvalues[i].second));
+    }
     if (!result.eigenvectors.empty()) {
         result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
         result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
@@ -1335,17 +1497,11 @@ static eig_result<_T> generalized_shift_invert_drive_(const spmats<_T,_Index>& s
         void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { op->apply(x, y); }
     } apply_fn = { &op };
 
-    const std::size_t sdim = (options.subspace_dim == 0)
-        ? std::max(k + 5, std::min(n, std::size_t(30)))
-        : options.subspace_dim;
-    const std::size_t max_restarts = options.max_iter + options.max_iter * k;
-
-    const vcp::tsparse_arnoldi::arnoldi_result_package<_T> pkg =
-        vcp::tsparse_arnoldi::arnoldi_eigs_standard<_T>(
-            n, k, sdim, max_restarts, options.tol, options.orthogonalization,
-            true, true, options.random_seed, options.random_start,
-            eig_target::largest_magnitude, scalar_real_type(0),
-            options.compute_residual_history, apply_fn);
+    // EIG-3 T-3: KS core in mu space (old arnoldi core + max_iter*(k+1)
+    // expansion deleted; options.max_iter = total inner-apply budget)
+    const ks_mu_pkg_<_T> pkg =
+        ks_mu_core_drive_<_T>(n, k, options, sigma, apply_fn);
+    const std::size_t sdim = pkg.used_subspace_dim;
 
     std::vector<_T> eigenvalues = pkg.eigenvalues;
     for (std::size_t i = 0; i < eigenvalues.size(); i++) {
@@ -1510,8 +1666,10 @@ shift_invert_arnoldi_sparse_lu_(const spmats<_T,_Index>& self,
     set_eig_diagnostics_<_T,_Index>(result, eig_solver_method::shift_invert_arnoldi, result.used_subspace_dim,
         result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
     // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の converged 主張は C-1 判定後、
-    // C-2 証拠なしとして正直に降格する。
-    demote_arnoldi_core_converged_claim_<_T,_Index>(result, options.tol);
+    // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
+    // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
+    // Lambda-space C-1 remains the final acceptance gate.
+    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -1589,8 +1747,10 @@ generalized_shift_invert_sparse_lu_(const spmats<_T,_Index>& self,
         if (promoted_from_lanczos)
             result.used_method = "shift_invert_arnoldi(promoted_from_lanczos)";
     }
-    // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の降格(一般化 λ 残差で C-1)。
-    demote_arnoldi_core_converged_claim_<_T,_Index>(result, options.tol);
+    // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
+    // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
+    // Lambda-space C-1 remains the final acceptance gate.
+    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -1761,7 +1921,17 @@ static eig_result<_T> lanczos_eigs_new_(const spmats<_T,_Index>& self,
         void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { y = mat->mul_vec(x); }
     } apply = { &A };
 
-    const std::size_t max_restarts_l = (sdim > 0) ? (options.max_iter / sdim + k + 1) : options.max_iter;
+    // EIG-3 T-4 (D-6, Q1 ruling 2026-07-06): max_iter is the TOTAL mv budget on
+    // every path.  Pure unit conversion to restarts with the worst per-restart
+    // cost 2*sdim (expansion sdim + lock-scan exact residuals <= sdim;
+    // tsparse_lanczos.hpp mv_count++ sites); the inflation term "+ k + 1" is
+    // deleted.  The restart loop is INCLUSIVE (restart <= max_restarts), so a
+    // floor of 0 already yields one restart; no max(1,.) floor (it would
+    // double the minimum work and break the bound for max_iter < 2*sdim).
+    // Machine-checked overshoot bound: mv <= max_iter + 2*sdim.
+    const std::size_t max_restarts_l = (sdim > 0)
+        ? options.max_iter / (2 * sdim)
+        : options.max_iter;
     auto pkg = vcp::tsparse_lanczos::lanczos_eigs_standard<_T, apply_fn>(
         n, k, sdim, max_restarts_l, options.tol,
         options.random_seed, options.random_start,
@@ -1880,85 +2050,74 @@ static eig_result<_T> shift_invert_arnoldi_eigs_(const spmats<_T,_Index>& self,
             result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
     }
     // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の降格(legacy ilu0_gmres 分岐も
-    // 同じ正直化を受ける — 嘘の解消は両分岐共通)。
-    demote_arnoldi_core_converged_claim_<_T,_Index>(result, options.tol);
+    // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
+    // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
+    // Lambda-space C-1 remains the final acceptance gate.
+    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
 
 // ---------------------------------------------------------------------------
 // arnoldi_eigs_new_
+//
+// EIG-3 T-2 (D3-1): the public `arnoldi` enum now dispatches to the rebuilt
+// Krylov-Schur driver (tsparse_krylov_schur.hpp, EIG-2 real Schur core).
+// The old Ritz-restart arnoldi implementation (zero convergence record,
+// D-3 value dedup, D-5 unbudgeted restarts) is replaced, not preserved.
+// Budget: options.max_iter is passed through as the TOTAL matrix-vector
+// product budget (D-6 unification; the old max_iter*(k+1) restart expansion
+// is deleted).  Declared behavior change: timeouts/lies -> OK or honest
+// not_converged.
 // ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static eig_result<_T> arnoldi_ks_drive_(const spmats<_T,_Index>& /*self*/,
+                                        const std::size_t k,
+                                        const eig_options<_T>& /*options*/,
+                                        std::true_type /* is_complex */)
+{
+    // Fence for complex instantiations (runtime dispatch returns earlier via
+    // complex_standard_eigs_with_info_; this body is never executed).
+    eig_result<_T> result;
+    result.requested_count = k;
+    result.converged = false;
+    result.status = "unsupported";
+    result.failure_reason = "arnoldi(krylov_schur): complex scalar unsupported";
+    return result;
+}
+
+template <typename _T, typename _Index>
+static eig_result<_T> arnoldi_ks_drive_(const spmats<_T,_Index>& self,
+                                        const std::size_t k,
+                                        const eig_options<_T>& options,
+                                        std::false_type /* is_complex */)
+{
+    spmats<_T,_Index> A = self.as_csr();
+    const std::size_t n = static_cast<std::size_t>(self.rowsize());
+    struct apply_fn {
+        const spmats<_T,_Index>* mat;
+        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { y = mat->mul_vec(x); }
+    };
+    apply_fn apply_op = { &A };
+    vcp::tsparse_experimental::krylov_schur_result<_T> d =
+        vcp::tsparse_experimental::krylov_schur_eigs_with_diagnostics<apply_fn, _T>(
+            apply_op, n, k, options);
+    eig_result<_T> result = d.eigs;
+    result.method = eig_solver_method::arnoldi;
+    result.used_method = "arnoldi(krylov_schur)";
+    return result;
+}
+
 template <typename _T, typename _Index>
 static eig_result<_T> arnoldi_eigs_new_(const spmats<_T,_Index>& self,
                                           const std::size_t k,
                                           const eig_options<_T>& options)
 {
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    spmats<_T,_Index> A = self.as_csr();
-    const std::size_t n = static_cast<std::size_t>(self.rowsize());
     if (options.method == eig_solver_method::shift_invert_arnoldi) {
         return shift_invert_arnoldi_eigs_<_T,_Index>(self, k, options, options.shift);
     }
-    const std::size_t sdim = (options.subspace_dim == 0)
-        ? std::max(k + 5, std::min(n, std::size_t(30)))
-        : options.subspace_dim;
-    const std::size_t max_restarts = options.max_iter + static_cast<std::size_t>(options.max_iter * k);
-
-    struct apply_fn {
-        const spmats<_T,_Index>* mat;
-        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { y = mat->mul_vec(x); }
-    } apply_op = { &A };
-
-    const vcp::tsparse_arnoldi::arnoldi_result_package<_T> pkg =
-        vcp::tsparse_arnoldi::arnoldi_eigs_standard<_T>(
-            n, k, sdim, max_restarts, options.tol, options.orthogonalization,
-            true, true, options.random_seed, options.random_start,
-            options.target, vcp::tsparse_scalar::real_part(options.shift),
-            options.compute_residual_history, apply_op);
-
-    eig_result<_T> result;
-    result.method = eig_solver_method::arnoldi;
-    result.used_method = "arnoldi";
-    result.iterations = pkg.iterations;
-    result.matrix_vector_products = pkg.mv_count;
-    result.used_subspace_dim = sdim;
-    result.breakdown_reason = pkg.breakdown_reason;
-    result.failure_reason = pkg.failure_reason;
-    result.converged_count = pkg.converged_count;
-    result.returned_count = pkg.returned_count;
-    result.used_orthogonalization = orthogonalization_to_string_<_T,_Index>(options.orthogonalization);
-    result.residual_history_absolute = pkg.history_abs;
-    result.residual_history_relative = pkg.history_rel;
-    result.eigenvalues = pkg.eigenvalues;
-    result.eigenvectors = pkg.eigenvectors;
-    for (std::size_t i = 0; i < pkg.complex_eigenvalues.size(); i++) {
-        result.complex_eigenvalues.push_back(
-            typename eig_result<_T>::eigenvalue_type(
-                pkg.complex_eigenvalues[i].first,
-                pkg.complex_eigenvalues[i].second));
-    }
-    if (!result.eigenvectors.empty()) {
-        result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
-        result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
-        const scalar_real_type res_val = max_eigenpair_residual_value_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
-        result.residual_norm_absolute = res_val;
-    } else if (!pkg.residuals_abs.empty()) {
-        result.residual_norm_absolute = pkg.residuals_abs[0];
-    }
-    const bool has_complex = pkg.has_complex;
-    result.converged = pkg.converged && !has_complex && (result.eigenvalues.size() >= k);
-    if (has_complex) {
-        result.status = "complex_ritz_values";
-        result.message = "complex Ritz values detected";
-        if (result.failure_reason.empty())
-            result.failure_reason = "complex Ritz values in requested subset";
-    } else {
-        set_eig_diagnostics_<_T,_Index>(result, eig_solver_method::arnoldi, sdim,
-            result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
-    }
-    set_result_counts_<_T,_Index>(result, k);
-    return result;
+    return arnoldi_ks_drive_<_T,_Index>(self, k, options,
+        typename std::integral_constant<bool, spmatrix_is_complex<_T>::value>::type());
 }
 
 // ---------------------------------------------------------------------------
@@ -2052,8 +2211,10 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_(const spmats<_T,_In
         if (promoted_from_lanczos)
             result.used_method = "shift_invert_arnoldi(promoted_from_lanczos)";
     }
-    // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の降格(legacy 一般化分岐)。
-    demote_arnoldi_core_converged_claim_<_T,_Index>(result, options.tol);
+    // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
+    // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
+    // Lambda-space C-1 remains the final acceptance gate.
+    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -2275,7 +2436,17 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
     const std::size_t sdim = (options.subspace_dim == 0)
         ? std::max(k + 5, std::min(n, std::size_t(30)))
         : options.subspace_dim;
-    const std::size_t max_restarts_si = (sdim > 0) ? (options.max_iter / sdim + k + 1) : options.max_iter;
+    // EIG-3 T-4 (D-6, Q1 ruling 2026-07-06): max_iter is the TOTAL mv budget on
+    // every path.  Pure unit conversion to restarts with the worst per-restart
+    // cost 2*sdim (expansion sdim + lock-scan exact residuals <= sdim;
+    // tsparse_lanczos.hpp mv_count++ sites); the inflation term "+ k + 1" is
+    // deleted.  The restart loop is INCLUSIVE (restart <= max_restarts), so a
+    // floor of 0 already yields one restart; no max(1,.) floor (it would
+    // double the minimum work and break the bound for max_iter < 2*sdim).
+    // Machine-checked overshoot bound: mv <= max_iter + 2*sdim.
+    const std::size_t max_restarts_si = (sdim > 0)
+        ? options.max_iter / (2 * sdim)
+        : options.max_iter;
 
     typedef vcp::tsparse_lanczos::lanczos_result_package<_T, SIApply> LPkg;
     LPkg pkg = vcp::tsparse_lanczos::lanczos_eigs_standard<_T, SIApply>(
@@ -2411,16 +2582,11 @@ static eig_result<_T> shift_invert_arnoldi_eigs_with_prec_(
                    &inner_iteration_count, &inner_residual_norm,
                    &prec_failure_reason };
 
-    const std::size_t sdim = (options.subspace_dim == 0)
-        ? std::max(k + 5, std::min(n, std::size_t(30)))
-        : options.subspace_dim;
-    const vcp::tsparse_arnoldi::arnoldi_result_package<_T> pkg =
-        vcp::tsparse_arnoldi::arnoldi_eigs_standard<_T>(
-            n, k, sdim, options.max_iter + options.max_iter * k,
-            options.tol, options.orthogonalization, true, true,
-            options.random_seed, options.random_start,
-            eig_target::largest_magnitude, scalar_real_type(0),
-            options.compute_residual_history, apply_si);
+    // EIG-3 T-3: KS core in mu space (old arnoldi core + max_iter*(k+1)
+    // expansion deleted; options.max_iter = total inner-apply budget)
+    const ks_mu_pkg_<_T> pkg =
+        ks_mu_core_drive_<_T>(n, k, options, sigma, apply_si);
+    const std::size_t sdim = pkg.used_subspace_dim;
 
     eig_result<_T> result;
     result.requested_count = k;
@@ -2476,8 +2642,10 @@ static eig_result<_T> shift_invert_arnoldi_eigs_with_prec_(
         if (result.failure_reason.empty()) result.failure_reason = "Arnoldi shift-invert did not converge";
         result.message = result.failure_reason;
     }
-    // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の降格(preconditioner 変種)。
-    demote_arnoldi_core_converged_claim_<_T,_Index>(result, options.tol);
+    // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
+    // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
+    // Lambda-space C-1 remains the final acceptance gate.
+    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -2595,17 +2763,11 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
                     &inner_iteration_count, &inner_residual_norm,
                     &prec_failure_reason };
 
-    const std::size_t sdim = (options.subspace_dim == 0)
-        ? std::max(k + 5, std::min(n, std::size_t(30)))
-        : options.subspace_dim;
-    const std::size_t max_restarts = options.max_iter + options.max_iter * k;
-
-    const vcp::tsparse_arnoldi::arnoldi_result_package<_T> pkg =
-        vcp::tsparse_arnoldi::arnoldi_eigs_standard<_T>(
-            n, k, sdim, max_restarts, options.tol, options.orthogonalization,
-            true, true, options.random_seed, options.random_start,
-            eig_target::largest_magnitude, scalar_real_type(0),
-            options.compute_residual_history, apply_gsi);
+    // EIG-3 T-3: KS core in mu space (old arnoldi core + max_iter*(k+1)
+    // expansion deleted; options.max_iter = total inner-apply budget)
+    const ks_mu_pkg_<_T> pkg =
+        ks_mu_core_drive_<_T>(n, k, options, sigma, apply_gsi);
+    const std::size_t sdim = pkg.used_subspace_dim;
 
     std::vector<_T> eigenvalues = pkg.eigenvalues;
     for (std::size_t i = 0; i < eigenvalues.size(); i++) {
@@ -2681,8 +2843,10 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
             result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
         result.used_method = used_method_str;
     }
-    // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の降格(一般化 preconditioner 変種)。
-    demote_arnoldi_core_converged_claim_<_T,_Index>(result, options.tol);
+    // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
+    // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
+    // Lambda-space C-1 remains the final acceptance gate.
+    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }

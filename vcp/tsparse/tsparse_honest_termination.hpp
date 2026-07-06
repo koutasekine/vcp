@@ -98,6 +98,60 @@ bool honest_termination_check_(
 }
 
 // ---------------------------------------------------------------------------
+// honest_termination_check_complex_   (EIG-3 D3-3。B-22 例外 (ii) の「追加」)
+//
+// 複素候補対応の C-2 検査。実装は上の real 版と同一の certainly-inner 規則で、
+// 候補の target 計量のみ複素値 (re, im) で取る(algebraic 系 = 実部、
+// magnitude 系 = hypot。tsparse_eigen_selection::target_distance に委譲)。
+// 返却集合(locked_values)は実のみ(EIG-3 D3-2: 複素対は converged で返さない)。
+//
+// 挙動不変の保証: active_imag が全ゼロのとき本関数は real 版
+// honest_termination_check_ と同一判定を返す(ks_units 群 [4a] が機械証明)。
+// 既存 real 版は無変更であり、EIG-1 完了経路(TRL/lanczos/si_lanczos)は
+// 本オーバーロードを呼ばない。
+// ---------------------------------------------------------------------------
+template <class R>
+bool honest_termination_check_complex_(
+	const std::vector<R>& active_real,
+	const std::vector<R>& active_imag,
+	const std::vector<bool>& active_converged,
+	const std::vector<R>& locked_values,
+	const std::size_t k,
+	const eig_target target,
+	const R& shift)
+{
+	typedef std::complex<R> complex_type;
+
+	if (k == 0) return true;
+	if (locked_values.size() < k) return false;
+
+	const std::vector<std::size_t> order =
+		vcp::tsparse_eigen_selection::select_eigen_indices_from_real(
+			locked_values, locked_values.size(), target, shift);
+	if (order.size() < k) return false;
+	const R worst_returned = locked_values[order[k - 1]];
+
+	const R worst_key = vcp::tsparse_eigen_selection::target_distance(
+		complex_type(worst_returned, R(0)), target, shift);
+	const bool prefer_large =
+		(target == eig_target::largest_magnitude ||
+		 target == eig_target::largest_algebraic);
+
+	std::size_t n_active = active_real.size();
+	if (active_imag.size() < n_active) n_active = active_imag.size();
+	if (active_converged.size() < n_active) n_active = active_converged.size();
+	for (std::size_t i = 0; i < n_active; i++) {
+		if (active_converged[i]) continue;
+		const R key = vcp::tsparse_eigen_selection::target_distance(
+			complex_type(active_real[i], active_imag[i]), target, shift);
+		const bool certainly_inner = prefer_large ? (key > worst_key)
+		                                          : (key < worst_key);
+		if (certainly_inner) return false;
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // locked_prefix_indices_   (EIG-1 F-3-1 / F-4 の freshness ガード用ヘルパ)
 //
 // 返却予定の target 順 prefix k を構成する locked インデックス(昇順)。
