@@ -145,6 +145,36 @@ public:
         buf_.reserve(static_cast<std::size_t>(nt_)
                      * static_cast<std::size_t>(nloc_)
                      * static_cast<std::size_t>(nloc_));
+#if VCP_BFEM_USE_OPENMP
+        const int nt = nt_;
+        int nrun = 1;
+        std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+        {
+#pragma omp single
+            {
+                nrun = omp_get_num_threads();
+                tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+#pragma omp barrier
+            const int tid = omp_get_thread_num();
+            const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+            const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+            element_op<D, T, P> op_l;
+            vcp::matrix<T, P> loc_l;
+            detail::coo_buffer<T>& b = tbuf[static_cast<std::size_t>(tid)];
+            b.reserve(static_cast<std::size_t>(e1 - e0)
+                      * static_cast<std::size_t>(nloc_)
+                      * static_cast<std::size_t>(nloc_));
+            for (int e = e0; e < e1; ++e) {
+                op_l.set_geometry(geom_[static_cast<std::size_t>(e)]);
+                op_l.local_mass(l_, l_, loc_l);
+                detail::scatter_matrix<T>(dm_, e, loc_l, nloc_, b,
+                                          detail::broken_dofmap::family_tag());
+            }
+        }
+        buf_.append_all(tbuf, nrun);
+#else
         for (int e = 0; e < nt_; ++e) {              // element order (X9)
             op_.set_geometry(geom_[static_cast<std::size_t>(e)]);
             op_.local_mass(l_, l_, loc_);
@@ -153,6 +183,7 @@ public:
             detail::scatter_matrix<T>(dm_, e, loc_, nloc_, buf_,
                                       detail::broken_dofmap::family_tag());
         }
+#endif
         buf_.combine();
         return detail::spm_adapter<T, SP>::build(ndof(), ndof(), buf_);
     }

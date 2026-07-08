@@ -152,12 +152,44 @@ public:
     spmatrix_t stiffness(int m) {
         const c1_dofmap& dm = dofs(m);
         begin_matrix(dm, dm);
+#if VCP_BFEM_USE_OPENMP
+        const int nt = topo_.nt;
+        const int nloc = dm.local_size();
+        int nrun = 1;
+        std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+        {
+#pragma omp single
+            {
+                nrun = omp_get_num_threads();
+                tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+#pragma omp barrier
+            const int tid = omp_get_thread_num();
+            const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+            const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+            c1_element_op<T, P> op_l;
+            vcp::matrix<T, P> loc_l;
+            detail::coo_buffer<T>& b = tbuf[static_cast<std::size_t>(tid)];
+            b.reserve(static_cast<std::size_t>(e1 - e0)
+                      * static_cast<std::size_t>(nloc)
+                      * static_cast<std::size_t>(nloc));
+            for (int e = e0; e < e1; ++e) {
+                set_elem_local(op_l, e);
+                op_l.local_stiffness(m, loc_l);
+                detail::scatter_matrix<T>(dm, e, loc_l, nloc, b,
+                                          typename c1_dofmap::family_tag());
+            }
+        }
+        buf_.append_all(tbuf, nrun);
+#else
         for (int e = 0; e < topo_.nt; ++e) {
             set_elem(e);
             op_.local_stiffness(m, loc_);
             detail::scatter_matrix<T>(dm, e, loc_, dm.local_size(), buf_,
                                       typename c1_dofmap::family_tag());
         }
+#endif
         buf_.combine();
         return detail::spm_adapter<T, SP>::build(dm.ndof(), dm.ndof(), buf_);
     }
@@ -165,6 +197,37 @@ public:
         const c1_dofmap& dma = dofs(a);
         const c1_dofmap& dmb = dofs(b);
         begin_matrix(dma, dmb);
+#if VCP_BFEM_USE_OPENMP
+        const int nt = topo_.nt;
+        const int nr = dma.local_size();
+        const int nc = dmb.local_size();
+        int nrun = 1;
+        std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+        {
+#pragma omp single
+            {
+                nrun = omp_get_num_threads();
+                tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+#pragma omp barrier
+            const int tid = omp_get_thread_num();
+            const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+            const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+            c1_element_op<T, P> op_l;
+            vcp::matrix<T, P> loc_l;
+            detail::coo_buffer<T>& bl = tbuf[static_cast<std::size_t>(tid)];
+            bl.reserve(static_cast<std::size_t>(e1 - e0)
+                       * static_cast<std::size_t>(nr)
+                       * static_cast<std::size_t>(nc));
+            for (int e = e0; e < e1; ++e) {
+                set_elem_local(op_l, e);
+                op_l.local_mass(a, b, loc_l);
+                detail::scatter_matrix_general2<T>(dma, dmb, e, loc_l, nr, nc, bl);
+            }
+        }
+        buf_.append_all(tbuf, nrun);
+#else
         for (int e = 0; e < topo_.nt; ++e) {
             set_elem(e);
             op_.local_mass(a, b, loc_);
@@ -172,6 +235,7 @@ public:
                                                dma.local_size(),
                                                dmb.local_size(), buf_);
         }
+#endif
         buf_.combine();
         return detail::spm_adapter<T, SP>::build(dma.ndof(), dmb.ndof(), buf_);
     }
@@ -181,6 +245,42 @@ public:
         const c1_dofmap& dmu = dofs(uh.degree());
         const c1_dofmap& dm = dofs(m);
         begin_matrix(dm, dm);
+#if VCP_BFEM_USE_OPENMP
+        const int nt = topo_.nt;
+        const int nloc = dm.local_size();
+        int nrun = 1;
+        std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+        {
+#pragma omp single
+            {
+                nrun = omp_get_num_threads();
+                tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+#pragma omp barrier
+            const int tid = omp_get_thread_num();
+            const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+            const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+            c1_element_op<T, P> op_l;
+            vcp::matrix<T, P> loc_l;
+            bpoly<2, T> uloc_l, wloc_l;
+            compose_workspace<2, T> cws_l;
+            std::vector<T> gbuf_l;
+            detail::coo_buffer<T>& b = tbuf[static_cast<std::size_t>(tid)];
+            b.reserve(static_cast<std::size_t>(e1 - e0)
+                      * static_cast<std::size_t>(nloc)
+                      * static_cast<std::size_t>(nloc));
+            for (int e = e0; e < e1; ++e) {
+                set_elem_local(op_l, e);
+                gather_hat_fn_local(op_l, dmu, e, uh, uloc_l, gbuf_l);
+                compose_into(wloc_l, fprime, uloc_l, cws_l);
+                op_l.local_weighted_mass(wloc_l, m, loc_l);
+                detail::scatter_matrix<T>(dm, e, loc_l, nloc, b,
+                                          typename c1_dofmap::family_tag());
+            }
+        }
+        buf_.append_all(tbuf, nrun);
+#else
         for (int e = 0; e < topo_.nt; ++e) {
             set_elem(e);
             gather_hat_fn(dmu, e, uh, uloc_);
@@ -189,6 +289,7 @@ public:
             detail::scatter_matrix<T>(dm, e, loc_, dm.local_size(), buf_,
                                       typename c1_dofmap::family_tag());
         }
+#endif
         buf_.combine();
         return detail::spm_adapter<T, SP>::build(dm.ndof(), dm.ndof(), buf_);
     }
@@ -278,24 +379,88 @@ public:
     spmatrix_t laplacian_matrix(int m) {
         const c1_dofmap& dm = dofs(m);
         begin_matrix(dm, dm);
+#if VCP_BFEM_USE_OPENMP
+        const int nt = topo_.nt;
+        const int nloc = dm.local_size();
+        int nrun = 1;
+        std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+        {
+#pragma omp single
+            {
+                nrun = omp_get_num_threads();
+                tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+#pragma omp barrier
+            const int tid = omp_get_thread_num();
+            const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+            const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+            c1_element_op<T, P> op_l;
+            vcp::matrix<T, P> loc_l;
+            detail::coo_buffer<T>& b = tbuf[static_cast<std::size_t>(tid)];
+            b.reserve(static_cast<std::size_t>(e1 - e0)
+                      * static_cast<std::size_t>(nloc)
+                      * static_cast<std::size_t>(nloc));
+            for (int e = e0; e < e1; ++e) {
+                set_elem_local(op_l, e);
+                op_l.local_laplacian(m, loc_l);
+                detail::scatter_matrix<T>(dm, e, loc_l, nloc, b,
+                                          typename c1_dofmap::family_tag());
+            }
+        }
+        buf_.append_all(tbuf, nrun);
+#else
         for (int e = 0; e < topo_.nt; ++e) {
             set_elem(e);
             op_.local_laplacian(m, loc_);
             detail::scatter_matrix<T>(dm, e, loc_, dm.local_size(), buf_,
                                       typename c1_dofmap::family_tag());
         }
+#endif
         buf_.combine();
         return detail::spm_adapter<T, SP>::build(dm.ndof(), dm.ndof(), buf_);
     }
     spmatrix_t hessian_matrix(int m) {                 // (D^2 u : D^2 v)
         const c1_dofmap& dm = dofs(m);
         begin_matrix(dm, dm);
+#if VCP_BFEM_USE_OPENMP
+        const int nt = topo_.nt;
+        const int nloc = dm.local_size();
+        int nrun = 1;
+        std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+        {
+#pragma omp single
+            {
+                nrun = omp_get_num_threads();
+                tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+#pragma omp barrier
+            const int tid = omp_get_thread_num();
+            const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+            const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+            c1_element_op<T, P> op_l;
+            vcp::matrix<T, P> loc_l;
+            detail::coo_buffer<T>& b = tbuf[static_cast<std::size_t>(tid)];
+            b.reserve(static_cast<std::size_t>(e1 - e0)
+                      * static_cast<std::size_t>(nloc)
+                      * static_cast<std::size_t>(nloc));
+            for (int e = e0; e < e1; ++e) {
+                set_elem_local(op_l, e);
+                op_l.local_hessian(m, loc_l);
+                detail::scatter_matrix<T>(dm, e, loc_l, nloc, b,
+                                          typename c1_dofmap::family_tag());
+            }
+        }
+        buf_.append_all(tbuf, nrun);
+#else
         for (int e = 0; e < topo_.nt; ++e) {
             set_elem(e);
             op_.local_hessian(m, loc_);
             detail::scatter_matrix<T>(dm, e, loc_, dm.local_size(), buf_,
                                       typename c1_dofmap::family_tag());
         }
+#endif
         buf_.combine();
         return detail::spm_adapter<T, SP>::build(dm.ndof(), dm.ndof(), buf_);
     }
@@ -310,12 +475,43 @@ public:
         buf_.reserve(static_cast<std::size_t>(topo_.nt)
                      * static_cast<std::size_t>(nl)
                      * static_cast<std::size_t>(dm.local_size()));
+#if VCP_BFEM_USE_OPENMP
+        const int nt = topo_.nt;
+        const int nc = dm.local_size();
+        int nrun = 1;
+        std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+        {
+#pragma omp single
+            {
+                nrun = omp_get_num_threads();
+                tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+#pragma omp barrier
+            const int tid = omp_get_thread_num();
+            const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+            const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+            c1_element_op<T, P> op_l;
+            vcp::matrix<T, P> loc_l;
+            detail::coo_buffer<T>& b = tbuf[static_cast<std::size_t>(tid)];
+            b.reserve(static_cast<std::size_t>(e1 - e0)
+                      * static_cast<std::size_t>(nl)
+                      * static_cast<std::size_t>(nc));
+            for (int e = e0; e < e1; ++e) {
+                set_elem_local(op_l, e);
+                op_l.local_laplacian_mixed(m, l, loc_l);
+                detail::scatter_matrix_general2<T>(bdm, dm, e, loc_l, nl, nc, b);
+            }
+        }
+        buf_.append_all(tbuf, nrun);
+#else
         for (int e = 0; e < topo_.nt; ++e) {
             set_elem(e);
             op_.local_laplacian_mixed(m, l, loc_);
             detail::scatter_matrix_general2<T>(bdm, dm, e, loc_, nl,
                                                dm.local_size(), buf_);
         }
+#endif
         buf_.combine();
         return detail::spm_adapter<T, SP>::build(bdm.ndof(), dm.ndof(), buf_);
     }
@@ -502,12 +698,27 @@ private:
                 topo_.tri_edge[static_cast<std::size_t>(e)][static_cast<std::size_t>(s)])];
         op_.set_geometry(geom_[static_cast<std::size_t>(e)], lts);
     }
+    void set_elem_local(c1_element_op<T, P>& op, int e) const {
+        std::array<T, 3> lts;
+        for (int s = 0; s < 3; ++s)
+            lts[static_cast<std::size_t>(s)] = edge_cache_[static_cast<std::size_t>(
+                topo_.tri_edge[static_cast<std::size_t>(e)][static_cast<std::size_t>(s)])];
+        op.set_geometry(geom_[static_cast<std::size_t>(e)], lts);
+    }
     void gather_hat_fn(const c1_dofmap& dm, int e, const function_type& u,
                        bpoly<2, T>& dst) {
         grow(gbuf_, dm.local_size());
         detail::gather(dm, e, u.coeffs(), gbuf_.data(), dm.local_size(),
                        typename c1_dofmap::family_tag());
         op_.gather_hat(dm.degree(), gbuf_.data(), dst);
+    }
+    void gather_hat_fn_local(c1_element_op<T, P>& op, const c1_dofmap& dm,
+                             int e, const function_type& u, bpoly<2, T>& dst,
+                             std::vector<T>& gbuf) const {
+        grow(gbuf, dm.local_size());
+        detail::gather(dm, e, u.coeffs(), gbuf.data(), dm.local_size(),
+                       typename c1_dofmap::family_tag());
+        op.gather_hat(dm.degree(), gbuf.data(), dst);
     }
     void begin_matrix(const c1_dofmap& dma, const c1_dofmap& dmb) {
         buf_.clear();

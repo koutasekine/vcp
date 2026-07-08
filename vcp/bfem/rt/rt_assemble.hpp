@@ -94,11 +94,41 @@ vcp::spmatrix<T, SPB> assemble_div_mass(broken_space<D, T, P, SPB>& bs,
     const int nc = rs.dofs().local_size();
     buf.reserve(static_cast<std::size_t>(bs.num_elements())
                 * static_cast<std::size_t>(nr) * static_cast<std::size_t>(nc));
+#if VCP_BFEM_USE_OPENMP
+    const int nt = bs.num_elements();
+    int nrun = 1;
+    std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+    {
+#pragma omp single
+        {
+            nrun = omp_get_num_threads();
+            tbuf.resize(static_cast<std::size_t>(nrun));
+        }
+#pragma omp barrier
+        const int tid = omp_get_thread_num();
+        const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+        const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+        rt_element_op<D, T, P> op_l;
+        vcp::matrix<T, P> loc_l;
+        detail::coo_buffer<T>& b = tbuf[static_cast<std::size_t>(tid)];
+        b.reserve(static_cast<std::size_t>(e1 - e0)
+                  * static_cast<std::size_t>(nr)
+                  * static_cast<std::size_t>(nc));
+        for (int e = e0; e < e1; ++e) {
+            op_l.set_geometry(rs.geometry(e));
+            op_l.local_div_mass(k, l, loc_l);
+            detail::scatter_matrix_general2<T>(bs.dofs(), rs.dofs(), e, loc_l, nr, nc, b);
+        }
+    }
+    buf.append_all(tbuf, nrun);
+#else
     for (int e = 0; e < bs.num_elements(); ++e) {
         op.set_geometry(rs.geometry(e));
         op.local_div_mass(k, l, loc);
         detail::scatter_matrix_general2<T>(bs.dofs(), rs.dofs(), e, loc, nr, nc, buf);
     }
+#endif
     buf.combine();
     return detail::spm_adapter<T, SPB>::build(bs.ndof(), rs.ndof(), buf);
 }
@@ -123,11 +153,41 @@ vcp::spmatrix<T, SPR> assemble_cross_grad(rt_space<D, T, P, SPR>& rs,
     const int nc = fdm.local_size();
     buf.reserve(static_cast<std::size_t>(rs.num_elements())
                 * static_cast<std::size_t>(nr) * static_cast<std::size_t>(nc));
+#if VCP_BFEM_USE_OPENMP
+    const int nt = rs.num_elements();
+    int nrun = 1;
+    std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+    {
+#pragma omp single
+        {
+            nrun = omp_get_num_threads();
+            tbuf.resize(static_cast<std::size_t>(nrun));
+        }
+#pragma omp barrier
+        const int tid = omp_get_thread_num();
+        const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+        const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+        rt_element_op<D, T, P> op_l;
+        vcp::matrix<T, P> loc_l;
+        detail::coo_buffer<T>& b = tbuf[static_cast<std::size_t>(tid)];
+        b.reserve(static_cast<std::size_t>(e1 - e0)
+                  * static_cast<std::size_t>(nr)
+                  * static_cast<std::size_t>(nc));
+        for (int e = e0; e < e1; ++e) {
+            op_l.set_geometry(rs.geometry(e));
+            op_l.local_cross_grad(k, m, loc_l);
+            detail::scatter_matrix_general2<T>(rs.dofs(), fdm, e, loc_l, nr, nc, b);
+        }
+    }
+    buf.append_all(tbuf, nrun);
+#else
     for (int e = 0; e < rs.num_elements(); ++e) {
         op.set_geometry(rs.geometry(e));
         op.local_cross_grad(k, m, loc);
         detail::scatter_matrix_general2<T>(rs.dofs(), fdm, e, loc, nr, nc, buf);
     }
+#endif
     buf.combine();
     return detail::spm_adapter<T, SPR>::build(rs.ndof(), fs.ndof(m), buf);
 }
@@ -291,6 +351,39 @@ vcp::spmatrix<T, SPF> assemble_mixed_mass(fe_space<D, T, P, SPF>& fs, int m,
     const int nc = bs.local_size();
     buf.reserve(static_cast<std::size_t>(bs.num_elements())
                 * static_cast<std::size_t>(nr) * static_cast<std::size_t>(nc));
+#if VCP_BFEM_USE_OPENMP
+    const int nt = bs.num_elements();
+    int nrun = 1;
+    std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+    {
+#pragma omp single
+        {
+            nrun = omp_get_num_threads();
+            tbuf.resize(static_cast<std::size_t>(nrun));
+        }
+#pragma omp barrier
+        const int tid = omp_get_thread_num();
+        const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+        const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+        element_op<D, T, P> op_l;
+        vcp::matrix<T, P> loc_l;
+        detail::coo_buffer<T>& b = tbuf[static_cast<std::size_t>(tid)];
+        b.reserve(static_cast<std::size_t>(e1 - e0)
+                  * static_cast<std::size_t>(nr)
+                  * static_cast<std::size_t>(nc));
+        for (int e = e0; e < e1; ++e) {
+            op_l.set_geometry(bs.geometry(e));
+            op_l.local_mass(m, l, loc_l);
+            for (int i = 0; i < nr; ++i) {
+                int gi = fdm.global_dof(e, i);
+                for (int j = 0; j < nc; ++j)
+                    b.push(gi, bs.dofs().global_dof(e, j), loc_l(i, j));
+            }
+        }
+    }
+    buf.append_all(tbuf, nrun);
+#else
     for (int e = 0; e < bs.num_elements(); ++e) {
         op.set_geometry(bs.geometry(e));
         op.local_mass(m, l, loc);
@@ -301,6 +394,7 @@ vcp::spmatrix<T, SPF> assemble_mixed_mass(fe_space<D, T, P, SPF>& fs, int m,
                 buf.push(gi, bs.dofs().global_dof(e, j), loc(i, j));
         }
     }
+#endif
     buf.combine();
     return detail::spm_adapter<T, SPF>::build(fs.ndof(m), bs.ndof(), buf);
 }

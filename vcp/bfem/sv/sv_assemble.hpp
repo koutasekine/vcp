@@ -137,6 +137,40 @@ assemble_vector_stiffness(vfe_space<D, T, P, SP>& vs, int m) {
     buf.reserve(static_cast<std::size_t>(vs.num_elements())
                 * static_cast<std::size_t>(D)
                 * static_cast<std::size_t>(nloc) * static_cast<std::size_t>(nloc));
+#if VCP_BFEM_USE_OPENMP
+    const int nt = vs.num_elements();
+    int nrun = 1;
+    std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+    {
+#pragma omp single
+        {
+            nrun = omp_get_num_threads();
+            tbuf.resize(static_cast<std::size_t>(nrun));
+        }
+#pragma omp barrier
+        const int tid = omp_get_thread_num();
+        const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+        const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+        element_op<D, T, P> op_l;
+        vcp::matrix<T, P> loc_l;
+        detail::coo_buffer<T>& b = tbuf[static_cast<std::size_t>(tid)];
+        b.reserve(static_cast<std::size_t>(e1 - e0)
+                  * static_cast<std::size_t>(D)
+                  * static_cast<std::size_t>(nloc)
+                  * static_cast<std::size_t>(nloc));
+        for (int e = e0; e < e1; ++e) {
+            op_l.set_geometry(vs.geometry(e));
+            op_l.local_stiffness(m, loc_l);
+            for (int d = 0; d < D; ++d) {
+                detail::sv_offset_dofmap<dofmap<D> > odm(dm, d * N);
+                detail::scatter_matrix<T>(odm, e, loc_l, nloc, b,
+                                          typename dofmap<D>::family_tag());
+            }
+        }
+    }
+    buf.append_all(tbuf, nrun);
+#else
     for (int e = 0; e < vs.num_elements(); ++e) {            // element order (X9)
         op.set_geometry(vs.geometry(e));
         op.local_stiffness(m, loc);                          // computed ONCE
@@ -146,6 +180,7 @@ assemble_vector_stiffness(vfe_space<D, T, P, SP>& vs, int m) {
                                       typename dofmap<D>::family_tag());
         }
     }
+#endif
     buf.combine();
     return detail::spm_adapter<T, SP>::build(D * N, D * N, buf);
 }
@@ -172,6 +207,37 @@ assemble_div_velocity(broken_space<D, T, P, SPB>& bs,
     buf.reserve(static_cast<std::size_t>(vs.num_elements())
                 * static_cast<std::size_t>(D)
                 * static_cast<std::size_t>(nr) * static_cast<std::size_t>(nc));
+#if VCP_BFEM_USE_OPENMP
+    const int nt = vs.num_elements();
+    int nrun = 1;
+    std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+    {
+#pragma omp single
+        {
+            nrun = omp_get_num_threads();
+            tbuf.resize(static_cast<std::size_t>(nrun));
+        }
+#pragma omp barrier
+        const int tid = omp_get_thread_num();
+        const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+        const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+        vcp::matrix<T, P> loc_l;
+        detail::coo_buffer<T>& b = tbuf[static_cast<std::size_t>(tid)];
+        b.reserve(static_cast<std::size_t>(e1 - e0)
+                  * static_cast<std::size_t>(D)
+                  * static_cast<std::size_t>(nr)
+                  * static_cast<std::size_t>(nc));
+        for (int e = e0; e < e1; ++e) {
+            for (int d = 0; d < D; ++d) {
+                detail::sv_local_grad_mixed_mass<D, T, P>(vs.geometry(e), d, m, l, loc_l);
+                detail::sv_scatter_rect_identity<T>(bs.dofs(), 0, dm, d * N,
+                                                    e, loc_l, nr, nc, b);
+            }
+        }
+    }
+    buf.append_all(tbuf, nrun);
+#else
     for (int e = 0; e < vs.num_elements(); ++e) {
         for (int d = 0; d < D; ++d) {
             detail::sv_local_grad_mixed_mass<D, T, P>(vs.geometry(e), d, m, l, loc);
@@ -179,6 +245,7 @@ assemble_div_velocity(broken_space<D, T, P, SPB>& bs,
                                                 e, loc, nr, nc, buf);
         }
     }
+#endif
     buf.combine();
     return detail::spm_adapter<T, SPB>::build(bs.ndof(), D * N, buf);
 }
@@ -204,6 +271,44 @@ assemble_advection(vfe_space<D, T, P, SP>& vs,
     buf.reserve(static_cast<std::size_t>(vs.num_elements())
                 * static_cast<std::size_t>(D)
                 * static_cast<std::size_t>(nloc) * static_cast<std::size_t>(nloc));
+#if VCP_BFEM_USE_OPENMP
+    const int nt = vs.num_elements();
+    int nrun = 1;
+    std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+    {
+#pragma omp single
+        {
+            nrun = omp_get_num_threads();
+            tbuf.resize(static_cast<std::size_t>(nrun));
+        }
+#pragma omp barrier
+        const int tid = omp_get_thread_num();
+        const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+        const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+        element_op<D, T, P> op_l;
+        vcp::matrix<T, P> loc_l;
+        std::array<bpoly<D, T>, D> wloc_l;
+        detail::coo_buffer<T>& b = tbuf[static_cast<std::size_t>(tid)];
+        b.reserve(static_cast<std::size_t>(e1 - e0)
+                  * static_cast<std::size_t>(D)
+                  * static_cast<std::size_t>(nloc)
+                  * static_cast<std::size_t>(nloc));
+        for (int e = e0; e < e1; ++e) {
+            op_l.set_geometry(vs.geometry(e));
+            for (int d = 0; d < D; ++d)
+                detail::sv_gather_component(dmw, Nw, e, w, d,
+                                            wloc_l[static_cast<std::size_t>(d)]);
+            op_l.local_convection(wloc_l, m, loc_l);
+            for (int d = 0; d < D; ++d) {
+                detail::sv_offset_dofmap<dofmap<D> > odm(dm, d * N);
+                detail::scatter_matrix<T>(odm, e, loc_l, nloc, b,
+                                          typename dofmap<D>::family_tag());
+            }
+        }
+    }
+    buf.append_all(tbuf, nrun);
+#else
     for (int e = 0; e < vs.num_elements(); ++e) {
         op.set_geometry(vs.geometry(e));
         for (int d = 0; d < D; ++d)
@@ -216,6 +321,7 @@ assemble_advection(vfe_space<D, T, P, SP>& vs,
                                       typename dofmap<D>::family_tag());
         }
     }
+#endif
     buf.combine();
     return detail::spm_adapter<T, SP>::build(D * N, D * N, buf);
 }
@@ -242,6 +348,45 @@ assemble_advection_derivative(vfe_space<D, T, P, SP>& vs,
     buf.reserve(static_cast<std::size_t>(vs.num_elements())
                 * static_cast<std::size_t>(D) * static_cast<std::size_t>(D)
                 * static_cast<std::size_t>(nloc) * static_cast<std::size_t>(nloc));
+#if VCP_BFEM_USE_OPENMP
+    const int nt = vs.num_elements();
+    int nrun = 1;
+    std::vector<detail::coo_buffer<T> > tbuf;
+#pragma omp parallel
+    {
+#pragma omp single
+        {
+            nrun = omp_get_num_threads();
+            tbuf.resize(static_cast<std::size_t>(nrun));
+        }
+#pragma omp barrier
+        const int tid = omp_get_thread_num();
+        const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
+        const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
+        element_op<D, T, P> op_l;
+        vcp::matrix<T, P> loc_l;
+        bpoly<D, T> wc_l, gd_l;
+        detail::coo_buffer<T>& b = tbuf[static_cast<std::size_t>(tid)];
+        b.reserve(static_cast<std::size_t>(e1 - e0)
+                  * static_cast<std::size_t>(D)
+                  * static_cast<std::size_t>(D)
+                  * static_cast<std::size_t>(nloc)
+                  * static_cast<std::size_t>(nloc));
+        for (int e = e0; e < e1; ++e) {
+            op_l.set_geometry(vs.geometry(e));
+            for (int c = 0; c < D; ++c) {
+                detail::sv_gather_component(dmw, Nw, e, w, c, wc_l);
+                for (int d = 0; d < D; ++d) {
+                    op_l.grad_component(wc_l, d, gd_l);
+                    op_l.local_weighted_mass(gd_l, m, loc_l);
+                    detail::sv_scatter_rect_identity<T>(dm, c * N, dm, d * N,
+                                                        e, loc_l, nloc, nloc, b);
+                }
+            }
+        }
+    }
+    buf.append_all(tbuf, nrun);
+#else
     for (int e = 0; e < vs.num_elements(); ++e) {
         op.set_geometry(vs.geometry(e));
         for (int c = 0; c < D; ++c) {
@@ -254,6 +399,7 @@ assemble_advection_derivative(vfe_space<D, T, P, SP>& vs,
             }
         }
     }
+#endif
     buf.combine();
     return detail::spm_adapter<T, SP>::build(D * N, D * N, buf);
 }
