@@ -43,6 +43,21 @@ bfem の説明では、話題のスコープを次の 4 種類に分けると読
 
 要素順と重複成分の結合順は固定されています。同じ入力なら同じ順序で加算されます。
 
+## OpenMP 並列化
+
+bfem の大域行列組立の一部は OpenMP に対応しています。利用者側では通常、
+プログラムを `-fopenmp` 付きでコンパイルすれば有効になります。スレッド数を
+プログラム内で制御したい場合だけ、利用者コードで `<omp.h>` を include して
+`omp_set_num_threads` などを呼びます。
+
+bfem 側の OpenMP だけを止める場合は `-DVCP_BFEM_NOMP` を付けます。
+プロジェクト全体で `-DVCP_NOMP` を使う場合も、bfem では OpenMP 無効として扱われます。
+
+並列化される主な対象は、`fe_space` の `stiffness` / `mixed_mass` /
+`weighted_mass`、RT や broken 空間の大域行列、Scott-Vogelius の vector stiffness
+や div/advection 系、2D C^1 の stiffness / mass / Laplacian / Hessian 系です。
+詳細な使い方は `docs/bfem_user_guide.md` の OpenMP 節を参照してください。
+
 ## スカラー型 `T`
 
 通常は `double` で近似計算できます。検証付き計算では `kv::interval<double>` などの

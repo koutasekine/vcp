@@ -315,7 +315,89 @@ vcp::bfem::poly1<IT> f = vcp::bfem::poly1<IT>::from_rational(a);
 区間型で疎行列を作る場合は、`vcp::spmatrix<T,SP>` の `SP` が区間型に対応している必要があります。
 対応していない場合は、ベクトル・スカラー・局所多項式 API だけを使うか、区間対応 sparse policy を渡します。
 
-## 10. コンパイル例
+## 10. OpenMP による並列化
+
+この節は「領域全体」の行列組立の話です。bfem では、要素ごとの局所行列を作って
+大域行列へ散布する部分の一部が OpenMP で並列化されています。
+
+OpenMP を有効にするには、通常は利用者プログラムを `-fopenmp` 付きでコンパイルします。
+`_OPENMP` が定義され、かつ `VCP_BFEM_NOMP` が定義されていなければ、bfem 側の
+OpenMP 経路が有効になります。
+
+```bash
+g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 -fopenmp \
+sandbox/tests/example.cpp \
+-L${MKLROOT}/lib/intel64 \
+-Wl,--no-as-needed \
+-lmkl_intel_lp64 \
+-lmkl_intel_thread \
+-lmkl_core \
+-liomp5 \
+-lpthread \
+-lm \
+-ldl \
+-lmpfr \
+-o sandbox/bin/example
+```
+
+スレッド数を利用者プログラムから指定したい場合だけ、利用者側で `<omp.h>` を include します。
+単に bfem 内部の OpenMP を有効にするだけなら、利用者コードに `<omp.h>` は不要です。
+
+```cpp
+#include <omp.h>
+
+int main() {
+    omp_set_num_threads(8);
+    // bfem の行列組立を呼ぶ
+}
+```
+
+環境変数で指定することもできます。
+
+```bash
+OMP_NUM_THREADS=8 ./sandbox/bin/example
+```
+
+bfem の OpenMP だけを無効にしたい場合は、コンパイル時に `-DVCP_BFEM_NOMP` を付けます。
+プロジェクト全体の方針として `-DVCP_NOMP` を付けた場合も、bfem では
+`VCP_BFEM_NOMP` として扱われます。
+
+```bash
+g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 -fopenmp \
+-DVCP_BFEM_NOMP \
+sandbox/tests/example.cpp \
+-L${MKLROOT}/lib/intel64 \
+-Wl,--no-as-needed \
+-lmkl_intel_lp64 \
+-lmkl_intel_thread \
+-lmkl_core \
+-liomp5 \
+-lpthread \
+-lm \
+-ldl \
+-lmpfr \
+-o sandbox/bin/example_nomp
+```
+
+主に並列化されるのは、次のような大域行列の組立です。
+
+| 空間 | 並列化される代表 API |
+|---|---|
+| 2D/3D `P^k` | `stiffness`, `mixed_mass`, `weighted_mass` |
+| 2D/3D `RT^k` | `rt_space::mass`, `assemble_div_mass`, `assemble_cross_grad` |
+| broken `P_l` | `broken_space::mass` |
+| Scott-Vogelius | `assemble_vector_stiffness`, `assemble_div_velocity`, `assemble_advection`, `assemble_advection_derivative` |
+| 2D C^1 | `stiffness`, `mixed_mass`, `weighted_mass`, `laplacian_matrix`, `hessian_matrix`, `laplacian_mixed` |
+
+`load` ベクトルや一部のスカラー評価は、現時点では逐次の API もあります。
+また、1 つの `fe_space` や `c1_space` インスタンスを複数の利用者 thread から同時に呼ぶ使い方は想定していません。
+bfem 内部では、1 回の組立呼び出しの中で要素ループを並列化します。
+
+`double` では浮動小数点加算順序の問題がありますが、bfem の OpenMP 組立では
+thread-local COO buffer を使い、結合順序を固定する方針です。検証付き計算で
+`kv::interval<double>` などを使う場合も、区間対応 sparse policy を使う点は逐次実行時と同じです。
+
+## 11. コンパイル例
 
 プロジェクトの通常方針に従い、Ubuntu/WSL では g++、OpenMP、MKL、MPFR を使います。
 `sandbox/tests/example.cpp` を作った場合の例です。
@@ -343,13 +425,15 @@ sandbox/tests/example.cpp \
 
 macOS ではプロジェクト方針どおり `clang++ -std=gnu++14`、OpenBLAS、MPFR、GMP、libomp を使います。
 
-## 11. よくある失敗
+## 12. よくある失敗
 
 | 症状 | 原因と対処 |
 |---|---|
 | `degenerate_element` | 要素が潰れている、または区間座標で向きが確定しない。メッシュや座標区間を確認する |
 | 係数サイズ不一致 | `function_from_coeffs` へ `ndof(m) x 1` でない行列を渡している |
 | 区間型で疎行列がコンパイルできない | sparse policy `SP` が区間型に対応していない |
+| OpenMP が効いていない | `-fopenmp` が付いていない、または `VCP_BFEM_NOMP` / `VCP_NOMP` を定義している |
+| スレッド数を変えられない | `OMP_NUM_THREADS` を設定するか、利用者コードで `<omp.h>` を include して `omp_set_num_threads` を呼ぶ |
 | `linear_reduction` が失敗する | 拘束行が従属、ピボットがない、または自由度番号が範囲外 |
 | RT 補間後に期待した誤差が出ない | provider が法線連続でない可能性がある |
 | C^1 で `m < k` が拒否される | `c1_space` は基準次数以上の family degree だけを扱う |
