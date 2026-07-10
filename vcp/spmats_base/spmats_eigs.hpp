@@ -889,6 +889,277 @@ static void lambda_c1_acceptance_gate_(eig_result<_T>& result,
     }
 }
 
+// ---------------------------------------------------------------------------
+// EIG-6 F-1: si back-half の返却前磨き(条件付き・single-round)
+//
+// 発火条件(G-0.1 承認 §3.0): 各 back-half の「既存の λ 空間 C-1 最終ゲート」が
+// 不合格(status == "residual_check_failed")を出した場合のみ。現行ゲートを
+// 通過する経路は磨き経路に入らず、実行軌跡・mv・値はバイト同一に保たれる。
+//
+// 磨き(D-17a 機構への対処): 返却予定の全対 (θ, v) へ逆反復 1 回
+//   w = op.apply(v)(標準: (A−σI)^{-1} v / 一般化: (A−σB)^{-1} B v)
+//   w ← w/‖w‖、θ' = Rayleigh 商(標準: wᵀAw / 一般化: wᵀAw / wᵀBw)
+// を適用し、磨き後の (θ', w) に対して**同一の**受理ゲートを再判定する。
+// λ 空間残差の床 ~|λ|·‖A‖·eps → ~‖A‖·eps に引き下げる(4〜5 桁改善)。
+//
+// 規律(EIG-6 設計 §3 F-1 (i)〜(v) + G-0.1 付帯 5 点):
+//  (i)   single-round: 磨きは 1 回限り。再不合格なら従来どおり
+//        residual_check_failed(磨きループ禁止)。
+//  (ii)  発火時は返却予定の全対を磨く(部分磨き不可)。磨き後に全対で
+//        ゲート再判定 + target 順再確定。
+//  (iii) 磨きの solve は mv / linear_solves に 1:1 計上(B-38)。予算超過に
+//        なる場合(mv + 対数 > max_iter)は磨かない(B-1: 無料磨きの禁止)。
+//  (iv)  決定的(乱数なし)。
+//  (v)   単調性ガードは対ごと: 磨き後残差が厳密に改善(certified <)した対のみ
+//        採用、悪化・不確定(interval の indeterminate を含む)は磨き前を採用。
+//  (vi)  受理式・scale・tol は 1 ビットも変えない(B-40)。ゲートは各 back-half
+//        の現行判定そのもの(標準 = 改訂 scale 版 / 一般化 = scale なし版)。
+//  (vii) 複素対が返却面にある場合(complex_pair_count != 0 または
+//        eigenvalues_imag に非零)は磨かない(実ベクトル逆反復の前提外。
+//        正直な不合格がそのまま残る)。
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static bool si_polish_returned_pairs_all_real_(const eig_result<_T>& result)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    if (result.complex_pair_count != 0) return false;
+    if (result.eigenvalues_imag.size() == result.eigenvalues.size()) {
+        for (std::size_t i = 0; i < result.eigenvalues_imag.size(); i++) {
+            const scalar_real_type im = vcp::tsparse_scalar::abs_value(
+                vcp::tsparse_scalar::real_part(result.eigenvalues_imag[i]));
+            if (im > scalar_real_type(0)) return false;
+        }
+    }
+    return true;
+}
+
+// 磨き本体(標準/一般化共通)。B_ptr == nullptr なら標準問題。
+// 戻り値: 磨きを実施したか(mv 計上済みか)。ゲート再判定は呼び出し側で行う。
+template <typename _T, typename _Index, class ApplyOp>
+static bool si_polish_pairs_once_(eig_result<_T>& result,
+                                  const spmats<_T,_Index>& A_csr,
+                                  const spmats<_T,_Index>* B_ptr,
+                                  const eig_options<_T>& options,
+                                  ApplyOp& apply_si)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    const std::size_t P = result.eigenvalues.size();
+    if (P == 0) return false;
+    if (result.eigenvectors.size() != P) return false;
+    if (result.residuals_absolute.size() != P) return false;
+    if (!si_polish_returned_pairs_all_real_<_T,_Index>(result)) return false;
+    // (iii) 予算規律: 磨き分の solve が予算を超えるなら磨かない(正直不合格を維持)
+    if (result.matrix_vector_products + P > options.max_iter) return false;
+
+    for (std::size_t p = 0; p < P; p++) {
+        std::vector<_T> w;
+        apply_si(result.eigenvectors[p], w);          // 逆反復 1 回 = 1 solve
+        result.matrix_vector_products += 1;           // (iii) B-38: 1:1 計上
+        const scalar_real_type wn = norm_value_<_T,_Index>(w);
+        if (!(wn > scalar_real_type(0))) continue;    // 退化(certified >0 のみ採用側へ)
+        for (std::size_t i = 0; i < w.size(); i++) w[i] = w[i] / _T(wn);
+        // Rayleigh 商(標準: wᵀAw、一般化: wᵀAw / wᵀBw)
+        std::vector<_T> Aw = A_csr.mul_vec(w);
+        _T num = _T(0);
+        for (std::size_t i = 0; i < w.size(); i++) num += w[i] * Aw[i];
+        _T theta_new = num;
+        if (B_ptr != 0) {
+            std::vector<_T> Bw = B_ptr->mul_vec(w);
+            _T den = _T(0);
+            for (std::size_t i = 0; i < w.size(); i++) den += w[i] * Bw[i];
+            const scalar_real_type den_abs = vcp::tsparse_scalar::abs_value(
+                vcp::tsparse_scalar::real_part(den));
+            if (!(den_abs > scalar_real_type(0))) continue;   // B 内積退化: 磨き前を採用
+            theta_new = num / den;
+        }
+        // (v) 対ごと単調性ガード: certified に改善した対のみ採用
+        const scalar_real_type res_new = (B_ptr != 0)
+            ? generalized_eigenpair_residual_norm_value_<_T,_Index>(A_csr, *B_ptr, theta_new, w)
+            : eigenpair_residual_norm_value_<_T,_Index>(A_csr, theta_new, w);
+        if (res_new < result.residuals_absolute[p]) {
+            result.eigenvalues[p]  = theta_new;
+            result.eigenvectors[p] = w;
+        }
+    }
+    // (ii) 磨き後の全対で残差を再計算(採用/非採用が混在しても一様に)
+    if (B_ptr != 0) {
+        result.residuals_absolute = generalized_eigenpair_residuals_<_T,_Index>(A_csr, *B_ptr, result.eigenvalues, result.eigenvectors);
+        result.residuals_relative = generalized_eigenpair_relative_residuals_<_T,_Index>(A_csr, *B_ptr, result.eigenvalues, result.eigenvectors);
+    } else {
+        result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A_csr, result.eigenvalues, result.eigenvectors);
+        result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A_csr, result.eigenvalues, result.eigenvectors);
+    }
+    if (!result.residuals_absolute.empty()) {
+        result.residual_norm_absolute =
+            *std::max_element(result.residuals_absolute.begin(), result.residuals_absolute.end());
+    }
+    // (ii) target 順の再確定(θ' の微小変化での順序逆転に備える)
+    vcp::tsparse_eigen_selection::sort_eigenpairs_by_target(
+        result.eigenvalues, result.eigenvectors,
+        result.residuals_absolute, result.residuals_relative,
+        options.target, options.shift);
+    populate_real_complex_eigenvalues_<_T,_Index>(result);
+    return true;
+}
+
+// 標準問題用: 現行の改訂 scale 版 C-1 ゲート(lambda_c1_acceptance_gate_ の
+// scale 版と同一式)で再判定する。合格なら converged=true へ昇格。
+template <typename _T, typename _Index, class ApplyOp>
+static void si_polish_rescue_standard_(eig_result<_T>& result,
+                                       const spmats<_T,_Index>& self,
+                                       const eig_options<_T>& options,
+                                       ApplyOp& apply_si)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    if (result.converged) return;
+    if (result.status != "residual_check_failed") return;   // 発火条件(既存ゲート不合格のみ)
+    spmats<_T,_Index> A = self.as_csr();
+    if (!si_polish_pairs_once_<_T,_Index>(result, A, static_cast<const spmats<_T,_Index>*>(0), options, apply_si))
+        return;
+    std::vector<scalar_real_type> theta_abs_c1;
+    theta_abs_c1.reserve(result.eigenvalues.size());
+    for (std::size_t i = 0; i < result.eigenvalues.size(); i++)
+        theta_abs_c1.push_back(vcp::tsparse_scalar::abs_value(
+            vcp::tsparse_scalar::real_part(result.eigenvalues[i])));
+    if (vcp::tsparse::residual_acceptance_check_scaled_(
+            result.residuals_absolute, result.residuals_relative, options.tol,
+            theta_abs_c1, matrix_inf_norm_value_<_T,_Index>(A))) {
+        result.converged = true;
+        result.status = "converged";
+        result.failure_reason.clear();
+        result.message = "converged (C-1 rescue: one-step inverse-iteration polish; EIG-6 F-1)";
+    } else {
+        // (i) single-round: 再不合格は従来どおり(磨き改善分は診断として残る — B-15)
+        result.failure_reason =
+            "end-of-run exact residual (lambda space) failed acceptance (C-1); one-step polish attempted (EIG-6 F-1)";
+        result.message = result.failure_reason;
+    }
+}
+
+// 一般化問題用: 現行の scale なしゲート(lambda_c1_acceptance_gate_ の
+// 2 引数版と同一式)で再判定する。ゲートの統一・変更はしない(G-0.1 (v))。
+template <typename _T, typename _Index, class ApplyOp>
+static void si_polish_rescue_generalized_(eig_result<_T>& result,
+                                          const spmats<_T,_Index>& self,
+                                          const spmats<_T,_Index>& B,
+                                          const eig_options<_T>& options,
+                                          ApplyOp& apply_si)
+{
+    if (result.converged) return;
+    if (result.status != "residual_check_failed") return;   // 発火条件(既存ゲート不合格のみ)
+    spmats<_T,_Index> A = self.as_csr();
+    spmats<_T,_Index> B_csr = B.as_csr();
+    if (!si_polish_pairs_once_<_T,_Index>(result, A, &B_csr, options, apply_si))
+        return;
+    if (vcp::tsparse::residual_acceptance_check_(
+            result.residuals_absolute, result.residuals_relative, options.tol)) {
+        result.converged = true;
+        result.status = "converged";
+        result.failure_reason.clear();
+        result.message = "converged (C-1 rescue: one-step inverse-iteration polish; EIG-6 F-1)";
+    } else {
+        result.failure_reason =
+            "end-of-run exact residual (lambda space) failed acceptance (C-1); one-step polish attempted (EIG-6 F-1)";
+        result.message = result.failure_reason;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EIG-6 F-2' θ シフト磨き(G-2B.1 承認事項・E-A1 si_lanczos front 限定)
+//
+// 発火条件: converged だが「scaled-abs 分岐(res_abs ≤ tol·max(1+|θ|,‖A‖∞))を
+// 満たさない対がある」場合のみ。契約ゲート(無変更)は rel 分岐(Frobenius
+// 相対)で受理し得るが、μ ロック品質の λ 空間残差床 ~|λ|·‖A‖·r_μ は近接
+// クラスタで scaled-abs を外れ得る(grid_large 実測 3.5e-9 > 1.2e-9)。
+// σ=0 の逆反復磨き(F-1)は近接固有値の誤差成分をほぼ減衰させない
+// (減衰比 λ_i/λ_j ≈ 0.997)ため、対ごとの Rayleigh 商 θ_p をシフトに使う
+// 古典的な shifted inverse iteration で 1 回で eps 床へ落とす:
+//   w = (A − θ_p I)^{-1} v_p(E-A1 sparse LU を対ごとに新規分解)、
+//   w ← w/‖w‖、θ' = wᵀAw、対ごと単調性ガード(certified に改善した対のみ採用)。
+// 規律: single-round(P4 同様の防御)・全対走査・solve は mv/linear_solves に
+// 1:1 計上(P1)・決定的・複素対除外(P3)・予算内のみ(mv + 対数 ≤ max_iter)。
+// 分解は mv 通貨の対象外(E-A1 と同じ扱い)だが、対ごとの追加分解 ≤ k 回を
+// 診断メッセージに明記する。θ_p が固有値に極近く (A−θI) が数値特異でも、
+// 逆反復の誤差は目的固有方向に落ちる(古典理論)— 分解失敗対は磨き前を採用。
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static typename std::enable_if<std::is_signed<_Index>::value, void>::type
+si_polish_shifted_rescue_(eig_result<_T>& result,
+                          const spmats<_T,_Index>& self,
+                          const eig_options<_T>& options)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    typedef vcp::tsparse::lu_shift_invert_operator<spmats<_T,_Index> > LUOp;
+    if (!result.converged) return;
+    const std::size_t P = result.eigenvalues.size();
+    if (P == 0) return;
+    if (result.eigenvectors.size() != P) return;
+    if (result.residuals_absolute.size() != P) return;
+    if (!si_polish_returned_pairs_all_real_<_T,_Index>(result)) return;
+    spmats<_T,_Index> A = self.as_csr();
+    const scalar_real_type anorm = matrix_inf_norm_value_<_T,_Index>(A);
+    // 発火判定: scaled-abs 全対クリーンなら何もしない(既存 OK 面はバイト不変)
+    bool all_clean = true;
+    for (std::size_t i = 0; i < P; i++) {
+        const scalar_real_type th = vcp::tsparse_scalar::abs_value(
+            vcp::tsparse_scalar::real_part(result.eigenvalues[i]));
+        const scalar_real_type sc = vcp::tsparse::c1_revised_scale_(th, anorm);
+        if (!(result.residuals_absolute[i] <= options.tol * sc)) { all_clean = false; break; }
+    }
+    if (all_clean) return;
+    if (result.matrix_vector_products + P > options.max_iter) return;   // 予算規律
+
+    std::size_t polish_factorizations = 0;
+    for (std::size_t p = 0; p < P; p++) {
+        LUOp op(self, result.eigenvalues[p], options.shift_invert_lu);
+        polish_factorizations++;
+        if (!op.factorization_ok()) continue;              // 磨き前を採用
+        std::vector<_T> w;
+        op.apply(result.eigenvectors[p], w);               // 1 solve
+        result.matrix_vector_products += 1;                // P1: 1:1 計上
+        result.linear_solves += 1;
+        const scalar_real_type wn = norm_value_<_T,_Index>(w);
+        if (!(wn > scalar_real_type(0))) continue;
+        for (std::size_t i = 0; i < w.size(); i++) w[i] = w[i] / _T(wn);
+        std::vector<_T> Aw = A.mul_vec(w);
+        _T num = _T(0);
+        for (std::size_t i = 0; i < w.size(); i++) num += w[i] * Aw[i];
+        const _T theta_new = num;
+        const scalar_real_type res_new =
+            eigenpair_residual_norm_value_<_T,_Index>(A, theta_new, w);
+        if (res_new < result.residuals_absolute[p]) {      // 対ごと単調性(certified)
+            result.eigenvalues[p]  = theta_new;
+            result.eigenvectors[p] = w;
+        }
+    }
+    result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
+    result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
+    if (!result.residuals_absolute.empty()) {
+        result.residual_norm_absolute =
+            *std::max_element(result.residuals_absolute.begin(), result.residuals_absolute.end());
+    }
+    vcp::tsparse_eigen_selection::sort_eigenpairs_by_target(
+        result.eigenvalues, result.eigenvectors,
+        result.residuals_absolute, result.residuals_relative,
+        options.target, options.shift);
+    populate_real_complex_eigenvalues_<_T,_Index>(result);
+    if (polish_factorizations > 0) {
+        // (f-3) 追加分解回数の正式公開(構造化フィールド)+ 人間可読の注記
+        result.polish_factorizations = polish_factorizations;
+        result.message = "converged (theta-shifted inverse-iteration polish; EIG-6 F-2'; "
+            "extra factorizations=" + std::to_string(polish_factorizations) + ")";
+    }
+}
+
+template <typename _T, typename _Index>
+static typename std::enable_if<!std::is_signed<_Index>::value, void>::type
+si_polish_shifted_rescue_(eig_result<_T>&,
+                          const spmats<_T,_Index>&,
+                          const eig_options<_T>&)
+{
+    // unsigned Index は sparse LU 不対応(E-A1 と同じ制約)— 磨きなし(現状維持)
+}
+
 // Field-compatible package (mirrors the consumed subset of the old
 // arnoldi_result_package) produced by the KS core in mu space.
 template <typename _T>
@@ -1555,10 +1826,38 @@ static eig_result<_T> shift_invert_lanczos_drive_(const spmats<_T,_Index>& self,
     const std::size_t max_restarts_si = (sdim > 0)
         ? options.max_iter / (2 * sdim)
         : options.max_iter;
-    auto pkg = vcp::tsparse_lanczos::lanczos_eigs_standard<_T, Apply>(
+    // EIG-6 F-2' (G-2.1 承認): si_lanczos back-half は μ コアの opt-in
+    // リスタート制御(b' warm start / d' 走査キャップ)+ λ 形式 lock 併記 (e)
+    // を有効化する。λ ゲートは契約 C-1 の共有ヘルパ
+    // (eigenpair_residual_norm_value_ = λ 空間厳密残差 / c1_revised_scale_ =
+    // 改訂 scale の唯一定義)をそのまま呼ぶ(e-1。受理は scaled 分岐のみ =
+    // 契約受理の厳密部分集合。最終ゲート lanczos_package_to_result_ は無変更の
+    // まま全対を再検査する — e-3)。A·x は mv に 1:1 計上 + 別建てカウント(e-2)。
+    spmats<_T,_Index> A_for_gate = self.as_csr();
+    const scalar_real_type anorm_gate = matrix_inf_norm_value_<_T,_Index>(A_for_gate);
+    struct SiLambdaGate {
+        const spmats<_T,_Index>* A;
+        scalar_real_type anorm;
+        scalar_real_type tol;
+        scalar_real_type sigma;
+        bool operator()(const std::vector<_T>& x, const _T& mu, std::size_t& mv) const {
+            const scalar_real_type mu_re = vcp::tsparse_scalar::real_part(mu);
+            if (!(vcp::tsparse_scalar::abs_value(mu_re) > scalar_real_type(0))) return false;
+            const scalar_real_type lam = scalar_real_type(1) / mu_re + sigma;
+            const scalar_real_type r_abs =
+                eigenpair_residual_norm_value_<_T,_Index>(*A, _T(lam), x);
+            mv += 1;   // λ 判定の A·x 積(B-38: 1:1 計上)
+            const scalar_real_type scale = vcp::tsparse::c1_revised_scale_(
+                vcp::tsparse_scalar::abs_value(lam), anorm);
+            return r_abs <= tol * scale;   // certified-≤(interval は不確定を失敗側へ)
+        }
+    } si_lambda_gate = { &A_for_gate, anorm_gate, options.tol, sigma };
+    std::size_t lambda_gate_count = 0;
+    auto pkg = vcp::tsparse_lanczos::lanczos_eigs_standard_si_<_T, Apply, SiLambdaGate>(
         n, k, sdim, max_restarts_si, options.tol,
         options.random_seed, options.random_start,
-        eig_target::largest_magnitude, scalar_real_type(0), options.compute_residual_history, apply_si);
+        eig_target::largest_magnitude, scalar_real_type(0), options.compute_residual_history,
+        apply_si, si_lambda_gate, &lambda_gate_count);
 
     for (std::size_t i = 0; i < pkg.eigenvalues.size(); i++) {
         const scalar_real_type mu = vcp::tsparse_scalar::real_part(pkg.eigenvalues[i]);
@@ -1566,7 +1865,13 @@ static eig_result<_T> shift_invert_lanczos_drive_(const spmats<_T,_Index>& self,
             pkg.eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
         }
     }
-    return lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::shift_invert_lanczos, options.tol);
+    eig_result<_T> result = lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::shift_invert_lanczos, options.tol);
+    result.lambda_gate_products = lambda_gate_count;   // (e-2) 別建て計上
+    // EIG-6 F-1: 条件付き磨き(既存 C-1 ゲート不合格時のみ発火)。sparse_lu /
+    // legacy ilu0_gmres の両フロントを被覆(linear_solves はフロント側が
+    // apply 内カウンタ / op から再同期するため磨き分も自動計上される)。
+    si_polish_rescue_standard_<_T,_Index>(result, self, options, apply_si);
+    return result;
 }
 
 // --- back half #2: standard shift-invert Arnoldi ---------------------------
@@ -1744,6 +2049,9 @@ shift_invert_lanczos_sparse_lu_(const spmats<_T,_Index>& self,
     result.inner_residual_norm = op.inner_residual_norm();
     result.factorization_diagnostics = op.factorization_diagnostics();
     result.factorization_zero_pivots = op.factorization_zero_pivots();
+    // EIG-6 F-2': θ シフト磨き(converged だが scaled-abs 未クリーンの対が
+    // ある場合のみ発火 — ヘルパ冒頭の設計コメント参照。E-A1 front 限定)。
+    si_polish_shifted_rescue_<_T,_Index>(result, self, options);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -1818,6 +2126,9 @@ shift_invert_arnoldi_sparse_lu_(const spmats<_T,_Index>& self,
     // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
     // Lambda-space C-1 remains the final acceptance gate.
     lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self);   // EIG-4 T-4: 標準 si は改訂 scale
+    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
+    si_polish_rescue_standard_<_T,_Index>(result, self, options, apply_lu);
+    result.linear_solves = op.linear_solves();
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -1899,6 +2210,15 @@ generalized_shift_invert_sparse_lu_(const spmats<_T,_Index>& self,
     // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
     // Lambda-space C-1 remains the final acceptance gate.
     lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
+    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
+    {
+        struct ApplyPolish {
+            LUOp* op;
+            void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { op->apply(x, y); }
+        } apply_polish = { &op };
+        si_polish_rescue_generalized_<_T,_Index>(result, self, B, options, apply_polish);
+        result.linear_solves = op.linear_solves();
+    }
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -2202,6 +2522,9 @@ static eig_result<_T> shift_invert_arnoldi_eigs_(const spmats<_T,_Index>& self,
     // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
     // Lambda-space C-1 remains the final acceptance gate.
     lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self);   // EIG-4 T-4: 標準 si は改訂 scale
+    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
+    si_polish_rescue_standard_<_T,_Index>(result, self, options, apply_si);
+    result.linear_solves = linear_solve_count;
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -2698,6 +3021,15 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_(const spmats<_T,_In
     // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
     // Lambda-space C-1 remains the final acceptance gate.
     lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
+    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
+    {
+        struct ApplyPolish {
+            GSIOperator* op;
+            void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { op->apply(x, y); }
+        } apply_polish = { &gsi_op };
+        si_polish_rescue_generalized_<_T,_Index>(result, self, B, options, apply_polish);
+        result.linear_solves = gsi_op.linear_solves();
+    }
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -2931,12 +3263,33 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
         ? options.max_iter / (2 * sdim)
         : options.max_iter;
 
+    // EIG-6 F-2': with_prec si_lanczos も同一の opt-in(drive_ と同じ λ ゲート
+    // 構成 — 共有ヘルパ e-1 / 1:1 計上 e-2 / 最終ゲート再検査 e-3)。
+    const scalar_real_type anorm_gate_p = matrix_inf_norm_value_<_T,_Index>(A);
+    struct SiLambdaGateP {
+        const spmats<_T,_Index>* Am;
+        scalar_real_type anorm;
+        scalar_real_type tol;
+        scalar_real_type sigma;
+        bool operator()(const std::vector<_T>& x, const _T& mu, std::size_t& mv) const {
+            const scalar_real_type mu_re = vcp::tsparse_scalar::real_part(mu);
+            if (!(vcp::tsparse_scalar::abs_value(mu_re) > scalar_real_type(0))) return false;
+            const scalar_real_type lam = scalar_real_type(1) / mu_re + sigma;
+            const scalar_real_type r_abs =
+                eigenpair_residual_norm_value_<_T,_Index>(*Am, _T(lam), x);
+            mv += 1;
+            const scalar_real_type scale = vcp::tsparse::c1_revised_scale_(
+                vcp::tsparse_scalar::abs_value(lam), anorm);
+            return r_abs <= tol * scale;
+        }
+    } si_lambda_gate_p = { &A, anorm_gate_p, options.tol, sigma };
+    std::size_t lambda_gate_count_p = 0;
     typedef vcp::tsparse_lanczos::lanczos_result_package<_T, SIApply> LPkg;
-    LPkg pkg = vcp::tsparse_lanczos::lanczos_eigs_standard<_T, SIApply>(
+    LPkg pkg = vcp::tsparse_lanczos::lanczos_eigs_standard_si_<_T, SIApply, SiLambdaGateP>(
         n, k, sdim, max_restarts_si, options.tol,
         options.random_seed, options.random_start,
         eig_target::largest_magnitude, scalar_real_type(0),
-        options.compute_residual_history, apply_si);
+        options.compute_residual_history, apply_si, si_lambda_gate_p, &lambda_gate_count_p);
 
     for (std::size_t i = 0; i < pkg.eigenvalues.size(); i++) {
         const scalar_real_type mu = vcp::tsparse_scalar::real_part(pkg.eigenvalues[i]);
@@ -2945,6 +3298,7 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
     }
 
     eig_result<_T> result = lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::shift_invert_lanczos, options.tol);
+    result.lambda_gate_products = lambda_gate_count_p;   // (e-2)
     result.used_method = "shift_invert_lanczos+user_preconditioner";
     result.linear_solves = linear_solve_count;
     result.inner_iterations = inner_iteration_count;
@@ -2963,6 +3317,9 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
         result.inner_failure_reason = result.failure_reason;
         result.message = result.failure_reason;
     }
+    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
+    si_polish_rescue_standard_<_T,_Index>(result, self, options, apply_si);
+    result.linear_solves = linear_solve_count;
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -3129,6 +3486,9 @@ static eig_result<_T> shift_invert_arnoldi_eigs_with_prec_(
     // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
     // Lambda-space C-1 remains the final acceptance gate.
     lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self);   // EIG-4 T-4: 標準 si は改訂 scale
+    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
+    si_polish_rescue_standard_<_T,_Index>(result, self, options, apply_si);
+    result.linear_solves = linear_solve_count;
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -3330,6 +3690,9 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
     // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
     // Lambda-space C-1 remains the final acceptance gate.
     lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
+    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
+    si_polish_rescue_generalized_<_T,_Index>(result, self, B, options, apply_gsi);
+    result.linear_solves = linear_solve_count;
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }

@@ -108,6 +108,41 @@ tsparse_dense_linalg::dense_eigen_result<T> solve_tridiag(
 }
 
 // ---------------------------------------------------------------------------
+// EIG-6 F-2' (G-2.1 承認): si_lanczos 経路の opt-in リスタート制御。
+//
+// 既定(si_spin_retention = false)は従来挙動と完全同一(公開 lanczos
+// 直接経路は無変更 — v1 凍結スイートで機械検証)。opt-in 時のみ:
+//  (b') スピン誘発 warm start — 「ロックなし(かつ locked<k)で終わった
+//       リスタート」の直後のみ、次リスタートの開始ベクトルを直前リスタートの
+//       target 側先頭候補の Ritz ベクトル(locked 直交化済み)にする。
+//       ロック成立で解除(次は従来の新規決定的ベクトル = 1 リスタート
+//       1 ロックの多重度発見機構は無変更)。決定的・乱数なし。
+//  (e)  λ 形式 lock 併記 — μ 空間 lock 基準(現行・無変更)に加え、
+//       呼び出し側が渡す λ 空間ゲート(契約 C-1 の改訂 scale 受理式そのもの。
+//       共有ヘルパ再利用は呼び出し側 = spmats_eigs.hpp 側の責務)での
+//       lock を許す。適用は走査先頭 min(k_remaining+2, sdim/2) 候補のみ。
+//       判定用 A·x はゲート内で mv に 1:1 計上し、lambda_gate_products にも
+//       別建て計上する(B-38 / (e-2))。
+//  (d') 走査キャップ — lock 適格性走査を min(k_remaining+2, sdim/2) で
+//       打ち切る。C-2/honest termination の候補全景(cand_vals)は sel 全体
+//       から構築され、キャップの影響を受けない((d') 承認条件)。
+//       リスタートあたり最悪 mv = sdim + 2·min(k+2, sdim/2) ≤ 2·sdim で
+//       B-1 の機械照合上限 mv ≤ max_iter + 2·sdim は不変。
+//
+// 背景(D-17b 機構、EIG-6_G2.1_submission.md):
+//  b-1: plain restart の部分空間破棄 → 単発 sdim step の残差床が tol に
+//       届かずロック飢餓(grid_large: 47/47 リスタート locked=0)。
+//  b-2: 高条件数では再適用 μ 残差に LU forward-error 床(~eps·κ(A)·μ)が乗り、
+//       μ 空間絶対 lock 基準が構造的に到達不能(bcsstk18 模擬: 床 4e-6)。
+//       λ 空間残差の床は backward stability により ~eps·‖A‖ で契約 C-1 は
+//       満たせる — 契約より厳しすぎる内部基準のみを λ 形式で併記救済する。
+// ---------------------------------------------------------------------------
+struct si_lambda_lock_gate_none {
+	template <typename VEC, typename MU>
+	bool operator()(const VEC&, const MU&, std::size_t&) const { return false; }
+};
+
+// ---------------------------------------------------------------------------
 // Full-reorthogonalized standard Lanczos eigensolver
 //
 // ApplyA: void(const vector<T>& x, vector<T>& y)  →  y = A x
@@ -132,7 +167,8 @@ struct lanczos_result_package {
 	std::string used_method;
 };
 
-template <typename T, class ApplyA, class ApplyNorm>
+template <typename T, class ApplyA, class ApplyNorm,
+          class LambdaLockGate = si_lambda_lock_gate_none>
 lanczos_result_package<T, ApplyA> lanczos_eigs(
 	const std::size_t n,           // matrix size
 	const std::size_t k,           // number requested
@@ -145,7 +181,12 @@ lanczos_result_package<T, ApplyA> lanczos_eigs(
 	const typename tsparse_scalar::real_type<T>::type& shift_val,
 	const bool compute_residual_history,
 	ApplyA apply,                  // y = A x
-	ApplyNorm apply_norm)          // ||v||_B (for standard: standard norm)
+	ApplyNorm apply_norm,          // ||v||_B (for standard: standard norm)
+	// EIG-6 F-2'(opt-in、既定 = 従来挙動。ヘッダ先頭の設計コメント参照)
+	const bool si_spin_retention = false,
+	LambdaLockGate lambda_lock_gate = LambdaLockGate(),
+	const bool use_lambda_lock_gate = false,
+	std::size_t* lambda_gate_products = 0)
 {
 	typedef typename tsparse_scalar::real_type<T>::type R;
 	lanczos_result_package<T, ApplyA> res;
@@ -172,11 +213,16 @@ lanczos_result_package<T, ApplyA> lanczos_eigs(
 
 	unsigned int seed_counter = random_start ? random_seed : 0u;
 
+	// EIG-6 F-2' (b'): warm start 状態(si_spin_retention 時のみ使用)
+	std::vector<T> warm_vec;
+	bool warm_valid = false;
+
 	for (std::size_t restart = 0; restart <= max_restarts; restart++) {
 		// EIG-1 F-4: 終了は本ループ末尾の honest termination ゲート
 		// (C-2 + freshness)だけが宣言する。locked >= k でも検証未了なら
 		// 継続する(max_restarts 到達で正直な非収束)。
 		res.restarts = restart;
+		const bool warm_this_restart = si_spin_retention && warm_valid;
 
 		// freshness ガードの基準: このリスタートの部分空間は「今の locked
 		// 集合」に直交して構築される。その時点の返却予定 prefix を記録し、
@@ -186,17 +232,28 @@ lanczos_result_package<T, ApplyA> lanczos_eigs(
 		const std::vector<std::size_t> prefix_at_restart_start =
 			vcp::tsparse::locked_prefix_indices_(locked_vals, k, target, shift_val);
 
-		// Build starting vector orthogonal to locked vectors
-		std::vector<T> v0 = deterministic_start_vector<T>(n, seed_counter);
-		seed_counter++;
-		if (!orthogonalize_against(v0, locked_vecs, small_tol)) {
-			// Try a few more seeds
-			bool ok = false;
-			for (int attempt = 0; attempt < 20 && !ok; attempt++) {
-				v0 = deterministic_start_vector<T>(n, seed_counter++);
-				ok = orthogonalize_against(v0, locked_vecs, small_tol);
+		// Build starting vector orthogonal to locked vectors.
+		// EIG-6 F-2' (b'): warm リスタートでは直前リスタートの target 側先頭
+		// 候補の Ritz ベクトルから開始(直交化退化時は従来の決定的系列へ
+		// フォールバック)。それ以外は従来どおり新規決定的ベクトル。
+		std::vector<T> v0;
+		bool v0_ready = false;
+		if (warm_this_restart) {
+			v0 = warm_vec;
+			v0_ready = orthogonalize_against(v0, locked_vecs, small_tol);
+		}
+		if (!v0_ready) {
+			v0 = deterministic_start_vector<T>(n, seed_counter);
+			seed_counter++;
+			if (!orthogonalize_against(v0, locked_vecs, small_tol)) {
+				// Try a few more seeds
+				bool ok = false;
+				for (int attempt = 0; attempt < 20 && !ok; attempt++) {
+					v0 = deterministic_start_vector<T>(n, seed_counter++);
+					ok = orthogonalize_against(v0, locked_vecs, small_tol);
+				}
+				if (!ok) { res.failure_reason = "exhausted orthogonal starting vectors"; break; }
 			}
-			if (!ok) { res.failure_reason = "exhausted orthogonal starting vectors"; break; }
 		}
 
 		// Run Lanczos from v0
@@ -309,7 +366,20 @@ lanczos_result_package<T, ApplyA> lanczos_eigs(
 		// Check convergence for each selected Ritz pair.
 		// Lock at most ONE new pair per restart so that repeated eigenvalues
 		// are found on subsequent restarts (each with a new deflated start vector).
+		// EIG-6 F-2' (d'): opt-in 時は lock 適格性走査を
+		// min(k_remaining+2, sdim/2) で打ち切る(非ロック時の全数残差評価の
+		// 浪費を抑制。C-2 の候補全景 cand_vals は sel 全体から構築するため
+		// 影響しない)。λ 形式 lock (e) の適用窓も同じキャップ。
+		const std::size_t si_scan_cap = si_spin_retention
+			? std::min(k_remaining + std::size_t(2),
+			           std::max(std::size_t(1), m_limit / 2))
+			: sel.size();
+		std::size_t si_scanned = 0;
+		bool locked_this_restart = false;
+		std::vector<T> si_first_cand_vec;
+		bool si_first_cand_set = false;
 		for (std::size_t si = 0; si < sel.size(); si++) {
+			if (si_spin_retention && si_scanned >= si_scan_cap) break;
 			const std::size_t idx = sel[si];
 			if (idx >= small.eigenvectors.size()) continue;
 
@@ -342,18 +412,51 @@ lanczos_result_package<T, ApplyA> lanczos_eigs(
 					res.history_abs.push_back(res_abs);
 					res.history_rel.push_back(res_rel);
 				}
+			si_scanned++;
+			if (si_spin_retention && !si_first_cand_set) {
+				si_first_cand_vec = ritz_vec;   // target 側先頭候補(次回 warm 用)
+				si_first_cand_set = true;
+			}
 			if (best_vals.size() < k) {
 				best_vals.push_back(mu);
 				best_vecs.push_back(ritz_vec);
 				best_res.push_back(res_abs);
 			}
 
-			if (res_abs <= tol || res_rel <= tol) {
+			// EIG-6 F-2' (e): μ 空間 lock 基準(現行・無変更)∨ λ 形式ゲート
+			// (μ 不合格の窓内候補のみ消費。契約 C-1 の改訂 scale 受理式は
+			// 呼び出し側 = spmats_eigs.hpp が共有ヘルパで実装)。
+			// λ ゲートの A·x はゲート内で mv に 1:1 計上 + 別建てカウント。
+			// 注記: warm ロックへの λ 認証必須化は検討・実測の結果、単発 warm
+			// 反復の決定的固定点(r_μ 床)により不能と確定 — 品質の最終確定は
+			// back-half の θ シフト磨き(spmats_eigs.hpp)が担う。
+			bool lock_ok = (res_abs <= tol || res_rel <= tol);
+			if (!lock_ok && use_lambda_lock_gate && si_scanned <= si_scan_cap) {
+				const std::size_t mv_before = res.mv_count;
+				lock_ok = lambda_lock_gate(ritz_vec, mu, res.mv_count);
+				if (lambda_gate_products != 0)
+					*lambda_gate_products += (res.mv_count - mv_before);
+			}
+			if (lock_ok) {
 				locked_vals.push_back(mu);
 				locked_vecs.push_back(ritz_vec);
 				locked_res.push_back(res_abs);
 				res.converged_count++;
+				locked_this_restart = true;
 				break;  // one lock per restart → next restart deflates this vector out
+			}
+		}
+
+		// EIG-6 F-2' (b'): スピン誘発 warm start の発火/解除。
+		// 発火 = ロックなし(かつ locked<k)で終わった直後のみ。
+		// 解除 = ロック成立(次リスタートは従来の新規決定的ベクトル —
+		// 多重度発見の fresh 復帰)。
+		if (si_spin_retention) {
+			if (!locked_this_restart && locked_vals.size() < k && si_first_cand_set) {
+				warm_vec = si_first_cand_vec;
+				warm_valid = true;
+			} else {
+				warm_valid = false;
 			}
 		}
 
@@ -484,6 +587,38 @@ lanczos_result_package<T, ApplyA> lanczos_eigs_standard(
 		n, k, subspace_dim, max_restarts, tol,
 		random_seed, random_start, target, shift_val,
 		compute_residual_history, apply, norm_func);
+}
+
+// EIG-6 F-2': si_lanczos back-half 専用の opt-in 版(標準 L2 ノルム)。
+// 公開 lanczos の既存 wrapper(上)は無変更。
+template <typename T, class ApplyA, class LambdaLockGate>
+lanczos_result_package<T, ApplyA> lanczos_eigs_standard_si_(
+	const std::size_t n,
+	const std::size_t k,
+	const std::size_t subspace_dim,
+	const std::size_t max_restarts,
+	const typename tsparse_scalar::real_type<T>::type& tol,
+	const unsigned int random_seed,
+	const bool random_start,
+	const eig_target target,
+	const typename tsparse_scalar::real_type<T>::type& shift_val,
+	const bool compute_residual_history,
+	ApplyA apply,
+	LambdaLockGate lambda_lock_gate,
+	std::size_t* lambda_gate_products)
+{
+	typedef typename tsparse_scalar::real_type<T>::type R;
+	struct norm_fn {
+		R operator()(const std::vector<T>& v) const {
+			return tsparse_scalar::real_norm_value(v);
+		}
+	} norm_func;
+	return lanczos_eigs<T, ApplyA, norm_fn, LambdaLockGate>(
+		n, k, subspace_dim, max_restarts, tol,
+		random_seed, random_start, target, shift_val,
+		compute_residual_history, apply, norm_func,
+		/*si_spin_retention=*/true, lambda_lock_gate,
+		/*use_lambda_lock_gate=*/true, lambda_gate_products);
 }
 
 } // namespace tsparse_lanczos
