@@ -90,6 +90,10 @@ namespace vcp {
 		typedef typename _P::dense_matrix_type dense_matrix_type;
 		typedef vcp::linear_solve_options<_T> linear_solve_options_type;
 		typedef vcp::eig_options<_T> eig_options_type;
+		typedef vcp::ldl_options<_T> ldl_options_type;
+		typedef vcp::ldl_result<_T, typename _P::index_type> ldl_result_type;
+		typedef vcp::inertia_options<_T> inertia_options_type;
+		typedef vcp::inertia_result<typename _P::index_type> inertia_result_type;
 
 		spmatrix() : _P() {}
 		spmatrix(const index_type rows, const index_type cols) : _P() { this->resize(rows, cols); }
@@ -445,6 +449,87 @@ namespace vcp {
 		// non-strict: return full diagnostic result
 		linear_solve_result<_T> solve_with_info(const std::vector<_T>& b, const linear_solve_options_type& options = linear_solve_options_type()) const {
 			return this->policy_lss_with_info(static_cast<const _P&>(*this), b, options);
+		}
+
+		// ---------------------------------------------------------------
+		// LDL^T factorization (LDL-3) — delegates to policy_ldl_with_info.
+		// Convention P^T A P = L D L^T with perm p new->old (A(p,p) =
+		// L D L^T, MATLAB 'vector' form) and P(p[k],k) = 1 (design v2
+		// SS5.3-5.4).  strict ldl: ANY status != success throws
+		// (zero_pivot / not_symmetric / inconclusive_pivot_test /
+		// structural_singularity included); use ldl_with_info to inspect
+		// such factorizations (decision 2).
+		// ---------------------------------------------------------------
+
+		// non-strict, permutation-vector form
+		ldl_result_type ldl_with_info(spmatrix& L, spmatrix& D, std::vector<index_type>& p,
+		                              const ldl_options_type& options = ldl_options_type()) const {
+			return this->policy_ldl_with_info(
+				static_cast<const _P&>(*this), static_cast<_P&>(L), static_cast<_P&>(D), p, options);
+		}
+
+		// non-strict, permutation-matrix form (P finalized, P(p[k],k) = 1)
+		ldl_result_type ldl_with_info(spmatrix& L, spmatrix& D, spmatrix& P,
+		                              const ldl_options_type& options = ldl_options_type()) const {
+			std::vector<index_type> p;
+			ldl_result_type result = this->policy_ldl_with_info(
+				static_cast<const _P&>(*this), static_cast<_P&>(L), static_cast<_P&>(D), p, options);
+			P.resize(index_type(0), index_type(0));
+			if (result.status == sparse_ldl_status::success ||
+			    result.status == sparse_ldl_status::zero_pivot) {
+				const index_type n = static_cast<index_type>(p.size());
+				P.resize(n, n);
+				for (index_type k = 0; k < n; k++) {
+					P.add(p[static_cast<std::size_t>(k)], k, _T(1));
+				}
+				P.finalize();
+			}
+			return result;
+		}
+
+		// strict, permutation-vector form
+		void ldl(spmatrix& L, spmatrix& D, std::vector<index_type>& p,
+		         const ldl_options_type& options = ldl_options_type()) const {
+			const ldl_result_type result = ldl_with_info(L, D, p, options);
+			if (result.status != sparse_ldl_status::success) {
+				vcp::throw_error<vcp::numerical_error>(
+					"spmatrix::ldl: factorization failed with status ",
+					sparse_ldl_status_to_string(result.status));
+			}
+		}
+
+		// strict, permutation-matrix form
+		void ldl(spmatrix& L, spmatrix& D, spmatrix& P,
+		         const ldl_options_type& options = ldl_options_type()) const {
+			const ldl_result_type result = ldl_with_info(L, D, P, options);
+			if (result.status != sparse_ldl_status::success) {
+				vcp::throw_error<vcp::numerical_error>(
+					"spmatrix::ldl: factorization failed with status ",
+					sparse_ldl_status_to_string(result.status));
+			}
+		}
+
+		// ---------------------------------------------------------------
+		// inertia (LDL-4) — delegates to policy_inertia_with_info (default
+		// implementation: LDL through the public policy API + certified scan
+		// of the block diagonal D; design v2 SS7).  strict inertia throws on
+		// any status != success.
+		// ---------------------------------------------------------------
+
+		// non-strict
+		inertia_result_type inertia_with_info(const inertia_options_type& options = inertia_options_type()) const {
+			return this->policy_inertia_with_info(static_cast<const _P&>(*this), options);
+		}
+
+		// strict
+		inertia_result_type inertia(const inertia_options_type& options = inertia_options_type()) const {
+			const inertia_result_type result = inertia_with_info(options);
+			if (result.status != inertia_status::success) {
+				vcp::throw_error<vcp::numerical_error>(
+					"spmatrix::inertia: computation failed with status ",
+					inertia_status_to_string(result.status));
+			}
+			return result;
 		}
 
 		// Convenience overloads — build options and delegate to solve / solve_with_info

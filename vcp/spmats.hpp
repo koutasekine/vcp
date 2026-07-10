@@ -17,6 +17,7 @@
 #include <vcp/error.hpp>
 #include <vcp/tsparse/tsparse.hpp>
 #include <vcp/spmats_base/spmats_eigs_types.hpp>
+#include <vcp/spmats_base/spmats_ldl.hpp>
 #include <vcp/spmats_base/spmats_policy_traits.hpp>
 
 namespace vcp {
@@ -912,6 +913,51 @@ namespace vcp {
 		std::vector<_T> policy_generalized_eigs(
 			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
 			std::size_t k, const eig_options<_T>& opt, const Prec& M) const;
+
+		// ------------------------------------------------------------------
+		// Policy methods: LDL^T factorization (LDL-3, design v2 SS5.1)
+		//
+		// policy_ldl_with_info: non-virtual outer, NVI pattern (finalize
+		// guarantee + squareness entry check).  Must never be overridden;
+		// override policy_ldl_with_info_impl instead.  Convention:
+		// P^T A P = L D L^T with perm new->old (design v2 SS5.4); L unit
+		// lower (explicit unit diagonal), D 1x1/2x2 block diagonal with
+		// structural zeros not stored (design v2 SS5.2).  L / D / perm are
+		// valid outputs only when the returned status is success or
+		// zero_pivot.  Definitions in spmats_base/spmats_ldl_impl.hpp.
+		// ------------------------------------------------------------------
+		ldl_result<_T,_Index> policy_ldl_with_info(
+			const spmats<_T,_Index>& A,
+			spmats<_T,_Index>& L, spmats<_T,_Index>& D,
+			std::vector<_Index>& perm,
+			const ldl_options<_T>& opt) const;
+		virtual ldl_result<_T,_Index> policy_ldl_with_info_impl(
+			const spmats<_T,_Index>& A,
+			spmats<_T,_Index>& L, spmats<_T,_Index>& D,
+			std::vector<_Index>& perm,
+			const ldl_options<_T>& opt) const;
+
+		// ------------------------------------------------------------------
+		// Policy methods: inertia (LDL-4, design v2 SS7; decision 4)
+		//
+		// policy_inertia_with_info: non-virtual outer (finalize + squareness),
+		// NVI as above.  The default _impl calls policy_ldl_with_info and
+		// scans the returned D; derived policies may override the _impl to
+		// replace the computation.  policy_inertia_from_block_diagonal is the
+		// non-virtual shared D-consumer (does NOT assume BK origin): certified
+		// sign counting over a general 1x1/2x2 block diagonal, structurally
+		// empty columns counted as 1x1 zero blocks (SS7.2 rules 1-5).
+		// Definitions in spmats_base/spmats_ldl_impl.hpp.
+		// ------------------------------------------------------------------
+		inertia_result<_Index> policy_inertia_with_info(
+			const spmats<_T,_Index>& A,
+			const inertia_options<_T>& opt) const;
+		virtual inertia_result<_Index> policy_inertia_with_info_impl(
+			const spmats<_T,_Index>& A,
+			const inertia_options<_T>& opt) const;
+		inertia_result<_Index> policy_inertia_from_block_diagonal(
+			const spmats<_T,_Index>& D,
+			const scalar_real_type& tol) const;
 	};
 }
 
@@ -919,5 +965,6 @@ namespace vcp {
 #include <vcp/spmats_base/spmats_product.hpp>
 #include <vcp/spmats_base/spmats_lss.hpp>
 #include <vcp/spmats_base/spmats_eigs.hpp>
+#include <vcp/spmats_base/spmats_ldl_impl.hpp>
 
 #endif
