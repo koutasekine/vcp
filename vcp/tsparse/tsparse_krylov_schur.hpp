@@ -781,6 +781,34 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
     bool start_new_solve = true;
     bool pool_complete_at_start = false;
     bool declare_from_pool = false;
+    // ---- EIG-7 α/β(G-0.1 承認: additive route + per-solve cap)------------
+    // α: 確認ソルブ(pool_complete_at_start)中、prefix_ready に至らない解析でも
+    //    契約 C-2 の certainly 判定(共有 honest_termination の呼び出しのみ —
+    //    B-43)で confirm を評価する**追加**経路。prefix_ready == true の既存
+    //    経路は完全不変(G-0.1 c-2: fast-path 無改変)。最小走査(設計 §2.3):
+    //    全展開到達 + probe cycle 1 回経由 + 候補全景の evidence 輸出
+    //    (evidence は最終解析の final_cands から従来経路で輸出される)。
+    // β: 確認ソルブ 1 本あたりのリスタート上限(cap 到達で当該ソルブを放棄し
+    //    新しい pool 直交ソルブへ)。放棄→再試行ループは B-1 で必ず停止する:
+    //    各リスタートの展開は apply を >= 1 消費し、mv_count >= max_mv で
+    //    budget_exhausted 停止に到達するため(G-0.1 c-4 設計メモ)。
+    bool alpha_pending = false;               // α の probe cycle 待ち
+    std::size_t solve_start_restart = 0;      // 現在ソルブ開始時点の restart_count
+    // EIG-7 (iii)(G-0.1rev 裁定・r-1): α のエンゲージは「停滞」検知による。
+    // 進捗イベント :=
+    //   (E1) pool 追加(pool_slots の増加を外側検知 — 多重度コピー浮上を含む)
+    //   (E2) 確認ソルブ内の解析で target prefix の bound 収束ブロック数が
+    //        当該チェイス区間(pool 追加で区切る)の過去最大を更新
+    // stall = 最後の進捗イベントからのリスタート数。stall >= S' で α をエンゲージ。
+    // 実測(r-2): diagmult チェイス(浮上 33)の全域でイベント間隔 <= 15
+    // (E2 が 5〜8 リスタートごと・チェイスが構造的に α を遅延)。west 空転は
+    // rc=11 以降イベントゼロ。S' = 24 = 実測最大チェイス間隔 15 の 1.6 倍。
+    const std::size_t alpha_stall_engage = 24;
+    std::size_t stall_last_event_rc = 0;
+    std::size_t solve_max_prefix_conv = 0;
+    std::size_t solve_seen_pool_slots = 0;
+    const std::size_t confirm_solve_cap = 128; // β cap(G-0.1 の 8 は実測で健全多重度追跡と衝突 — 改訂承認待ち。健全最大 70 の ~2 倍)
+    std::size_t confirm_restarts_total = 0;   // 診断(累計 — B-44)
     R val_scale_seen = R(1);             // running max |Ritz value| (consistency scale)
 
     // final-analysis bookkeeping (exported on all exits)
@@ -816,6 +844,14 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
     while (true) {
         // ---- PHASE 0: (re)start a solve orthogonal to the pool ---------------
         if (start_new_solve) {
+            // EIG-7 β: 直前ソルブが確認ソルブなら消費リスタートを累計に計上
+            if (pool_complete_at_start)
+                confirm_restarts_total += restart_count - solve_start_restart;
+            solve_start_restart = restart_count;
+            alpha_pending = false;
+            stall_last_event_rc = restart_count;   // EIG-7 (iii): 停滞計測リセット
+            solve_max_prefix_conv = 0;
+            solve_seen_pool_slots = pool_slots;
             start_new_solve = false;
             V.clear();
             S.clear();
@@ -1804,7 +1840,91 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
             }
         } else if (!prefix_ready && pending_verification) {
             // verification analysis contradicted readiness: reset the protocol
-            pending_verification = false;
+            // EIG-7 α: additive route の probe cycle 待ち(alpha_pending)中は
+            // リセットしない(prefix_ready 経路の規律自体は不変)
+            if (!alpha_pending) pending_verification = false;
+        }
+
+        // ---- EIG-7 α(additive route; G-0.1 承認)---------------------------
+        // 確認ソルブ中で prefix が bound 収束に至らない解析でも、契約 C-2 の
+        // certainly 判定で confirm を評価する。prefix_ready == true の解析は
+        // 上の既存経路のみが処理し、本ブロックは一切関与しない(c-2)。
+        // 発動条件(最小走査 §2.3): (i) 全展開到達(M >= m_limit)、
+        // (ii) probe cycle 1 回経由(alpha_pending の 2 段階)。
+        // EIG-7 (iii): 進捗イベント追跡(確認ソルブのみ・fast-path 無編集の
+        // 読み取り検知。E1 = pool_slots 増加の外側検知 / E2 = prefix 転換数の
+        // チェイス区間内新最大)
+        if (pool_complete_at_start) {
+            if (pool_slots > solve_seen_pool_slots) {                    // E1
+                solve_seen_pool_slots = pool_slots;
+                stall_last_event_rc = restart_count;
+                solve_max_prefix_conv = 0;   // チェイス区切り
+            }
+            std::size_t nconv_pfx = 0;
+            for (std::size_t i = 0; i < prefix_blocks.size(); i++)
+                if (bconv[prefix_blocks[i]]) nconv_pfx++;
+            if (nconv_pfx > solve_max_prefix_conv) {                     // E2
+                solve_max_prefix_conv = nconv_pfx;
+                stall_last_event_rc = restart_count;
+            }
+        }
+        if (!declared_converged && !declare_from_pool && pool_complete_at_start
+            && !prefix_ready && have_final_analysis && M >= m_limit
+            && restart_count - stall_last_event_rc >= alpha_stall_engage) {
+            if (!alpha_pending) {
+                alpha_pending = true;
+                pending_verification = true;   // 次の展開に probe 折込(既存機構を使用)
+            } else {
+                // 候補全景(全ブロックの値 + bound 収束/被覆フラグ)を共有
+                // certainly 検査へ(比較は共有ヘルパの呼び出しのみ — B-43)。
+                // locked = pool(エントリ単位、複素対は im > 0 で 2 スロット)。
+                std::vector<R> ar3, ai3;
+                std::vector<bool> ac3;
+                for (std::size_t bi = 0; bi < nb; bi++) {
+                    const bool acct = bconv[bi] || covered[bi];
+                    ar3.push_back(vcp::tsparse_scalar::real_part(bre[bi]));
+                    ai3.push_back(vcp::tsparse_scalar::real_part(bim[bi]));
+                    ac3.push_back(acct);
+                    if (bsize[bi] == 2) {
+                        ar3.push_back(vcp::tsparse_scalar::real_part(bre[bi]));
+                        ai3.push_back(-vcp::tsparse_scalar::real_part(bim[bi]));
+                        ac3.push_back(acct);
+                    }
+                }
+                std::vector<R> pv3, pim3;
+                for (std::size_t i = 0; i < pool.size(); i++) {
+                    pv3.push_back(vcp::tsparse_scalar::real_part(pool[i].theta));
+                    pim3.push_back(pool[i].im);
+                }
+                bool c2_alpha;
+                if (allow_pairs) {
+                    c2_alpha = vcp::tsparse::honest_termination_check_complex_pairs_<R>(
+                        ar3, ai3, ac3, pv3, pim3, k_eff, target, shift_val);
+                } else {
+                    c2_alpha = vcp::tsparse::honest_termination_check_complex_<R>(
+                        ar3, ai3, ac3, pv3, k_eff, target, shift_val);
+                }
+                if (c2_alpha) {
+                    // certainly-inner な未収束候補が不存在: pool からの宣言へ。
+                    // 返却対の C-1 厳密再検査は従来の declare_from_pool 経路が行う。
+                    declare_from_pool = true;
+                    break;
+                }
+                // 不成立(certainly-inner が見えている): 従来どおり継続。
+                // 次の全展開解析で probe cycle からやり直す。
+                alpha_pending = false;
+                pending_verification = false;
+            }
+        }
+
+        // ---- EIG-7 β(per-solve cap; G-0.1 承認 cap=8)-----------------------
+        // 確認ソルブが cap を超えて空転する場合は当該ソルブを放棄し、新しい
+        // pool 直交ソルブで再試行する(正直さ不変・総予算 B-1 で必ず停止)。
+        if (!declared_converged && !declare_from_pool && pool_complete_at_start
+            && restart_count - solve_start_restart >= confirm_solve_cap) {
+            start_new_solve = true;
+            restart_count++;
+            continue;
         }
 
         if (budget_exhausted || mv_count >= max_mv) {
@@ -2096,6 +2216,10 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
     diag.matrix_vector_products = mv_count;
     result.matrix_vector_products = mv_count;
     result.iterations = restart_count;
+    // EIG-7 β(B-44): 最終ソルブが確認ソルブならその消費分も累計に含めて公開
+    if (pool_complete_at_start)
+        confirm_restarts_total += restart_count - solve_start_restart;
+    result.confirm_restarts = confirm_restarts_total;
 
     // evidence (exported on every n>0 && k>0 path)
     diag.c2_evidence.exported = true;

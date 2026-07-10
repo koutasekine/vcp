@@ -282,6 +282,12 @@ namespace vcp {
 		// pack 時磨きのみ。磨き solve は linear_solves に 1:1 計上済み。
 		// 分解は mv 通貨の対象外のため、利用者が観測できるよう正式公開する)。
 		std::size_t polish_factorizations;
+		// EIG-7 β(G-0.1 承認・B-44。末尾追加・既存フィールド無変更):
+		// KS 系経路の「確認ソルブ」(pool 完成後の pool 直交ソルブ)内で消費された
+		// リスタート数の**累計**(cap 到達で放棄されたソルブの分も含む)。
+		// 確認機構を持たない経路では常に 0。mv/solve の計上は従来どおり 1:1 で、
+		// 本フィールドは内訳診断のみ。
+		std::size_t confirm_restarts;
 
 		eig_result()
 			: eigenvalues(), eigenvalues_imag(), complex_pair_count(0),
@@ -301,7 +307,8 @@ namespace vcp {
 			  used_subspace_dim(0), inner_iterations(0), inner_failure_count(0),
 			  inner_residual_norm(real_type(0)), inner_failure_reason(),
 			  factorization_diagnostics(), factorization_zero_pivots(0),
-			  lambda_gate_products(0), polish_factorizations(0) {}
+			  lambda_gate_products(0), polish_factorizations(0),
+			  confirm_restarts(0) {}
 	};
 
 } // namespace vcp
