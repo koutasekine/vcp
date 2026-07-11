@@ -340,6 +340,88 @@ bool residual_acceptance_check_scaled_(
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// EIG-8 T-2 (D8-2、G-0.1 承認): 一般化 C-1 受理スケールの唯一の定義(B-48:
+// ローカル再実装禁止。ソルバー側での再定義は不可)。
+//
+//   scale(|θ|, ‖A‖_est, ‖B‖_est) = max(1 + |θ|, ‖A‖_est + |θ|·‖B‖_est)
+//
+// 一般化残差 r = ‖A x − θ B x‖ の後退安定床は ~eps·(‖A‖ + |θ|·‖B‖) であり、
+// 標準問題の改訂 scale と同じ由来。実装は標準ヘルパ c1_revised_scale_ の
+// 再利用で単一定義性を構造的に固定する。標準問題(B = I、‖B‖ 項なし)は
+// bnorm_est = 0 の特殊化として c1_revised_scale_ と bit 一致で退化する
+// (G-0.1 承認事項 c。d17b2ks_units t7 で bit 一致をテスト固定)。
+// ‖A‖_est・‖B‖_est は ‖·‖∞ の厳密値(dispatch 層規約と同一)を渡すこと。
+// ---------------------------------------------------------------------------
+template <class R>
+R c1_generalized_scale_(const R& theta_abs, const R& anorm_est, const R& bnorm_est)
+{
+	return c1_revised_scale_<R>(theta_abs, anorm_est + theta_abs * bnorm_est);
+}
+
+// 一般化最終 verdict ゲート用の受理(既存式 ∨ tol·scale — 緩和方向のみ。
+// 成功宣言側 = certified-≤、GT1 P1/B-16。interval では indeterminate が
+// 失敗側 = 正直な非収束に落ちる)。
+template <class R>
+bool residual_acceptance_check_generalized_scaled_(
+	const std::vector<R>& residuals_absolute,
+	const std::vector<R>& residuals_relative,
+	const R& tol,
+	const std::vector<R>& theta_abs,
+	const R& anorm_est,
+	const R& bnorm_est)
+{
+	const std::size_t m = residuals_absolute.size();
+	if (m == 0) return false;
+	if (residuals_relative.size() != m) return false;
+	if (theta_abs.size() != m) return false;
+	for (std::size_t i = 0; i < m; i++) {
+		const bool legacy = (residuals_absolute[i] <= tol) ||
+		                    (residuals_relative[i] <= tol);
+		const bool revised = (residuals_absolute[i]
+		    <= tol * c1_generalized_scale_<R>(theta_abs[i], anorm_est, bnorm_est));
+		if (!(legacy || revised)) return false;
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// EIG-8 R4(停止報告裁定 s-2、必須併設): 返却対の複製方向監査(検出のみ)。
+//
+// 幽霊複製(単純固有値の 2 重返却 — D8-1 欠陥の嘘クラス)の署名は「返却
+// ベクトル対の近平行(|cos| ≈ 1 − 方向誤差² ≈ 1 − 1e-12)」である。
+// 真の多重度コピー(直交系)や正当な非直交固有系(非正規・B≠I)の |cos| は
+// 1 − 1e-6 に達しない(κ(B) ~ 1e6 級の極端な系のみ誤検出し得るが、その場合も
+// demote-only = 正直 NONCONV 側 — 嘘には倒れない)。
+// 全対 Gram 検査(値グループ化より強い)。しきい値 1 − 1e-6 は幽霊署名
+// (1 − 1e-12)と正当対の両側に ~6 桁のマージン。
+// 比較は失敗側ゲート(GT1 P1: !(x < thr) — interval の不確定は検出側 =
+// demote 側に倒れる)。呼び出し側は検出時に converged=false へ降格するのみ
+// (間引き・自動修復は C-3 抵触で禁止 — 裁定 s-2)。
+// ---------------------------------------------------------------------------
+template <class T>
+bool returned_pair_duplicate_direction_found_(
+	const std::vector<std::vector<T> >& eigenvectors)
+{
+	typedef typename vcp::tsparse_scalar::real_type<T>::type R;
+	const R thr = R(1) - vcp::tsparse_scalar::decimal_power_negative<R>(6);
+	const std::size_t m = eigenvectors.size();
+	for (std::size_t i = 0; i < m; i++) {
+		const R ni = vcp::tsparse_scalar::real_norm_value(eigenvectors[i]);
+		if (!(ni > R(0))) continue;
+		for (std::size_t j = i + 1; j < m; j++) {
+			if (eigenvectors[j].size() != eigenvectors[i].size()) continue;
+			const R nj = vcp::tsparse_scalar::real_norm_value(eigenvectors[j]);
+			if (!(nj > R(0))) continue;
+			const R c = vcp::tsparse_scalar::abs_value(
+				vcp::tsparse_scalar::real_dot_value(eigenvectors[i], eigenvectors[j]))
+				/ (ni * nj);
+			if (!(c < thr)) return true;   // 失敗側ゲート(P1)
+		}
+	}
+	return false;
+}
+
 } // namespace tsparse
 } // namespace vcp
 

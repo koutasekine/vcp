@@ -634,15 +634,44 @@ bool pool_worst_key_pairs(
 
 } // namespace ks_detail
 
+// ---------------------------------------------------------------------------
+// EIG-8 T-1 (D8-1、G-0.1 承認): μ 面 opt-in の λ 形式 lock 併記ゲート。
+//
+// 既定(use_lambda_lock_gate = false)は従来挙動と完全同一(公開 ks/arnoldi
+// = λ 空間直接経路は無変更 — 凍結スイートで機械検証)。opt-in 時のみ、
+// μ 空間の**厳密**受理(再適用 μ 残差 ra ≤ tol ∨ rrel ≤ tol)の不合格時に、
+// 呼び出し側が渡す λ 空間ゲート(契約 C-1 の改訂 scale 受理式そのもの。
+// 共有ヘルパ再利用は呼び出し側 = spmats_eigs.hpp 側の責務)での受理を
+// OR 併記する。適用は実 1×1 ブロック(A1 = prefix 厳密検証)と実 pool 対
+// (A4 = pool 宣言再検査)のみ — 複素対(A2/A3)は P3/D3-2 踏襲で無接触。
+// 判定用 A·x(一般化は A·x と B·x)はゲート内で mv に 1:1 計上(B-24)し、
+// lambda_gate_products にも別建て計上する(EIG-6 (e-2) と同一規約)。
+// B-1(KS 系の厳密 mv ≤ max_iter)保全のため、残予算がゲート最大コスト 2
+// に満たない場合はゲートを評価しない(正直側 = 従来どおり不合格)。
+//
+// 背景(D-17b-2 KS 面、EIG-8 G-0.1 §3): 高条件数では再適用 μ 残差に
+// LU forward-error 床(~eps·κ·μ)が乗り、bound(bconv)が収束を示しても
+// 厳密 μ 検査が構造的に到達不能(bcsstk18_mock: ピン 3.5e-6 / 215 回全不合格、
+// genpencil_stiff_hh: ピン 5.8e-6 / 450 回全不合格 — いずれも予算全焼)。
+// λ 空間残差の床は後退安定性により ~eps·(‖A‖+|θ|‖B‖) で契約 C-1 は満たせる。
+// ---------------------------------------------------------------------------
+struct ks_lambda_lock_gate_none {
+    template <typename VEC, typename MU>
+    bool operator()(const VEC&, const MU&, std::size_t&) const { return false; }
+};
+
 // ===========================================================================
 // krylov_schur_eigs_with_diagnostics
 // ===========================================================================
-template <class Apply, class T>
+template <class Apply, class T, class LambdaLockGate = ks_lambda_lock_gate_none>
 krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
     const Apply& apply,
     std::size_t n,
     std::size_t k,
-    const vcp::eig_options<T>& options)
+    const vcp::eig_options<T>& options,
+    LambdaLockGate lambda_lock_gate = LambdaLockGate(),
+    const bool use_lambda_lock_gate = false,
+    std::size_t* lambda_gate_products = 0)
 {
     static_assert(!vcp::tsparse_scalar::is_complex<T>::value,
         "krylov_schur: complex scalar types are rejected (real general operators only)");
@@ -775,6 +804,18 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
     // excluded from the return prefix and the D3-2 veto (their subspace is
     // already returned as verified real pairs).
     const R cover_tol = vcp::tsparse_scalar::decimal_power_negative<R>(2);
+    // EIG-8 R10(停止報告裁定 s-1/s-2、B-47 スコープ拡張承認): λ 形式ゲートが
+    // 当該ランで発火した場合(= floor regime)、pool 追加の独立性しきい値を
+    // cover_tol 級(1e-2)へ引き上げる。根拠: tau_add=1e-6 の「新次元」認証は
+    // 入場ベクトルの方向誤差 ≪ tau_add(従来は A1 の厳密 μ 検査 ≤ tol が保証)
+    // を分解能前提とする。λ ゲート入場は方向誤差 ~LU 床(~1e-6)でこの前提を
+    // 破り、確認ソルブの再発見が rind ≈ tau_add 直上に浮いて幽霊 pool 入りする
+    // (実測: 幽霊 rind ≤ 1.75e-6 / 真の新次元 rind ≥ 0.866 — しきい値 1e-2 は
+    // 両側 4 桁マージン。凍結記録 = EIG-8 停止報告 §2/§4)。tol regime では
+    // フラグ false のまま = バイト同一。失敗モード(真の新次元が 1e-2 を下回る
+    // 極端な非直交系)は dependent 経路 → 値不整合 2 連続で正直 not_converged
+    // への降格(既存規約)— 嘘側には倒れない。
+    bool lambda_gate_engaged = false;
     const std::size_t k_eff = k;   // k already clamped to n
     std::size_t stable_confirms = 0;
     std::size_t dependent_block_solves = 0;
@@ -1516,7 +1557,16 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
                 lifted[i].v.swap(v);
                 lifted[i].res_abs = ra;
                 lifted[i].res_rel = rrel;
-                const bool acc = (ra <= tol) || (rrel <= tol);
+                bool acc = (ra <= tol) || (rrel <= tol);
+                // EIG-8 T-1 (A1): μ 厳密受理の不合格時のみ λ 形式ゲートを
+                // OR 併記(実 1×1 ブロック限定。ヘッダ先頭の設計コメント参照)。
+                if (!acc && use_lambda_lock_gate && mv_count + 2 <= max_mv) {
+                    const std::size_t mv_before = mv_count;
+                    acc = lambda_lock_gate(lifted[i].v, theta, mv_count);
+                    if (lambda_gate_products != 0)
+                        *lambda_gate_products += (mv_count - mv_before);
+                    if (acc) lambda_gate_engaged = true;   // EIG-8 R10: floor regime
+                }
                 if (!acc) {
                     all_pass = false;
                     bconv[bi] = false;
@@ -1754,9 +1804,14 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
                                 }
                                 rind2 = vcp::tsparse_scalar::real_norm_value(w2);
                             }
+                            // EIG-8 R10: floor regime(λ ゲート発火ラン)では
+                            // 独立性認証しきい値を cover_tol 級へ引き上げる
+                            // (ファイル先頭 R10 コメント参照。tol regime =
+                            // フラグ false では tau_add のままバイト同一)。
+                            const R tau_eff = lambda_gate_engaged ? cover_tol : tau_add;
                             const bool fresh_dir = is_pair
-                                ? (rind >= tau_add || rind2 >= tau_add || pool.empty())
-                                : (rind >= tau_add || pool.empty());
+                                ? (rind >= tau_eff || rind2 >= tau_eff || pool.empty())
+                                : (rind >= tau_eff || pool.empty());
                             if (fresh_dir) {
                                 pool_pair_t pp;
                                 pp.theta = bre[bi];
@@ -2179,7 +2234,16 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
                     rr[ii] = Av[ii] - pp.theta * pp.vec[ii];
                 const R ra = vcp::tsparse_scalar::real_norm_value(rr);
                 const R rrel = ra / (R(1) + abs_value(vcp::tsparse_scalar::real_part(pp.theta)));
-                if (!((ra <= tol) || (rrel <= tol))) { all_ok = false; break; }
+                // EIG-8 T-1 (A4): A1 と同じ λ 形式ゲートの OR 併記(実対のみ)。
+                bool acc4 = (ra <= tol) || (rrel <= tol);
+                if (!acc4 && use_lambda_lock_gate && mv_count + 2 <= max_mv) {
+                    const std::size_t mv_before = mv_count;
+                    acc4 = lambda_lock_gate(pp.vec, pp.theta, mv_count);
+                    if (lambda_gate_products != 0)
+                        *lambda_gate_products += (mv_count - mv_before);
+                    if (acc4) lambda_gate_engaged = true;   // EIG-8 R10: floor regime
+                }
+                if (!acc4) { all_ok = false; break; }
                 outp[i].v = pp.vec;
                 outp[i].res_abs = ra;
                 outp[i].res_rel = rrel;

@@ -864,8 +864,9 @@ static void lambda_c1_acceptance_gate_(eig_result<_T>& result,
 
 // EIG-4 T-4 (D4-4 / R-1): 標準問題用の改訂 scale 版(A x = λ x の si 経路)。
 // 受理は共有ヘルパ residual_acceptance_check_scaled_(既存式 ∨ tol·scale、
-// scale = max(1+|θ|, ‖A‖∞))。一般化経路(A x = λ B x)は残差の意味が異なる
-// ため従来ゲート(上)を維持する(緩和は標準経路のみ — 遷移許容集合 §3)。
+// scale = max(1+|θ|, ‖A‖∞))。
+// (旧注記「一般化経路は従来ゲート維持」は EIG-8 T-3/D8-3 で共有形へ置換 —
+//  下の 4 引数 overload。)
 template <typename _T, typename _Index>
 static void lambda_c1_acceptance_gate_(eig_result<_T>& result,
     const typename vcp::tsparse_scalar::real_type<_T>::type& tol,
@@ -881,6 +882,37 @@ static void lambda_c1_acceptance_gate_(eig_result<_T>& result,
     if (!vcp::tsparse::residual_acceptance_check_scaled_(
             result.residuals_absolute, result.residuals_relative, tol,
             theta_abs_c1, matrix_inf_norm_value_<_T,_Index>(A_for_scale))) {
+        result.converged = false;
+        result.status = "residual_check_failed";
+        result.failure_reason =
+            "end-of-run exact residual (lambda space) failed acceptance (C-1)";
+        result.message = result.failure_reason;
+    }
+}
+
+// EIG-8 T-3 (D8-3、停止報告裁定 s-3/s-4 の再位置づけ込み): 一般化問題用の
+// 共有 scale 版(A x = λ B x)。受理は D8-2 共有ヘルパ
+// residual_acceptance_check_generalized_scaled_(既存式 ∨ tol·max(1+|θ|,
+// ‖A‖∞ + |θ|·‖B‖∞))。既存式の rel 分岐は Frobenius 後退正規化
+// (generalized_eigenpair_relative_residual_norm_value_)を既に持つため、
+// 本置換の挙動遷移期待はゼロ — scale 定義の共有集約(契約整合の完成)である。
+template <typename _T, typename _Index>
+static void lambda_c1_acceptance_gate_(eig_result<_T>& result,
+    const typename vcp::tsparse_scalar::real_type<_T>::type& tol,
+    const spmats<_T,_Index>& A_for_scale,
+    const spmats<_T,_Index>& B_for_scale)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    if (!result.converged) return;
+    std::vector<scalar_real_type> theta_abs_c1;
+    theta_abs_c1.reserve(result.eigenvalues.size());
+    for (std::size_t i = 0; i < result.eigenvalues.size(); i++)
+        theta_abs_c1.push_back(vcp::tsparse_scalar::abs_value(
+            vcp::tsparse_scalar::real_part(result.eigenvalues[i])));
+    if (!vcp::tsparse::residual_acceptance_check_generalized_scaled_(
+            result.residuals_absolute, result.residuals_relative, tol,
+            theta_abs_c1, matrix_inf_norm_value_<_T,_Index>(A_for_scale),
+            matrix_inf_norm_value_<_T,_Index>(B_for_scale))) {
         result.converged = false;
         result.status = "residual_check_failed";
         result.failure_reason =
@@ -1036,8 +1068,10 @@ static void si_polish_rescue_standard_(eig_result<_T>& result,
     }
 }
 
-// 一般化問題用: 現行の scale なしゲート(lambda_c1_acceptance_gate_ の
-// 2 引数版と同一式)で再判定する。ゲートの統一・変更はしない(G-0.1 (v))。
+// 一般化問題用: EIG-8 T-3(D8-3、G-0.1 承認事項 d)— 再判定も最終ゲートと
+// 同一の D8-2 共有 scale 形に統一する(発火条件が共有形不合格である以上、
+// 再判定だけ旧形では非対称が残るため。EIG-6 G-0.1 (v) の「統一しない」判断は
+// D8-3 の統一タスク承認で上書き)。
 template <typename _T, typename _Index, class ApplyOp>
 static void si_polish_rescue_generalized_(eig_result<_T>& result,
                                           const spmats<_T,_Index>& self,
@@ -1045,14 +1079,22 @@ static void si_polish_rescue_generalized_(eig_result<_T>& result,
                                           const eig_options<_T>& options,
                                           ApplyOp& apply_si)
 {
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
     if (result.converged) return;
     if (result.status != "residual_check_failed") return;   // 発火条件(既存ゲート不合格のみ)
     spmats<_T,_Index> A = self.as_csr();
     spmats<_T,_Index> B_csr = B.as_csr();
     if (!si_polish_pairs_once_<_T,_Index>(result, A, &B_csr, options, apply_si))
         return;
-    if (vcp::tsparse::residual_acceptance_check_(
-            result.residuals_absolute, result.residuals_relative, options.tol)) {
+    std::vector<scalar_real_type> theta_abs_g;
+    theta_abs_g.reserve(result.eigenvalues.size());
+    for (std::size_t i = 0; i < result.eigenvalues.size(); i++)
+        theta_abs_g.push_back(vcp::tsparse_scalar::abs_value(
+            vcp::tsparse_scalar::real_part(result.eigenvalues[i])));
+    if (vcp::tsparse::residual_acceptance_check_generalized_scaled_(
+            result.residuals_absolute, result.residuals_relative, options.tol,
+            theta_abs_g, matrix_inf_norm_value_<_T,_Index>(A),
+            matrix_inf_norm_value_<_T,_Index>(B_csr))) {
         result.converged = true;
         result.status = "converged";
         result.failure_reason.clear();
@@ -1185,11 +1227,14 @@ struct ks_mu_pkg_ {
                    used_subspace_dim(0), has_complex(false), converged(false) {}
 };
 
-template <typename _T, class Apply>
+template <typename _T, class Apply, class LambdaLockGate>
 static ks_mu_pkg_<_T> ks_mu_core_drive_impl_(const std::size_t /*n*/, const std::size_t /*k*/,
                                              const eig_options<_T>& /*options*/,
                                              const typename vcp::tsparse_scalar::real_type<_T>::type& /*sigma*/,
                                              Apply& /*apply_si*/,
+                                             LambdaLockGate /*lambda_lock_gate*/,
+                                             const bool /*use_lambda_lock_gate*/,
+                                             std::size_t* /*lambda_gate_products*/,
                                              std::true_type /* is_complex */)
 {
     // Fence for complex instantiations (runtime dispatch never reaches here).
@@ -1198,11 +1243,14 @@ static ks_mu_pkg_<_T> ks_mu_core_drive_impl_(const std::size_t /*n*/, const std:
     return pkg;
 }
 
-template <typename _T, class Apply>
+template <typename _T, class Apply, class LambdaLockGate>
 static ks_mu_pkg_<_T> ks_mu_core_drive_impl_(const std::size_t n, const std::size_t k,
                                              const eig_options<_T>& options,
                                              const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
                                              Apply& apply_si,
+                                             LambdaLockGate lambda_lock_gate,
+                                             const bool use_lambda_lock_gate,
+                                             std::size_t* lambda_gate_products,
                                              std::false_type /* is_complex */)
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type R;
@@ -1213,9 +1261,12 @@ static ks_mu_pkg_<_T> ks_mu_core_drive_impl_(const std::size_t n, const std::siz
     mu_opts.use_shift = false;
     // options.max_iter passes through as the TOTAL inner-apply budget
     // (D-6 unification; the old max_iter*(k+1) restart expansion is deleted).
+    // EIG-8 T-1: μ 面 opt-in の λ 形式 lock ゲートを KS コアへ転送(既定は
+    // ks_lambda_lock_gate_none + false = 従来挙動バイト同一)。
     vcp::tsparse_experimental::krylov_schur_result<_T> d =
-        vcp::tsparse_experimental::krylov_schur_eigs_with_diagnostics<Apply, _T>(
-            apply_si, n, k, mu_opts);
+        vcp::tsparse_experimental::krylov_schur_eigs_with_diagnostics<Apply, _T, LambdaLockGate>(
+            apply_si, n, k, mu_opts,
+            lambda_lock_gate, use_lambda_lock_gate, lambda_gate_products);
 
     ks_mu_pkg_<_T> pkg;
     pkg.eigenvalues = d.eigs.eigenvalues;
@@ -1263,13 +1314,18 @@ static ks_mu_pkg_<_T> ks_mu_core_drive_impl_(const std::size_t n, const std::siz
     return pkg;
 }
 
-template <typename _T, class Apply>
+template <typename _T, class Apply,
+          class LambdaLockGate = vcp::tsparse_experimental::ks_lambda_lock_gate_none>
 static ks_mu_pkg_<_T> ks_mu_core_drive_(const std::size_t n, const std::size_t k,
                                         const eig_options<_T>& options,
                                         const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
-                                        Apply& apply_si)
+                                        Apply& apply_si,
+                                        LambdaLockGate lambda_lock_gate = LambdaLockGate(),
+                                        const bool use_lambda_lock_gate = false,
+                                        std::size_t* lambda_gate_products = 0)
 {
-    return ks_mu_core_drive_impl_<_T, Apply>(n, k, options, sigma, apply_si,
+    return ks_mu_core_drive_impl_<_T, Apply, LambdaLockGate>(n, k, options, sigma, apply_si,
+        lambda_lock_gate, use_lambda_lock_gate, lambda_gate_products,
         typename std::integral_constant<bool, spmatrix_is_complex<_T>::value>::type());
 }
 
@@ -1886,14 +1942,40 @@ static eig_result<_T> shift_invert_arnoldi_drive_(const spmats<_T,_Index>& self,
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
     spmats<_T,_Index> A = self.as_csr();
     const std::size_t n = static_cast<std::size_t>(self.rowsize());
+    // EIG-8 T-1 (e): μ 面 opt-in の λ 形式 lock ゲート(標準問題)。
+    // 契約 C-1 の改訂 scale 受理式そのもの(共有ヘルパ
+    // eigenpair_residual_norm_value_ / c1_revised_scale_ — e-1)。
+    // A·x は mv に 1:1 計上 + lambda_gate_products 別建て(e-2)。
+    // certified-≤(interval は不確定を失敗側へ)。
+    const scalar_real_type anorm_gate_ks = matrix_inf_norm_value_<_T,_Index>(A);
+    struct KsLambdaGate {
+        const spmats<_T,_Index>* A;
+        scalar_real_type anorm;
+        scalar_real_type tol;
+        scalar_real_type sigma;
+        bool operator()(const std::vector<_T>& x, const _T& mu, std::size_t& mv) const {
+            const scalar_real_type mu_re = vcp::tsparse_scalar::real_part(mu);
+            if (!(vcp::tsparse_scalar::abs_value(mu_re) > scalar_real_type(0))) return false;
+            const scalar_real_type lam = scalar_real_type(1) / mu_re + sigma;
+            const scalar_real_type r_abs =
+                eigenpair_residual_norm_value_<_T,_Index>(*A, _T(lam), x);
+            mv += 1;   // λ 判定の A·x 積(B-24: 1:1 計上)
+            const scalar_real_type scale = vcp::tsparse::c1_revised_scale_(
+                vcp::tsparse_scalar::abs_value(lam), anorm);
+            return r_abs <= tol * scale;
+        }
+    } ks_lambda_gate = { &A, anorm_gate_ks, options.tol, sigma };
+    std::size_t ks_lambda_gate_count = 0;
     // EIG-3 T-3: KS core in mu space (old arnoldi core + max_iter*(k+1)
     // expansion deleted; options.max_iter = total inner-apply budget)
     const ks_mu_pkg_<_T> pkg =
-        ks_mu_core_drive_<_T>(n, k, options, sigma, apply_si);
+        ks_mu_core_drive_<_T>(n, k, options, sigma, apply_si,
+                              ks_lambda_gate, true, &ks_lambda_gate_count);
     const std::size_t sdim = pkg.used_subspace_dim;
     eig_result<_T> result;
     result.requested_count = k;
     result.method = eig_solver_method::shift_invert_arnoldi;
+    result.lambda_gate_products = ks_lambda_gate_count;   // (e-2) 別建て計上
     result.used_method = eig_method_to_string_<_T,_Index>(eig_solver_method::shift_invert_arnoldi);
     result.used_orthogonalization = orthogonalization_to_string_<_T,_Index>(options.orthogonalization);
     result.iterations = pkg.iterations;
@@ -1923,7 +2005,18 @@ static eig_result<_T> shift_invert_arnoldi_drive_(const spmats<_T,_Index>& self,
         result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
         result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
     }
-    pkg_converged = pkg.converged;
+    // EIG-8 R4(裁定 s-2・必須併設): 返却対の複製方向監査(demote-only)。
+    // λ ゲート発火ラン限定(tol regime は無評価 = 挙動不変)。検出時は正直
+    // not_converged へ降格するのみ(間引き・自動修復は C-3 抵触で禁止)。
+    if (pkg.converged && ks_lambda_gate_count > 0 &&
+        vcp::tsparse::returned_pair_duplicate_direction_found_<_T>(result.eigenvectors)) {
+        if (result.failure_reason.empty())
+            result.failure_reason = "duplicate direction among returned pairs "
+                "(ghost-copy audit, EIG-8 R4): honest not_converged";
+        pkg_converged = false;
+    } else {
+        pkg_converged = pkg.converged;
+    }
     return result;
 }
 
@@ -1950,10 +2043,37 @@ static eig_result<_T> generalized_shift_invert_drive_(const spmats<_T,_Index>& s
         void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { op->apply(x, y); }
     } apply_fn = { &op };
 
+    // EIG-8 T-1 (e): μ 面 opt-in の λ 形式 lock ゲート(一般化 A x = λ B x)。
+    // 受理は D8-2 の共有ヘルパ(c1_generalized_scale_ — B-48)による
+    // r = ‖Ax − λBx‖ ≤ tol·max(1+|λ|, ‖A‖∞ + |λ|·‖B‖∞)。
+    // A·x と B·x はゲート内で mv に 1:1 計上(B-24)+ 別建て(e-2)。
+    const scalar_real_type anorm_gate_ks = matrix_inf_norm_value_<_T,_Index>(self);
+    const scalar_real_type bnorm_gate_ks = matrix_inf_norm_value_<_T,_Index>(B);
+    struct KsGenLambdaGate {
+        const spmats<_T,_Index>* A;
+        const spmats<_T,_Index>* Bm;
+        scalar_real_type anorm;
+        scalar_real_type bnorm;
+        scalar_real_type tol;
+        scalar_real_type sigma;
+        bool operator()(const std::vector<_T>& x, const _T& mu, std::size_t& mv) const {
+            const scalar_real_type mu_re = vcp::tsparse_scalar::real_part(mu);
+            if (!(vcp::tsparse_scalar::abs_value(mu_re) > scalar_real_type(0))) return false;
+            const scalar_real_type lam = scalar_real_type(1) / mu_re + sigma;
+            const scalar_real_type r_abs =
+                generalized_eigenpair_residual_norm_value_<_T,_Index>(*A, *Bm, _T(lam), x);
+            mv += 2;   // λ 判定の A·x と B·x(B-24: 1:1 計上)
+            const scalar_real_type scale = vcp::tsparse::c1_generalized_scale_(
+                vcp::tsparse_scalar::abs_value(lam), anorm, bnorm);
+            return r_abs <= tol * scale;   // certified-≤(interval は失敗側へ)
+        }
+    } ks_lambda_gate = { &self, &B, anorm_gate_ks, bnorm_gate_ks, options.tol, sigma };
+    std::size_t ks_lambda_gate_count = 0;
     // EIG-3 T-3: KS core in mu space (old arnoldi core + max_iter*(k+1)
     // expansion deleted; options.max_iter = total inner-apply budget)
     const ks_mu_pkg_<_T> pkg =
-        ks_mu_core_drive_<_T>(n, k, options, sigma, apply_fn);
+        ks_mu_core_drive_<_T>(n, k, options, sigma, apply_fn,
+                              ks_lambda_gate, true, &ks_lambda_gate_count);
     const std::size_t sdim = pkg.used_subspace_dim;
 
     std::vector<_T> eigenvalues = pkg.eigenvalues;
@@ -1973,6 +2093,7 @@ static eig_result<_T> generalized_shift_invert_drive_(const spmats<_T,_Index>& s
     result.used_orthogonalization = orthogonalization_to_string_<_T,_Index>(options.orthogonalization);
     result.iterations = pkg.iterations;
     result.matrix_vector_products = pkg.mv_count;
+    result.lambda_gate_products = ks_lambda_gate_count;   // (e-2) 別建て計上
     result.linear_solves = op.linear_solves();
     result.inner_iterations = op.inner_iterations();
     result.inner_failure_count = op.inner_failure_count();
@@ -2005,7 +2126,17 @@ static eig_result<_T> generalized_shift_invert_drive_(const spmats<_T,_Index>& s
                 pkg.complex_eigenvalues[i].second));
     }
 
-    pkg_converged = pkg.converged;
+    // EIG-8 R4(裁定 s-2・必須併設): 返却対の複製方向監査(demote-only、
+    // λ ゲート発火ラン限定 — 標準面 back half #2 と同一規約)。
+    if (pkg.converged && ks_lambda_gate_count > 0 &&
+        vcp::tsparse::returned_pair_duplicate_direction_found_<_T>(result.eigenvectors)) {
+        if (result.failure_reason.empty())
+            result.failure_reason = "duplicate direction among returned pairs "
+                "(ghost-copy audit, EIG-8 R4): honest not_converged";
+        pkg_converged = false;
+    } else {
+        pkg_converged = pkg.converged;
+    }
     has_complex = pkg.has_complex;
     return result;
 }
@@ -2209,7 +2340,9 @@ generalized_shift_invert_sparse_lu_(const spmats<_T,_Index>& self,
     // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
     // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
     // Lambda-space C-1 remains the final acceptance gate.
-    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
+    // EIG-8 T-3 (D8-3): 一般化は D8-2 共有 scale 版(挙動遷移期待ゼロ —
+    // 既存 rel 分岐が Frobenius 後退正規化を内包。契約整合の完成)。
+    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self, B);
     // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
     {
         struct ApplyPolish {
@@ -3020,7 +3153,9 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_(const spmats<_T,_In
     // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
     // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
     // Lambda-space C-1 remains the final acceptance gate.
-    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
+    // EIG-8 T-3 (D8-3): 一般化は D8-2 共有 scale 版(挙動遷移期待ゼロ —
+    // 既存 rel 分岐が Frobenius 後退正規化を内包。契約整合の完成)。
+    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self, B);
     // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
     {
         struct ApplyPolish {
@@ -3422,10 +3557,32 @@ static eig_result<_T> shift_invert_arnoldi_eigs_with_prec_(
                    &inner_iteration_count, &inner_residual_norm,
                    &prec_failure_reason };
 
+    // EIG-8 T-1 (e): μ 面 opt-in の λ 形式 lock ゲート(標準問題。
+    // shift_invert_arnoldi_drive_ と同一式 — 共有ヘルパ e-1、mv 1:1 e-2)。
+    const scalar_real_type anorm_gate_ks = matrix_inf_norm_value_<_T,_Index>(A);
+    struct KsLambdaGateP {
+        const spmats<_T,_Index>* A;
+        scalar_real_type anorm;
+        scalar_real_type tol;
+        scalar_real_type sigma;
+        bool operator()(const std::vector<_T>& x, const _T& mu, std::size_t& mv) const {
+            const scalar_real_type mu_re = vcp::tsparse_scalar::real_part(mu);
+            if (!(vcp::tsparse_scalar::abs_value(mu_re) > scalar_real_type(0))) return false;
+            const scalar_real_type lam = scalar_real_type(1) / mu_re + sigma;
+            const scalar_real_type r_abs =
+                eigenpair_residual_norm_value_<_T,_Index>(*A, _T(lam), x);
+            mv += 1;
+            const scalar_real_type scale = vcp::tsparse::c1_revised_scale_(
+                vcp::tsparse_scalar::abs_value(lam), anorm);
+            return r_abs <= tol * scale;
+        }
+    } ks_lambda_gate = { &A, anorm_gate_ks, options.tol, sigma };
+    std::size_t ks_lambda_gate_count = 0;
     // EIG-3 T-3: KS core in mu space (old arnoldi core + max_iter*(k+1)
     // expansion deleted; options.max_iter = total inner-apply budget)
     const ks_mu_pkg_<_T> pkg =
-        ks_mu_core_drive_<_T>(n, k, options, sigma, apply_si);
+        ks_mu_core_drive_<_T>(n, k, options, sigma, apply_si,
+                              ks_lambda_gate, true, &ks_lambda_gate_count);
     const std::size_t sdim = pkg.used_subspace_dim;
 
     eig_result<_T> result;
@@ -3435,6 +3592,7 @@ static eig_result<_T> shift_invert_arnoldi_eigs_with_prec_(
     result.used_orthogonalization = orthogonalization_to_string_<_T,_Index>(options.orthogonalization);
     result.iterations = pkg.iterations;
     result.matrix_vector_products = pkg.mv_count;
+    result.lambda_gate_products = ks_lambda_gate_count;   // (e-2) 別建て計上
     result.linear_solves = linear_solve_count;
     result.inner_iterations = inner_iteration_count;
     result.inner_failure_count = inner_failure_count;
@@ -3474,6 +3632,15 @@ static eig_result<_T> shift_invert_arnoldi_eigs_with_prec_(
         result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
     }
     result.converged = pkg.converged && result.eigenvalues.size() >= k;
+    // EIG-8 R4(裁定 s-2・必須併設): 返却対の複製方向監査(demote-only、
+    // λ ゲート発火ラン限定)。
+    if (result.converged && ks_lambda_gate_count > 0 &&
+        vcp::tsparse::returned_pair_duplicate_direction_found_<_T>(result.eigenvectors)) {
+        result.converged = false;
+        if (result.failure_reason.empty())
+            result.failure_reason = "duplicate direction among returned pairs "
+                "(ghost-copy audit, EIG-8 R4): honest not_converged";
+    }
     if (result.converged) {
         result.status = "converged";
         result.message = "converged";
@@ -3606,10 +3773,35 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
                     &inner_iteration_count, &inner_residual_norm,
                     &prec_failure_reason };
 
+    // EIG-8 T-1 (e): μ 面 opt-in の λ 形式 lock ゲート(一般化。
+    // generalized_shift_invert_drive_ と同一式 — D8-2 共有ヘルパ、B-48)。
+    const scalar_real_type anorm_gate_ks = matrix_inf_norm_value_<_T,_Index>(self);
+    const scalar_real_type bnorm_gate_ks = matrix_inf_norm_value_<_T,_Index>(B);
+    struct KsGenLambdaGateP {
+        const spmats<_T,_Index>* A;
+        const spmats<_T,_Index>* Bm;
+        scalar_real_type anorm;
+        scalar_real_type bnorm;
+        scalar_real_type tol;
+        scalar_real_type sigma;
+        bool operator()(const std::vector<_T>& x, const _T& mu, std::size_t& mv) const {
+            const scalar_real_type mu_re = vcp::tsparse_scalar::real_part(mu);
+            if (!(vcp::tsparse_scalar::abs_value(mu_re) > scalar_real_type(0))) return false;
+            const scalar_real_type lam = scalar_real_type(1) / mu_re + sigma;
+            const scalar_real_type r_abs =
+                generalized_eigenpair_residual_norm_value_<_T,_Index>(*A, *Bm, _T(lam), x);
+            mv += 2;   // λ 判定の A·x と B·x(B-24: 1:1 計上)
+            const scalar_real_type scale = vcp::tsparse::c1_generalized_scale_(
+                vcp::tsparse_scalar::abs_value(lam), anorm, bnorm);
+            return r_abs <= tol * scale;
+        }
+    } ks_lambda_gate = { &self, &B, anorm_gate_ks, bnorm_gate_ks, options.tol, sigma };
+    std::size_t ks_lambda_gate_count = 0;
     // EIG-3 T-3: KS core in mu space (old arnoldi core + max_iter*(k+1)
     // expansion deleted; options.max_iter = total inner-apply budget)
     const ks_mu_pkg_<_T> pkg =
-        ks_mu_core_drive_<_T>(n, k, options, sigma, apply_gsi);
+        ks_mu_core_drive_<_T>(n, k, options, sigma, apply_gsi,
+                              ks_lambda_gate, true, &ks_lambda_gate_count);
     const std::size_t sdim = pkg.used_subspace_dim;
 
     std::vector<_T> eigenvalues = pkg.eigenvalues;
@@ -3626,6 +3818,7 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
     result.used_orthogonalization = orthogonalization_to_string_<_T,_Index>(options.orthogonalization);
     result.iterations = pkg.iterations;
     result.matrix_vector_products = pkg.mv_count;
+    result.lambda_gate_products = ks_lambda_gate_count;   // (e-2) 別建て計上
     result.linear_solves = linear_solve_count;
     result.inner_iterations = inner_iteration_count;
     result.inner_failure_count = inner_failure_count;
@@ -3675,6 +3868,15 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
     const bool has_complex = pkg.has_complex;
     const bool inner_ok = (inner_failure_count == 0);
     result.converged = pkg.converged && !has_complex && (result.eigenvalues.size() >= k) && inner_ok;
+    // EIG-8 R4(裁定 s-2・必須併設): 返却対の複製方向監査(demote-only、
+    // λ ゲート発火ラン限定)。
+    if (result.converged && ks_lambda_gate_count > 0 &&
+        vcp::tsparse::returned_pair_duplicate_direction_found_<_T>(result.eigenvectors)) {
+        result.converged = false;
+        if (result.failure_reason.empty())
+            result.failure_reason = "duplicate direction among returned pairs "
+                "(ghost-copy audit, EIG-8 R4): honest not_converged";
+    }
 
     if (has_complex) {
         result.status = "complex_ritz_values";
@@ -3689,7 +3891,9 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
     // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
     // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
     // Lambda-space C-1 remains the final acceptance gate.
-    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol);
+    // EIG-8 T-3 (D8-3): 一般化は D8-2 共有 scale 版(挙動遷移期待ゼロ —
+    // 既存 rel 分岐が Frobenius 後退正規化を内包。契約整合の完成)。
+    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self, B);
     // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
     si_polish_rescue_generalized_<_T,_Index>(result, self, B, options, apply_gsi);
     result.linear_solves = linear_solve_count;
