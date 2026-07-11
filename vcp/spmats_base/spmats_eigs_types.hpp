@@ -288,6 +288,12 @@ namespace vcp {
 		// 確認機構を持たない経路では常に 0。mv/solve の計上は従来どおり 1:1 で、
 		// 本フィールドは内訳診断のみ。
 		std::size_t confirm_restarts;
+		// EIG-10 案 (b)(G-0.1 承認・(c-1) 改訂。末尾追加・既存フィールド無変更):
+		// si_lanczos back-half の D-17d 委譲(KS μ コアへの残予算 1 回委譲)が
+		// 消費した matrix-vector 積の別建て計上(matrix_vector_products にも
+		// 1:1 で含まれる — B-38)。0 = 委譲不発火(休眠)。委譲を試行したが
+		// 不採用(all-or-nothing で元の正直結果を返却)の場合も消費分を記録する。
+		std::size_t ks_rescue_products;
 
 		eig_result()
 			: eigenvalues(), eigenvalues_imag(), complex_pair_count(0),
@@ -308,7 +314,7 @@ namespace vcp {
 			  inner_residual_norm(real_type(0)), inner_failure_reason(),
 			  factorization_diagnostics(), factorization_zero_pivots(0),
 			  lambda_gate_products(0), polish_factorizations(0),
-			  confirm_restarts(0) {}
+			  confirm_restarts(0), ks_rescue_products(0) {}
 	};
 
 } // namespace vcp

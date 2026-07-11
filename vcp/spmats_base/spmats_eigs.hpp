@@ -1859,6 +1859,15 @@ static eig_result<_T> complex_standard_eigs_with_info_(const spmats<_T,_Index>& 
 // ---------------------------------------------------------------------------
 
 // --- back half #1: standard shift-invert Lanczos --------------------------
+// EIG-10 D-17d 委譲用の前方宣言(back half #2 は本ファイル後方で定義)
+template <typename _T, typename _Index, class Apply>
+static eig_result<_T> shift_invert_arnoldi_drive_(const spmats<_T,_Index>& self,
+                                                    const std::size_t k,
+                                                    const eig_options<_T>& options,
+                                                    const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
+                                                    Apply& apply_si,
+                                                    bool& pkg_converged);
+
 template <typename _T, typename _Index, class Apply>
 static eig_result<_T> shift_invert_lanczos_drive_(const spmats<_T,_Index>& self,
                                                     const std::size_t k,
@@ -1927,6 +1936,117 @@ static eig_result<_T> shift_invert_lanczos_drive_(const spmats<_T,_Index>& self,
     // legacy ilu0_gmres の両フロントを被覆(linear_solves はフロント側が
     // apply 内カウンタ / op から再同期するため磨き分も自動計上される)。
     si_polish_rescue_standard_<_T,_Index>(result, self, options, apply_si);
+    // -----------------------------------------------------------------------
+    // EIG-10 D-17d 委譲(G-0.1 承認 案 (b)・(c-1) 改訂・additive route)。
+    //
+    // 発火署名(すべて既存フィールドの読み取りのみ・新定数ゼロ):
+    //   現行パイプライン(μ コア → C-1 λ 空間最終ゲート → F-1 磨き)が
+    //   完全失敗(status == residual_check_failed)し、かつ残予算がある場合のみ。
+    //   凍結スイートに本署名で終わる si_lanczos セルは存在しない(G-0.1 §8)
+    //   ため、既存挙動はビット不変(休眠は構造的 — G-2.3 で全数機械証明)。
+    //
+    // 機構(D-17d): μ 空間絶対 lock 基準(r_μ ≤ tol)は |μ| ≪ 1 で分解能
+    // 不正直(過受理)となり、core は honest termination で予算 ~1% の時点で
+    // converged 終了 → C-1 が正直棄却 → 再入機構不在で残予算 99% が死蔵される。
+    // 委譲先の KS μ コアは同条件の縮退多重度を予算内で完全発見できることが
+    // 実証済み(EIG-10 Phase 0 §5)。
+    //
+    // 規律:
+    //  - 1 回限り・決定的(乱数なし・ループ禁止)。
+    //  - all-or-nothing((c-1)): 委譲結果が「全ゲート合格の converged ∧
+    //    返却全対実 ∧ 複製方向なし(R4 と同一ヘルパ)」の場合のみ丸ごと採用。
+    //    それ以外は元の正直結果をそのまま返す(対集合の混合・部分採用禁止)。
+    //  - allow_complex_pairs=true の内部指定は「過渡複素窓の通過許可」であって
+    //    「複素対の返却許可」ではない: FP 丸め非対称の対称宣言行列で KS が
+    //    D3-2 の正直拒否により空振りするのを防ぐためのみ。複素対を含む委譲
+    //    結果は全実ガードが不採用に倒すため、structure=symmetric の呼び出しに
+    //    複素対が漏れる経路は構造的に存在しない。
+    //  - mv は採否に依らず実消費を 1:1 計上(B-38)し、ks_rescue_products に
+    //    別建て記録((c-2) の恒等式 mv_total == si 分 + 委譲分)。KS コアは
+    //    mv ≤ 残予算を厳守するため mv_total ≤ max_iter(B-1)。
+    //    linear_solves はフロントが op カウンタから再同期(磨きと同じ経路)。
+    // -----------------------------------------------------------------------
+    if (!result.converged
+        && result.status == "residual_check_failed"
+        && options.max_iter > result.matrix_vector_products) {
+        eig_options<_T> ks_opts = options;
+        ks_opts.max_iter = options.max_iter - result.matrix_vector_products;
+        ks_opts.allow_complex_pairs = true;   // 過渡複素窓の通過許可(上記規律)
+        bool ks_conv = false;
+        eig_result<_T> alt = shift_invert_arnoldi_drive_<_T,_Index>(
+            self, k, ks_opts, sigma, apply_si, ks_conv);
+        alt.converged = ks_conv && alt.eigenvalues.size() >= k;
+        // 帰結配線は E-A1 arnoldi front と同一(B-43 再利用): C-1 改訂 scale
+        // 最終ゲート → F-1 条件付き磨き(不合格時のみ発火・same-helper。
+        // 磨き solve は apply_si 経由 = ls はフロント再同期で自動整合、
+        // mv は helper 内で 1:1 計上され下の rescue 合算に含まれる)。
+        lambda_c1_acceptance_gate_<_T,_Index>(alt, options.tol, self);
+        si_polish_rescue_standard_<_T,_Index>(alt, self, ks_opts, apply_si);
+        result.ks_rescue_products = alt.matrix_vector_products;
+        result.matrix_vector_products += alt.matrix_vector_products;
+        result.lambda_gate_products += alt.lambda_gate_products;
+        if (alt.converged && si_polish_returned_pairs_all_real_<_T,_Index>(alt)) {
+            // 採用前の基底整形: 返却集合の MGS 直交正規化(2 パス)。縮退固有
+            // 空間の基底の向きを整えるだけで、対集合の混合・部分採用ではない
+            // ((c-1) の all-or-nothing は集合単位で維持)。整形後に残差を
+            // 再計算し、最終ゲートと同一の受理式で全対を再判定してから採用する
+            // (整形で品質が立たない場合・基底が退化する場合は丸ごと不採用)。
+            typedef typename vcp::tsparse_scalar::real_type<_T>::type R__;
+            std::vector<std::vector<_T> > ortho = alt.eigenvectors;
+            bool ortho_ok = (ortho.size() == alt.eigenvalues.size()) && !ortho.empty();
+            for (std::size_t i = 0; ortho_ok && i < ortho.size(); i++) {
+                for (int pass = 0; pass < 2; pass++) {
+                    for (std::size_t j = 0; j < i; j++) {
+                        const R__ c = vcp::tsparse_scalar::real_dot_value(ortho[j], ortho[i]);
+                        for (std::size_t t = 0; t < ortho[i].size(); t++)
+                            ortho[i][t] -= _T(c) * ortho[j][t];
+                    }
+                }
+                const R__ nv = vcp::tsparse_scalar::real_norm_value(ortho[i]);
+                if (!(nv > R__(0))) { ortho_ok = false; break; }   // certified > 0 のみ採用側
+                for (std::size_t t = 0; t < ortho[i].size(); t++)
+                    ortho[i][t] = ortho[i][t] / _T(nv);
+            }
+            if (ortho_ok) {
+                std::vector<R__> res_abs_o = eigenpair_residuals_<_T,_Index>(
+                    A_for_gate, alt.eigenvalues, ortho);
+                std::vector<R__> res_rel_o = eigenpair_relative_residuals_<_T,_Index>(
+                    A_for_gate, alt.eigenvalues, ortho);
+                std::vector<R__> theta_abs_o;
+                theta_abs_o.reserve(alt.eigenvalues.size());
+                for (std::size_t i = 0; i < alt.eigenvalues.size(); i++)
+                    theta_abs_o.push_back(vcp::tsparse_scalar::abs_value(
+                        vcp::tsparse_scalar::real_part(alt.eigenvalues[i])));
+                if (vcp::tsparse::residual_acceptance_check_scaled_(
+                        res_abs_o, res_rel_o, options.tol, theta_abs_o, anorm_gate)
+                    && !vcp::tsparse::returned_pair_duplicate_direction_found_<_T>(ortho)) {
+                    result.eigenvalues          = alt.eigenvalues;
+                    result.eigenvalues_imag     = alt.eigenvalues_imag;
+                    result.complex_pair_count   = alt.complex_pair_count;
+                    result.complex_eigenvalues  = alt.complex_eigenvalues;
+                    result.eigenvectors         = ortho;
+                    result.residuals_absolute   = res_abs_o;
+                    result.residuals_relative   = res_rel_o;
+                    if (!res_abs_o.empty()) {
+                        result.residual_norm_absolute = *std::max_element(
+                            res_abs_o.begin(), res_abs_o.end());
+                    }
+                    result.converged        = true;
+                    result.converged_count  = alt.converged_count;
+                    result.status           = "converged";
+                    result.failure_reason.clear();
+                    result.breakdown_reason.clear();
+                    result.message = "converged (D-17d rescue: ks_mu_core delegation; EIG-10)";
+                    result.iterations += alt.iterations;
+                    // method / used_method / used_subspace_dim は公開面
+                    // (shift_invert_lanczos)のまま(G-0.1 §6.1: enum・文字列追加なし)。
+                    populate_real_complex_eigenvalues_<_T,_Index>(result);
+                    set_result_counts_<_T,_Index>(result, k);
+                }
+            }
+        }
+        // 不採用: 元の正直結果を維持(値・status 不変。消費計上のみ反映済み)。
+    }
     return result;
 }
 
