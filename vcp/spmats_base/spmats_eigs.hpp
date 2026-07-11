@@ -3574,7 +3574,132 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
     }
     // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
     si_polish_rescue_standard_<_T,_Index>(result, self, options, apply_si);
+    // -----------------------------------------------------------------------
+    // EIG-10.1 D-17d-wp 委譲(G-0.1/G-1.1 承認・EIG-10 D-17d ブロックの
+    // 逐語鏡映・additive route)。
+    //
+    // 発火署名は EIG-10 と同一(既存フィールドの読み取りのみ・新定数ゼロ):
+    //   !converged ∧ status == residual_check_failed ∧ 残予算 > 0。
+    //   inner_solve_failed / preconditioner_failed は署名不一致 = 構造休眠。
+    //   凍結スイートに preconditioner オーバーロード呼び出しは存在しない
+    //   (EIG-10.1 G-0.1 §4)ため既存挙動はビット不変。
+    //
+    // 委譲先は plain 面と同じ shift_invert_arnoldi_drive_(same-helper)に
+    // **wp 既存の apply_si(内側 GMRES+前処理 closure)をそのまま渡す**。
+    // 前処理オブジェクトの引き回しは closure 経由で暗黙に実現され、委譲先の
+    // 意味論は不変(G-0.1 承認 2)。plain 面との正直な差異: 内側解が実質
+    // 厳密な族(diag 族)のみ委譲が採用に至り、mock/rpp6c 級は内側 GMRES
+    // 精度により C-1 正直棄却 → all-or-nothing 不採用(値・status 不変・
+    // 消費のみ計上 = EIG-10 mixed/interval と同じ受理済みクラス)。
+    //
+    // 規律((c-1) 全継承):
+    //  - 1 回限り・決定的(乱数なし・ループ禁止)。
+    //  - all-or-nothing: 委譲結果が「全ゲート合格の converged ∧ 返却全対実 ∧
+    //    複製方向なし(R4 と同一ヘルパ)」の場合のみ丸ごと採用。それ以外は
+    //    元の正直結果をそのまま返す(対集合の混合・部分採用禁止)。
+    //  - allow_complex_pairs=true の内部指定は「過渡複素窓の通過許可」であって
+    //    「複素対の返却許可」ではない(全実ガードにより structure=symmetric
+    //    呼び出しへ複素対が漏れる経路は構造的に不存在)。
+    //  - mv は採否に依らず実消費を 1:1 計上(B-38)し ks_rescue_products に
+    //    別建て記録。KS コアは mv ≤ 残予算を厳守するため mv_total ≤ max_iter
+    //    (B-1)。
+    //  - wp 会計 (i)(G-0.1 裁定・恒等式維持の必須要件): ls /
+    //    inner_iterations / inner_residual_norm / inner_failure_count は
+    //    ブロック末尾で共有カウンタから 1:1 再同期(委譲・磨きの内側消費を
+    //    含む物理量)。
+    //  - wp 会計 (ii)(G-0.1 裁定): 不採用時は status=rcf のまま消費のみ
+    //    反映。診断組合せ「status==residual_check_failed ∧
+    //    inner_failure_count > 0」は「委譲を試みたが内側精度で正直に不採用」
+    //    の意味(嘘ではない — 採用は C-1 再ゲート合格のみが通す)。
+    // -----------------------------------------------------------------------
+    if (!result.converged
+        && result.status == "residual_check_failed"
+        && options.max_iter > result.matrix_vector_products) {
+        eig_options<_T> ks_opts = options;
+        ks_opts.max_iter = options.max_iter - result.matrix_vector_products;
+        ks_opts.allow_complex_pairs = true;   // 過渡複素窓の通過許可(上記規律)
+        bool ks_conv = false;
+        eig_result<_T> alt = shift_invert_arnoldi_drive_<_T,_Index>(
+            self, k, ks_opts, sigma, apply_si, ks_conv);
+        alt.converged = ks_conv && alt.eigenvalues.size() >= k;
+        // 帰結配線は EIG-10 ブロックと同一(B-43 再利用): C-1 改訂 scale
+        // 最終ゲート → F-1 条件付き磨き(不合格時のみ発火・same-helper。
+        // 磨き solve は apply_si 経由 = 内側カウンタへ自動計上、mv は helper
+        // 内で 1:1 計上され下の rescue 合算に含まれる)。
+        lambda_c1_acceptance_gate_<_T,_Index>(alt, options.tol, self);
+        si_polish_rescue_standard_<_T,_Index>(alt, self, ks_opts, apply_si);
+        result.ks_rescue_products = alt.matrix_vector_products;
+        result.matrix_vector_products += alt.matrix_vector_products;
+        result.lambda_gate_products += alt.lambda_gate_products;
+        if (alt.converged && si_polish_returned_pairs_all_real_<_T,_Index>(alt)) {
+            // 採用前の基底整形: 返却集合の MGS 直交正規化(2 パス)。縮退固有
+            // 空間の基底の向きを整えるだけで、対集合の混合・部分採用ではない
+            // ((c-1) の all-or-nothing は集合単位で維持)。整形後に残差を
+            // 再計算し、最終ゲートと同一の受理式で全対を再判定してから採用する
+            // (整形で品質が立たない場合・基底が退化する場合は丸ごと不採用)。
+            typedef typename vcp::tsparse_scalar::real_type<_T>::type R__;
+            std::vector<std::vector<_T> > ortho = alt.eigenvectors;
+            bool ortho_ok = (ortho.size() == alt.eigenvalues.size()) && !ortho.empty();
+            for (std::size_t i = 0; ortho_ok && i < ortho.size(); i++) {
+                for (int pass = 0; pass < 2; pass++) {
+                    for (std::size_t j = 0; j < i; j++) {
+                        const R__ c = vcp::tsparse_scalar::real_dot_value(ortho[j], ortho[i]);
+                        for (std::size_t t = 0; t < ortho[i].size(); t++)
+                            ortho[i][t] -= _T(c) * ortho[j][t];
+                    }
+                }
+                const R__ nv = vcp::tsparse_scalar::real_norm_value(ortho[i]);
+                if (!(nv > R__(0))) { ortho_ok = false; break; }   // certified > 0 のみ採用側
+                for (std::size_t t = 0; t < ortho[i].size(); t++)
+                    ortho[i][t] = ortho[i][t] / _T(nv);
+            }
+            if (ortho_ok) {
+                std::vector<R__> res_abs_o = eigenpair_residuals_<_T,_Index>(
+                    A, alt.eigenvalues, ortho);
+                std::vector<R__> res_rel_o = eigenpair_relative_residuals_<_T,_Index>(
+                    A, alt.eigenvalues, ortho);
+                std::vector<R__> theta_abs_o;
+                theta_abs_o.reserve(alt.eigenvalues.size());
+                for (std::size_t i = 0; i < alt.eigenvalues.size(); i++)
+                    theta_abs_o.push_back(vcp::tsparse_scalar::abs_value(
+                        vcp::tsparse_scalar::real_part(alt.eigenvalues[i])));
+                if (vcp::tsparse::residual_acceptance_check_scaled_(
+                        res_abs_o, res_rel_o, options.tol, theta_abs_o, anorm_gate_p)
+                    && !vcp::tsparse::returned_pair_duplicate_direction_found_<_T>(ortho)) {
+                    result.eigenvalues          = alt.eigenvalues;
+                    result.eigenvalues_imag     = alt.eigenvalues_imag;
+                    result.complex_pair_count   = alt.complex_pair_count;
+                    result.complex_eigenvalues  = alt.complex_eigenvalues;
+                    result.eigenvectors         = ortho;
+                    result.residuals_absolute   = res_abs_o;
+                    result.residuals_relative   = res_rel_o;
+                    if (!res_abs_o.empty()) {
+                        result.residual_norm_absolute = *std::max_element(
+                            res_abs_o.begin(), res_abs_o.end());
+                    }
+                    result.converged        = true;
+                    result.converged_count  = alt.converged_count;
+                    result.status           = "converged";
+                    result.failure_reason.clear();
+                    result.breakdown_reason.clear();
+                    result.message = "converged (D-17d-wp rescue: ks_mu_core delegation; EIG-10.1)";
+                    result.iterations += alt.iterations;
+                    // method / used_method / used_subspace_dim は公開面
+                    // ("shift_invert_lanczos+user_preconditioner")のまま
+                    // (EIG-10 G-0.1 §6.1 と同じ: enum・route 文字列追加なし)。
+                    populate_real_complex_eigenvalues_<_T,_Index>(result);
+                    set_result_counts_<_T,_Index>(result, k);
+                }
+            }
+        }
+        // 不採用: 元の正直結果を維持(値・status 不変。消費計上のみ反映済み)。
+    }
+    // wp 会計 (i): 内側消費の 1:1 再同期(委譲・磨き分を含む。恒等式
+    // mv == ls + lgate の維持に必須 — G-0.1 裁定で凍結)。
     result.linear_solves = linear_solve_count;
+    result.inner_iterations = inner_iteration_count;
+    result.inner_residual_norm = inner_residual_norm;
+    result.inner_failure_count = inner_failure_count;
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
