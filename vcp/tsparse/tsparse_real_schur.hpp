@@ -48,6 +48,21 @@
 //    partial results: trailing eigenvalues [unconverged_count, m) are valid,
 //    the leading block [0, unconverged_count) is undetermined (values R(0),
 //    flag semantics — GT1 P4).
+//  * Late-stage rescue (EIG-9, D-17c-2): for iteration >= T_rescue = 15*m
+//    AND certified eps > 0 ONLY, the shift column switches to the LAPACK
+//    dlahqr form: (i) certified-real trailing-2x2 roots use the Wilkinson
+//    root (closer to H[i][i]) DOUBLED, (ii) the first column is evaluated in
+//    FACTORED dlaqr1 form (a-rt1)((a-rt2)/s)+... — forward-stable for
+//    clustered shifts, where the expanded form a^2+bc-s1*a+s2 cancels to
+//    below rounding noise and freezes the sweep (the D-17c-2 stagnation
+//    mechanism, bcircuit-type projected clusters), and (iii) the sweep start
+//    position is chosen by the two-consecutive-small-subdiagonal scan.
+//    Below T_rescue the path is bit-identical to EIG-2 (dormant-domain
+//    census: all frozen-suite scalar calls finish <= 7.5*m); for
+//    numeric_limits-unspecialized scalars (kv::interval: eps == 0) the
+//    rescue gate is certified-false, i.e. provably inert.  The 30*m cap
+//    stays untouched as the final levee (B-52); changing T_rescue is a
+//    reviewer-approval item (same rank as EIG-7 S'/beta).
 //  * Determinism (§4.7): no randomness; identical input -> identical output.
 //  * T-generic (GT1 P1-P6): module-scalar operations only (ADL abs/sqrt via
 //    tsparse_scalar, no numeric_limits direct calls, no double casts, no
@@ -213,6 +228,10 @@ namespace vcp {
 			const T dat1 = T(3) / T(4);      // LAPACK dlahqr exceptional shift constants
 			const T dat2 = T(-7) / T(16);    // (exact in binary floating point)
 			const std::size_t cap = 30 * m;  // §4.6 / B-20: the only wall-clock levee
+			// EIG-9 late-stage rescue threshold (T_rescue = 15*m; header note above.
+			// Dormant-domain margin 2.0x over the measured maximum 7.5*m, engages at
+			// half the cap.  Value change = reviewer-approval item.)
+			const std::size_t rescue_start = 15 * m;
 
 			std::size_t bottom = m;          // rows [bottom, m) are finalized
 			std::size_t its = 0;             // sweeps without progress on current bottom
@@ -381,6 +400,9 @@ namespace vcp {
 				for (int attempt = 0; attempt < 2; attempt++) {
 					T x0 = T(0), y0 = T(0), z0 = T(0);
 					R amax = R(0);
+					// EIG-9: sweep start position.  Stays l (the pre-EIG-9 constant)
+					// unless the late-stage rescue below selects an interior start.
+					std::size_t kstart = l;
 					if (lsc > R(0)) {
 						// scaled entries (all O(1) in the certified-positive-scale case)
 						const T al = H[l][l] / T(lsc);
@@ -412,6 +434,101 @@ namespace vcp {
 						const R az = abs_value(z0);
 						if (ay > amax) amax = ay;
 						if (az > amax) amax = az;
+						if (res.iterations >= rescue_start && eps > R(0)) {
+							// ---- EIG-9 late-stage rescue: dlahqr-form sweep ----
+							// Additive route: everything below runs ONLY at
+							// iteration >= T_rescue with certified eps > 0 (interval
+							// eps == 0 -> certified false -> provably inert).  All
+							// gates are success-side certified; any uncertain branch
+							// keeps the legacy column computed above (honest-failure
+							// default).  Deterministic (no randomness — B-54).
+							T w11, w12, w21, w22;
+							if (exceptional) {
+								// same synthetic 2x2 as the legacy exceptional shift
+								const T sms = (abs_value(H[i][i - 1])
+								            + ((i >= l + 2) ? abs_value(H[i - 1][i - 2]) : T(0)))
+								            / T(lsc);
+								w11 = dat1 * sms + H[i][i] / T(lsc);
+								w12 = dat2 * sms;
+								w21 = sms;
+								w22 = w11;
+							} else {
+								w11 = H[i - 1][i - 1] / T(lsc);
+								w12 = H[i - 1][i] / T(lsc);
+								w21 = H[i][i - 1] / T(lsc);
+								w22 = H[i][i] / T(lsc);
+							}
+							const T hf = (w11 - w22) / T(2);
+							const T dsc = hf * hf + w12 * w21;
+							const T mid = (w11 + w22) / T(2);
+							T rt1r = T(0), rt1i = T(0), rt2r = T(0), rt2i = T(0);
+							bool roots_ok = false;
+							if (dsc >= T(0)) {
+								// certified real pair: Wilkinson root (closer to
+								// w22 = scaled H[i][i]) used twice (dlahqr)
+								const T sq = sqrt_value(dsc);
+								const T lp = mid + sq;
+								const T lm = mid - sq;
+								const R dp_ = abs_value(lp - w22);
+								const R dm_ = abs_value(lm - w22);
+								if (dp_ <= dm_) { rt1r = lp; rt2r = lp; roots_ok = true; }
+								else if (dm_ < dp_) { rt1r = lm; rt2r = lm; roots_ok = true; }
+								// both comparisons uncertain -> legacy column
+							} else if (dsc < T(0)) {
+								// certified complex pair (kept as the pair)
+								const T sq = sqrt_value(T(0) - dsc);
+								rt1r = mid; rt2r = mid; rt1i = sq; rt2i = T(0) - sq;
+								roots_ok = true;
+							}
+							// 0-straddling discriminant: roots_ok stays false
+							if (roots_ok) {
+								// dlahqr M-loop: scan p = i-2 .. l for the highest
+								// start whose FACTORED local column dominates the
+								// coupling it drops; p == l always accepts (the
+								// factored form of the full-block start column).
+								for (std::size_t p = i - 2; ; p--) {
+									const T ap = H[p][p] / T(lsc);
+									const T bp = H[p][p + 1] / T(lsc);
+									const T cp = H[p + 1][p] / T(lsc);
+									const T dp = H[p + 1][p + 1] / T(lsc);
+									const T ep = (p + 2 <= i) ? H[p + 2][p + 1] / T(lsc) : T(0);
+									const R sl = abs_value(ap - rt2r) + abs_value(rt2i)
+									           + abs_value(cp);
+									if (sl > R(0)) {
+										const T c21 = cp / T(sl);
+										const T v1 = c21 * bp
+											+ (ap - rt1r) * ((ap - rt2r) / T(sl))
+											- rt1i * (rt2i / T(sl));
+										const T v2 = c21 * (ap + dp - rt1r - rt2r);
+										const T v3 = c21 * ep;
+										bool take = (p == l);
+										if (!take) {
+											// two-consecutive-small-subdiagonal test:
+											// the coupling H[p][p-1] the mid-start
+											// drops must be negligible against the
+											// local column (certified, success-side)
+											const R lhs = abs_value(H[p][p - 1] / T(lsc))
+												* (abs_value(v2) + abs_value(v3));
+											const R rhs = eps * abs_value(v1)
+												* (abs_value(H[p - 1][p - 1] / T(lsc))
+												 + abs_value(ap) + abs_value(dp));
+											take = (lhs <= rhs);
+										}
+										if (take) {
+											x0 = v1; y0 = v2; z0 = v3;
+											kstart = p;
+											amax = abs_value(x0);
+											const R ay2 = abs_value(y0);
+											const R az2 = abs_value(z0);
+											if (ay2 > amax) amax = ay2;
+											if (az2 > amax) amax = az2;
+											break;
+										}
+									}
+									if (p == l) break;
+								}
+							}
+						}
 					}
 					if (!(amax > R(0))) {
 						// negligible shift vector: never a silent no-op (§4.4).
@@ -421,9 +538,14 @@ namespace vcp {
 						if (!exceptional) { exceptional = true; continue; }
 						x0 = T(0); y0 = T(0); z0 = T(0);
 					}
-					// perform the bulge chase with this (scaled) shift column
+					// perform the bulge chase with this (scaled) shift column.
+					// EIG-9 note: kstart == l except when the late-stage rescue
+					// selected an interior start; the first reflector of a
+					// mid-start sweep touches column kstart-1 through the existing
+					// (k > l) ranges and drops the two sub-bulge entries there —
+					// exactly the dlahqr approximation the scan test justifies.
 					T x = x0, y = y0, z = z0;
-					for (std::size_t k = l; k < i; k++) {
+					for (std::size_t k = kstart; k < i; k++) {
 						const std::size_t len = (k + 2 <= i) ? 3 : 2;
 						R scale = abs_value(x);
 						{
