@@ -20,6 +20,8 @@
 // spmats.hpp already includes spmats_eigs_types.hpp which defines all type traits,
 // enums, and result structs. No redefinition needed here.
 #include <vcp/spmats.hpp>
+// SPC-1: scalar conversion layer for the conversion constructors/assignments.
+#include <vcp/vcp_converter.hpp>
 
 namespace vcp {
 
@@ -105,6 +107,129 @@ namespace vcp {
 		spmatrix& operator=(const spmatrix&) = default;
 		spmatrix& operator=(spmatrix&&) = default;
 
+		// ---------------------------------------------------------------
+		// SPC-1: conversion constructors / conversion assignments
+		// (sparse mirror of matrix.hpp L57-99; design SPC-1_design.md v2.2).
+		// Signatures and SFINAE conditions are identical in form to the
+		// dense members, so the identity instantiation (same _T AND same
+		// _P) is excluded and falls back to the defaulted copy members
+		// above -- existing paths stay bit-identical.  All four members
+		// delegate to convert_from_ below (finalize policy category 4:
+		// read through an as_csr()/as_csc() copy, source A is never
+		// modified, result is born-finalized, format is preserved).
+		// Note: in expressions these create an O(nnz) temporary, same
+		// trade-off as the dense matrix conversion members.
+		// ---------------------------------------------------------------
+
+		// (1) Policy conversion constructor: T same, P different
+		template <class _P2,
+		          typename std::enable_if<!std::is_same<_P, _P2>::value, int>::type = 0>
+		spmatrix(const spmatrix<_T, _P2>& A) : _P() {
+			convert_from_(A);
+		}
+
+		// (2) Type conversion constructor: T different, P arbitrary
+		template <typename _T2, class _P2,
+		          typename std::enable_if<!std::is_same<_T, _T2>::value, int>::type = 0>
+		spmatrix(const spmatrix<_T2, _P2>& A) : _P() {
+			convert_from_(A);
+		}
+
+		// (3) Policy conversion assignment: T same, P different
+		template <class _P2,
+		          typename std::enable_if<!std::is_same<_P, _P2>::value, int>::type = 0>
+		spmatrix<_T, _P>& operator=(const spmatrix<_T, _P2>& A) {
+			this->clear();
+			convert_from_(A);
+			return *this;
+		}
+
+		// (4) Type conversion assignment: T different, P arbitrary
+		template <typename _T2, class _P2,
+		          typename std::enable_if<!std::is_same<_T, _T2>::value, int>::type = 0>
+		spmatrix<_T, _P>& operator=(const spmatrix<_T2, _P2>& A) {
+			this->clear();
+			convert_from_(A);
+			return *this;
+		}
+
+	private:
+		// SPC-1: strict-zero test on the DESTINATION value type (design
+		// v2.2 §2): point types compare against _Tv(0); interval types
+		// compare endpoints only (no abs / three-way certified compare
+		// needed -- this mirrors the [0,0]-only semantics of the spmats
+		// invariant "explicit zero is not allowed").
+		template <typename _Tv>
+		static bool is_strict_zero_(const _Tv& x) {
+			return x == _Tv(0);
+		}
+#if defined(INTERVAL_HPP)
+		template <typename _Tv>
+		static bool is_strict_zero_(const kv::interval<_Tv>& x) {
+			return x.lower() == _Tv(0) && x.upper() == _Tv(0);
+		}
+#endif
+
+		// SPC-1 common core for the four conversion members above.
+		// Complexity O(nnz + max(rows, cols)).  Access to A is via the
+		// public spmatrix API only; the destructive helpers (to_csr etc.)
+		// are never called on A itself -- as_csr()/as_csc() convert on a
+		// copy, which also normalizes an unfinalized (COO) source.
+		template <typename _T2, class _P2>
+		void convert_from_(const spmatrix<_T2, _P2>& A) {
+			typedef typename spmatrix<_T2, _P2>::index_type src_index_type;
+			// Format preservation (design v2.2 §2.1): finalized CSC stays
+			// CSC; finalized CSR and unfinalized input become CSR.
+			const bool use_csc = A.is_finalized() && A.format() == vcp::sparse_csc;
+			const spmatrix<_T2, _P2> src = use_csc ? A.as_csc() : A.as_csr();
+			const index_type rows = static_cast<index_type>(src.rowsize());
+			const index_type cols = static_cast<index_type>(src.columnsize());
+			const std::size_t nouter = static_cast<std::size_t>(use_csc ? cols : rows);
+			const std::vector<src_index_type>& src_outer = src.outer_index();
+			const std::vector<src_index_type>& src_inner = src.inner_index();
+			const std::vector<_T2>& src_value = src.values();
+			// Index transfer is a per-element static_cast: if the
+			// destination index_type differs (future policies), every
+			// stored index is < rows/cols, so whenever assign_* succeeds
+			// for (rows, cols) all indices are representable in it.
+			std::vector<index_type> outer(nouter + 1);
+			std::vector<index_type> inner(src_value.size());
+			std::vector<_T> val(src_value.size());
+			// Single pass: convert each stored value (vcp::convert; for
+			// the same-_T policy conversions this is the identity
+			// overload, i.e. a plain copy) and drop values that became
+			// strictly zero (v2.2 zero-drop pass: the spmats invariant
+			// forbids explicit zeros, assign_* would reject them).  The
+			// outer pointers are rebuilt on the fly with a second write
+			// cursor, keeping the whole pass O(nnz + max(rows, cols)).
+			std::size_t out = 0;
+			outer[0] = 0;
+			for (std::size_t i = 0; i < nouter; i++) {
+				for (src_index_type k = src_outer[i];
+				     k < src_outer[i + 1]; k++) {
+					_T y;
+					vcp::convert(src_value[static_cast<std::size_t>(k)], y);
+					if (!is_strict_zero_(y)) {
+						inner[out] = static_cast<index_type>(src_inner[static_cast<std::size_t>(k)]);
+						val[out] = y;
+						out++;
+					}
+				}
+				outer[i + 1] = static_cast<index_type>(out);
+			}
+			inner.resize(out);
+			val.resize(out);
+			// assign_csr/assign_csc postconditions: born-finalized,
+			// sorted, unique (arrays are already zero-free and sorted).
+			if (use_csc) {
+				this->assign_csc(rows, cols, outer, inner, val);
+			}
+			else {
+				this->assign_csr(rows, cols, outer, inner, val);
+			}
+		}
+
+	public:
 		index_type rowsize() const { return _P::rowsize(); }
 		index_type columnsize() const { return _P::columnsize(); }
 		index_type nnz() const { return _P::nnz(); }
