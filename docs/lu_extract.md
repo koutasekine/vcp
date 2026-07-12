@@ -80,7 +80,7 @@ auto r = A.lu_with_info(L, U, p, q, opt);
 | `success` | 抽出成功(L/U/p/q 有効) |
 | `invalid_factorization` | 分解自体が失敗(特異行列等) |
 | `unsupported_options` | equilibration 済み因子(下記) |
-| `unsupported_storage` | baseline CSC 以外の格納(`method=supernodal`) |
+| `unsupported_storage` | 未知の格納種別(supernodal は LUX-3 で対応済み) |
 | `internal_error` | 内部エラー(発生したら報告してください) |
 
 ## equilibration 非対応(重要)
@@ -88,12 +88,33 @@ auto r = A.lu_with_info(L, U, p, q, opt);
 共通出力規約 `P A Q = L U` は**スケーリングを含みません**。
 `opt.slu.equilibration = true` の指定は入口で `unsupported_options` として
 honest に拒否されます(SLU の既定は false なので既定利用では発生しません)。
-また `pivoting = static_mc64` も因子に Dr/Dc スケーリングを持つため
-同様に `unsupported_options` になります。スケーリング込みの拡張形
+また `pivoting = static_mc64` も **GP 経路では**因子に Dr/Dc スケーリングを
+持つため同様に `unsupported_options` になります。スケーリング込みの拡張形
 `P·Dr·A·Dc·Q = L·U` の返却は将来の純増課題です。
 
-`method = supernodal` の因子は初版では非対応です(`unsupported_storage`)。
-既定(`auto_select` → baseline CSC)をそのまま使ってください。
+## supernodal 対応(LUX-3)
+
+`method = supernodal` の因子(`sparse_lu_storage_kind::supernodal`)にも
+対応しています。追加 API はなく、同じ `A.lu(...)` / `A.lu_with_info(...)` /
+tsparse 自由関数がそのまま通ります(policy/spmatrix 層は無変更)。
+
+- 抽出のディスパッチは `fac.solve()` と同じ判定を鏡映します:
+  - **受理済み A_eff 起源格納**(`true_numeric_source == true`): supernodal
+    パネル / U_segments を平坦化して §C 規約の L/U/p/q を返します。
+  - **遷移的格納**(`true_numeric_source == false`、A_eff 数値化が
+    pivot_failure 等で不成立のとき): solve と同様に **baseline CSC 因子へ
+    fallback** して抽出します(パネル値は数値源ではないため)。
+- どちらの経路で抽出したかは診断フィールド
+  `sparse_lu_extracted::storage_kind_extracted`(success 時のみ有意)で
+  分かります。
+- relaxed amalgamation / dense-front model がパネルに持つ**明示零は
+  コピーされません**(baseline 抽出と同じ厳密零 drop 規則。nnz は
+  baseline 抽出と同水準になります)。
+- **native MC64 経路**(`static_mc64` + `supernodal_self_symbolic` +
+  `supernodal_inplace_frontal`)は matching-only(Dr/Dc なし)なので
+  §C 抽出**可能**です(GP 経路の static_mc64 と挙動が異なる点に注意)。
+- LDL(`docs/ldl.md`)には supernodal 格納は存在しないため、
+  LDL 側に対応する変更はありません。
 
 ## 因子消費層(lu_solve / lu_inverse_row)
 
