@@ -4551,66 +4551,66 @@ eig_result<_T> policy_generalized_eigs_with_info(const spmats<_T,_Index>& A,
 
 template <typename _T, typename _Index>
 eig_result<_T> spmats<_T,_Index>::policy_eigs_with_info(
-    const spmats<_T,_Index>& A,
     std::size_t k,
     const eig_options<_T>& opt) const
 {
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     if (!A.is_finalized()) A.finalize();
-    return policy_eigs_with_info_impl(A, k, opt);
+    return policy_eigs_with_info_impl(k, opt);
 }
 
 template <typename _T, typename _Index>
 eig_result<_T> spmats<_T,_Index>::policy_eigs_with_info_impl(
-    const spmats<_T,_Index>& A,
     std::size_t k,
     const eig_options<_T>& opt) const
 {
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     return vcp::policy_eigs_with_info<_T,_Index>(A, k, opt);
 }
 
 template <typename _T, typename _Index>
 template <class Prec>
 eig_result<_T> spmats<_T,_Index>::policy_eigs_with_info(
-    const spmats<_T,_Index>& A,
     std::size_t k,
     const eig_options<_T>& opt,
     const Prec& M) const
 {
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     if (!A.is_finalized()) A.finalize();
     return vcp::policy_eigs_with_info<_T,_Index,Prec>(A, k, opt, M);
 }
 
 template <typename _T, typename _Index>
 eig_result<_T> spmats<_T,_Index>::policy_generalized_eigs_with_info(
-    const spmats<_T,_Index>& A,
     const spmats<_T,_Index>& B,
     std::size_t k,
     const eig_options<_T>& opt) const
 {
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     if (!A.is_finalized()) A.finalize();
     if (!B.is_finalized()) B.finalize();
-    return policy_generalized_eigs_with_info_impl(A, B, k, opt);
+    return policy_generalized_eigs_with_info_impl(B, k, opt);
 }
 
 template <typename _T, typename _Index>
 eig_result<_T> spmats<_T,_Index>::policy_generalized_eigs_with_info_impl(
-    const spmats<_T,_Index>& A,
     const spmats<_T,_Index>& B,
     std::size_t k,
     const eig_options<_T>& opt) const
 {
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     return vcp::policy_generalized_eigs_with_info<_T,_Index>(A, B, k, opt);
 }
 
 template <typename _T, typename _Index>
 template <class Prec>
 eig_result<_T> spmats<_T,_Index>::policy_generalized_eigs_with_info(
-    const spmats<_T,_Index>& A,
     const spmats<_T,_Index>& B,
     std::size_t k,
     const eig_options<_T>& opt,
     const Prec& M) const
 {
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     if (!A.is_finalized()) A.finalize();
     if (!B.is_finalized()) B.finalize();
     return vcp::policy_generalized_eigs_with_info<_T,_Index,Prec>(A, B, k, opt, M);
@@ -4631,18 +4631,18 @@ eig_result<_T> spmats<_T,_Index>::policy_generalized_eigs_with_info(
 
 template <typename _T, typename _Index>
 eig_result<_T> spmats<_T,_Index>::policy_eig(
-    const spmats<_T,_Index>& A,
     const eig_options<_T>& opt) const
 {
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     if (!A.is_finalized()) A.finalize();
-    return policy_eig_impl(A, opt);
+    return policy_eig_impl(opt);
 }
 
 template <typename _T, typename _Index>
 eig_result<_T> spmats<_T,_Index>::policy_eig_impl(
-    const spmats<_T,_Index>& A,
     const eig_options<_T>& opt) const
 {
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
     // default policy: full dense eig is only for real scalar types
     if (spmatrix_is_complex<_T>::value)
@@ -4653,7 +4653,7 @@ eig_result<_T> spmats<_T,_Index>::policy_eig_impl(
         vcp::throw_error<vcp::invalid_argument>("spmats::policy_eig: invalid options (max_iter or tol)");
     if (opt.method != eig_solver_method::dense_fallback_explicit)
         vcp::throw_error<vcp::invalid_argument>("spmats::policy_eig: full dense eig requires dense_fallback_explicit method");
-    eig_result<_T> result = policy_eigs_with_info(A, static_cast<std::size_t>(A.rowsize()), opt);
+    eig_result<_T> result = policy_eigs_with_info(static_cast<std::size_t>(A.rowsize()), opt);
     if (!result.converged)
         vcp::throw_error<vcp::state_error>("spmats::policy_eig: eigensolver did not converge");
     return result;
@@ -4661,19 +4661,21 @@ eig_result<_T> spmats<_T,_Index>::policy_eig_impl(
 
 template <typename _T, typename _Index>
 std::vector<_T> spmats<_T,_Index>::policy_eigs(
-    const spmats<_T,_Index>& A, std::size_t k,
+    std::size_t k,
     const eig_options<_T>& opt) const
 {
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     if (!A.is_finalized()) A.finalize();
-    return policy_eigs_impl(A, k, opt);
+    return policy_eigs_impl(k, opt);
 }
 
 template <typename _T, typename _Index>
 std::vector<_T> spmats<_T,_Index>::policy_eigs_impl(
-    const spmats<_T,_Index>& A, std::size_t k,
+    std::size_t k,
     const eig_options<_T>& opt) const
 {
-    eig_result<_T> result = policy_eigs_with_info(A, k, opt);
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
+    eig_result<_T> result = policy_eigs_with_info(k, opt);
     if (!result.converged)
         vcp::throw_error<vcp::state_error>("spmats::policy_eigs: eigensolver did not converge");
     const std::size_t n = static_cast<std::size_t>(A.rowsize());
@@ -4686,11 +4688,11 @@ std::vector<_T> spmats<_T,_Index>::policy_eigs_impl(
 template <typename _T, typename _Index>
 template <class Prec>
 std::vector<_T> spmats<_T,_Index>::policy_eigs(
-    const spmats<_T,_Index>& A, std::size_t k,
+    std::size_t k,
     const eig_options<_T>& opt, const Prec& M) const
 {
-    // policy_eigs_with_info(A,k,opt,M) below already auto-finalizes A.
-    eig_result<_T> result = policy_eigs_with_info(A, k, opt, M);
+    // policy_eigs_with_info(k,opt,M) below already auto-finalizes *this.
+    eig_result<_T> result = policy_eigs_with_info(k, opt, M);
     if (!result.converged)
         vcp::throw_error<vcp::state_error>("spmats::policy_eigs(with preconditioner): eigensolver did not converge");
     if (result.returned_real_count < k)
@@ -4700,20 +4702,21 @@ std::vector<_T> spmats<_T,_Index>::policy_eigs(
 
 template <typename _T, typename _Index>
 eig_result<_T> spmats<_T,_Index>::policy_generalized_eig(
-    const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+    const spmats<_T,_Index>& B,
     std::size_t k, const eig_options<_T>& opt) const
 {
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     if (!A.is_finalized()) A.finalize();
     if (!B.is_finalized()) B.finalize();
-    return policy_generalized_eig_impl(A, B, k, opt);
+    return policy_generalized_eig_impl(B, k, opt);
 }
 
 template <typename _T, typename _Index>
 eig_result<_T> spmats<_T,_Index>::policy_generalized_eig_impl(
-    const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+    const spmats<_T,_Index>& B,
     std::size_t k, const eig_options<_T>& opt) const
 {
-    eig_result<_T> result = policy_generalized_eigs_with_info(A, B, k, opt);
+    eig_result<_T> result = policy_generalized_eigs_with_info(B, k, opt);
     if (!result.converged)
         vcp::throw_error<vcp::state_error>("spmats::policy_generalized_eig: eigensolver did not converge");
     return result;
@@ -4721,20 +4724,22 @@ eig_result<_T> spmats<_T,_Index>::policy_generalized_eig_impl(
 
 template <typename _T, typename _Index>
 std::vector<_T> spmats<_T,_Index>::policy_generalized_eigs(
-    const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+    const spmats<_T,_Index>& B,
     std::size_t k, const eig_options<_T>& opt) const
 {
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     if (!A.is_finalized()) A.finalize();
     if (!B.is_finalized()) B.finalize();
-    return policy_generalized_eigs_impl(A, B, k, opt);
+    return policy_generalized_eigs_impl(B, k, opt);
 }
 
 template <typename _T, typename _Index>
 std::vector<_T> spmats<_T,_Index>::policy_generalized_eigs_impl(
-    const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+    const spmats<_T,_Index>& B,
     std::size_t k, const eig_options<_T>& opt) const
 {
-    eig_result<_T> result = policy_generalized_eigs_with_info(A, B, k, opt);
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
+    eig_result<_T> result = policy_generalized_eigs_with_info(B, k, opt);
     if (!result.converged)
         vcp::throw_error<vcp::state_error>("spmats::policy_generalized_eigs: eigensolver did not converge");
     const std::size_t n = static_cast<std::size_t>(A.rowsize());
@@ -4747,12 +4752,13 @@ std::vector<_T> spmats<_T,_Index>::policy_generalized_eigs_impl(
 template <typename _T, typename _Index>
 template <class Prec>
 std::vector<_T> spmats<_T,_Index>::policy_generalized_eigs(
-    const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+    const spmats<_T,_Index>& B,
     std::size_t k, const eig_options<_T>& opt, const Prec& M) const
 {
-    // policy_generalized_eigs_with_info(A,B,k,opt,M) below already
-    // auto-finalizes A and B.
-    eig_result<_T> result = policy_generalized_eigs_with_info(A, B, k, opt, M);
+    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
+    // policy_generalized_eigs_with_info(B,k,opt,M) below already
+    // auto-finalizes *this and B.
+    eig_result<_T> result = policy_generalized_eigs_with_info(B, k, opt, M);
     if (!result.converged)
         vcp::throw_error<vcp::state_error>("spmats::policy_generalized_eigs(with preconditioner): eigensolver did not converge");
     const std::size_t n = static_cast<std::size_t>(A.rowsize());

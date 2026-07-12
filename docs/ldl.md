@@ -112,7 +112,27 @@ ldl_options<T> ldl; }`。`zero_tol` は慣性の零判定用で、LDL の
 - 検算 n₊ + n₋ + n₀ = n を内部検査します(不一致は `internal_error`)。
 - D 消費層 `policy_inertia_from_block_diagonal`(spmats の非 virtual
   ポリシーメンバ)は BK 由来を仮定せず、一般の 1×1/2×2 ブロック対角行列を
-  受け付けます(帯域 1 超の非零は `not_block_diagonal`)。
+  受け付けます(帯域 1 超の非零は `not_block_diagonal`)。走査対象 D が
+  subject であり、`D.policy_inertia_from_block_diagonal(tol)` の形で
+  呼びます(WFIX-2)。
+
+## 設計原則: ポリシーは *this を対象とする(WFIX-2)
+
+ポリシー(spmats とその派生)は**データを保持する主体**であり、密行列側
+(mats/pdblas/matrix)と同一の関係を取ります: `inv()` / `Cholesky()` が
+*this を対象とするのと同じく、疎行列側のポリシーメソッドも対象行列は
+常に *this です。かつての「対象行列 A を第 1 引数に渡す」スタイル
+(`policy_ldl_with_info(A, L, D, p, opt)` 等)は廃止されました。
+現行署名(対象 = *this):
+
+```cpp
+ldl_result<T,Index> policy_ldl_with_info(
+    spmats& L, spmats& D, std::vector<Index>& perm,
+    const ldl_options<T>& opt) const;            // 外殻(A.policy_ldl_with_info(L,D,p,opt) の形)
+virtual ldl_result<T,Index> policy_ldl_with_info_impl(...) const;   // 差し替え点
+inertia_result<Index> policy_inertia_with_info(
+    const inertia_options<T>& opt) const;        // 外殻 + virtual _impl
+```
 - シフト付き `inertia(A − σI)` により σ を跨ぐ固有値計数ができます
   (Sylvester の慣性則)。
 

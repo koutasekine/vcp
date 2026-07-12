@@ -94,6 +94,8 @@ namespace vcp {
 		typedef vcp::ldl_result<_T, typename _P::index_type> ldl_result_type;
 		typedef vcp::inertia_options<_T> inertia_options_type;
 		typedef vcp::inertia_result<typename _P::index_type> inertia_result_type;
+		typedef vcp::lu_extract_options<_T> lu_extract_options_type;
+		typedef vcp::lu_extract_result<_T, typename _P::index_type> lu_extract_result_type;
 
 		spmatrix() : _P() {}
 		spmatrix(const index_type rows, const index_type cols) : _P() { this->resize(rows, cols); }
@@ -443,12 +445,12 @@ namespace vcp {
 
 		// strict solve: policy decides convergence checking
 		std::vector<_T> solve(const std::vector<_T>& b, const linear_solve_options_type& options = linear_solve_options_type()) const {
-			return this->policy_lss(static_cast<const _P&>(*this), b, options);
+			return this->policy_lss(b, options);
 		}
 
 		// non-strict: return full diagnostic result
 		linear_solve_result<_T> solve_with_info(const std::vector<_T>& b, const linear_solve_options_type& options = linear_solve_options_type()) const {
-			return this->policy_lss_with_info(static_cast<const _P&>(*this), b, options);
+			return this->policy_lss_with_info(b, options);
 		}
 
 		// ---------------------------------------------------------------
@@ -465,26 +467,17 @@ namespace vcp {
 		ldl_result_type ldl_with_info(spmatrix& L, spmatrix& D, std::vector<index_type>& p,
 		                              const ldl_options_type& options = ldl_options_type()) const {
 			return this->policy_ldl_with_info(
-				static_cast<const _P&>(*this), static_cast<_P&>(L), static_cast<_P&>(D), p, options);
+				static_cast<_P&>(L), static_cast<_P&>(D), p, options);
 		}
 
-		// non-strict, permutation-matrix form (P finalized, P(p[k],k) = 1)
+		// non-strict, permutation-matrix form (P finalized, P(p[k],k) = 1;
+		// WFIX: materialization lives in the policy-layer matrix-form
+		// overload -- this wrapper only forwards)
 		ldl_result_type ldl_with_info(spmatrix& L, spmatrix& D, spmatrix& P,
 		                              const ldl_options_type& options = ldl_options_type()) const {
-			std::vector<index_type> p;
-			ldl_result_type result = this->policy_ldl_with_info(
-				static_cast<const _P&>(*this), static_cast<_P&>(L), static_cast<_P&>(D), p, options);
-			P.resize(index_type(0), index_type(0));
-			if (result.status == sparse_ldl_status::success ||
-			    result.status == sparse_ldl_status::zero_pivot) {
-				const index_type n = static_cast<index_type>(p.size());
-				P.resize(n, n);
-				for (index_type k = 0; k < n; k++) {
-					P.add(p[static_cast<std::size_t>(k)], k, _T(1));
-				}
-				P.finalize();
-			}
-			return result;
+			return this->policy_ldl_with_info(
+				static_cast<_P&>(L), static_cast<_P&>(D),
+				static_cast<_P&>(P), options);
 		}
 
 		// strict, permutation-vector form
@@ -518,7 +511,7 @@ namespace vcp {
 
 		// non-strict
 		inertia_result_type inertia_with_info(const inertia_options_type& options = inertia_options_type()) const {
-			return this->policy_inertia_with_info(static_cast<const _P&>(*this), options);
+			return this->policy_inertia_with_info(options);
 		}
 
 		// strict
@@ -532,6 +525,115 @@ namespace vcp {
 			return result;
 		}
 
+		// ---------------------------------------------------------------
+		// LU factor extraction (LUX-1) — delegates to policy_lu_with_info.
+		// Convention (SSC, shared with spumar): P A Q = L U with p / q
+		// new->old (A(p,q) = L U, MATLAB [L,U,P,Q] = lu(A) orientation)
+		// and P(k,p[k]) = 1, Q(q[k],k) = 1.  NOTE: the row side is
+		// TRANSPOSED relative to the LDL convention (LDL: P(p[k],k) = 1).
+		// L unit lower (explicit unit diagonal), U upper triangular.
+		// equilibration == true is rejected (unsupported_options); strict
+		// lu throws on ANY status != success.  L / U / p / q (P / Q) are
+		// valid outputs only on success.
+		// ---------------------------------------------------------------
+
+		// non-strict, permutation-vector form
+		lu_extract_result_type lu_with_info(spmatrix& L, spmatrix& U,
+		                                    std::vector<index_type>& p, std::vector<index_type>& q,
+		                                    const lu_extract_options_type& options = lu_extract_options_type()) const {
+			return this->policy_lu_with_info(
+				static_cast<_P&>(L), static_cast<_P&>(U), p, q, options);
+		}
+
+		// non-strict, permutation-matrix form (P, Q finalized;
+		// P(k,p[k]) = 1, Q(q[k],k) = 1; WFIX: materialization lives in the
+		// policy-layer NVI (policy_lu_matrices_with_info_impl is the
+		// backend replacement point) -- this wrapper only forwards)
+		lu_extract_result_type lu_with_info(spmatrix& L, spmatrix& U, spmatrix& P, spmatrix& Q,
+		                                    const lu_extract_options_type& options = lu_extract_options_type()) const {
+			return this->policy_lu_with_info(
+				static_cast<_P&>(L), static_cast<_P&>(U),
+				static_cast<_P&>(P), static_cast<_P&>(Q), options);
+		}
+
+		// strict, permutation-vector form
+		void lu(spmatrix& L, spmatrix& U, std::vector<index_type>& p, std::vector<index_type>& q,
+		        const lu_extract_options_type& options = lu_extract_options_type()) const {
+			const lu_extract_result_type result = lu_with_info(L, U, p, q, options);
+			if (result.status != sparse_lu_extract_status::success) {
+				vcp::throw_error<vcp::numerical_error>(
+					"spmatrix::lu: factor extraction failed with status ",
+					sparse_lu_extract_status_to_string(result.status));
+			}
+		}
+
+		// strict, permutation-matrix form
+		void lu(spmatrix& L, spmatrix& U, spmatrix& P, spmatrix& Q,
+		        const lu_extract_options_type& options = lu_extract_options_type()) const {
+			const lu_extract_result_type result = lu_with_info(L, U, P, Q, options);
+			if (result.status != sparse_lu_extract_status::success) {
+				vcp::throw_error<vcp::numerical_error>(
+					"spmatrix::lu: factor extraction failed with status ",
+					sparse_lu_extract_status_to_string(result.status));
+			}
+		}
+
+		// ---------------------------------------------------------------
+		// LU factor consumers (LUX-2) — thin forwarding wrappers, LDL
+		// style: policy_* call + strict throw decision ONLY (the entire
+		// implementation lives in the policy NVI pair; see
+		// spmats_base/spmats_lu_extract_impl.hpp).  The factors are
+		// ARGUMENTS in the SSC convention (any §C-conformant source works:
+		// A.lu(...) or an external backend).  Vector permutation form
+		// (p, q) only.  strict forms throw on ANY status != success.
+		// ---------------------------------------------------------------
+
+		// non-strict solve: x = Q U^{-1} L^{-1} P b
+		lu_apply_result lu_solve_with_info(const spmatrix& L, const spmatrix& U,
+		                                   const std::vector<index_type>& p, const std::vector<index_type>& q,
+		                                   const std::vector<_T>& b, std::vector<_T>& x) const {
+			return this->policy_lu_solve_with_info(
+				static_cast<const _P&>(L), static_cast<const _P&>(U), p, q, b, x);
+		}
+
+		// strict solve
+		std::vector<_T> lu_solve(const spmatrix& L, const spmatrix& U,
+		                         const std::vector<index_type>& p, const std::vector<index_type>& q,
+		                         const std::vector<_T>& b) const {
+			std::vector<_T> x;
+			const lu_apply_result result = this->policy_lu_solve_with_info(
+				static_cast<const _P&>(L), static_cast<const _P&>(U), p, q, b, x);
+			if (result.status != lu_apply_status::success) {
+				vcp::throw_error<vcp::numerical_error>(
+					"spmatrix::lu_solve: failed with status ",
+					lu_apply_status_to_string(result.status));
+			}
+			return x;
+		}
+
+		// non-strict inverse row: row_i(A^{-1})
+		lu_apply_result lu_inverse_row_with_info(const spmatrix& L, const spmatrix& U,
+		                                         const std::vector<index_type>& p, const std::vector<index_type>& q,
+		                                         const index_type i, std::vector<_T>& row) const {
+			return this->policy_lu_inverse_row_with_info(
+				static_cast<const _P&>(L), static_cast<const _P&>(U), p, q, i, row);
+		}
+
+		// strict inverse row
+		std::vector<_T> lu_inverse_row(const spmatrix& L, const spmatrix& U,
+		                               const std::vector<index_type>& p, const std::vector<index_type>& q,
+		                               const index_type i) const {
+			std::vector<_T> row;
+			const lu_apply_result result = this->policy_lu_inverse_row_with_info(
+				static_cast<const _P&>(L), static_cast<const _P&>(U), p, q, i, row);
+			if (result.status != lu_apply_status::success) {
+				vcp::throw_error<vcp::numerical_error>(
+					"spmatrix::lu_inverse_row: failed with status ",
+					lu_apply_status_to_string(result.status));
+			}
+			return row;
+		}
+
 		// Convenience overloads — build options and delegate to solve / solve_with_info
 		std::vector<_T> solve_jacobi(const std::vector<_T>& b, const std::size_t max_iter, const scalar_real_type& tol) const {
 			linear_solve_options_type opt_;
@@ -539,7 +641,7 @@ namespace vcp {
 			opt_.max_iter = max_iter;
 			opt_.tol = tol;
 			opt_.use_relative_residual = true;
-			return this->policy_lss(static_cast<const _P&>(*this), b, opt_);
+			return this->policy_lss(b, opt_);
 		}
 
 		std::vector<_T> solve_gauss_seidel(const std::vector<_T>& b, const std::size_t max_iter, const scalar_real_type& tol) const {
@@ -548,7 +650,7 @@ namespace vcp {
 			opt_.max_iter = max_iter;
 			opt_.tol = tol;
 			opt_.use_relative_residual = true;
-			return this->policy_lss(static_cast<const _P&>(*this), b, opt_);
+			return this->policy_lss(b, opt_);
 		}
 
 		std::vector<_T> solve_cg(const std::vector<_T>& b, const std::size_t max_iter, const scalar_real_type& tol) const {
@@ -559,7 +661,7 @@ namespace vcp {
 			opt_.check_symmetric = true;
 			opt_.preconditioner = preconditioner_type::none;
 			opt_.use_relative_residual = true;
-			return this->policy_lss(static_cast<const _P&>(*this), b, opt_);
+			return this->policy_lss(b, opt_);
 		}
 
 		std::vector<_T> solve_bicgstab(const std::vector<_T>& b, const std::size_t max_iter, const scalar_real_type& tol) const {
@@ -568,7 +670,7 @@ namespace vcp {
 			opt_.max_iter = max_iter;
 			opt_.tol = tol;
 			opt_.use_relative_residual = true;
-			return this->policy_lss(static_cast<const _P&>(*this), b, opt_);
+			return this->policy_lss(b, opt_);
 		}
 
 		std::vector<_T> solve_gmres(const std::vector<_T>& b, const std::size_t max_iter, const scalar_real_type& tol) const {
@@ -578,7 +680,7 @@ namespace vcp {
 			opt_.tol = tol;
 			opt_.restart = 30;
 			opt_.use_relative_residual = true;
-			return this->policy_lss(static_cast<const _P&>(*this), b, opt_);
+			return this->policy_lss(b, opt_);
 		}
 
 		linear_solve_result<_T> solve_jacobi_with_info(const std::vector<_T>& b, const std::size_t max_iter, const scalar_real_type& tol,
@@ -647,7 +749,7 @@ namespace vcp {
 		// Full dense eig (strict): policy_eig owns convergence checking
 		eig_result<_T> eig(const eig_options_type& options) const {
 			validate_eig_input("spmatrix::eig");
-			return this->policy_eig(static_cast<const _P&>(*this), options);
+			return this->policy_eig(options);
 		}
 
 		// Full dense eig (non-strict / diagnostic)
@@ -658,7 +760,7 @@ namespace vcp {
 			if (options.method != eig_solver_method::dense_fallback_explicit)
 				vcp::throw_error<vcp::invalid_argument>("spmatrix::eig: full dense eig requires dense_fallback_explicit");
 			return this->policy_eigs_with_info(
-				static_cast<const _P&>(*this), static_cast<std::size_t>(rowsize()), options);
+				static_cast<std::size_t>(rowsize()), options);
 		}
 
 		eig_options_type default_eigs_options() const {
@@ -684,7 +786,7 @@ namespace vcp {
 
 		// eigs(k, opt): strict — policy_eigs decides convergence
 		std::vector<_T> eigs(const std::size_t k, const eig_options_type& options) const {
-			return this->policy_eigs(static_cast<const _P&>(*this), k, options);
+			return this->policy_eigs(k, options);
 		}
 
 		// eigs_with_info(k): shorthand
@@ -695,14 +797,14 @@ namespace vcp {
 		// eigs_with_info(k, opt): non-strict, return full result
 		eig_result<_T> eigs_with_info(const std::size_t k, const eig_options_type& options) const {
 			return this->policy_eigs_with_info(
-				static_cast<const _P&>(*this), k, options);
+				k, options);
 		}
 
 		// Full generalized eig (strict, returns eigenvalue vector)
 		std::vector<_T> eig(const spmatrix& B) const {
 			validate_eig_input("spmatrix::eig(A,B)");
 			return this->policy_generalized_eigs(
-				static_cast<const _P&>(*this), static_cast<const _P&>(B),
+				static_cast<const _P&>(B),
 				static_cast<std::size_t>(rowsize()), eig_options_type());
 		}
 
@@ -710,20 +812,20 @@ namespace vcp {
 		eig_result<_T> eig(const spmatrix& B, const eig_options_type& options) const {
 			validate_eig_input("spmatrix::eig(A,B)");
 			return this->policy_generalized_eig(
-				static_cast<const _P&>(*this), static_cast<const _P&>(B),
+				static_cast<const _P&>(B),
 				static_cast<std::size_t>(rowsize()), options);
 		}
 
 		// Partial generalized eigs (strict): policy_generalized_eigs decides convergence
 		std::vector<_T> eigs(const spmatrix& B, const std::size_t k, const eig_options_type& options = eig_options_type()) const {
 			return this->policy_generalized_eigs(
-				static_cast<const _P&>(*this), static_cast<const _P&>(B), k, options);
+				static_cast<const _P&>(B), k, options);
 		}
 
 		// Partial generalized eigs_with_info (non-strict)
 		eig_result<_T> eigs_with_info(const spmatrix& B, const std::size_t k, const eig_options_type& options = eig_options_type()) const {
 			return this->policy_generalized_eigs_with_info(
-				static_cast<const _P&>(*this), static_cast<const _P&>(B), k, options);
+				static_cast<const _P&>(B), k, options);
 		}
 
 		// ------------------------------------------------------------------
@@ -733,21 +835,21 @@ namespace vcp {
 		template <class Preconditioner>
 		std::vector<_T> eigs(const std::size_t k, const eig_options_type& options,
 		                     const Preconditioner& M) const {
-			return this->policy_eigs(static_cast<const _P&>(*this), k, options, M);
+			return this->policy_eigs(k, options, M);
 		}
 
 		template <class Preconditioner>
 		eig_result<_T> eigs_with_info(const std::size_t k, const eig_options_type& options,
 		                              const Preconditioner& M) const {
 			return this->policy_eigs_with_info(
-				static_cast<const _P&>(*this), k, options, M);
+				k, options, M);
 		}
 
 		template <class Preconditioner>
 		std::vector<_T> eigs(const spmatrix& B, const std::size_t k,
 		                     const eig_options_type& options, const Preconditioner& M) const {
 			return this->policy_generalized_eigs(
-				static_cast<const _P&>(*this), static_cast<const _P&>(B), k, options, M);
+				static_cast<const _P&>(B), k, options, M);
 		}
 
 		template <class Preconditioner>
@@ -755,7 +857,7 @@ namespace vcp {
 		                              const eig_options_type& options,
 		                              const Preconditioner& M) const {
 			return this->policy_generalized_eigs_with_info(
-				static_cast<const _P&>(*this), static_cast<const _P&>(B), k, options, M);
+				static_cast<const _P&>(B), k, options, M);
 		}
 
 		spmatrix transpose() const {

@@ -159,17 +159,17 @@ namespace spmats_ldl_detail {
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 ldl_result<_T, _Index> spmats<_T, _Index>::policy_ldl_with_info(
-	const spmats<_T, _Index>& A,
 	spmats<_T, _Index>& L,
 	spmats<_T, _Index>& D,
 	std::vector<_Index>& perm,
 	const ldl_options<_T>& opt) const
 {
+	const spmats<_T, _Index>& A = *this;   // WFIX-2: subject is *this
 	if (!A.is_finalized()) A.finalize();
 	if (A.rowsize() != A.columnsize())
 		vcp::throw_error<vcp::dimension_error>(
 		    "spmats::policy_ldl_with_info: matrix must be square");
-	return policy_ldl_with_info_impl(A, L, D, perm, opt);
+	return policy_ldl_with_info_impl(L, D, perm, opt);
 }
 
 // ---------------------------------------------------------------------------
@@ -181,12 +181,12 @@ ldl_result<_T, _Index> spmats<_T, _Index>::policy_ldl_with_info(
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 ldl_result<_T, _Index> spmats<_T, _Index>::policy_ldl_with_info_impl(
-	const spmats<_T, _Index>& A,
 	spmats<_T, _Index>& L,
 	spmats<_T, _Index>& D,
 	std::vector<_Index>& perm,
 	const ldl_options<_T>& opt) const
 {
+	const spmats<_T, _Index>& A = *this;   // WFIX-2: subject is *this
 	try {
 		return spmats_ldl_detail::dispatch_sparse_ldl_<_T, _Index>(A, L, D, perm, opt);
 	} catch (const vcp::error&) {
@@ -221,9 +221,9 @@ ldl_result<_T, _Index> spmats<_T, _Index>::policy_ldl_with_info_impl(
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 inertia_result<_Index> spmats<_T, _Index>::policy_inertia_from_block_diagonal(
-	const spmats<_T, _Index>& D,
 	const scalar_real_type& tol) const
 {
+	const spmats<_T, _Index>& D = *this;   // WFIX-2 (W2-3): the scanned D is *this
 	using std::abs;
 	typedef scalar_real_type R;
 
@@ -350,14 +350,14 @@ inertia_result<_Index> spmats<_T, _Index>::policy_inertia_from_block_diagonal(
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 inertia_result<_Index> spmats<_T, _Index>::policy_inertia_with_info(
-	const spmats<_T, _Index>& A,
 	const inertia_options<_T>& opt) const
 {
+	const spmats<_T, _Index>& A = *this;   // WFIX-2: subject is *this
 	if (!A.is_finalized()) A.finalize();
 	if (A.rowsize() != A.columnsize())
 		vcp::throw_error<vcp::dimension_error>(
 		    "spmats::policy_inertia_with_info: matrix must be square");
-	return policy_inertia_with_info_impl(A, opt);
+	return policy_inertia_with_info_impl(opt);
 }
 
 // ---------------------------------------------------------------------------
@@ -371,18 +371,17 @@ inertia_result<_Index> spmats<_T, _Index>::policy_inertia_with_info(
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 inertia_result<_Index> spmats<_T, _Index>::policy_inertia_with_info_impl(
-	const spmats<_T, _Index>& A,
 	const inertia_options<_T>& opt) const
 {
 	try {
 		spmats<_T, _Index> L, D;
 		std::vector<_Index> perm;
 		const ldl_result<_T, _Index> lr =
-		    policy_ldl_with_info(A, L, D, perm, opt.ldl);
+		    policy_ldl_with_info(L, D, perm, opt.ldl);
 		if (lr.status == sparse_ldl_status::success ||
 		    lr.status == sparse_ldl_status::zero_pivot) {
 			inertia_result<_Index> out =
-			    policy_inertia_from_block_diagonal(D, opt.zero_tol);
+			    D.policy_inertia_from_block_diagonal(opt.zero_tol);
 			out.ldl_status = lr.status;
 			return out;
 		}

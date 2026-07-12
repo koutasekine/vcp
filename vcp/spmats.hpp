@@ -18,6 +18,7 @@
 #include <vcp/tsparse/tsparse.hpp>
 #include <vcp/spmats_base/spmats_eigs_types.hpp>
 #include <vcp/spmats_base/spmats_ldl.hpp>
+#include <vcp/spmats_base/spmats_lu_extract.hpp>
 #include <vcp/spmats_base/spmats_policy_traits.hpp>
 
 namespace vcp {
@@ -823,15 +824,18 @@ namespace vcp {
 		// instead. solve_jacobi/gauss_seidel/cg/bicgstab/gmres (+_with_info)
 		// and policy_lss all route through policy_lss_with_info, so they
 		// inherit the finalize guarantee automatically.
+		// WFIX-2: the subject matrix is *this (dense-side mats precedent);
+		// the former leading `const spmats& A` argument is removed from every
+		// solve/factorize/scan policy method below.
 		// ------------------------------------------------------------------
 		linear_solve_result<_T> policy_lss_with_info(
-			const spmats<_T,_Index>& A, const std::vector<_T>& b,
+			const std::vector<_T>& b,
 			const linear_solve_options<_T>& opt) const;
 		virtual linear_solve_result<_T> policy_lss_with_info_impl(
-			const spmats<_T,_Index>& A, const std::vector<_T>& b,
+			const std::vector<_T>& b,
 			const linear_solve_options<_T>& opt) const;
 		std::vector<_T> policy_lss(
-			const spmats<_T,_Index>& A, const std::vector<_T>& b,
+			const std::vector<_T>& b,
 			const linear_solve_options<_T>& opt) const;
 
 		// ------------------------------------------------------------------
@@ -841,31 +845,33 @@ namespace vcp {
 		// Preconditioner): NVI pattern, non-virtual outer + virtual _impl.
 		// Must never override the outer; override the _impl instead.
 		// Preconditioner overloads (templates) cannot be virtual in C++; they
-		// get a plain auto-finalize check on A (and B) at the entry point
+		// get a plain auto-finalize check on *this (and B) at the entry point
 		// instead of an _impl split.
+		// WFIX-2: the subject matrix is *this; the generalized forms keep B
+		// (operand) only.
 		// ------------------------------------------------------------------
 		eig_result<_T> policy_eigs_with_info(
-			const spmats<_T,_Index>& A, std::size_t k,
+			std::size_t k,
 			const eig_options<_T>& opt) const;
 		virtual eig_result<_T> policy_eigs_with_info_impl(
-			const spmats<_T,_Index>& A, std::size_t k,
+			std::size_t k,
 			const eig_options<_T>& opt) const;
 
 		template <class Prec>
 		eig_result<_T> policy_eigs_with_info(
-			const spmats<_T,_Index>& A, std::size_t k,
+			std::size_t k,
 			const eig_options<_T>& opt, const Prec& M) const;
 
 		eig_result<_T> policy_generalized_eigs_with_info(
-			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			const spmats<_T,_Index>& B,
 			std::size_t k, const eig_options<_T>& opt) const;
 		virtual eig_result<_T> policy_generalized_eigs_with_info_impl(
-			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			const spmats<_T,_Index>& B,
 			std::size_t k, const eig_options<_T>& opt) const;
 
 		template <class Prec>
 		eig_result<_T> policy_generalized_eigs_with_info(
-			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			const spmats<_T,_Index>& B,
 			std::size_t k, const eig_options<_T>& opt, const Prec& M) const;
 
 		// ------------------------------------------------------------------
@@ -877,41 +883,39 @@ namespace vcp {
 		// as above (outer never overridden, override the _impl).
 		// ------------------------------------------------------------------
 		eig_result<_T> policy_eig(
-			const spmats<_T,_Index>& A,
 			const eig_options<_T>& opt) const;
 		virtual eig_result<_T> policy_eig_impl(
-			const spmats<_T,_Index>& A,
 			const eig_options<_T>& opt) const;
 
 		std::vector<_T> policy_eigs(
-			const spmats<_T,_Index>& A, std::size_t k,
+			std::size_t k,
 			const eig_options<_T>& opt) const;
 		virtual std::vector<_T> policy_eigs_impl(
-			const spmats<_T,_Index>& A, std::size_t k,
+			std::size_t k,
 			const eig_options<_T>& opt) const;
 
 		template <class Prec>
 		std::vector<_T> policy_eigs(
-			const spmats<_T,_Index>& A, std::size_t k,
+			std::size_t k,
 			const eig_options<_T>& opt, const Prec& M) const;
 
 		eig_result<_T> policy_generalized_eig(
-			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			const spmats<_T,_Index>& B,
 			std::size_t k, const eig_options<_T>& opt) const;
 		virtual eig_result<_T> policy_generalized_eig_impl(
-			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			const spmats<_T,_Index>& B,
 			std::size_t k, const eig_options<_T>& opt) const;
 
 		std::vector<_T> policy_generalized_eigs(
-			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			const spmats<_T,_Index>& B,
 			std::size_t k, const eig_options<_T>& opt) const;
 		virtual std::vector<_T> policy_generalized_eigs_impl(
-			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			const spmats<_T,_Index>& B,
 			std::size_t k, const eig_options<_T>& opt) const;
 
 		template <class Prec>
 		std::vector<_T> policy_generalized_eigs(
-			const spmats<_T,_Index>& A, const spmats<_T,_Index>& B,
+			const spmats<_T,_Index>& B,
 			std::size_t k, const eig_options<_T>& opt, const Prec& M) const;
 
 		// ------------------------------------------------------------------
@@ -927,12 +931,10 @@ namespace vcp {
 		// zero_pivot.  Definitions in spmats_base/spmats_ldl_impl.hpp.
 		// ------------------------------------------------------------------
 		ldl_result<_T,_Index> policy_ldl_with_info(
-			const spmats<_T,_Index>& A,
 			spmats<_T,_Index>& L, spmats<_T,_Index>& D,
 			std::vector<_Index>& perm,
 			const ldl_options<_T>& opt) const;
 		virtual ldl_result<_T,_Index> policy_ldl_with_info_impl(
-			const spmats<_T,_Index>& A,
 			spmats<_T,_Index>& L, spmats<_T,_Index>& D,
 			std::vector<_Index>& perm,
 			const ldl_options<_T>& opt) const;
@@ -950,14 +952,165 @@ namespace vcp {
 		// Definitions in spmats_base/spmats_ldl_impl.hpp.
 		// ------------------------------------------------------------------
 		inertia_result<_Index> policy_inertia_with_info(
-			const spmats<_T,_Index>& A,
 			const inertia_options<_T>& opt) const;
 		virtual inertia_result<_Index> policy_inertia_with_info_impl(
-			const spmats<_T,_Index>& A,
 			const inertia_options<_T>& opt) const;
+		// WFIX-2 (W2-3): the scanned block diagonal D is the SUBJECT --
+		// call as D.policy_inertia_from_block_diagonal(tol).
 		inertia_result<_Index> policy_inertia_from_block_diagonal(
-			const spmats<_T,_Index>& D,
 			const scalar_real_type& tol) const;
+
+		// ------------------------------------------------------------------
+		// Policy methods: LU factor extraction (LUX-1, lux_design_v0 SS2)
+		//
+		// policy_lu_with_info: non-virtual outer, NVI pattern (finalize
+		// guarantee + squareness entry check).  Must never be overridden;
+		// override policy_lu_with_info_impl instead.  Convention (SSC):
+		// P A Q = L U with p / q new->old (A(p,q) = L U, MATLAB
+		// [L,U,P,Q] = lu(A) orientation) and P(k,p[k]) = 1, Q(q[k],k) = 1
+		// -- note the row side is TRANSPOSED relative to the LDL convention
+		// (LDL's left factor is P^T, here it is P itself).  L unit lower
+		// (explicit unit diagonal), U upper; exact zeros not stored.
+		// equilibration == true in the options is rejected with
+		// unsupported_options (the SSC form has no scaling).  L / U / p / q
+		// are valid outputs only when the returned status is success.
+		// The virtual _impl is the designated replacement point for
+		// external-backend policies (spumar / UMFPACK delegation).
+		// Definitions in spmats_base/spmats_lu_extract_impl.hpp.
+		// ------------------------------------------------------------------
+		lu_extract_result<_T,_Index> policy_lu_with_info(
+			spmats<_T,_Index>& L, spmats<_T,_Index>& U,
+			std::vector<_Index>& p, std::vector<_Index>& q,
+			const lu_extract_options<_T>& opt) const;
+		virtual lu_extract_result<_T,_Index> policy_lu_with_info_impl(
+			spmats<_T,_Index>& L, spmats<_T,_Index>& U,
+			std::vector<_Index>& p, std::vector<_Index>& q,
+			const lu_extract_options<_T>& opt) const;
+
+		// ------------------------------------------------------------------
+		// Policy methods: LU factor consumers (LUX-2, lux_design_v0 SS2a)
+		//
+		// Both take SSC-convention factors (P A Q = L U, p/q new->old,
+		// L unit lower with explicit unit diagonal, U upper) as ARGUMENTS
+		// and consume nothing else -- the default _impl reads no policy
+		// state (P-7), so any derived policy (spumar included) inherits it
+		// unchanged, and a derived policy may override the _impl to replace
+		// the computation (same extension-point design as inertia).
+		//   policy_lu_solve_with_info:        x = Q U^{-1} L^{-1} P b
+		//   policy_lu_inverse_row_with_info:  row_i(A^{-1})^T =
+		//       P^T L^{-T} U^{-T} Q^T e_i  (transposed triangular solves,
+		//       CSC arrays read row-wise; no transpose is materialized)
+		// Non-virtual outers own the finalize guarantee and ALL dimension /
+		// index-range checks (reported as dimension_mismatch, non-throwing);
+		// the default _impl validates the structural contract (p/q
+		// bijections, L unit lower, U upper -> invalid_input) and gates
+		// every U-diagonal division through the certified three-branch
+		// (P-9: nonzero certified -> divide / zero certified ->
+		// singular_factor / undecidable -> inconclusive_division).
+		// x / row are valid outputs only when the status is success.
+		// Definitions in spmats_base/spmats_lu_extract_impl.hpp.
+		// ------------------------------------------------------------------
+		lu_apply_result policy_lu_solve_with_info(
+			const spmats<_T,_Index>& L, const spmats<_T,_Index>& U,
+			const std::vector<_Index>& p, const std::vector<_Index>& q,
+			const std::vector<_T>& b, std::vector<_T>& x) const;
+		virtual lu_apply_result policy_lu_solve_with_info_impl(
+			const spmats<_T,_Index>& L, const spmats<_T,_Index>& U,
+			const std::vector<_Index>& p, const std::vector<_Index>& q,
+			const std::vector<_T>& b, std::vector<_T>& x) const;
+
+		lu_apply_result policy_lu_inverse_row_with_info(
+			const spmats<_T,_Index>& L, const spmats<_T,_Index>& U,
+			const std::vector<_Index>& p, const std::vector<_Index>& q,
+			const _Index i, std::vector<_T>& row) const;
+		virtual lu_apply_result policy_lu_inverse_row_with_info_impl(
+			const spmats<_T,_Index>& L, const spmats<_T,_Index>& U,
+			const std::vector<_Index>& p, const std::vector<_Index>& q,
+			const _Index i, std::vector<_T>& row) const;
+
+		// ------------------------------------------------------------------
+		// WFIX: matrix-form overloads -- factor materialization moved INTO
+		// the policy layer (spmatrix is a pure forwarding wrapper; the P/Q
+		// construction loops formerly in spmatrix::ldl_with_info /
+		// lu_with_info were a layer-discipline violation).
+		//
+		// W-1 (LU, NVI): materialization itself is a replacement point --
+		// backends differ in their natural factor representation (own
+		// baseline / supernodal, UMFPACK, future SuperLU), so a derived
+		// policy may either (a) override only the vector-form
+		// policy_lu_with_info_impl (the matrix form then works through the
+		// default materialization below), or (b) override
+		// policy_lu_matrices_with_info_impl to build the matrices directly
+		// from its internal representation.  Never override the outer.
+		// Convention (SSC): P(k, p[k]) = 1, Q(q[k], k) = 1; P, Q returned
+		// finalized; valid outputs only when status == success.
+		//
+		// W-2 (LDL, non-virtual helper): the LDL factorization is own-code
+		// only, so materialization has no replacement demand -- a plain
+		// overload calling the existing vector-form outer.  Convention
+		// (LDL design v2 SS5.4): P(p[k], k) = 1 -- NOTE the row side is
+		// TRANSPOSED relative to the LU convention above.  P returned
+		// finalized; valid when status is success or zero_pivot (same
+		// validity rule as the vector-form L/D/perm outputs).
+		// ------------------------------------------------------------------
+
+		// W-1 outer (non-virtual, matrix-form overload).  Must never be
+		// overridden -- override policy_lu_matrices_with_info_impl instead.
+		lu_extract_result<_T,_Index> policy_lu_with_info(
+			spmats<_T,_Index>& L, spmats<_T,_Index>& U,
+			spmats<_T,_Index>& P, spmats<_T,_Index>& Q,
+			const lu_extract_options<_T>& opt) const {
+			return policy_lu_matrices_with_info_impl(L, U, P, Q, opt);
+		}
+
+		// W-1 replacement point.  Default: vector-form outer (-> existing
+		// vector-form virtual _impl; contract unchanged), then SSC
+		// materialization P(k,p[k]) = 1, Q(q[k],k) = 1, finalized.
+		virtual lu_extract_result<_T,_Index> policy_lu_matrices_with_info_impl(
+			spmats<_T,_Index>& L, spmats<_T,_Index>& U,
+			spmats<_T,_Index>& P, spmats<_T,_Index>& Q,
+			const lu_extract_options<_T>& opt) const {
+			std::vector<_Index> p, q;
+			lu_extract_result<_T,_Index> result =
+			    policy_lu_with_info(L, U, p, q, opt);
+			P.resize(_Index(0), _Index(0));
+			Q.resize(_Index(0), _Index(0));
+			if (result.status == sparse_lu_extract_status::success) {
+				const _Index n = static_cast<_Index>(p.size());
+				P.resize(n, n);
+				Q.resize(n, n);
+				for (_Index k = 0; k < n; k++) {
+					P.add(k, p[static_cast<std::size_t>(k)], _T(1));
+					Q.add(q[static_cast<std::size_t>(k)], k, _T(1));
+				}
+				P.finalize();
+				Q.finalize();
+			}
+			return result;
+		}
+
+		// W-2 (non-virtual, matrix-form overload): vector-form outer
+		// (-> existing virtual _impl), then LDL materialization
+		// P(p[k], k) = 1, finalized.
+		ldl_result<_T,_Index> policy_ldl_with_info(
+			spmats<_T,_Index>& L, spmats<_T,_Index>& D,
+			spmats<_T,_Index>& P,
+			const ldl_options<_T>& opt) const {
+			std::vector<_Index> perm;
+			ldl_result<_T,_Index> result =
+			    policy_ldl_with_info(L, D, perm, opt);
+			P.resize(_Index(0), _Index(0));
+			if (result.status == sparse_ldl_status::success ||
+			    result.status == sparse_ldl_status::zero_pivot) {
+				const _Index n = static_cast<_Index>(perm.size());
+				P.resize(n, n);
+				for (_Index k = 0; k < n; k++) {
+					P.add(perm[static_cast<std::size_t>(k)], k, _T(1));
+				}
+				P.finalize();
+			}
+			return result;
+		}
 	};
 }
 
@@ -966,5 +1119,6 @@ namespace vcp {
 #include <vcp/spmats_base/spmats_lss.hpp>
 #include <vcp/spmats_base/spmats_eigs.hpp>
 #include <vcp/spmats_base/spmats_ldl_impl.hpp>
+#include <vcp/spmats_base/spmats_lu_extract_impl.hpp>
 
 #endif

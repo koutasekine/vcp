@@ -561,12 +561,12 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_gmres_with_info_(
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 linear_solve_result<_T> spmats<_T, _Index>::policy_lss_with_info(
-	const spmats<_T, _Index>& A,
 	const std::vector<_T>& b,
 	const linear_solve_options<_T>& opt) const
 {
+	const spmats<_T, _Index>& A = *this;   // WFIX-2: subject is *this
 	if (!A.is_finalized()) A.finalize();
-	return policy_lss_with_info_impl(A, b, opt);
+	return policy_lss_with_info_impl(b, opt);
 }
 
 // ---------------------------------------------------------------------------
@@ -576,10 +576,10 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_lss_with_info(
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 linear_solve_result<_T> spmats<_T, _Index>::policy_lss_with_info_impl(
-	const spmats<_T, _Index>& A,
 	const std::vector<_T>& b,
 	const linear_solve_options<_T>& opt) const
 {
+	const spmats<_T, _Index>& A = *this;   // WFIX-2: subject is *this
 	// Validate inputs (misuse contract: invalid input THROWS vcp::error;
 	// the SLU-GT1 D6 net below rethrows these unchanged)
 	if (A.rowsize() != A.columnsize())
@@ -633,11 +633,10 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_lss_with_info_impl(
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 std::vector<_T> spmats<_T, _Index>::policy_lss(
-	const spmats<_T, _Index>& A,
 	const std::vector<_T>& b,
 	const linear_solve_options<_T>& opt) const
 {
-	linear_solve_result<_T> result = policy_lss_with_info(A, b, opt);
+	linear_solve_result<_T> result = policy_lss_with_info(b, opt);
 	if (!result.converged)
 		vcp::throw_error<vcp::state_error>("spmats::policy_lss: iterative solver did not converge");
 	return result.x;
