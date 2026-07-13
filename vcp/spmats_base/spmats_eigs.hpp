@@ -1783,16 +1783,19 @@ static eig_result<_T> complex_standard_eigs_with_info_(const spmats<_T,_Index>& 
         return result;
     }
     if (options.method == eig_solver_method::dense_fallback_explicit) {
-        if (options.max_iter == 0 || options.tol <= scalar_real_type(0))
-            vcp::throw_error<vcp::invalid_argument>("spmats::eigs(complex, dense): invalid iteration option");
-        check_dense_allowed_<_T,_Index>(self, options, "spmats::eigs(complex)");
-        std::vector<std::vector<_T> > dense = to_dense_impl_<_T,_Index>(self);
-        eig_result<_T> result = dense_eig_<_T,_Index>(dense, options);
-        result.used_dense_fallback = true;
-        result.requested_count = k;
-        select_eigenpairs_aligned_<_T,_Index>(result, k, options.target, options.shift);
-        set_result_counts_<_T,_Index>(result, k);
-        return result;
+        // EIG-G1 entrance guard (TASK-3 ledger §E policy;
+        // eig_dense_complex_legacy_issue.md): this branch was the one
+        // runtime-reachable entrance by which complex-scalar matrices flowed
+        // silently into the legacy complex qr_eig_dense dense path (D-13 /
+        // D-15 unrepaired there).  Complex scalars are outside the mats /
+        // spmats design scope, so reject explicitly at the user-facing API
+        // (honest termination: misuse -> throw).  The legacy path body
+        // (dense_eig_ complex branch / qr_eig_dense) is kept, merely
+        // unreachable for complex scalars.
+        vcp::throw_error<vcp::invalid_argument>(
+            "spmats::eigs(complex, dense_fallback_explicit): complex scalars"
+            " are unsupported; use a real coupled formulation"
+            " (see VCP_task_list §E policy)");
     }
     if (options.max_iter == 0)
         vcp::throw_error<vcp::invalid_argument>("spmats::eigs(complex): max_iter must be positive");

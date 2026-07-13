@@ -367,10 +367,20 @@ namespace vcp {
 					values.push_back(T(tr / real_type(2)));
 					values.push_back(T(tr / real_type(2)));
 				}
-				else {
+				else if (disc >= real_type(0)) {  // certified nonnegative: sqrt precondition holds
 					const real_type s = tsparse_scalar::sqrt_value(disc);
 					values.push_back(T((tr - s) / real_type(2)));
 					values.push_back(T((tr + s) / real_type(2)));
+				}
+				else {
+					// EIG-G1 (GT1.1 proposal C): disc straddles 0 -- the three-way
+					// branch cannot be certified (interval only; for double the
+					// disc<0 / disc>=0 branches above are exhaustive and this is
+					// unreachable).  Do not fake an answer: fail the extraction by
+					// returning empty; the caller (qr_eig_dense n<=3) reports it
+					// as converged=false (same channel as the hessenberg 2x2
+					// 0-straddle empty return, SLU-GT1.1 F-7).
+					values.clear();
 				}
 				return values;
 			}
@@ -400,6 +410,18 @@ namespace vcp {
 			}
 			const real_type discr = q * q / real_type(4) + p * p * p / real_type(27);
 			if (discr <= real_type(0)) {
+				// EIG-G1 (GT1.1 filing): the -3/p and 3q/(2p) divisions below
+				// require p certifiably nonzero.  If p's interval contains 0
+				// (endpoints included) the division is not certifiable -- fail
+				// via the same channel as the disc 0-straddle above (empty
+				// return -> caller converged=false).  Failure-side gate idiom
+				// per SLU-GT1 P1: !(x > 0) is certified "cannot prove positive".
+				// For double this is unreachable: the |p| <= 1e-30 branch above
+				// already returned, so |p| > 0 holds.
+				if (!(tsparse_scalar::abs_value(p) > real_type(0))) {
+					values.clear();
+					return values;
+				}
 				real_type arg = (real_type(3) * q / (real_type(2) * p)) * tsparse_scalar::sqrt_value(-real_type(3) / p);
 				if (arg < real_type(-1)) arg = real_type(-1);
 				if (arg > real_type(1)) arg = real_type(1);
@@ -529,6 +551,13 @@ namespace vcp {
 			result.eigenvectors.clear();
 			if (n <= 3) {
 				result.eigenvalues = small_real_eigenvalues(A);
+				// EIG-G1: an empty return with n > 0 is small_real_eigenvalues'
+				// certification-failure signal (0-straddling disc / 0-containing
+				// p, interval only -- never fires for double, which always gets
+				// n values or a throw).  Propagate as honest converged=false.
+				if (result.eigenvalues.size() != n) {
+					return result;
+				}
 				for (std::size_t i = 0; i < result.eigenvalues.size(); i++) {
 					result.eigenvectors.push_back(dense_eigenvector_inverse_iteration(original, result.eigenvalues[i]));
 				}
