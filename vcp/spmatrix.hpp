@@ -25,6 +25,15 @@
 
 namespace vcp {
 
+	// SPC-3: forward declaration only.  spmatrix.hpp must NOT include
+	// matrix.hpp (design SPC-3_design.md v1.1 S3-2, mirror of the SPC-2
+	// forward declaration in matrix.hpp): every use of matrix in the
+	// dense-to-sparse operator= below is inside a template, so name
+	// resolution happens at instantiation time, and any translation unit
+	// that instantiates it necessarily includes matrix.hpp itself.  No
+	// default argument here -- matrix.hpp declares it.
+	template <typename _T, class _P> class matrix;
+
 	// SLU-C3-ELEMENT-ACCESSOR: lightweight proxy returned by the non-const
 	// spmatrix::operator()(i,j), so that `T c = A(i,j)`, `A(i,j) = v`,
 	// `A(i,j) += v`, `A(i,j) *= v` etc. read naturally while still routing
@@ -153,6 +162,57 @@ namespace vcp {
 			return *this;
 		}
 
+		// ---------------------------------------------------------------
+		// SPC-3: dense-to-sparse conversion assignment
+		// (design SPC-3_design.md v1.1 S3-1..S3-7).
+		// Stores the components that are strictly nonzero in the source
+		// AND remain strictly nonzero after value conversion (zero rule
+		// S3-3': no thresholding; an interval is zero only if both
+		// endpoints are exactly zero, so [-eps, eps] is kept).  Values
+		// that become exactly zero through conversion (interval -> point
+		// mid = 0, underflow to 0 on narrowing) are dropped, per the
+		// spmats invariant "explicit zero is not allowed" (assign_* would
+		// throw on them).  Because -0.0 == 0.0, a -0.0 source component
+		// is skipped and the sign of zero is not preserved (unstored
+		// elements read back as +0.0).
+		// The dense side is read through the public 2-arg
+		// operator()(i, j) const and rowsize()/columnsize() only (S3-5;
+		// correct for all matstype states, and 'N' has
+		// row == column == 0, so it naturally yields a 0x0 empty result,
+		// S3-6).  A is never copied or modified.  Row-major single pass:
+		// the column indices of each row are ascending and unique by
+		// construction, no zero value is ever pushed, so the assign_csr
+		// preconditions (sorted / unique / no explicit zero) hold
+		// constructively and the result is born-finalized CSR.
+		// Complexity O(rows*cols) (the lower bound for a dense input;
+		// push_back is amortized O(1)).  Only fires on an explicit
+		// assignment statement; there is no converting constructor, so
+		// no implicit conversion path exists (S3-1, negative check
+		// SPC3-T7).
+		// ---------------------------------------------------------------
+		template <typename _T2, class _P2>
+		spmatrix<_T, _P>& operator=(const matrix<_T2, _P2>& A) {
+			const index_type rows = static_cast<index_type>(A.rowsize());
+			const index_type cols = static_cast<index_type>(A.columnsize());
+			std::vector<index_type> row_ptr(static_cast<std::size_t>(rows) + 1, 0);
+			std::vector<index_type> col_idx;
+			std::vector<_T> val;
+			for (index_type i = 0; i < rows; ++i) {
+				for (index_type j = 0; j < cols; ++j) {
+					const _T2& x = A(static_cast<int>(i), static_cast<int>(j));
+					if (is_strict_zero_(x)) continue;    // (i) source-side test
+					_T y;
+					convert_value_(x, y);
+					if (is_strict_zero_(y)) continue;    // (ii) post-conversion test
+					col_idx.push_back(j);
+					val.push_back(y);
+				}
+				row_ptr[static_cast<std::size_t>(i) + 1] = static_cast<index_type>(col_idx.size());
+			}
+			this->assign_csr(rows, cols, row_ptr, col_idx, val);
+			return *this;
+		}
+
 	private:
 		// SPC-1: strict-zero test on the DESTINATION value type (design
 		// v2.2 §2): point types compare against _Tv(0); interval types
@@ -169,6 +229,19 @@ namespace vcp {
 			return x.lower() == _Tv(0) && x.upper() == _Tv(0);
 		}
 #endif
+
+		// SPC-3: value-conversion helper for the dense-to-sparse
+		// operator= above (directive §4, same tag dispatch as the SPC-2
+		// helper in matrix.hpp).  Same scalar type: plain assignment
+		// (does not rely on an identity vcp::convert overload).
+		// Different scalar type: delegate to the vcp::convert scalar
+		// layer (point->point widening exact / narrowing nearest,
+		// ->interval inclusion-preserving, interval->point mid).
+		template <typename _S>
+		static void convert_value_(const _S& x, _S& y) { y = x; }
+		template <typename _S2, typename _S,
+		          typename std::enable_if<!std::is_same<_S, _S2>::value, int>::type = 0>
+		static void convert_value_(const _S2& x, _S& y) { vcp::convert(x, y); }
 
 		// SPC-1 common core for the four conversion members above.
 		// Complexity O(nnz + max(rows, cols)).  Access to A is via the
