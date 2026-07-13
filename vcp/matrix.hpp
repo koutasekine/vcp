@@ -40,6 +40,14 @@
 #include <vcp/vcp_converter.hpp>
 
 namespace vcp {
+	// SPC-2: forward declaration only. matrix.hpp must NOT include
+	// spmatrix.hpp (design SPC-2_design.md S2-2): every use of spmatrix in
+	// the sparse-to-dense operator= below is a dependent expression whose
+	// names resolve at instantiation time, and any translation unit that
+	// instantiates it necessarily includes spmatrix.hpp itself.  No default
+	// argument here -- spmatrix.hpp declares it.
+	template <typename _T, class _P> class spmatrix;
+
 	template <typename _T, class _P = mats< _T >> class matrix : protected _P {
 	public:
 		matrix() {
@@ -95,6 +103,65 @@ namespace vcp {
 			for (int i = 0; i < A.rowsize(); i++)
 				for (int j = 0; j < A.columnsize(); j++)
 					vcp::convert(A(i, j), (*this)(i, j));
+			return *this;
+		}
+
+	private:
+		// SPC-2: value-conversion helper for the sparse-to-dense operator=
+		// below (directive §4).  Same scalar type: plain assignment (does
+		// not rely on an identity vcp::convert overload).  Different
+		// scalar type: delegate to the vcp::convert scalar layer
+		// (point->point widening exact / narrowing nearest, ->interval
+		// inclusion-preserving, interval->point mid).
+		template <typename _S>
+		static void convert_value_(const _S& x, _S& y) { y = x; }
+		template <typename _S2, typename _S,
+		          typename std::enable_if<!std::is_same<_S, _S2>::value, int>::type = 0>
+		static void convert_value_(const _S2& x, _S& y) { vcp::convert(x, y); }
+
+	public:
+		// SPC-2: sparse-to-dense conversion assignment
+		// (design SPC-2_design.md v1.0 S2-1..S2-3).
+		// Densifies A: O(rowsize*columnsize) memory.  Only fires on an
+		// explicit assignment statement; does not participate in implicit
+		// conversions (no converting constructor is provided).
+		// A is read through an as_csr()/as_csc() copy only (finalize
+		// policy category 4): the source is never modified, a finalized
+		// CSC source is read as CSC to avoid the O(nnz log nnz) re-sort,
+		// and an unfinalized (COO) source is normalized on the copy.
+		// Complexity O(rows*cols + nnz).
+		template <typename _T2, class _P2>
+		matrix<_T, _P>& operator=(const spmatrix<_T2, _P2>& A) {
+			typedef typename spmatrix<_T2, _P2>::index_type src_index_type;
+			typedef typename spmatrix<_T2, _P2>::format_type src_format_type;
+			// C++11 [dcl.enum]/11: an enumerator is reachable through the
+			// scope of its enumeration type, so src_format_type::sparse_csc
+			// is the same enumerator as vcp::sparse_csc but spelled as a
+			// dependent name -- matrix.hpp stays compilable on its own
+			// (vcp::sparse_csc itself is not declared here).
+			const bool use_csc = A.is_finalized()
+			                     && A.format() == src_format_type::sparse_csc;
+			const spmatrix<_T2, _P2> src = use_csc ? A.as_csc() : A.as_csr();
+			const int rows = static_cast<int>(src.rowsize());
+			const int cols = static_cast<int>(src.columnsize());
+			const std::vector<src_index_type>& src_outer = src.outer_index();
+			const std::vector<src_index_type>& src_inner = src.inner_index();
+			const std::vector<_T2>& src_value = src.values();
+			this->zeros(rows, cols);
+			const int nouter = use_csc ? cols : rows;
+			for (int i = 0; i < nouter; i++) {
+				const std::size_t ui = static_cast<std::size_t>(i);
+				for (src_index_type k = src_outer[ui]; k < src_outer[ui + 1]; k++) {
+					const std::size_t kk = static_cast<std::size_t>(k);
+					const int q = static_cast<int>(src_inner[kk]);
+					if (use_csc) {
+						convert_value_(src_value[kk], (*this)(q, i));
+					}
+					else {
+						convert_value_(src_value[kk], (*this)(i, q));
+					}
+				}
+			}
 			return *this;
 		}
 
