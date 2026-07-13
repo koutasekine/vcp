@@ -35,3 +35,4 @@ vcp/doubly_fourier_series.hpp
 vcp/allsol
 AGENTS.md
 CLAUDE.md
+vcp/piddblas.hpp
