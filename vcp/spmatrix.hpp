@@ -114,6 +114,8 @@ namespace vcp {
 		typedef vcp::chol_result<_T, typename _P::index_type> chol_result_type;
 		typedef vcp::ainv_options<_T> ainv_options_type;
 		typedef vcp::ainv_result<_T, typename _P::index_type> ainv_result_type;
+		typedef vcp::fsai_options<_T> fsai_options_type;
+		typedef vcp::fsai_result<_T, typename _P::index_type> fsai_result_type;
 		// LSS-1 P-4
 		typedef vcp::sparse_lu_options<_T> sparse_lu_options_type;
 		typedef vcp::lu_factor_handle<_T, typename _P::index_type> lu_factor_handle_type;
@@ -991,6 +993,43 @@ namespace vcp {
 			return this->policy_ainv_apply(
 				static_cast<const _P&>(Z), static_cast<const _P&>(W),
 				static_cast<const _P&>(D), r, z);
+		}
+
+		// ---------------------------------------------------------------
+		// FSAI static factored approximate inverse (FSAI-1) — thin
+		// forwarding wrappers only, _with_info style exclusively (F-D10).
+		// Construction outputs the sqrt-free triple: U unit upper
+		// triangular, D diagonal, perm new->old (P(perm[k],k) = 1),
+		// born-finalized; R = P U D^{-1} U^T P^T is never materialized —
+		// use fsai_apply for its action on a vector and
+		// fsai_residual_norm_estimate for a NON-GUARANTEED
+		// ||I - R A||_inf value.  The entire implementation lives in the
+		// policy layer (spmats_base/spmats_fsai_impl.hpp).
+		// ---------------------------------------------------------------
+
+		// non-strict construction (factor outputs; ainv_with_info
+		// forwarding form)
+		fsai_result_type fsai_with_info(spmatrix& U, spmatrix& D,
+		                                std::vector<index_type>& perm,
+		                                const fsai_options_type& options = fsai_options_type()) const {
+			return this->policy_fsai_with_info(
+				static_cast<_P&>(U), static_cast<_P&>(D), perm, options);
+		}
+
+		// non-guaranteed residual norm estimate (const factors)
+		fsai_status fsai_residual_norm_estimate(const spmatrix& U, const spmatrix& D,
+		                                        const std::vector<index_type>& perm,
+		                                        typename vcp::tsparse_scalar::real_type<_T>::type& est) const {
+			return this->policy_fsai_residual_norm_estimate(
+				static_cast<const _P&>(U), static_cast<const _P&>(D), perm, est);
+		}
+
+		// apply: z = P (U (D^{-1} (U^T (P^T r))))
+		fsai_status fsai_apply(const spmatrix& U, const spmatrix& D,
+		                       const std::vector<index_type>& perm,
+		                       const std::vector<_T>& r, std::vector<_T>& z) const {
+			return this->policy_fsai_apply(
+				static_cast<const _P&>(U), static_cast<const _P&>(D), perm, r, z);
 		}
 
 		// Convenience overloads — build options and delegate to solve / solve_with_info

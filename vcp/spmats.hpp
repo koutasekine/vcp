@@ -22,6 +22,7 @@
 #include <vcp/spmats_base/spmats_lu_extract.hpp>
 #include <vcp/spmats_base/spmats_lu_factor.hpp>
 #include <vcp/spmats_base/spmats_ainv.hpp>
+#include <vcp/spmats_base/spmats_fsai.hpp>
 #include <vcp/spmats_base/spmats_policy_traits.hpp>
 
 namespace vcp {
@@ -1372,6 +1373,54 @@ namespace vcp {
 			const spmats<_T,_Index>& Z, const spmats<_T,_Index>& W,
 			const spmats<_T,_Index>& D,
 			typename vcp::tsparse_scalar::real_type<_T>::type& est) const;
+
+		// ------------------------------------------------------------------
+		// Policy methods: static FSAI factored approximate inverse (FSAI-1,
+		// fsai design v0)
+		//
+		// policy_fsai_with_info: non-virtual outer, NVI pattern (finalize
+		// guarantee + squareness entry check -- NON-throwing: a non-square
+		// input is reported as invalid_input, like the ainv outer).  Must
+		// never be overridden; override policy_fsai_with_info_impl instead.
+		// Static FSAI after [JFSG15] (Janna et al., ACM TOMS 41(2), 2015),
+		// computed from the entries of A only (no Cholesky factorization is
+		// performed).  Outputs the SQRT-FREE triple: U unit upper triangular
+		// (explicit unit diagonal, = Ghat^T), D diagonal (no structural
+		// zeros barring overflow), perm new->old with P(perm[k],k) = 1
+		// (chol/ldl orientation; ordering enum reused from chol, F-D8), all
+		// born-finalized.  R = P U D^{-1} U^T P^T is NEVER materialized;
+		// the estimate / apply methods below delegate to the AINV helpers
+		// with Z = W = U (F-D10).  Numerical events (tiny pivots, non-SPD /
+		// singular input) are lifted silently and never a failure status
+		// (F-D3/F-D4).  API is _with_info only -- no strict sugar.
+		// Definitions in spmats_base/spmats_fsai_impl.hpp.
+		// ------------------------------------------------------------------
+		fsai_result<_T,_Index> policy_fsai_with_info(
+			spmats<_T,_Index>& U, spmats<_T,_Index>& D,
+			std::vector<_Index>& perm,
+			const fsai_options<_T>& opt) const;
+		virtual fsai_result<_T,_Index> policy_fsai_with_info_impl(
+			spmats<_T,_Index>& U, spmats<_T,_Index>& D,
+			std::vector<_Index>& perm,
+			const fsai_options<_T>& opt) const;
+
+		// policy_fsai_residual_norm_estimate: NON-GUARANTEED estimate of
+		// ||I - R A||_inf, delegated to policy_ainv_residual_norm_estimate
+		// with Z = W = U against A (natural) or a permuted copy P^T A P
+		// (the estimate is permutation invariant).  Single non-virtual
+		// method (design SS2.3); consumer-type checks inline, non-throwing.
+		fsai_status policy_fsai_residual_norm_estimate(
+			const spmats<_T,_Index>& U, const spmats<_T,_Index>& D,
+			const std::vector<_Index>& perm,
+			typename vcp::tsparse_scalar::real_type<_T>::type& est) const;
+
+		// policy_fsai_apply: z = R r = P (U D^{-1} U^T) P^T r, delegated to
+		// policy_ainv_apply with Z = W = U plus O(n) permutation copies.
+		// Single non-virtual method; checks inline, non-throwing.
+		fsai_status policy_fsai_apply(
+			const spmats<_T,_Index>& U, const spmats<_T,_Index>& D,
+			const std::vector<_Index>& perm,
+			const std::vector<_T>& r, std::vector<_T>& z) const;
 	};
 }
 
@@ -1383,5 +1432,6 @@ namespace vcp {
 #include <vcp/spmats_base/spmats_chol_impl.hpp>
 #include <vcp/spmats_base/spmats_lu_extract_impl.hpp>
 #include <vcp/spmats_base/spmats_ainv_impl.hpp>
+#include <vcp/spmats_base/spmats_fsai_impl.hpp>
 
 #endif
