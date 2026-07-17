@@ -67,6 +67,14 @@ enum class sparse_chol_method {
     simplicial_uplooking
     // future (separate design doc): supernodal  (reserved by comment only,
     // design SS8-2; no enum value is added in v1)
+    // [SPCM D-9 pure addition, 2026-07-17] the reservation above is realized
+    // as a VALUE by the SPCM campaign (spcmodumar design v1.0 SS0.1 D-9):
+    // supernodal is recorded in method_used by the external CHOLMOD
+    // delegation policy (vcp::spcmodumar) ONLY, based on the backend's
+    // L->is_super.  The native kernel NEVER sets it and NEVER accepts it as
+    // an input method (an unmapped input method stays invalid_options).
+    // chol design v1 SS4.1 / SS8-2 carry matching correction notes.
+    , supernodal
 };
 
 enum class sparse_chol_ordering {
