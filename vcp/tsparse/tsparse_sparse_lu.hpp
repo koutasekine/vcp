@@ -38,7 +38,13 @@ namespace vcp {
 enum class sparse_lu_method {
     auto_select,
     baseline_gp,
-    supernodal
+    supernodal,
+    // SLU-SP1 (appended LAST; existing enumerator values unchanged): opt-in
+    // left-looking supernode-panel path with zero-padding GEMM updates
+    // (design SLU-SP1 §2, Li 2005 §2.3 technique ported to the sequential
+    // left-looking factorization).  NEVER selected by auto_select; the
+    // default behavior of every existing path is byte-identical (D-3).
+    supernode_panel
 };
 
 enum class sparse_lu_ordering {
@@ -279,6 +285,12 @@ struct sparse_lu_options {
     // original native path.  Read ONLY on the in-place self-symbolic native path.
     bool supernodal_native_check_residual;
 
+    // SLU-SP1 (appended LAST; additive, default changes nothing): maximum
+    // supernode width of the opt-in method=supernode_panel path.  Supernodes
+    // may span panel boundaries up to this cap (Li 2005 maxsup).  Read ONLY
+    // by the supernode_panel numeric; every other path ignores it.
+    std::size_t supernode_panel_maxsup;
+
     sparse_lu_options()
         : method(sparse_lu_method::auto_select),
           ordering(sparse_lu_ordering::auto_select),
@@ -308,7 +320,8 @@ struct sparse_lu_options {
           supernodal_numeric_diagnostic_leftlooking(false),
           supernodal_self_symbolic(false),
           supernodal_inplace_frontal(false),
-          supernodal_native_check_residual(false) {}
+          supernodal_native_check_residual(false),
+          supernode_panel_maxsup(64) {}
 };
 
 // ===========================================================================
@@ -2300,6 +2313,11 @@ namespace sparse_lu_detail {
 // rcm/amd/colamd orderings are all implemented
 // column pre-permutations and are accepted.
 // Explicit supernodal is allowed for all orderings (genuine numeric source via SLU-8R.5.5).
+// SLU-SP1: method == supernode_panel is ACCEPTED here (the symbolic phase --
+// column ordering / etree -- is shared with the other methods); the Phase 1
+// skeleton answers not_implemented at the NUMERIC dispatch in
+// sparse_lu_numeric / sparse_lu_factorize_with_info, replaced by the real
+// driver in Phase 2/3.
 // Returns success for natural/auto_select/baseline_gp + valid params + defaults.
 template <class T>
 inline sparse_lu_status validate_symbolic_options(
@@ -2484,6 +2502,14 @@ void sparse_lu_validate_etree_reach_inputs(
 // Injected here after SLU-2 solve helpers and scalar policy are in scope.
 // ===========================================================================
 #include <vcp/tsparse/detail/tsparse_sparse_lu_numeric_impl.hpp>
+
+// ===========================================================================
+// SLU-SP1: opt-in left-looking supernode-panel numeric (method =
+// supernode_panel).  Injected here with the same prerequisite set as the
+// GP numeric helper above (csc_storage, baseline_lu_storage, scalar policy,
+// pivot acceptability, permutation helpers).
+// ===========================================================================
+#include <vcp/tsparse/detail/tsparse_sparse_lu_supernode_panel_impl.hpp>
 
 // ===========================================================================
 // O4: MC64 / static pivoting (zero-free diagonal; saddle-point solvability).
@@ -4673,6 +4699,50 @@ sparse_lu_numeric(
             return fac;
         }
 
+        // SLU-SP1 Phase 2: opt-in supernode_panel numeric (left-looking
+        // supernode-panel factorization; design §2).  Default-pivoting path
+        // only: static_mc64 (D-6: the new path is MC64-independent) and
+        // equilibration are answered with an honest not_implemented.  The
+        // result is baseline CSC storage, so the existing solve / IR / LUX
+        // consumers work unchanged; method_used reports supernode_panel.
+        if (opt.method == sparse_lu_method::supernode_panel) {
+            if (opt.pivoting == sparse_lu_pivoting::static_mc64 ||
+                opt.equilibration) {
+                info.success = false;
+                info.status  = sparse_lu_status::not_implemented;
+                info.method_used = sparse_lu_method::supernode_panel;
+                fac.set_info_(info);
+                return fac;
+            }
+            const csc_storage<T, Index> A_eff =
+                sparse_lu_make_permuted_csc_storage(A, sym);
+            const real_type max_abs_A = sparse_lu_max_abs_csc(A_eff);
+            sparse_lu_detail::supernode_panel_factorize_result<T, Index> pres =
+                sparse_lu_detail::supernode_panel_lu_factorize(
+                    A_eff, n, sym.col_perm, sym.inv_col_perm, opt);
+            if (!pres.success) {
+                info.success = false;
+                info.status  = pres.status;
+                info.method_used = sparse_lu_method::supernode_panel;
+                fac.set_info_(info);
+                return fac;
+            }
+            const real_type max_abs_U =
+                sparse_lu_max_abs_csc(pres.storage.U);
+            const real_type gf = (max_abs_A > real_type(0))
+                               ? max_abs_U / max_abs_A
+                               : real_type(1);
+            fac.set_baseline_storage_with_diagnostics_(n, pres.storage, gf);
+            fac.set_supernode_info_(sym.supernode_info);
+            {
+                sparse_lu_info<T, Index> ninfo = fac.info();
+                ninfo.method_used          = sparse_lu_method::supernode_panel;
+                ninfo.number_of_supernodes = pres.number_of_supernodes;
+                fac.set_info_(ninfo);
+            }
+            return fac;
+        }
+
         // SLU-MF7: GP-less native MC64 supernodal path.  For method=supernodal
         // with static_mc64 matching + self-symbolic + in-place frontal, build the
         // factor directly from the MC64 matching + multifrontal numeric, skipping
@@ -4886,6 +4956,46 @@ sparse_lu_factorize_with_info(
         if (!sym.success) {
             info.status = sym.status;
             fac.set_info_(info);
+            return fac;
+        }
+
+        // SLU-SP1 Phase 2: opt-in supernode_panel numeric (same contract and
+        // wiring as the matching branch in sparse_lu_numeric -- see there).
+        if (opt.method == sparse_lu_method::supernode_panel) {
+            if (opt.pivoting == sparse_lu_pivoting::static_mc64 ||
+                opt.equilibration) {
+                info.success = false;
+                info.status  = sparse_lu_status::not_implemented;
+                info.method_used = sparse_lu_method::supernode_panel;
+                fac.set_info_(info);
+                return fac;
+            }
+            const csc_storage<T, Index> A_eff =
+                sparse_lu_make_permuted_csc_storage(A, sym);
+            const real_type max_abs_A = sparse_lu_max_abs_csc(A_eff);
+            sparse_lu_detail::supernode_panel_factorize_result<T, Index> pres =
+                sparse_lu_detail::supernode_panel_lu_factorize(
+                    A_eff, info.n, sym.col_perm, sym.inv_col_perm, opt);
+            if (!pres.success) {
+                info.success = false;
+                info.status  = pres.status;
+                info.method_used = sparse_lu_method::supernode_panel;
+                fac.set_info_(info);
+                return fac;
+            }
+            const real_type max_abs_U =
+                sparse_lu_max_abs_csc(pres.storage.U);
+            const real_type gf = (max_abs_A > real_type(0))
+                               ? max_abs_U / max_abs_A
+                               : real_type(1);
+            fac.set_baseline_storage_with_diagnostics_(info.n, pres.storage, gf);
+            fac.set_supernode_info_(sym.supernode_info);
+            {
+                sparse_lu_info<T, Index> ninfo = fac.info();
+                ninfo.method_used          = sparse_lu_method::supernode_panel;
+                ninfo.number_of_supernodes = pres.number_of_supernodes;
+                fac.set_info_(ninfo);
+            }
             return fac;
         }
 
