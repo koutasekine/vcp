@@ -2211,6 +2211,10 @@ private:
         sparse_lu_info<T, Index> info;
         info.success       = true;
         info.status        = sparse_lu_status::success;
+        // SLU-L1 L-3: the baseline GP numeric produced this factor; report it.
+        // For method=supernodal the later set_supernodal_prototype_info_ call
+        // overwrites this with sparse_lu_method::supernodal (existing behavior).
+        info.method_used   = sparse_lu_method::baseline_gp;
         info.n             = n;
         info.nnz_L         = static_cast<Index>(storage.L.row_ind.size());
         info.nnz_U         = static_cast<Index>(storage.U.row_ind.size());
@@ -4164,9 +4168,10 @@ sparse_lu_factorization<T, Index>::supernode_numeric_diagnostics() const
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// sparse_lu_symbolic -- SLU-1: builds identity column permutation and col_etree
-// skeleton for natural/auto_select ordering.  Actual etree and reordering
-// are deferred to SLU-6.  Diagnostic variant: always returns sym.success/status
+// sparse_lu_symbolic -- SLU-1: builds the column permutation and col_etree
+// skeleton.  SLU-L1 L-1: ordering=auto_select resolves to amd; an identity
+// permutation is installed only for explicit ordering=natural.
+// Diagnostic variant: always returns sym.success/status
 // so that sparse_lu_numeric can propagate failure without extra throw paths.
 // ---------------------------------------------------------------------------
 template <class Matrix>
@@ -4200,40 +4205,46 @@ sparse_lu_symbolic(
             return sym;
         }
 
-        // Column pre-permutation slot (§2A).  Default ordering (natural /
-        // auto_select) installs the identity permutation.  Ordering Track O1
-        // (opt.ordering == rcm), O2 (opt.ordering == amd) on the A + A^T pattern,
-        // and O3 (opt.ordering == colamd) on the A^T A column-intersection
+        // Column pre-permutation slot (§2A).  SLU-L1 L-1 (D-1): auto_select now
+        // RESOLVES TO amd (measured dominant on all subject matrices, design
+        // §1; the escape hatch is an explicit ordering=natural, which keeps the
+        // identity permutation byte-identically).  Ordering Track O1
+        // (rcm), O2 (amd) on the A + A^T pattern,
+        // and O3 (colamd) on the A^T A column-intersection
         // pattern install a deterministic, pattern-only fill-reducing permutation
         // Q here, leaving the downstream etree / supernode / numeric / solve /
         // storage pipeline unchanged.  Q enters ONLY this column slot; numeric
         // threshold partial pivoting and row_perm are untouched (S-4).
         const csc_storage<T, Index> A_csc_nat = sparse_lu_make_csc_storage(A);
+        const sparse_lu_ordering effective_ordering =
+            (opt.ordering == sparse_lu_ordering::auto_select)
+                ? sparse_lu_ordering::amd : opt.ordering;
         const bool ordering_active =
-            (opt.ordering == sparse_lu_ordering::rcm) ||
-            (opt.ordering == sparse_lu_ordering::amd) ||
-            (opt.ordering == sparse_lu_ordering::colamd) ||
-            (opt.ordering == sparse_lu_ordering::nested_dissection);
-        if (opt.ordering == sparse_lu_ordering::rcm) {
+            (effective_ordering == sparse_lu_ordering::rcm) ||
+            (effective_ordering == sparse_lu_ordering::amd) ||
+            (effective_ordering == sparse_lu_ordering::colamd) ||
+            (effective_ordering == sparse_lu_ordering::nested_dissection);
+        if (effective_ordering == sparse_lu_ordering::rcm) {
             // S-1: pattern-only (reads col_ptr/row_ind, never values).
             sym.col_perm = sparse_lu_rcm_ordering(
                 n, A_csc_nat.col_ptr, A_csc_nat.row_ind);
-        } else if (opt.ordering == sparse_lu_ordering::amd) {
+        } else if (effective_ordering == sparse_lu_ordering::amd) {
             // S-1: pattern-only (reads col_ptr/row_ind, never values).
             sym.col_perm = sparse_lu_amd_ordering(
                 n, A_csc_nat.col_ptr, A_csc_nat.row_ind);
-        } else if (opt.ordering == sparse_lu_ordering::colamd) {
+        } else if (effective_ordering == sparse_lu_ordering::colamd) {
             // S-1: pattern-only (reads col_ptr/row_ind, never values).  A^T A is
             // NOT formed explicitly (design §634); rows act as quotient-graph
             // elements.
             sym.col_perm = sparse_lu_colamd_ordering(
                 n, A_csc_nat.col_ptr, A_csc_nat.row_ind);
-        } else if (opt.ordering == sparse_lu_ordering::nested_dissection) {
+        } else if (effective_ordering == sparse_lu_ordering::nested_dissection) {
             // SLU-MF4: pattern-only (reads col_ptr/row_ind, never values).
             // Recursive graph bisection; separators numbered last -> wide fronts.
             sym.col_perm = sparse_lu_nested_dissection_ordering(
                 n, A_csc_nat.col_ptr, A_csc_nat.row_ind);
         } else {
+            // natural (explicit): identity permutation, byte-identical legacy.
             sym.col_perm = sparse_lu_identity_permutation(n);
         }
         // inv_col_perm[old] = new (validates Q is a proper permutation).
@@ -4558,6 +4569,56 @@ try_build_native_mc64_supernodal(
     return out;
 }
 
+// ---------------------------------------------------------------------------
+// SLU-L1 L-3 (D-3): structural nnz of a supernodal_lu_storage.
+//
+// Definition: number of STORED entries of the supernodal representation,
+// excluding alignment padding (panel rows in [row_count, leading_dimension)
+// are padding and are NOT counted).  Conventions match the baseline CSC
+// definition (info.nnz_L/nnz_U = row_ind.size()):
+//   - L: unit diagonal implicit (not counted); strict lower part of the
+//        diagonal block + all off-diagonal panel rows (rows num_cols..
+//        row_count-1, every column).
+//   - U: explicit diagonal; upper triangle (incl. diagonal) of the diagonal
+//        block + all U_segments entries (off-diagonal-block U rows).
+// Note (D-3, unverified): the panel is a dense model, so exact-zero fill
+// created during elimination is still a stored entry here; MATLAB nnz is
+// value-based and could report fewer if such exact zeros exist.  Whether
+// they actually occur has NOT been verified.
+// ---------------------------------------------------------------------------
+template <class T, class Index>
+struct supernodal_structural_nnz_result {
+    Index nnz_L;
+    Index nnz_U;
+    supernodal_structural_nnz_result() : nnz_L(Index(0)), nnz_U(Index(0)) {}
+};
+
+template <class T, class Index>
+supernodal_structural_nnz_result<T, Index>
+sparse_lu_supernodal_structural_nnz_(
+    const supernodal_lu_storage<T, Index>& storage)
+{
+    static_assert(std::is_signed<Index>::value,
+                  "sparse_lu_supernodal_structural_nnz_: Index must be signed");
+    supernodal_structural_nnz_result<T, Index> r;
+    std::size_t nl = 0u, nu = 0u;
+    for (std::size_t s = 0u; s < storage.supernodes.size(); ++s) {
+        const supernode_desc<Index>& d = storage.supernodes[s];
+        if (d.num_cols <= Index(0)) continue;
+        const std::size_t w    = static_cast<std::size_t>(d.num_cols);
+        const std::size_t rcnt = d.row_indices.size();
+        // diagonal block: U upper incl. diag = w(w+1)/2; L strict lower = w(w-1)/2.
+        nu += (w * (w + 1u)) / 2u;
+        nl += (w * (w - 1u)) / 2u;
+        // off-diagonal L rows (structural; padding rows beyond rcnt excluded).
+        if (rcnt > w) nl += (rcnt - w) * w;
+    }
+    nu += storage.U_segments.row_ind.size();
+    r.nnz_L = static_cast<Index>(nl);
+    r.nnz_U = static_cast<Index>(nu);
+    return r;
+}
+
 } // namespace sparse_lu_detail
 
 // ---------------------------------------------------------------------------
@@ -4630,6 +4691,19 @@ sparse_lu_numeric(
                 ninfo.success = true;
                 ninfo.status  = sparse_lu_status::success;
                 ninfo.n       = n;
+                // SLU-L1 L-3: MF7 native path diagnostics.  Structural nnz per
+                // D-3 (padding-excluded stored entries; see the helper's note on
+                // the value-based MATLAB nnz difference, unverified).
+                // growth_factor is NOT computed on this path (D-4): it stays at
+                // its default; computing it would need a max|U| scan (L-2+).
+                ninfo.method_used = sparse_lu_method::supernodal;
+                {
+                    const sparse_lu_detail::supernodal_structural_nnz_result<T, Index>
+                        snnz = sparse_lu_detail::sparse_lu_supernodal_structural_nnz_(
+                            mf7.storage);
+                    ninfo.nnz_L = snnz.nnz_L;
+                    ninfo.nnz_U = snnz.nnz_U;
+                }
                 fac.set_info_(ninfo);
                 fac.set_supernode_info_(sym.supernode_info);
                 fac.set_supernodal_storage_info_(mf7.storage);
@@ -4804,8 +4878,9 @@ sparse_lu_factorize_with_info(
         }
         info.n = static_cast<Index>(A.rowsize());
 
-        // Symbolic phase: builds identity col_perm skeleton for natural/auto_select
-        // and a fill-reducing col_perm for rcm/amd/colamd. static_mc64 is
+        // Symbolic phase: builds an identity col_perm skeleton for explicit
+        // natural and a fill-reducing col_perm for rcm/amd/colamd (SLU-L1 L-1:
+        // auto_select resolves to amd inside sparse_lu_symbolic). static_mc64 is
         // handled later in the numeric effective-matrix path.
         sparse_lu_symbolic_result<Index> sym = sparse_lu_symbolic(A, opt);
         if (!sym.success) {
@@ -4830,6 +4905,17 @@ sparse_lu_factorize_with_info(
                 ninfo.success = true;
                 ninfo.status  = sparse_lu_status::success;
                 ninfo.n       = info.n;
+                // SLU-L1 L-3: MF7 native path diagnostics (same as the matching
+                // block in sparse_lu_numeric).  Structural nnz per D-3;
+                // growth_factor NOT computed on this path (D-4).
+                ninfo.method_used = sparse_lu_method::supernodal;
+                {
+                    const sparse_lu_detail::supernodal_structural_nnz_result<T, Index>
+                        snnz = sparse_lu_detail::sparse_lu_supernodal_structural_nnz_(
+                            mf7.storage);
+                    ninfo.nnz_L = snnz.nnz_L;
+                    ninfo.nnz_U = snnz.nnz_U;
+                }
                 fac.set_info_(ninfo);
                 fac.set_supernode_info_(sym.supernode_info);
                 fac.set_supernodal_storage_info_(mf7.storage);

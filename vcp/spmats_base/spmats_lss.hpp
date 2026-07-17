@@ -201,6 +201,8 @@ namespace spmats_lss_detail {
 	resolve_auto_nonsymmetric_(linear_solve_options<_T>& resolved)
 	{
 	    resolved.method = linear_solver_method::sparse_lu;
+	    // SLU-L1 L-1 makes this redundant (auto_select now resolves to amd inside
+	    // sparse_lu_symbolic); RETAINED as defense for the auto path (design §4.4).
 	    if (resolved.sparse_lu.ordering == sparse_lu_ordering::auto_select)
 	        resolved.sparse_lu.ordering = sparse_lu_ordering::amd;   // D-3
 	}

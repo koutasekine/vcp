@@ -251,10 +251,19 @@ public:
     typedef typename vcp::tsparse_scalar::real_type<value_type>::type real_type;
 
     // Standard problem:  y = (A - sigma*I)^{-1} x
+    //
+    // SLU-L1 L-6: optional reuse_symbolic (default null = byte-identical legacy
+    // behavior).  When non-null AND reuse_symbolic->success, the factorization
+    // uses the existing two-stage API sparse_lu_numeric(shifted_, *reuse, opts)
+    // instead of sparse_lu_factorize_with_info(shifted_, opts) -- valid because
+    // the sparse pattern of (A - sigma*I) does not depend on sigma (A fixed,
+    // diagonal shift only), and sparse_lu_numeric is solve-bit-identical to
+    // sparse_lu_factorize_with_info (SLU-L1 design §3.3, measured).
     lu_shift_invert_operator(
         const SparseMatrix& A,
         value_type sigma,
-        const vcp::sparse_lu_options<value_type>& slu_opts)
+        const vcp::sparse_lu_options<value_type>& slu_opts,
+        const vcp::sparse_lu_symbolic_result<index_type>* reuse_symbolic = 0)
         : has_B_(false)
         , slu_opts_(slu_opts)
         , n_(static_cast<std::size_t>(A.rowsize()))
@@ -264,6 +273,7 @@ public:
         , inner_failure_count_(0)
         , inner_residual_norm_(real_type(0))
         , factorization_ok_(false)
+        , reuse_symbolic_active_(false)
     {
         // Same diagonal-loop construction as the legacy standard shift-invert
         // paths (get -> set(cur - sigma) -> finalize; C-3 O(1) amortized set).
@@ -277,6 +287,10 @@ public:
         }
         shifted.finalize();
         shifted_ = shifted.as_csr();
+        if (reuse_symbolic != 0 && reuse_symbolic->success) {
+            symbolic_               = *reuse_symbolic;
+            reuse_symbolic_active_  = true;
+        }
         factorize_();
     }
 
@@ -295,6 +309,7 @@ public:
         , inner_failure_count_(0)
         , inner_residual_norm_(real_type(0))
         , factorization_ok_(false)
+        , reuse_symbolic_active_(false)
     {
         shifted_ = subtract_scaled_sparse(A, B, sigma_);
         B_csr_ = B.as_csr();
@@ -337,6 +352,15 @@ public:
 
     bool factorization_ok() const { return factorization_ok_; }
 
+    // SLU-L1 L-6: symbolic result held by this operator.  VALID ONLY on the
+    // reuse path (a reuse_symbolic was passed and accepted); the legacy null
+    // path factorizes via sparse_lu_factorize_with_info, which does not expose
+    // its internal symbolic, so this returns an empty result (success == false)
+    // there.  Check .success before consuming.
+    const vcp::sparse_lu_symbolic_result<index_type>& symbolic() const {
+        return symbolic_;
+    }
+
     // sparse_lu_status string + factorization summary (E-A1 E4).
     std::string factorization_diagnostics() const { return factorization_diagnostics_; }
 
@@ -369,7 +393,14 @@ private:
     // caller via factorization_ok() / factorization_diagnostics() (D-4).
     void factorize_()
     {
-        fac_ = vcp::sparse_lu_factorize_with_info(shifted_, slu_opts_);
+        // SLU-L1 L-6: reuse path = existing two-stage API (symbolic supplied by
+        // the caller); null path = legacy one-shot API, byte-identical (it is
+        // NOT rewritten as symbolic+numeric here on purpose).
+        if (reuse_symbolic_active_) {
+            fac_ = vcp::sparse_lu_numeric(shifted_, symbolic_, slu_opts_);
+        } else {
+            fac_ = vcp::sparse_lu_factorize_with_info(shifted_, slu_opts_);
+        }
         factorization_ok_ = fac_.info().success;
         std::ostringstream os;
         os << "sparse_lu status="
@@ -387,6 +418,9 @@ private:
     SparseMatrix  B_csr_;     // generalized only (empty for standard)
     bool          has_B_;
     vcp::sparse_lu_factorization<value_type, index_type> fac_;
+    // SLU-L1 L-6: caller-supplied symbolic (reuse path only; empty otherwise).
+    vcp::sparse_lu_symbolic_result<index_type> symbolic_;
+    bool          reuse_symbolic_active_;
     vcp::sparse_lu_options<value_type> slu_opts_;
     std::size_t   n_;
     value_type    sigma_;

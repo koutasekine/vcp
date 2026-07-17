@@ -1152,8 +1152,32 @@ si_polish_shifted_rescue_(eig_result<_T>& result,
     if (result.matrix_vector_products + P > options.max_iter) return;   // 予算規律
 
     std::size_t polish_factorizations = 0;
+    // SLU-L1 L-6: symbolic reuse across the per-pair factorizations.  The
+    // sparse pattern of (A - theta*I) does not depend on theta (A is fixed;
+    // only the diagonal is shifted), and the symbolic phase (column ordering /
+    // etree / supernode partition) is pattern-only, so ONE symbolic computed
+    // for the first pair's shifted matrix is valid for every pair.  Passing it
+    // to the 2nd+ LUOp constructions skips the redundant symbolic phases;
+    // sparse_lu_numeric is solve-bit-identical to sparse_lu_factorize_with_info
+    // (SLU-L1 design §3.3, measured), so all outputs are unchanged.
+    vcp::sparse_lu_symbolic_result<_Index> lu_sym_cache;   // success=false until set
+    if (P >= 2) {
+        spmats<_T,_Index> sh0 = A;   // A is already as_csr (above)
+        const _Index nn = static_cast<_Index>(sh0.rowsize());
+        for (_Index i = 0; i < nn; i++) {
+            const _T cur = sh0.get(i, i);
+            sh0.set(i, i, cur - result.eigenvalues[0]);
+        }
+        sh0.finalize();
+        lu_sym_cache = vcp::sparse_lu_symbolic(sh0.as_csr(),
+                                               options.shift_invert_lu);
+    }
     for (std::size_t p = 0; p < P; p++) {
-        LUOp op(self, result.eigenvalues[p], options.shift_invert_lu);
+        // 1st pair keeps the legacy path (reuse=null) -- minimal change; the
+        // cache is consumed from the 2nd pair on.
+        const vcp::sparse_lu_symbolic_result<_Index>* reuse =
+            (p >= 1 && lu_sym_cache.success) ? &lu_sym_cache : 0;
+        LUOp op(self, result.eigenvalues[p], options.shift_invert_lu, reuse);
         polish_factorizations++;
         if (!op.factorization_ok()) continue;              // 磨き前を採用
         std::vector<_T> w;
