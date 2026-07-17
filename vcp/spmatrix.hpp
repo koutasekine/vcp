@@ -391,13 +391,21 @@ namespace vcp {
 
 		spmatrix as_csr() const {
 			spmatrix B;
-			static_cast<_P&>(B) = _P::as_csr();
+			static_cast<vcp::spmats<_T, typename _P::index_type>&>(static_cast<_P&>(B)) = _P::as_csr();
+			// TPX-1: assign into the base spmats subobject so derived policies
+			// (spumar, spcmodumar, ...) compile.  The result's policy-specific state is
+			// default-constructed -- the same convention as every other
+			// result-returning operation of spmatrix (T-2).
 			return B;
 		}
 
 		spmatrix as_csc() const {
 			spmatrix B;
-			static_cast<_P&>(B) = _P::as_csc();
+			static_cast<vcp::spmats<_T, typename _P::index_type>&>(static_cast<_P&>(B)) = _P::as_csc();
+			// TPX-1: assign into the base spmats subobject so derived policies
+			// (spumar, spcmodumar, ...) compile.  The result's policy-specific state is
+			// default-constructed -- the same convention as every other
+			// result-returning operation of spmatrix (T-2).
 			return B;
 		}
 
@@ -1203,7 +1211,11 @@ namespace vcp {
 
 		spmatrix transpose() const {
 			spmatrix B;
-			static_cast<_P&>(B) = _P::transpose();
+			static_cast<vcp::spmats<_T, typename _P::index_type>&>(static_cast<_P&>(B)) = _P::transpose();
+			// TPX-1: assign into the base spmats subobject so derived policies
+			// (spumar, spcmodumar, ...) compile.  The result's policy-specific state is
+			// default-constructed -- the same convention as every other
+			// result-returning operation of spmatrix (T-2).
 			return B;
 		}
 
