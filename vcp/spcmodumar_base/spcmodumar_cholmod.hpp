@@ -59,6 +59,10 @@ namespace spcmodumar_detail {
 	public:
 		cholmod_env() : started_(false) {
 			started_ = (cholmod_start(&common_) == 1);
+			common_.print = 0;   // SPCM-F1: suppress CHOLMOD console messages -- failures are
+			                     // reported through the VCP status mapping (D-11), and the
+			                     // base policy is silent on npd; keep observable behaviour
+			                     // aligned across policies.
 		}
 		~cholmod_env() {
 			if (started_) cholmod_finish(&common_);
