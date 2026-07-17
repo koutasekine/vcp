@@ -640,6 +640,341 @@ sparse_chol_symbolic_analyze(
     return sym;
 }
 
+// ---------------------------------------------------------------------------
+// sparse_chol_numeric_factorize (CHOL-1 step 1; design SS2.2, D-7).
+//
+// Up-looking numeric stage over the SAVED symbolic pattern (ereach is NOT
+// re-run here; the row-wise views below are pattern transposes of the saved
+// structure, not re-analyses).  Consumes any sparse_chol_symbolic regardless
+// of how it was produced (SS8-3).
+//
+//   sym         : valid symbolic analysis of the pattern of C
+//   C_*         : permuted lower CSC C = P0^T A P0 (rows ascending; only
+//                 producer-validated input is expected -- the one-shot entry
+//                 passes its own construction)
+//   opt         : pd_tol / (method already resolved by the caller)
+//   res         : L_col_ptr / L_row_ind / L_val / status / failure_at /
+//                 inconclusive_at / nnz_L are written here.  perm /
+//                 ordering_used / method_used belong to the caller.
+//
+// Row k processing (textbook up-looking; correctness gated by G-1.1/G-1.2
+// dense-reference comparison): the sparse triangular solve accumulates, for
+// every j in L's row-k pattern in ascending order (a valid topological order
+// of the etree paths since parent > child),
+//     x_j   = C(k,j) - sum_{t<j, L(k,t)!=0} L(j,t) * L(k,t),
+//     L(k,j) = x_j / l_jj,
+//     d      = C(k,k) - sum_j L(k,j)^2,
+// and the diagonal pivot d passes the certified three-branch (P1, SS1.3):
+//   certified d >  pd_tol -> l_kk = sqrt(d) (ADL, unqualified; P2/B-2)
+//   certified d <= pd_tol -> not_positive_definite, failure_at = k (D-9)
+//   neither certified     -> inconclusive_pivot_test, inconclusive_at = k
+// The sign gate goes through real_part (identity for real and interval
+// scalars; keeps the complex instantiation of the virtual policy _impl
+// compilable, same convention as the LDL/inertia layer -- LL^H itself is out
+// of scope).  NaN falls to the third branch naturally (SS1.4, B-3).
+//
+// The kernel keeps every stored position of the symbolic pattern in L_val
+// (numerically cancelled zeros INCLUDED: stored count == nnz_L, SS4.3); the
+// certified-zero drop is the spmats boundary layer's job.  On a stop, L is
+// cleared (D-3: no partial factor) and only the diagnostics remain.
+// ---------------------------------------------------------------------------
+template <class T, class Index>
+void sparse_chol_numeric_factorize(
+    const sparse_chol_symbolic<Index>& sym,
+    const std::vector<Index>& C_col_ptr,
+    const std::vector<Index>& C_row_ind,
+    const std::vector<T>&     C_val,
+    const sparse_chol_options<T>& opt,
+    sparse_chol_result<T, Index>& res)
+{
+    static_assert(std::is_signed<Index>::value, "sparse CHOL Index must be signed");
+    using std::sqrt;
+    typedef typename vcp::tsparse_scalar::real_type<T>::type R;
+
+    res.failure_at      = Index(-1);
+    res.inconclusive_at = Index(-1);
+    res.L_col_ptr.clear();
+    res.L_row_ind.clear();
+    res.L_val.clear();
+
+    // defensive: a producer-validated symbolic object and a size-consistent C
+    if (!sym.valid || sym.n < Index(0)) {
+        res.status = sparse_chol_status::internal_error;
+        return;
+    }
+    const Index n = sym.n;
+    const std::size_t un = static_cast<std::size_t>(n);
+    if (C_col_ptr.size() != un + 1u ||
+        C_row_ind.size() != static_cast<std::size_t>(C_col_ptr[un]) ||
+        C_val.size()     != C_row_ind.size() ||
+        sym.L_col_ptr.size() != un + 1u ||
+        sym.L_row_ind.size() != static_cast<std::size_t>(sym.nnz_L)) {
+        res.status = sparse_chol_status::internal_error;
+        return;
+    }
+
+    res.nnz_L     = sym.nnz_L;
+    res.L_col_ptr = sym.L_col_ptr;
+    res.L_row_ind = sym.L_row_ind;
+    res.L_val.assign(static_cast<std::size_t>(sym.nnz_L), T(0));
+
+    // ---- row-wise view of C (values): counting sort; columns scanned
+    // ascending, so each row list carries ascending column indices.
+    const std::size_t nnzC = C_row_ind.size();
+    std::vector<Index> cr_ptr(un + 1u, Index(0));
+    std::vector<Index> cr_ind(nnzC);
+    std::vector<T>     cr_val(nnzC, T(0));
+    {
+        std::vector<Index> cnt(un + 1u, Index(0));
+        for (std::size_t t = 0; t < nnzC; ++t) ++cnt[static_cast<std::size_t>(C_row_ind[t]) + 1u];
+        for (std::size_t i = 0; i < un; ++i) cnt[i + 1u] = cnt[i + 1u] + cnt[i];
+        cr_ptr = cnt;
+        std::vector<Index> head(cnt.begin(), cnt.end() - 1);
+        for (std::size_t c = 0; c < un; ++c) {
+            for (Index k = C_col_ptr[c]; k < C_col_ptr[c + 1u]; ++k) {
+                const std::size_t r = static_cast<std::size_t>(C_row_ind[static_cast<std::size_t>(k)]);
+                const std::size_t pos = static_cast<std::size_t>(head[r]++);
+                cr_ind[pos] = static_cast<Index>(c);
+                cr_val[pos] = C_val[static_cast<std::size_t>(k)];
+            }
+        }
+    }
+
+    // ---- row-wise pattern of the strictly-lower part of L (pattern
+    // transpose of the saved structure; ascending column indices per row).
+    std::vector<Index> lr_ptr(un + 1u, Index(0));
+    std::vector<Index> lr_ind(static_cast<std::size_t>(sym.nnz_L) >= un
+                              ? static_cast<std::size_t>(sym.nnz_L) - un : 0u);
+    {
+        std::vector<Index> cnt(un + 1u, Index(0));
+        for (std::size_t j = 0; j < un; ++j) {
+            for (Index p = sym.L_col_ptr[j] + Index(1); p < sym.L_col_ptr[j + 1u]; ++p) {
+                ++cnt[static_cast<std::size_t>(sym.L_row_ind[static_cast<std::size_t>(p)]) + 1u];
+            }
+        }
+        for (std::size_t i = 0; i < un; ++i) cnt[i + 1u] = cnt[i + 1u] + cnt[i];
+        lr_ptr = cnt;
+        std::vector<Index> head(cnt.begin(), cnt.end() - 1);
+        for (std::size_t j = 0; j < un; ++j) {
+            for (Index p = sym.L_col_ptr[j] + Index(1); p < sym.L_col_ptr[j + 1u]; ++p) {
+                const std::size_t r = static_cast<std::size_t>(sym.L_row_ind[static_cast<std::size_t>(p)]);
+                lr_ind[static_cast<std::size_t>(head[r]++)] = static_cast<Index>(j);
+            }
+        }
+    }
+
+    // ---- up-looking main loop
+    std::vector<T> x(un, T(0));            // dense workspace; every touched
+                                           // position is inside row k's saved
+                                           // pattern and is zeroed on read
+    std::vector<Index> fill(un, Index(0)); // next append position per column
+    for (std::size_t j = 0; j < un; ++j) fill[j] = sym.L_col_ptr[j] + Index(1);
+
+    bool corrupted = false;                // defensive symbolic/numeric mismatch
+    for (std::size_t k = 0; k < un && !corrupted; ++k) {
+        // scatter row k of C (j < k into x; the diagonal seeds d)
+        T d = T(0);
+        for (Index p = cr_ptr[k]; p < cr_ptr[k + 1u]; ++p) {
+            const Index j = cr_ind[static_cast<std::size_t>(p)];
+            if (j == static_cast<Index>(k)) d = cr_val[static_cast<std::size_t>(p)];
+            else if (j < static_cast<Index>(k)) x[static_cast<std::size_t>(j)] = cr_val[static_cast<std::size_t>(p)];
+            else { corrupted = true; break; }   // C not lower triangular
+        }
+        if (corrupted) break;
+
+        // sparse triangular solve along the saved row pattern (ascending)
+        for (Index t = lr_ptr[k]; t < lr_ptr[k + 1u] && !corrupted; ++t) {
+            const std::size_t j = static_cast<std::size_t>(lr_ind[static_cast<std::size_t>(t)]);
+            const T xj = x[j];
+            x[j] = T(0);
+            const T ljj = res.L_val[static_cast<std::size_t>(sym.L_col_ptr[j])];
+            const T lkj = xj / ljj;   // l_jj passed the certified d > pd_tol
+                                      // gate in row j: no zero division on
+                                      // this path (SS1.4)
+            for (Index p = sym.L_col_ptr[j] + Index(1); p < fill[j]; ++p) {
+                x[static_cast<std::size_t>(sym.L_row_ind[static_cast<std::size_t>(p)])] -=
+                    res.L_val[static_cast<std::size_t>(p)] * lkj;
+            }
+            if (fill[j] >= sym.L_col_ptr[j + 1u] ||
+                sym.L_row_ind[static_cast<std::size_t>(fill[j])] != static_cast<Index>(k)) {
+                corrupted = true;     // append slot missing / not row k's slot
+                break;
+            }
+            res.L_val[static_cast<std::size_t>(fill[j])] = lkj;
+            fill[j] = fill[j] + Index(1);
+            d -= lkj * lkj;
+        }
+        if (corrupted) break;
+
+        // certified three-branch on the diagonal pivot (P1, SS1.3; B-5: the
+        // success side is a certified >, never a !(x > tol) idiom)
+        const R rd = vcp::tsparse_scalar::real_part(d);
+        if (rd > opt.pd_tol) {
+            if (sym.L_row_ind[static_cast<std::size_t>(sym.L_col_ptr[k])] != static_cast<Index>(k)) {
+                corrupted = true;
+                break;
+            }
+            res.L_val[static_cast<std::size_t>(sym.L_col_ptr[k])] = sqrt(d);
+        } else if (rd <= opt.pd_tol) {
+            res.status = sparse_chol_status::not_positive_definite;
+            res.failure_at = static_cast<Index>(k);
+            res.L_col_ptr.clear(); res.L_row_ind.clear(); res.L_val.clear();
+            return;
+        } else {
+            res.status = sparse_chol_status::inconclusive_pivot_test;
+            res.inconclusive_at = static_cast<Index>(k);
+            res.L_col_ptr.clear(); res.L_row_ind.clear(); res.L_val.clear();
+            return;
+        }
+    }
+
+    if (corrupted) {
+        res.status = sparse_chol_status::internal_error;
+        res.L_col_ptr.clear(); res.L_row_ind.clear(); res.L_val.clear();
+        return;
+    }
+    res.status = sparse_chol_status::success;
+}
+
+// ---------------------------------------------------------------------------
+// sparse_chol_factorize_with_info -- non-throwing one-shot entry (CHOL-1
+// step 2; P3: runtime failure is returned as a status; the final catch net
+// maps an escaped exception to internal_error, and its firing is treated as
+// a defect).  This is the only pipeline the policy layer publishes (D-7).
+//
+// Processing order (fixed): input check -> options check -> symmetry check
+// -> structural-empty check (D-5) -> ordering (+ bijection firewall,
+// SS7.5-1) -> permuted lower CSC -> symbolic analysis -> numeric stage.
+// ---------------------------------------------------------------------------
+template <class T, class Index>
+sparse_chol_result<T, Index>
+sparse_chol_factorize_with_info(
+    Index n,
+    const std::vector<Index>& col_ptr,
+    const std::vector<Index>& row_ind,
+    const std::vector<T>&     val,
+    const sparse_chol_options<T>& opt)
+{
+    static_assert(std::is_signed<Index>::value, "sparse CHOL Index must be signed");
+
+    sparse_chol_result<T, Index> res;
+    res.ordering_used = opt.ordering;
+    res.method_used   = opt.method;
+
+    try {
+        // ---- 1. input check -> invalid_input
+        if (!sparse_chol_detail::sparse_chol_validate_csc_(n, col_ptr, row_ind, val)) {
+            res.status = sparse_chol_status::invalid_input;
+            return res;
+        }
+
+        // ---- 2. options check -> invalid_options
+        switch (opt.method) {
+        case sparse_chol_method::auto_select:
+            res.method_used = sparse_chol_method::simplicial_uplooking;
+            break;
+        case sparse_chol_method::simplicial_uplooking:
+            res.method_used = sparse_chol_method::simplicial_uplooking;
+            break;
+        default:
+            res.status = sparse_chol_status::invalid_options;
+            return res;
+        }
+
+        switch (opt.ordering) {
+        case sparse_chol_ordering::auto_select:
+            // Contract (G3, LDL decision-1 parity): auto_select is resolved
+            // BY THE LIBRARY; this version resolves it to amd.  The
+            // resolution is always reported in ordering_used and may change
+            // in future versions -- specify an explicit ordering when
+            // reproducibility is required.  (The SLU auto_select semantics
+            // are frozen and untouched by this.)
+            res.ordering_used = sparse_chol_ordering::amd;
+            break;
+        case sparse_chol_ordering::natural:
+        case sparse_chol_ordering::rcm:
+        case sparse_chol_ordering::amd:
+        case sparse_chol_ordering::nested_dissection:
+            res.ordering_used = opt.ordering;
+            break;
+        default:
+            res.status = sparse_chol_status::invalid_options;
+            return res;
+        }
+
+        // ---- 3. symmetry check -> not_symmetric (opt-out via check_symmetry)
+        if (opt.check_symmetry) {
+            if (!sparse_chol_detail::sparse_chol_symmetry_certified_(
+                    n, col_ptr, row_ind, val, opt.symmetry_tol)) {
+                res.status = sparse_chol_status::not_symmetric;
+                return res;
+            }
+        }
+
+        // ---- 4. structural-empty check -> not_positive_definite (D-5: the
+        // LDL structural_singularity is folded into not_positive_definite;
+        // the location is reported in the dedicated integer diagnostic
+        // structural_empty_at; failure_at stays -1 -- no pivot was tested).
+        {
+            const Index empty_at = sparse_chol_detail::sparse_chol_scan_structural_empty_(
+                n, col_ptr, row_ind);
+            if (empty_at >= Index(0)) {
+                res.status = sparse_chol_status::not_positive_definite;
+                res.structural_empty_at = empty_at;
+                return res;
+            }
+        }
+
+        // ---- 5. ordering (pattern-only pre-permutation P0, perm0[new] =
+        // old) + bijection-verification firewall (D-13/SS7.5-1): a non-
+        // bijective return from the ordering layer is stopped here as
+        // internal_error before it can touch the factorization.
+        std::vector<Index> perm0;
+        if (!sparse_chol_detail::sparse_chol_compute_ordering_(
+                n, col_ptr, row_ind, res.ordering_used, perm0)) {
+            res.status = sparse_chol_status::internal_error;
+            return res;
+        }
+        if (!sparse_chol_detail::sparse_chol_verify_permutation_(n, perm0)) {
+            res.status = sparse_chol_status::internal_error;
+            return res;
+        }
+
+        // ---- 6. explicit permuted lower CSC C = P0^T A P0 (SS2.0-4)
+        std::vector<Index> C_col_ptr, C_row_ind;
+        std::vector<T>     C_val;
+        if (!sparse_chol_detail::sparse_chol_build_permuted_lower_csc_(
+                n, col_ptr, row_ind, val, perm0, C_col_ptr, C_row_ind, C_val)) {
+            res.status = sparse_chol_status::internal_error;
+            return res;
+        }
+
+        // ---- 7. symbolic analysis (pattern-only)
+        const sparse_chol_symbolic<Index> sym =
+            sparse_chol_symbolic_analyze<Index>(n, C_col_ptr, C_row_ind);
+        if (!sym.valid) {
+            res.status = sparse_chol_status::internal_error;
+            return res;
+        }
+        res.nnz_L = sym.nnz_L;   // symbolic value; stays valid on a stop
+
+        // ---- 8. numeric stage (saved pattern reused; no re-ereach)
+        sparse_chol_numeric_factorize<T, Index>(sym, C_col_ptr, C_row_ind, C_val, opt, res);
+        if (res.status == sparse_chol_status::success) {
+            res.perm = perm0;   // static: the ordering output itself (SS5.6)
+        } else {
+            res.perm.clear();   // D-3: no valid perm without a valid L
+        }
+        return res;
+
+    } catch (const std::exception&) {
+        // P3 final protection net: reaching here means a certified gate was
+        // missed somewhere upstream; treated as a defect, not a normal path.
+        res.status = sparse_chol_status::internal_error;
+        return res;
+    }
+}
+
 } // namespace vcp
 
 #endif // VCP_TSPARSE_SPARSE_CHOL_HPP
