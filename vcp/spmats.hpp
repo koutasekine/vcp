@@ -18,6 +18,7 @@
 #include <vcp/tsparse/tsparse.hpp>
 #include <vcp/spmats_base/spmats_eigs_types.hpp>
 #include <vcp/spmats_base/spmats_ldl.hpp>
+#include <vcp/spmats_base/spmats_chol.hpp>
 #include <vcp/spmats_base/spmats_lu_extract.hpp>
 #include <vcp/spmats_base/spmats_policy_traits.hpp>
 
@@ -1072,6 +1073,34 @@ namespace vcp {
 			const ldl_options<_T>& opt) const;
 
 		// ------------------------------------------------------------------
+		// Policy methods: LL^T Cholesky factorization (CHOL-2, chol design
+		// v1 SS5)
+		//
+		// policy_chol_with_info: non-virtual outer, NVI pattern (finalize
+		// guarantee + squareness entry check).  Must never be overridden;
+		// override policy_chol_with_info_impl instead (the designated
+		// replacement point for external backends, e.g. a future CHOLMOD
+		// delegation; design SS7.6).  Convention: P^T A P = L L^T with perm
+		// new->old and P(p[k],k) = 1 (same orientation as LDL); L NON-unit
+		// lower triangular with positive diagonal (l_kk = sqrt of the
+		// certified-positive pivot); perm is the ordering output itself
+		// (no pivoting; design SS5.6).  Exact zeros are not stored (the
+		// certified-zero drop happens at this boundary; kernel nnz_L is the
+		// symbolic count, so the materialized L stores <= nnz_L entries).
+		// L / perm are valid outputs ONLY when the returned status is
+		// success (D-3: chol has no LDL-style "completed failure").
+		// Definitions in spmats_base/spmats_chol_impl.hpp.
+		// ------------------------------------------------------------------
+		chol_result<_T,_Index> policy_chol_with_info(
+			spmats<_T,_Index>& L,
+			std::vector<_Index>& perm,
+			const chol_options<_T>& opt) const;
+		virtual chol_result<_T,_Index> policy_chol_with_info_impl(
+			spmats<_T,_Index>& L,
+			std::vector<_Index>& perm,
+			const chol_options<_T>& opt) const;
+
+		// ------------------------------------------------------------------
 		// Policy methods: inertia (LDL-4, design v2 SS7; decision 4)
 		//
 		// policy_inertia_with_info: non-virtual outer (finalize + squareness),
@@ -1243,6 +1272,32 @@ namespace vcp {
 			}
 			return result;
 		}
+
+		// CHOL-2 (non-virtual, matrix-form overload, W-2 pattern): the
+		// Cholesky factorization is own-code only, so materialization has
+		// no replacement demand -- a plain overload calling the vector-form
+		// outer (-> virtual _impl).  Convention (chol design v1 SS1.1, same
+		// orientation as LDL): P(p[k], k) = 1.  P returned finalized; valid
+		// ONLY when status is success (simpler than LDL: chol has no
+		// zero_pivot-style completed failure, design SS5).
+		chol_result<_T,_Index> policy_chol_with_info(
+			spmats<_T,_Index>& L,
+			spmats<_T,_Index>& P,
+			const chol_options<_T>& opt) const {
+			std::vector<_Index> perm;
+			chol_result<_T,_Index> result =
+			    policy_chol_with_info(L, perm, opt);
+			P.resize(_Index(0), _Index(0));
+			if (result.status == sparse_chol_status::success) {
+				const _Index n = static_cast<_Index>(perm.size());
+				P.resize(n, n);
+				for (_Index k = 0; k < n; k++) {
+					P.add(perm[static_cast<std::size_t>(k)], k, _T(1));
+				}
+				P.finalize();
+			}
+			return result;
+		}
 	};
 }
 
@@ -1251,6 +1306,7 @@ namespace vcp {
 #include <vcp/spmats_base/spmats_lss.hpp>
 #include <vcp/spmats_base/spmats_eigs.hpp>
 #include <vcp/spmats_base/spmats_ldl_impl.hpp>
+#include <vcp/spmats_base/spmats_chol_impl.hpp>
 #include <vcp/spmats_base/spmats_lu_extract_impl.hpp>
 
 #endif
