@@ -1314,6 +1314,108 @@ namespace vcp {
 			return A.transpose();
 		}
 
+		//***************** Math functions (SPFN; mirrors matrix.hpp 627-686) *****************//
+		// abs/sqrt/sin: sparsity-preserving.  cos/exp/log: MATLAB sparse
+		// semantics -- applied at every position, result structurally
+		// (near-)full (see the SPFN block in spmats.hpp).  const version
+		// copies then applies; rvalue version applies in place.
+		friend spmatrix abs(const spmatrix& A) {
+			spmatrix C;
+			C = A;
+			C.abs();
+			return C;
+		}
+		friend spmatrix abs(spmatrix&& A) {
+			A.abs();
+			return std::move(A);
+		}
+		friend spmatrix sqrt(const spmatrix& A) {
+			spmatrix C;
+			C = A;
+			C.sqrt();
+			return C;
+		}
+		friend spmatrix sqrt(spmatrix&& A) {
+			A.sqrt();
+			return std::move(A);
+		}
+		friend spmatrix sin(const spmatrix& A) {
+			spmatrix C;
+			C = A;
+			C.sin();
+			return C;
+		}
+		friend spmatrix sin(spmatrix&& A) {
+			A.sin();
+			return std::move(A);
+		}
+		friend spmatrix cos(const spmatrix& A) {
+			spmatrix C;
+			C = A;
+			C.cos();
+			return C;
+		}
+		friend spmatrix cos(spmatrix&& A) {
+			A.cos();
+			return std::move(A);
+		}
+		friend spmatrix exp(const spmatrix& A) {
+			spmatrix C;
+			C = A;
+			C.exp();
+			return C;
+		}
+		friend spmatrix exp(spmatrix&& A) {
+			A.exp();
+			return std::move(A);
+		}
+		friend spmatrix log(const spmatrix& A) {
+			spmatrix C;
+			C = A;
+			C.log();
+			return C;
+		}
+		friend spmatrix log(spmatrix&& A) {
+			A.log();
+			return std::move(A);
+		}
+
+		//************* matlab like reductions (SPFN; mirrors matrix.hpp 704-732) *************//
+		// max/min: 1x1 for scalars/vectors, 1 x column (column-wise) for
+		// matrices; implicit zeros participate (判断B).  normone/norminf/
+		// normtwo: 1x1 spmatrix (operator norms for matrices, as in
+		// mats<T>); normtwo's matrix branch keeps the dynamic policy type
+		// (判断C, see spmats::normtwo).
+		friend spmatrix max(const spmatrix& A) {
+			spmatrix c;
+			A.max(c);
+			return c;
+		}
+		friend spmatrix min(const spmatrix& A) {
+			spmatrix c;
+			A.min(c);
+			return c;
+		}
+		friend spmatrix normone(const spmatrix& A) {
+			spmatrix c;
+			A.normone(c);
+			return c;
+		}
+		friend spmatrix normtwo(const spmatrix& A) {
+			spmatrix c = A;
+			c.normtwo();
+			return c;
+		}
+		friend spmatrix normtwo(spmatrix&& A) {
+			A.normtwo();
+			return std::move(A);
+		}
+		friend spmatrix norminf(const spmatrix& A) {
+			spmatrix c;
+			A.norminf(c);
+			return c;
+		}
+
 	private:
 		void validate_eig_input(const char* routine) const {
 			if (rowsize() != columnsize()) vcp::throw_error<vcp::dimension_error>(routine, ": matrix must be square");

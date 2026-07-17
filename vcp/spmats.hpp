@@ -328,6 +328,357 @@ namespace vcp {
 			return out;
 		}
 
+		// ------------------------------------------------------------------
+		// SPFN: elementwise math functions / min / max / norms
+		// (pure addition; mirrors mats<T> semantics in mats.hpp 600-670 /
+		//  1068-1251 and the shape contracts of matrix.hpp 627-731.  MATLAB
+		//  sparse semantics for the elementwise maps: f with f(0)=0 (abs,
+		//  sqrt, sin) preserves the sparsity pattern; f with f(0)!=0 (cos,
+		//  exp, log) is applied at EVERY position, so the result is
+		//  structurally (near-)full (MathWorks spfun doc: "exp(S) returns 1
+		//  for the elements of S that are 0s").  Requirements on _T are the
+		//  spmats<T> baseline: arithmetic, comparison, abs and the used
+		//  elementary function found by ADL (using std::xxx).
+		// ------------------------------------------------------------------
+	private:
+		// f(0)=0 maps: finalize first (COO duplicates are summed by the
+		// finalize/normalize pass; mapping before summation would be wrong
+		// since f(a+b) != f(a)+f(b)), then map the stored values in place.
+		// If f maps a stored nonzero to exactly _T(0), the entry is
+		// compacted away to keep the no-explicit-zero invariant of
+		// finalized storage (same invariant to_csr enforces via
+		// tcoo_remove_zeros; the zero test `== _T(0)` is the established
+		// idiom of nnz()/tcoo_remove_zeros/validate_csr).  A finalized CSC
+		// matrix keeps its CSC format (value-array map is format-agnostic).
+		template <class _Fn> void spfn_map_stored_(_Fn f) {
+			if (!finalized) to_csr();
+			bool has_zero = false;
+			for (std::size_t k = 0; k < value.size(); k++) {
+				value[k] = f(value[k]);
+				if (value[k] == _T(0)) has_zero = true;
+			}
+			if (!has_zero) return;
+			// compact within the current (CSR or CSC) format
+			const std::size_t nouter = (fmt == vcp::sparse_csr)
+				? index_to_size(row, "spmats::spfn_map_stored_")
+				: index_to_size(column, "spmats::spfn_map_stored_");
+			std::size_t w = 0;
+			index_type base = 0;
+			for (std::size_t o = 0; o < nouter; o++) {
+				const index_type first = outer[o];
+				const index_type last = outer[o + 1];
+				outer[o] = base;
+				for (index_type p = first; p < last; p++) {
+					const std::size_t sp = static_cast<std::size_t>(p);
+					if (!(value[sp] == _T(0))) {
+						inner[w] = inner[sp];
+						value[w] = value[sp];
+						w++;
+						base++;
+					}
+				}
+			}
+			outer[nouter] = base;
+			inner.resize(w);
+			value.resize(w);
+		}
+		struct spfn_abs_ { _T operator()(const _T& x) const { using std::abs; return abs(x); } };
+		// 判断E: no complex _T exists, so a certifiably negative component
+		// is an error (double: explicit throw below; kv::interval: kv's own
+		// throw also remains possible for cases the certified `<` cannot
+		// decide, e.g. an interval straddling zero -- both are acceptable).
+		// log(_T(0)) is not negative, so it passes this guard and inherits
+		// the type's own behavior (-inf for double, no exception).
+		struct spfn_sqrt_ {
+			_T operator()(const _T& x) const {
+				if (x < _T(0)) vcp::throw_error<vcp::invalid_argument>("spmats::sqrt: negative component (no complex support)");
+				using std::sqrt; return sqrt(x);
+			}
+		};
+		struct spfn_sin_ { _T operator()(const _T& x) const { using std::sin; return sin(x); } };
+		// f(0)!=0 maps (SPFN 判断A): build the structurally (near-)full CSR
+		// result.  INVARIANT (measured): finalized storage never contains
+		// explicit zeros (to_csr drops them via normalize_coo; assign_csr
+		// rejects them).  Therefore positions where f evaluates to exactly
+		// _T(0) (e.g. log(1)) are NOT stored -- they become implicit zeros,
+		// which represents the same mathematical matrix and matches MATLAB
+		// (sparse storage never keeps explicit zeros).  f(_T(0)) is
+		// evaluated once and reused for every implicit-zero position.
+		template <class _Fn> void spfn_map_full_(_Fn f, const char* routine) {
+			if (row <= 0 || column <= 0) {
+				vcp::throw_error<vcp::state_error>(routine, ": empty matrix");
+			}
+			to_csr();
+			const std::size_t m  = index_to_size(row, routine);
+			const std::size_t nc = index_to_size(column, routine);
+			const _T f0 = f(_T(0));
+			// dense row buffer of mapped values, flushed row by row
+			std::vector<index_type> new_outer(m + 1);
+			std::vector<index_type> new_inner;
+			std::vector<_T> new_value;
+			new_inner.reserve(m * nc);
+			new_value.reserve(m * nc);
+			std::vector<_T> rowbuf(nc);
+			new_outer[0] = 0;
+			for (std::size_t i = 0; i < m; i++) {
+				for (std::size_t j = 0; j < nc; j++) rowbuf[j] = f0;
+				for (index_type p = outer[i]; p < outer[i + 1]; p++) {
+					const std::size_t j = static_cast<std::size_t>(inner[static_cast<std::size_t>(p)]);
+					rowbuf[j] = f(value[static_cast<std::size_t>(p)]);
+				}
+				for (std::size_t j = 0; j < nc; j++) {
+					if (!(rowbuf[j] == _T(0))) {   // drop exact zeros (invariant)
+						new_inner.push_back(static_cast<index_type>(j));
+						new_value.push_back(rowbuf[j]);
+					}
+				}
+				new_outer[i + 1] = size_to_index(new_value.size(), routine);
+			}
+			assign_csr(row, column, new_outer, new_inner, new_value);
+		}
+		struct spfn_cos_ { _T operator()(const _T& x) const { using std::cos; return cos(x); } };
+		struct spfn_exp_ { _T operator()(const _T& x) const { using std::exp; return exp(x); } };
+		// 判断E guard as in spfn_sqrt_; log(_T(0)) is NOT negative, so
+		// implicit zeros inherit the type's own log(0) behavior (SPFN 判断A
+		// [実測]: double/kv::dd -> -inf value, no exception; the -inf is a
+		// storable nonzero).
+		struct spfn_log_ {
+			_T operator()(const _T& x) const {
+				if (x < _T(0)) vcp::throw_error<vcp::invalid_argument>("spmats::log: negative component (no complex support)");
+				using std::log; return log(x);
+			}
+		};
+		// SPFN 判断F: NaN must PROPAGATE through max/min folds, never be
+		// silently dropped (MATLAB's omitnan default is deliberately NOT
+		// followed -- silent NaN omission is a bug incubator for verified
+		// computation).  Detection is x != x (true only for NaN-like
+		// values; for kv::interval this is always false [実測], so the
+		// guard is a no-op there).  std::max/std::min alone would be
+		// order-dependent for NaN, hence the explicit guard.  The 2-ary
+		// max/min and the comparison are resolved by ADL (using std::xxx),
+		// the spmats<T> baseline requirement -- NOT a total order (kv's
+		// endpointwise interval max/min is a verified enclosure of the true
+		// max and is in scope; complex T has no order and is out of scope,
+		// as in dense mats).
+		struct spfn_takemax_ {
+			_T operator()(const _T& a, const _T& b) const {
+				if (a != a) return a;
+				if (b != b) return b;
+				using std::max; return max(a, b);
+			}
+		};
+		struct spfn_takemin_ {
+			_T operator()(const _T& a, const _T& b) const {
+				if (a != a) return a;
+				if (b != b) return b;
+				using std::min; return min(a, b);
+			}
+		};
+		// SPFN 判断G: empty matrices are errors (dense mats style; MATLAB's
+		// max([]) = [] is deliberately not followed).
+		void spfn_require_nonempty_(const char* routine) const {
+			if (row <= 0 || column <= 0) {
+				vcp::throw_error<vcp::state_error>(routine, ": empty matrix");
+			}
+		}
+		// SPFN 判断B: shared column-wise reduction core for max/min over a
+		// CSC copy (as_csc(); *this stays untouched, matching the const
+		// contract without relying on the mutable-format loophole).
+		// Implicit zeros participate: a column with fewer stored entries
+		// than `row` folds a _T(0) candidate in; a FULLY stored column must
+		// NOT (a phantom zero would corrupt e.g. an all-negative column).
+		template <class _Cmp> void spfn_colreduce_(spmats& B, _Cmp better) const {
+			const spmats C = as_csc();
+			B.resize(1, column);
+			for (index_type j = 0; j < column; j++) {
+				const index_type first = C.outer[static_cast<std::size_t>(j)];
+				const index_type last  = C.outer[static_cast<std::size_t>(j) + 1];
+				_T best;
+				if (first == last) {
+					best = _T(0);
+				}
+				else {
+					best = C.value[static_cast<std::size_t>(first)];
+					for (index_type p = first + 1; p < last; p++) {
+						best = better(C.value[static_cast<std::size_t>(p)], best);
+					}
+					if (last - first < row) best = better(_T(0), best);
+				}
+				B.set(0, j, best);
+			}
+			B.finalize();
+		}
+		// Whole-vector reduction (row==1 || column==1) incl. implicit zeros.
+		template <class _Cmp> void spfn_vecreduce_(spmats& B, _Cmp better) const {
+			const spmats C = as_csr();
+			const index_type len = (row == 1) ? column : row;
+			_T best;
+			if (C.value.empty()) {
+				best = _T(0);
+			}
+			else {
+				best = C.value[0];
+				for (std::size_t k = 1; k < C.value.size(); k++) {
+					best = better(C.value[k], best);
+				}
+				if (size_to_index(C.value.size(), "spmats::spfn_vecreduce_") < len) best = better(_T(0), best);
+			}
+			B.resize(1, 1);
+			B.set(0, 0, best);
+			B.finalize();
+		}
+	public:
+		// A = abs(A) / sqrt(A) / sin(A): sparsity-preserving (f(0)=0).
+		void abs()  { spfn_map_stored_(spfn_abs_());  }
+		void sqrt() { spfn_map_stored_(spfn_sqrt_()); }
+		void sin()  { spfn_map_stored_(spfn_sin_());  }
+		// A = cos(A) / exp(A) / log(A): MATLAB sparse semantics (SPFN 判断A),
+		// applied at every position; the result is structurally (near-)full
+		// (row*column minus the exactly-zero images, e.g. log(1)=0).  log
+		// evaluates log(_T(0)) at implicit zeros, exactly as dense
+		// mats<T>::log does on zero entries.
+		void cos()  { spfn_map_full_(spfn_cos_(), "spmats::cos"); }
+		void exp()  { spfn_map_full_(spfn_exp_(), "spmats::exp"); }
+		void log()  { spfn_map_full_(spfn_log_(), "spmats::log"); }
+
+		// max/min (SPFN): same shape contract as mats<T> --
+		//   1x1        -> 1x1 (the value itself)
+		//   vector     -> 1x1 (whole-vector reduction)
+		//   m x n      -> 1 x n (column-wise reduction, MATLAB style)
+		// Implicit zeros participate in the comparisons (判断B), NaN
+		// propagates (判断F), empty matrices throw (判断G).
+		void max(spmats& B) const {
+			spfn_require_nonempty_("spmats::max");
+			if (row == 1 && column == 1) { B.resize(1, 1); B.set(0, 0, get(0, 0)); B.finalize(); return; }
+			if (row == 1 || column == 1) { spfn_vecreduce_(B, spfn_takemax_()); return; }
+			spfn_colreduce_(B, spfn_takemax_());
+		}
+		void min(spmats& B) const {
+			spfn_require_nonempty_("spmats::min");
+			if (row == 1 && column == 1) { B.resize(1, 1); B.set(0, 0, get(0, 0)); B.finalize(); return; }
+			if (row == 1 || column == 1) { spfn_vecreduce_(B, spfn_takemin_()); return; }
+			spfn_colreduce_(B, spfn_takemin_());
+		}
+
+		// normone (SPFN): 1x1 |a| / vector sum_i |v_i| / matrix operator
+		// 1-norm (max column abs-sum).  B is 1x1, as in mats<T>.  Implicit
+		// zeros contribute |0| = 0, so only stored entries are summed; an
+		// empty column's sum is 0 and the max fold starts from the first
+		// column's sum so empty axes are included correctly.  The max fold
+		// uses spfn_takemax_ (判断F: NaN propagates; the sums themselves
+		// propagate NaN through arithmetic).
+		void normone(spmats& B) const {
+			spfn_require_nonempty_("spmats::normone");
+			using std::abs;
+			_T res;
+			if (row == 1 && column == 1) {
+				res = abs(get(0, 0));
+			}
+			else if (row == 1 || column == 1) {
+				const spmats C = as_csr();
+				res = _T(0);
+				for (std::size_t k = 0; k < C.value.size(); k++) res += abs(C.value[k]);
+			}
+			else {
+				const spmats C = as_csc();
+				res = _T(0);
+				for (index_type j = 0; j < column; j++) {
+					_T s = _T(0);
+					for (index_type p = C.outer[static_cast<std::size_t>(j)];
+					     p < C.outer[static_cast<std::size_t>(j) + 1]; p++) {
+						s += abs(C.value[static_cast<std::size_t>(p)]);
+					}
+					res = (j == 0) ? s : spfn_takemax_()(s, res);   // 判断F: NaN propagates
+				}
+			}
+			B.resize(1, 1);
+			B.set(0, 0, res);
+			B.finalize();
+		}
+		// norminf (SPFN): 1x1 |a| / vector max_i |v_i| / matrix operator
+		// inf-norm (max row abs-sum).  B is 1x1, as in mats<T>.  The vector
+		// fold starts from 0 (implicit zeros give |0| = 0 and abs >= 0
+		// makes the 0-init exact even when nothing is stored).
+		void norminf(spmats& B) const {
+			spfn_require_nonempty_("spmats::norminf");
+			using std::abs;
+			_T res;
+			if (row == 1 && column == 1) {
+				res = abs(get(0, 0));
+			}
+			else if (row == 1 || column == 1) {
+				const spmats C = as_csr();
+				res = _T(0);
+				for (std::size_t k = 0; k < C.value.size(); k++) res = spfn_takemax_()(abs(C.value[k]), res);   // 判断F
+			}
+			else {
+				const spmats C = as_csr();
+				res = _T(0);
+				for (index_type i = 0; i < row; i++) {
+					_T s = _T(0);
+					for (index_type p = C.outer[static_cast<std::size_t>(i)];
+					     p < C.outer[static_cast<std::size_t>(i) + 1]; p++) {
+						s += abs(C.value[static_cast<std::size_t>(p)]);
+					}
+					res = (i == 0) ? s : spfn_takemax_()(s, res);   // 判断F: NaN propagates
+				}
+			}
+			B.resize(1, 1);
+			B.set(0, 0, res);
+			B.finalize();
+		}
+		// normtwo (SPFN): destructive (self becomes 1x1), as mats<T>::normtwo.
+		//   1x1    -> |a|
+		//   vector -> sqrt(sum v_i^2)
+		//   matrix -> sqrt(lambda_max(A^T A)) via policy_eigs on *this.
+		// 判断C (most important): the A^T A product is assigned into the
+		// BASE subobject of *this (`*this = AtA;` inside this spmats member
+		// resolves to the base operator=, mirroring dense mats::normtwo's
+		// "mulltmm -> (*this)=A -> eigsym").  This keeps the dynamic type
+		// of *this, so the NVI chain policy_eigs -> policy_eigs_impl ->
+		// policy_eigs_with_info -> policy_eigs_with_info_impl dispatches to
+		// a derived policy's override (e.g. spumar's ARPACK path) when one
+		// is installed.  Calling eigs on a fresh spmats<T> temporary
+		// instead would lose that override and silently fall back to the
+		// base Lanczos -- do NOT "simplify" this into a temporary.
+		void normtwo() {
+			spfn_require_nonempty_("spmats::normtwo");
+			using std::abs;
+			using std::sqrt;
+			if (row == 1 && column == 1) {
+				const _T res = abs(get(0, 0));
+				this->resize(1, 1);
+				this->set(0, 0, res);
+				this->finalize();
+				return;
+			}
+			if (row == 1 || column == 1) {
+				const spmats C = as_csr();
+				_T s = _T(0);
+				for (std::size_t k = 0; k < C.value.size(); k++) {
+					s += C.value[k] * C.value[k];
+				}
+				const _T res = sqrt(s);
+				this->resize(1, 1);
+				this->set(0, 0, res);
+				this->finalize();
+				return;
+			}
+			{
+				const spmats At = this->transpose();
+				const spmats AtA = this->policy_mul(At, *this);   // (n x m)(m x n) = n x n, symmetric PSD
+				*this = AtA;   // base-subobject assignment; dynamic type preserved (判断C)
+			}
+			eig_options<_T> opt;
+			opt.structure = matrix_structure_hint::symmetric;
+			opt.target = eig_target::largest_magnitude;
+			const std::vector<_T> ev = this->policy_eigs(1, opt);
+			const _T res = sqrt(abs(ev[0]));   // abs guards a tiny negative rounding of lambda_max >= 0
+			this->resize(1, 1);
+			this->set(0, 0, res);
+			this->finalize();
+		}
+
 		// matlab C = [A,B] -- concatenate columns (row counts must match).
 		// Built directly from as_csr() copies of *this and B (see
 		// sandbox/docs/misc/spmats_destructive_helpers_misc.md): as_csr() never
