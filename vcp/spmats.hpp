@@ -20,6 +20,7 @@
 #include <vcp/spmats_base/spmats_ldl.hpp>
 #include <vcp/spmats_base/spmats_chol.hpp>
 #include <vcp/spmats_base/spmats_lu_extract.hpp>
+#include <vcp/spmats_base/spmats_ainv.hpp>
 #include <vcp/spmats_base/spmats_policy_traits.hpp>
 
 namespace vcp {
@@ -1298,6 +1299,61 @@ namespace vcp {
 			}
 			return result;
 		}
+
+		// ------------------------------------------------------------------
+		// Policy methods: AINV approximate inverse (AINV-1, ainv design v1.2)
+		//
+		// policy_ainv_with_info: non-virtual outer, NVI pattern (finalize
+		// guarantee + squareness entry check -- NON-throwing: a non-square
+		// input is reported as invalid_input, design §1.3, unlike the
+		// throwing ldl / lu outers).  Must never be overridden; override
+		// policy_ainv_with_info_impl instead.  Incomplete biconjugation
+		// after [BT98] (Benzi/Tuma, SIAM J. Sci. Comput. 19(3), 1998):
+		// outputs Z / W unit upper triangular (explicit unit diagonal) and
+		// D diagonal with every pivot lifted to nonzero (design §4.3), all
+		// born-finalized.  R = Z D^{-1} W^T is NEVER materialized (D-13);
+		// the apply / estimate methods below consume the factors directly.
+		// Numerical events (tiny pivots, fill growth) are never a failure
+		// status (D-4); a singular input completes with success (D-3).
+		// API is _with_info only -- no strict throwing sugar (D-17).
+		// Definitions in spmats_base/spmats_ainv_impl.hpp.
+		// ------------------------------------------------------------------
+		ainv_result<_T,_Index> policy_ainv_with_info(
+			spmats<_T,_Index>& Z, spmats<_T,_Index>& W,
+			spmats<_T,_Index>& D,
+			const ainv_options<_T>& opt) const;
+		virtual ainv_result<_T,_Index> policy_ainv_with_info_impl(
+			spmats<_T,_Index>& Z, spmats<_T,_Index>& W,
+			spmats<_T,_Index>& D,
+			const ainv_options<_T>& opt) const;
+
+		// policy_ainv_apply: z = Z (D^{-1} (W^T r)) as three sparse stages
+		// ([BT98] eq. (6) structure); W^T is not materialized -- the W^T
+		// product is a scatter scan over W's stored lines (design §2.4).
+		// Consumer-type NVI (policy_lu_solve_with_info precedent): the
+		// factors are ARGUMENTS, the non-virtual outer owns the finalize
+		// guarantee and ALL dimension / structure checks (invalid_input,
+		// non-throwing); override the _impl only.  z is a valid output only
+		// when the returned status is success.
+		ainv_status policy_ainv_apply(
+			const spmats<_T,_Index>& Z, const spmats<_T,_Index>& W,
+			const spmats<_T,_Index>& D,
+			const std::vector<_T>& r, std::vector<_T>& z) const;
+		virtual ainv_status policy_ainv_apply_impl(
+			const spmats<_T,_Index>& Z, const spmats<_T,_Index>& W,
+			const spmats<_T,_Index>& D,
+			const std::vector<_T>& r, std::vector<_T>& z) const;
+
+		// policy_ainv_residual_norm_estimate: NON-GUARANTEED estimate of
+		// ||I - Z D^{-1} W^T A||_inf in plain T point arithmetic (D-11),
+		// row by row and factor-based (R never materialized, working
+		// memory O(n); design §2.3).  (a)-type: A is *this, the factors
+		// are arguments.  Single non-virtual method (design §2.3;
+		// consumer-type checks inline, non-throwing).
+		ainv_status policy_ainv_residual_norm_estimate(
+			const spmats<_T,_Index>& Z, const spmats<_T,_Index>& W,
+			const spmats<_T,_Index>& D,
+			typename vcp::tsparse_scalar::real_type<_T>::type& est) const;
 	};
 }
 
@@ -1308,5 +1364,6 @@ namespace vcp {
 #include <vcp/spmats_base/spmats_ldl_impl.hpp>
 #include <vcp/spmats_base/spmats_chol_impl.hpp>
 #include <vcp/spmats_base/spmats_lu_extract_impl.hpp>
+#include <vcp/spmats_base/spmats_ainv_impl.hpp>
 
 #endif

@@ -112,6 +112,8 @@ namespace vcp {
 		typedef vcp::lu_extract_result<_T, typename _P::index_type> lu_extract_result_type;
 		typedef vcp::chol_options<_T> chol_options_type;
 		typedef vcp::chol_result<_T, typename _P::index_type> chol_result_type;
+		typedef vcp::ainv_options<_T> ainv_options_type;
+		typedef vcp::ainv_result<_T, typename _P::index_type> ainv_result_type;
 
 		spmatrix() : _P() {}
 		spmatrix(const index_type rows, const index_type cols) : _P() { this->resize(rows, cols); }
@@ -934,6 +936,43 @@ namespace vcp {
 					lu_apply_status_to_string(result.status));
 			}
 			return row;
+		}
+
+		// ---------------------------------------------------------------
+		// AINV approximate inverse (AINV-1) — thin forwarding wrappers
+		// only, _with_info style exclusively (no strict throwing sugar,
+		// design D-17).  Construction outputs Z / W unit upper triangular
+		// and D diagonal, born-finalized; R = Z D^{-1} W^T is never
+		// materialized (D-13) — use ainv_apply for its action on a vector
+		// and ainv_residual_norm_estimate for a NON-GUARANTEED
+		// ||I - R A||_inf value (D-11).  The entire implementation lives
+		// in the policy layer (spmats_base/spmats_ainv_impl.hpp).
+		// ---------------------------------------------------------------
+
+		// non-strict construction (factor outputs; ldl_with_info(L,D,P)
+		// forwarding form)
+		ainv_result_type ainv_with_info(spmatrix& Z, spmatrix& W, spmatrix& D,
+		                                const ainv_options_type& options = ainv_options_type()) const {
+			return this->policy_ainv_with_info(
+				static_cast<_P&>(Z), static_cast<_P&>(W), static_cast<_P&>(D), options);
+		}
+
+		// non-guaranteed residual norm estimate (const factors;
+		// lu_solve_with_info forwarding form)
+		ainv_status ainv_residual_norm_estimate(const spmatrix& Z, const spmatrix& W,
+		                                        const spmatrix& D,
+		                                        typename vcp::tsparse_scalar::real_type<_T>::type& est) const {
+			return this->policy_ainv_residual_norm_estimate(
+				static_cast<const _P&>(Z), static_cast<const _P&>(W),
+				static_cast<const _P&>(D), est);
+		}
+
+		// apply: z = Z (D^{-1} (W^T r))
+		ainv_status ainv_apply(const spmatrix& Z, const spmatrix& W, const spmatrix& D,
+		                       const std::vector<_T>& r, std::vector<_T>& z) const {
+			return this->policy_ainv_apply(
+				static_cast<const _P&>(Z), static_cast<const _P&>(W),
+				static_cast<const _P&>(D), r, z);
 		}
 
 		// Convenience overloads — build options and delegate to solve / solve_with_info
