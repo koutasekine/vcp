@@ -34,6 +34,9 @@ namespace vcp {
 	// default argument here -- matrix.hpp declares it.
 	template <typename _T, class _P> class matrix;
 
+	// SUB-1: block-write proxy (defined after spmatrix below).
+	template <typename _T, class _P> class spmatrix_block;
+
 	// SLU-C3-ELEMENT-ACCESSOR: lightweight proxy returned by the non-const
 	// spmatrix::operator()(i,j), so that `T c = A(i,j)`, `A(i,j) = v`,
 	// `A(i,j) += v`, `A(i,j) *= v` etc. read naturally while still routing
@@ -328,6 +331,53 @@ namespace vcp {
 			return element_proxy_type(*this, i, j);
 		}
 		_T operator()(const index_type i, const index_type j) const { return get(i, j); }
+
+		// -----------------------------------------------------------------
+		// SUB-1: submatrix extraction (dense matrix::submatrix parity).
+		// Selector grammar (0-based, exact mirror of mats::submat):
+		//   {}      whole axis (MATLAB ':')
+		//   {i}     single index
+		//   {a,b}   CLOSED range a..b (both ends included -- NOT half-open)
+		//   {a,s,b} stride a, a+s, ... while <= b (b need not be hit)
+		// Invalid selectors throw vcp::index_error with the dense-side
+		// conditions and message form.  The result is a new value,
+		// born-finalized, source format preserved (finalized CSC -> CSC;
+		// finalized CSR and unfinalized -> CSR); *this is never modified.
+		// Return-type rule (S11): bare ints only = element (T, A(i,j));
+		// ANY braced selector = submatrix: A({1},{2}), A(1,{2}), A({1},2)
+		// are 1x1 spmatrix, A(1,2) is the element.
+		// -----------------------------------------------------------------
+		spmatrix submatrix(const std::initializer_list<int>& list1,
+		                   const std::initializer_list<int>& list2) const {
+			spmatrix B;
+			_P::submat(static_cast<_P&>(B), list1, list2);
+			return B;
+		}
+
+		// const sugar -- pure forwarding to submatrix (extraction)
+		spmatrix operator()(const std::initializer_list<int>& list1,
+		                    const std::initializer_list<int>& list2) const {
+			return this->submatrix(list1, list2);
+		}
+		// mixed forms (S11): the int is wrapped as the single selector {i}
+		spmatrix operator()(const int i, const std::initializer_list<int>& list2) const {
+			return this->submatrix({i}, list2);
+		}
+		spmatrix operator()(const std::initializer_list<int>& list1, const int j) const {
+			return this->submatrix(list1, {j});
+		}
+
+		// SUB-1 Phase W: the non-const forms return the block-write proxy
+		// (spmatrix_block, defined after this class): A({..},{..}) = B
+		// (same-type spmatrix, block REPLACEMENT) or = scalar (fill).
+		// Selector validation happens HERE, at proxy construction.
+		// See spmatrix_block for the semantics (zeros in the right-hand
+		// side delete stored entries; nonzero scalar fill DENSIFIES the
+		// block) and the lifetime warning (`auto x = A({..},{..});`
+		// captures the proxy, not an spmatrix).
+		spmatrix_block< _T, _P > operator()(const std::initializer_list<int>& list1, const std::initializer_list<int>& list2);
+		spmatrix_block< _T, _P > operator()(const int i, const std::initializer_list<int>& list2);
+		spmatrix_block< _T, _P > operator()(const std::initializer_list<int>& list1, const int j);
 
 		void sort_coo() { _P::sort_coo(); }
 		void normalize_coo() { _P::normalize_coo(); }
@@ -1115,6 +1165,171 @@ namespace vcp {
 			if (rowsize() != columnsize()) vcp::throw_error<vcp::dimension_error>(routine, ": matrix must be square");
 		}
 	};
+
+	// -----------------------------------------------------------------------
+	// SUB-1: block-write proxy returned by the non-const
+	// spmatrix::operator()({..},{..}) and the mixed int/list forms.
+	// Holds a reference to the parent and the NORMALIZED selectors only;
+	// selector validation is completed at proxy construction
+	// (vcp::index_error), and operator= validates the right-hand-side
+	// dimensions (and an index-width preflight) BEFORE the first set(), so
+	// a throwing assignment leaves the parent untouched.
+	// Semantics (SUB-1_design.md v1.1 §3.3, MATLAB block replacement):
+	//   proxy = spmatrix<_T,_P> -- the block is REPLACED: positions where
+	//                              the right-hand side is zero lose any
+	//                              previously stored entry.  The right-hand
+	//                              side is materialized first (as_csr()
+	//                              copy), so aliased assignments such as
+	//                              A({0,2},{0,2}) = A({1,3},{1,3}) follow
+	//                              the MATLAB semantics; B is unchanged.
+	//   proxy = scalar _T       -- fill: a nonzero scalar DENSIFIES the
+	//                              block (nnz grows by the block area, the
+	//                              MATLAB consequence); scalar 0 clears it.
+	//   spmatrix<_T,_P>(proxy)  -- read; delegates to spmatrix::submatrix.
+	// Mechanism: public tagged set()/to_csr()/to_csc() path only (C-3) --
+	// set() pushes tagged COO entries, the normalize inside the final
+	// to_csr()/to_csc() applies the replace-then-drop-zeros semantics, and
+	// the parent is re-finalized into its pre-write format (finalized CSC
+	// stays CSC; CSR and unfinalized parents finalize to CSR).  Complexity
+	// O(nnz + block area + sort).
+	// LIFETIME WARNING: `auto x = A({..},{..});` captures the PROXY, not an
+	// spmatrix -- it must not outlive the parent A.  Use an explicit
+	// spmatrix<_T,_P> variable to take a copy of the block.
+	// -----------------------------------------------------------------------
+	template <typename _T, class _P> class spmatrix_block {
+	public:
+		typedef typename spmatrix< _T, _P >::index_type index_type;
+
+		spmatrix_block(spmatrix< _T, _P >& A,
+		               const index_type r0, const index_type rs, const index_type rn, const bool rfull,
+		               const index_type c0, const index_type cs, const index_type cn, const bool cfull)
+			: A_(A), r0_(r0), rs_(rs), rn_(rn), rfull_(rfull),
+			  c0_(c0), cs_(cs), cn_(cn), cfull_(cfull) {}
+
+		spmatrix_block(const spmatrix_block&) = default;
+
+		// block replacement (right-hand side materialized first, S6)
+		spmatrix_block& operator=(const spmatrix< _T, _P >& B) {
+			if (B.rowsize() != rn_ || B.columnsize() != cn_) {
+				vcp::throw_error<vcp::dimension_error>(
+					"spmatrix_block: block assignment size mismatch: ",
+					B.rowsize(), "x", B.columnsize(), " != ", rn_, "x", cn_);
+			}
+			preflight_();
+			// materialize the right-hand side FIRST: an as_csr() copy is
+			// aliasing-safe (B may be the parent or overlap the block),
+			// leaves B untouched, and gives O(log) finalized reads.
+			const spmatrix< _T, _P > Bc = B.as_csr();
+			const bool was_csc = A_.is_finalized() && A_.format() == vcp::sparse_csc;
+			for (index_type i = 0; i < rn_; i++) {
+				for (index_type j = 0; j < cn_; j++) {
+					// tagged set() on EVERY block position (zeros included):
+					// the tagged merge discards older entries at the
+					// position and the zero-drop pass removes the zeros, so
+					// "zeros in B delete old entries" holds automatically.
+					A_.set(r0_ + i * rs_, c0_ + j * cs_, Bc.get(i, j));
+				}
+			}
+			if (was_csc) {
+				A_.to_csc();
+			}
+			else {
+				A_.to_csr();
+			}
+			return *this;
+		}
+
+		// scalar fill (nonzero: densifies the block; zero: clears it)
+		spmatrix_block& operator=(const _T& s) {
+			preflight_();
+			const bool was_csc = A_.is_finalized() && A_.format() == vcp::sparse_csc;
+			for (index_type i = 0; i < rn_; i++) {
+				for (index_type j = 0; j < cn_; j++) {
+					A_.set(r0_ + i * rs_, c0_ + j * cs_, s);
+				}
+			}
+			if (was_csc) {
+				A_.to_csc();
+			}
+			else {
+				A_.to_csr();
+			}
+			return *this;
+		}
+
+		// proxy = proxy (e.g. A({0,2},{0,2}) = A({1,3},{1,3})): materialize
+		// the right-hand block first, then block-assign.  Without this
+		// overload the implicitly-deleted copy assignment would win the
+		// overload resolution (same reason as spmats_element_proxy).
+		spmatrix_block& operator=(const spmatrix_block& other) {
+			return (*this) = static_cast<spmatrix< _T, _P > >(other);
+		}
+
+		// read conversion -- delegates to spmatrix::submatrix, rebuilding
+		// the normalized selectors as {} / {start, stride, last} (identical
+		// selections by construction; the values came from int selectors).
+		operator spmatrix< _T, _P >() const {
+			const int r0 = static_cast<int>(r0_), rs = static_cast<int>(rs_);
+			const int rl = static_cast<int>(r0_ + (rn_ - 1) * rs_);
+			const int c0 = static_cast<int>(c0_), cs = static_cast<int>(cs_);
+			const int cl = static_cast<int>(c0_ + (cn_ - 1) * cs_);
+			if (rfull_ && cfull_) {
+				return A_.submatrix({}, {});
+			}
+			if (rfull_) {
+				return A_.submatrix({}, {c0, cs, cl});
+			}
+			if (cfull_) {
+				return A_.submatrix({r0, rs, rl}, {});
+			}
+			return A_.submatrix({r0, rs, rl}, {c0, cs, cl});
+		}
+
+	private:
+		// no-throw-after-start guard: once validation is done, the only
+		// failure mode inside the set()/normalize/finalize sequence (apart
+		// from std::bad_alloc, which no path can exclude) would be the
+		// size_to_index overflow check firing when stored entries + block
+		// area exceed the index_type range; reject that case here, before
+		// the first set().
+		void preflight_() const {
+			const std::size_t limit = static_cast<std::size_t>((std::numeric_limits<index_type>::max)());
+			const std::size_t area = static_cast<std::size_t>(rn_) * static_cast<std::size_t>(cn_);
+			if (area > limit - static_cast<std::size_t>(A_.stored_nnz())) {
+				vcp::throw_error<vcp::invalid_argument>(
+					"spmatrix_block: stored entries + block area exceed index_type range");
+			}
+		}
+
+		spmatrix< _T, _P >& A_;
+		index_type r0_, rs_, rn_;
+		bool rfull_;
+		index_type c0_, cs_, cn_;
+		bool cfull_;
+	};
+
+	// SUB-1: out-of-line definitions of the proxy-returning operator()
+	// overloads (declared inside spmatrix; spmatrix_block must be complete
+	// here).  Validation and normalization use the same protected policy
+	// helpers as spmats::submat (single validation implementation on the
+	// sparse side); the mixed forms wrap the int as the single selector {i}.
+	template <typename _T, class _P>
+	spmatrix_block< _T, _P > spmatrix< _T, _P >::operator()(const std::initializer_list<int>& list1, const std::initializer_list<int>& list2) {
+		_P::submat_check_sizes_(list1, list2);
+		const typename _P::submat_axis_ ra = _P::submat_normalize_(list1, this->rowsize(), true);
+		const typename _P::submat_axis_ ca = _P::submat_normalize_(list2, this->columnsize(), false);
+		return spmatrix_block< _T, _P >(*this,
+			ra.start, ra.stride, ra.count, ra.full,
+			ca.start, ca.stride, ca.count, ca.full);
+	}
+	template <typename _T, class _P>
+	spmatrix_block< _T, _P > spmatrix< _T, _P >::operator()(const int i, const std::initializer_list<int>& list2) {
+		return (*this)({i}, list2);
+	}
+	template <typename _T, class _P>
+	spmatrix_block< _T, _P > spmatrix< _T, _P >::operator()(const std::initializer_list<int>& list1, const int j) {
+		return (*this)(list1, {j});
+	}
 
 
 	// -----------------------------------------------------------------------

@@ -421,6 +421,61 @@ namespace vcp {
 			C.unique = true;
 		}
 
+		// SUB-1: sparse mirror of mats::submat -- same name, (a)-style out
+		// parameter, non-virtual.  Selector grammar / validation order /
+		// throw messages are an exact mirror of the dense implementation
+		// (SUB-1_design.md v1.1 §1): {} whole axis, {i} single index,
+		// {a,b} CLOSED range a..b (both ends included), {a,s,b} stride
+		// a, a+s, ... while <= b; 0-based; vcp::index_error on reversed
+		// range / negative index / stride < 1 / out-of-range / selector
+		// with more than 3 elements.
+		// Finalize policy: category 4 (self-contained) -- reads through an
+		// as_csr()/as_csc() copy, *this is never modified, B is
+		// born-finalized with the source format preserved (finalized CSC ->
+		// CSC; finalized CSR and unfinalized COO -> CSR).  Single gather
+		// pass: O(nnz of the touched outer lines + max(row, column) +
+		// output nnz).
+		void submat(spmats& B, const std::initializer_list<int>& list1, const std::initializer_list<int>& list2) const {
+			submat_check_sizes_(list1, list2);
+			const submat_axis_ ra = submat_normalize_(list1, row, true);
+			const submat_axis_ ca = submat_normalize_(list2, column, false);
+			const bool use_csc = finalized && fmt == vcp::sparse_csc;
+			const spmats src = use_csc ? as_csc() : as_csr();
+			const submat_axis_& oa = use_csc ? ca : ra;   // outer axis of the storage
+			const submat_axis_& ia = use_csc ? ra : ca;   // inner axis of the storage
+			const index_type inner_dim = use_csc ? row : column;
+			// old inner index -> new inner index (-1 = not selected)
+			std::vector<index_type> remap(index_to_size(inner_dim, "spmats::submat"), static_cast<index_type>(-1));
+			for (index_type k = 0; k < ia.count; k++) {
+				remap[static_cast<std::size_t>(ia.start + k * ia.stride)] = k;
+			}
+			std::vector<index_type> new_outer(index_to_size(checked_plus_one(oa.count, "spmats::submat"), "spmats::submat"), 0);
+			std::vector<index_type> new_inner;
+			std::vector<_T> new_value;
+			for (index_type r = 0; r < oa.count; r++) {
+				const std::size_t o = static_cast<std::size_t>(oa.start + r * oa.stride);
+				for (index_type k = src.outer[o]; k < src.outer[o + 1]; k++) {
+					const index_type m = remap[static_cast<std::size_t>(src.inner[static_cast<std::size_t>(k)])];
+					if (m >= 0) {
+						new_inner.push_back(m);
+						new_value.push_back(src.value[static_cast<std::size_t>(k)]);
+					}
+				}
+				new_outer[static_cast<std::size_t>(r) + 1] = size_to_index(new_inner.size(), "spmats::submat");
+			}
+			// The selected old indices are increasing and remap is monotone,
+			// so each gathered line stays sorted and unique; stored values
+			// are nonzero by the spmats invariant.  The assign_*
+			// preconditions therefore hold constructively and B is
+			// born-finalized in the preserved format.
+			if (use_csc) {
+				B.assign_csc(ra.count, ca.count, new_outer, new_inner, new_value);
+			}
+			else {
+				B.assign_csr(ra.count, ca.count, new_outer, new_inner, new_value);
+			}
+		}
+
 		void assign_csr(const index_type rows, const index_type cols,
 		                const std::vector<index_type>& row_ptr,
 		                const std::vector<index_type>& col_ind,
@@ -506,6 +561,83 @@ namespace vcp {
 			if (i < 0 || i >= row || j < 0 || j >= column) {
 				vcp::throw_error<vcp::index_error>(routine, ": index out of range");
 			}
+		}
+
+		// SUB-1: one selector axis normalized to start/stride/count in the
+		// closed-interval grammar of mats::submat; full marks {} (whole
+		// axis).  Shared by submat() above and by the spmatrix_block write
+		// proxy (spmatrix.hpp) so that validation is complete before any
+		// write begins.
+		struct submat_axis_ {
+			index_type start;
+			index_type stride;
+			index_type count;
+			bool full;
+		};
+
+		// Mirrors the leading combined size check of mats::submat.
+		static void submat_check_sizes_(const std::initializer_list<int>& list1, const std::initializer_list<int>& list2) {
+			if (list1.size() > 3 || list2.size() > 3) {
+				vcp::throw_error<vcp::index_error>(
+					"submat: invalid selector size: ", list1.size(), ", ", list2.size());
+			}
+		}
+
+		// Validation conditions, order and message text mirror mats::submat
+		// exactly (the row selector is validated before the column selector
+		// -- callers must keep that call order).
+		static submat_axis_ submat_normalize_(const std::initializer_list<int>& list, const index_type dim, const bool is_row) {
+			const std::vector<int> l = list;
+			submat_axis_ a;
+			a.full = false;
+			if (l.size() == 0) {
+				a.start = 0;
+				a.stride = 1;
+				a.count = dim;
+				a.full = true;
+			}
+			else if (l.size() == 1) {
+				if (l[0] < 0 || static_cast<index_type>(l[0]) >= dim) {
+					if (is_row) {
+						vcp::throw_error<vcp::index_error>("submat: row index out of range: ", l[0]);
+					}
+					vcp::throw_error<vcp::index_error>("submat: column index out of range: ", l[0]);
+				}
+				a.start = static_cast<index_type>(l[0]);
+				a.stride = 1;
+				a.count = 1;
+			}
+			else if (l.size() == 2) {
+				if (l[0] > l[1] || l[0] < 0 || static_cast<index_type>(l[1]) >= dim) {
+					if (is_row) {
+						vcp::throw_error<vcp::index_error>(
+							"submat: invalid row range: ", l[0], ":", l[1]);
+					}
+					vcp::throw_error<vcp::index_error>(
+						"submat: invalid column range: ", l[0], ":", l[1]);
+				}
+				a.start = static_cast<index_type>(l[0]);
+				a.stride = 1;
+				a.count = static_cast<index_type>(l[1] - l[0] + 1);
+			}
+			else {
+				if (l[0] > l[2] || l[0] < 0 || l[1] < 1 || static_cast<index_type>(l[2]) >= dim) {
+					if (is_row) {
+						vcp::throw_error<vcp::index_error>(
+							"submat: invalid row range: ", l[0], ":", l[1], ":", l[2]);
+					}
+					vcp::throw_error<vcp::index_error>(
+						"submat: invalid column range: ", l[0], ":", l[1], ":", l[2]);
+				}
+				index_type k = 0;
+				for (int i = l[0]; i <= l[2]; i += l[1]) {
+					k++;
+				}
+				a.start = static_cast<index_type>(l[0]);
+				a.stride = static_cast<index_type>(l[1]);
+				a.count = k;
+			}
+			return a;
 		}
 
 		void require_finalized(const char* routine) const {

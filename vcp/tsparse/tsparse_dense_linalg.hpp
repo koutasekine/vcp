@@ -431,8 +431,20 @@ namespace vcp {
 					values.push_back(T(scale * cos(phi - real_type(2) * pi * real_type(k) / real_type(3)) + tr / real_type(3)));
 				}
 			}
-			else {
+			else if (discr > real_type(0)) {
+				// certified positive: a true complex pair -- the existing
+				// throw is the correct (and preserved) behaviour.
 				vcp::throw_error<vcp::domain_error>("tsparse_dense_linalg::dense_qr: real API cannot represent complex eigenvalues");
+			}
+			else {
+				// SUB-1 (EIG-G1-shaped three-way branch): discr straddles 0 --
+				// neither "three real roots" nor "complex pair" is certifiable
+				// (interval only; for double the discr<=0 / discr>0 branches
+				// above are exhaustive and this is unreachable).  Do not fake
+				// an answer: fail the extraction by returning empty; the
+				// caller (qr_eig_dense n<=3) reports it as converged=false
+				// (same channel as the 2x2 disc 0-straddle above).
+				values.clear();
 			}
 			return values;
 		}

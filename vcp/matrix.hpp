@@ -48,6 +48,9 @@ namespace vcp {
 	// argument here -- spmatrix.hpp declares it.
 	template <typename _T, class _P> class spmatrix;
 
+	// SUB-1: block-write proxy (defined after matrix below).
+	template <typename _T, class _P> class matrix_block;
+
 	template <typename _T, class _P = mats< _T >> class matrix : protected _P {
 	public:
 		matrix() {
@@ -118,6 +121,71 @@ namespace vcp {
 		template <typename _S2, typename _S,
 		          typename std::enable_if<!std::is_same<_S, _S2>::value, int>::type = 0>
 		static void convert_value_(const _S2& x, _S& y) { vcp::convert(x, y); }
+
+		// SUB-1: selector validation/normalization for the write proxy
+		// (matrix_block).  Conditions, order and message text mirror
+		// mats::submat exactly (the read path keeps its own identical
+		// checks inside mats::submat itself, which is deliberately left
+		// untouched).  Validation is completed here, at proxy construction,
+		// before any write can begin.
+		static void submat_check_sizes_(const std::initializer_list<int>& list1, const std::initializer_list<int>& list2) {
+			if (list1.size() > 3 || list2.size() > 3) {
+				vcp::throw_error<vcp::index_error>(
+					"submat: invalid selector size: ", list1.size(), ", ", list2.size());
+			}
+		}
+		static void submat_normalize_(const std::initializer_list<int>& list, const int dim, const bool is_row,
+		                              int& start, int& stride, int& count, bool& full) {
+			const std::vector<int> l = list;
+			full = false;
+			if (l.size() == 0) {
+				start = 0;
+				stride = 1;
+				count = dim;
+				full = true;
+			}
+			else if (l.size() == 1) {
+				if (l[0] < 0 || l[0] >= dim) {
+					if (is_row) {
+						vcp::throw_error<vcp::index_error>("submat: row index out of range: ", l[0]);
+					}
+					vcp::throw_error<vcp::index_error>("submat: column index out of range: ", l[0]);
+				}
+				start = l[0];
+				stride = 1;
+				count = 1;
+			}
+			else if (l.size() == 2) {
+				if (l[0] > l[1] || l[0] < 0 || l[1] >= dim) {
+					if (is_row) {
+						vcp::throw_error<vcp::index_error>(
+							"submat: invalid row range: ", l[0], ":", l[1]);
+					}
+					vcp::throw_error<vcp::index_error>(
+						"submat: invalid column range: ", l[0], ":", l[1]);
+				}
+				start = l[0];
+				stride = 1;
+				count = l[1] - l[0] + 1;
+			}
+			else {
+				if (l[0] > l[2] || l[0] < 0 || l[1] < 1 || l[2] >= dim) {
+					if (is_row) {
+						vcp::throw_error<vcp::index_error>(
+							"submat: invalid row range: ", l[0], ":", l[1], ":", l[2]);
+					}
+					vcp::throw_error<vcp::index_error>(
+						"submat: invalid column range: ", l[0], ":", l[1], ":", l[2]);
+				}
+				int k = 0;
+				for (int i = l[0]; i <= l[2]; i += l[1]) {
+					k++;
+				}
+				start = l[0];
+				stride = l[1];
+				count = k;
+			}
+		}
 
 	public:
 		// SPC-2: sparse-to-dense conversion assignment
@@ -201,6 +269,35 @@ namespace vcp {
 			this->submat(A, list1, list2);
 			return A;
 		}
+
+		// SUB-1: const operator() sugar -- pure forwarding to submatrix
+		// (single implementation).  Selector grammar is mats::submat's
+		// (0-based): {} whole axis, {i} single index, {a,b} CLOSED range
+		// a..b (both ends included -- NOT half-open), {a,s,b} stride
+		// a, a+s, ... while <= b; invalid selectors throw vcp::index_error.
+		// Return-type rule (S11): bare ints only = element (_T, A(i,j));
+		// ANY braced selector = submatrix: A({1},{2}), A(1,{2}), A({1},2)
+		// are 1x1 matrices, A(1,2) is the element.
+		matrix< _T, _P > operator () (const std::initializer_list<int>& list1, const std::initializer_list<int>& list2) const {
+			return this->submatrix(list1, list2);
+		}
+		// mixed forms (S11): the int is wrapped as the single selector {i}
+		matrix< _T, _P > operator () (const int i, const std::initializer_list<int>& list2) const {
+			return this->submatrix({i}, list2);
+		}
+		matrix< _T, _P > operator () (const std::initializer_list<int>& list1, const int j) const {
+			return this->submatrix(list1, {j});
+		}
+
+		// SUB-1 Phase W: the non-const forms return the block-write proxy
+		// (matrix_block, defined after this class): A({..},{..}) = B
+		// (same-type matrix, block assignment) or = scalar (fill).
+		// Selector validation happens HERE, at proxy construction.
+		// See matrix_block for the semantics and the lifetime warning
+		// (`auto x = A({..},{..});` captures the proxy, not a matrix).
+		matrix_block< _T, _P > operator () (const std::initializer_list<int>& list1, const std::initializer_list<int>& list2);
+		matrix_block< _T, _P > operator () (const int i, const std::initializer_list<int>& list2);
+		matrix_block< _T, _P > operator () (const std::initializer_list<int>& list1, const int j);
 
 		int elementsize()const { return this->n; }
 		int columnsize()const { return this->column; }
@@ -825,6 +922,115 @@ namespace vcp {
 			return A.display(os);
 		}
 	};
+
+	// SUB-1: block-write proxy returned by the non-const
+	// matrix::operator()({..},{..}) and the mixed int/list forms.
+	// Holds a reference to the parent and the NORMALIZED selectors only;
+	// selector validation is completed at proxy construction
+	// (vcp::index_error), and operator= validates the right-hand-side
+	// dimensions BEFORE any element is written, so a throwing assignment
+	// leaves the parent untouched.  Supported operations (SUB-1_design.md
+	// v1.1 §3):
+	//   proxy = matrix<_T,_P>  -- block assignment.  The right-hand side is
+	//                             materialized into a temporary FIRST, so
+	//                             aliased/overlapping assignments such as
+	//                             A({0,2},{0,2}) = A({1,3},{1,3}) follow
+	//                             the MATLAB semantics.
+	//   proxy = scalar _T      -- fill the whole block with the value.
+	//   matrix<_T,_P>(proxy)   -- read; delegates to matrix::submatrix
+	//                             (single implementation of extraction).
+	// LIFETIME WARNING: `auto x = A({..},{..});` captures the PROXY, not a
+	// matrix -- it must not outlive the parent A.  Use an explicit
+	// matrix<_T,_P> variable to take a copy of the block.
+	template <typename _T, class _P> class matrix_block {
+	public:
+		matrix_block(matrix< _T, _P >& A,
+		             const int r0, const int rs, const int rn, const bool rfull,
+		             const int c0, const int cs, const int cn, const bool cfull)
+			: A_(A), r0_(r0), rs_(rs), rn_(rn), rfull_(rfull),
+			  c0_(c0), cs_(cs), cn_(cn), cfull_(cfull) {}
+
+		matrix_block(const matrix_block&) = default;
+
+		// block assignment (right-hand side materialized first, S6)
+		matrix_block& operator=(const matrix< _T, _P >& B) {
+			if (B.rowsize() != rn_ || B.columnsize() != cn_) {
+				vcp::throw_error<vcp::dimension_error>(
+					"matrix_block: block assignment size mismatch: ",
+					B.rowsize(), "x", B.columnsize(), " != ", rn_, "x", cn_);
+			}
+			const matrix< _T, _P > tmp = B;
+			for (int i = 0; i < rn_; i++) {
+				for (int j = 0; j < cn_; j++) {
+					A_(r0_ + i * rs_, c0_ + j * cs_) = tmp(i, j);
+				}
+			}
+			return *this;
+		}
+
+		// scalar fill
+		matrix_block& operator=(const _T& s) {
+			for (int i = 0; i < rn_; i++) {
+				for (int j = 0; j < cn_; j++) {
+					A_(r0_ + i * rs_, c0_ + j * cs_) = s;
+				}
+			}
+			return *this;
+		}
+
+		// proxy = proxy (e.g. A({0,2},{0,2}) = A({1,3},{1,3})): materialize
+		// the right-hand block first, then block-assign.  Without this
+		// overload the implicitly-deleted copy assignment would win the
+		// overload resolution (same reason as spmats_element_proxy).
+		matrix_block& operator=(const matrix_block& other) {
+			return (*this) = static_cast<matrix< _T, _P > >(other);
+		}
+
+		// read conversion -- delegates to matrix::submatrix, rebuilding the
+		// normalized selectors as {} / {start, stride, last} (identical
+		// selections by construction).
+		operator matrix< _T, _P >() const {
+			if (rfull_ && cfull_) {
+				return A_.submatrix({}, {});
+			}
+			if (rfull_) {
+				return A_.submatrix({}, {c0_, cs_, c0_ + (cn_ - 1) * cs_});
+			}
+			if (cfull_) {
+				return A_.submatrix({r0_, rs_, r0_ + (rn_ - 1) * rs_}, {});
+			}
+			return A_.submatrix({r0_, rs_, r0_ + (rn_ - 1) * rs_},
+			                    {c0_, cs_, c0_ + (cn_ - 1) * cs_});
+		}
+
+	private:
+		matrix< _T, _P >& A_;
+		int r0_, rs_, rn_;
+		bool rfull_;
+		int c0_, cs_, cn_;
+		bool cfull_;
+	};
+
+	// SUB-1: out-of-line definitions of the proxy-returning operator()
+	// overloads (declared inside matrix; matrix_block must be complete
+	// here).  The mixed forms wrap the int as the single selector {i}.
+	template <typename _T, class _P>
+	matrix_block< _T, _P > matrix< _T, _P >::operator () (const std::initializer_list<int>& list1, const std::initializer_list<int>& list2) {
+		submat_check_sizes_(list1, list2);
+		int r0, rs, rn, c0, cs, cn;
+		bool rfull, cfull;
+		submat_normalize_(list1, this->row, true, r0, rs, rn, rfull);
+		submat_normalize_(list2, this->column, false, c0, cs, cn, cfull);
+		return matrix_block< _T, _P >(*this, r0, rs, rn, rfull, c0, cs, cn, cfull);
+	}
+	template <typename _T, class _P>
+	matrix_block< _T, _P > matrix< _T, _P >::operator () (const int i, const std::initializer_list<int>& list2) {
+		return (*this)({i}, list2);
+	}
+	template <typename _T, class _P>
+	matrix_block< _T, _P > matrix< _T, _P >::operator () (const std::initializer_list<int>& list1, const int j) {
+		return (*this)(list1, {j});
+	}
 
 	template <> class matrix< bool >{
 	protected:
