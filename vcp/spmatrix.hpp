@@ -114,6 +114,9 @@ namespace vcp {
 		typedef vcp::chol_result<_T, typename _P::index_type> chol_result_type;
 		typedef vcp::ainv_options<_T> ainv_options_type;
 		typedef vcp::ainv_result<_T, typename _P::index_type> ainv_result_type;
+		// LSS-1 P-4
+		typedef vcp::sparse_lu_options<_T> sparse_lu_options_type;
+		typedef vcp::lu_factor_handle<_T, typename _P::index_type> lu_factor_handle_type;
 
 		spmatrix() : _P() {}
 		spmatrix(const index_type rows, const index_type cols) : _P() { this->resize(rows, cols); }
@@ -711,6 +714,13 @@ namespace vcp {
 		// non-strict: return full diagnostic result
 		linear_solve_result<_T> solve_with_info(const std::vector<_T>& b, const linear_solve_options_type& options = linear_solve_options_type()) const {
 			return this->policy_lss_with_info(b, options);
+		}
+
+		// LSS-1 P-4: reusable LU factorization handle (thin forwarding only,
+		// WFIX layer discipline) — delegates to policy_lu_factorize_with_info.
+		lu_factor_handle_type lu_factorize_with_info(
+			const sparse_lu_options_type& opt = sparse_lu_options_type()) const {
+			return this->policy_lu_factorize_with_info(opt);
 		}
 
 		// ---------------------------------------------------------------

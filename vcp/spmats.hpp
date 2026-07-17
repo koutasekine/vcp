@@ -20,6 +20,7 @@
 #include <vcp/spmats_base/spmats_ldl.hpp>
 #include <vcp/spmats_base/spmats_chol.hpp>
 #include <vcp/spmats_base/spmats_lu_extract.hpp>
+#include <vcp/spmats_base/spmats_lu_factor.hpp>
 #include <vcp/spmats_base/spmats_ainv.hpp>
 #include <vcp/spmats_base/spmats_policy_traits.hpp>
 
@@ -971,6 +972,23 @@ namespace vcp {
 		std::vector<_T> policy_lss(
 			const std::vector<_T>& b,
 			const linear_solve_options<_T>& opt) const;
+
+		// ------------------------------------------------------------------
+		// Policy methods: reusable LU factorization handle (LSS-1 P-4;
+		// definitions at the end of spmats_base/spmats_lss.hpp).
+		//
+		// policy_lu_factorize_with_info: non-virtual outer, NVI pattern
+		// (finalize guarantee + squareness check).  Must never be
+		// overridden; override policy_lu_factorize_with_info_impl instead.
+		// Takes sparse_lu_options directly (no linear_solve_options: the
+		// method concept does not apply to an explicit factorization).
+		// unsigned Index throws vcp::state_error (signed-only, same SFINAE
+		// split as the sparse_lu solve dispatch).
+		// ------------------------------------------------------------------
+		lu_factor_handle<_T,_Index> policy_lu_factorize_with_info(
+			const sparse_lu_options<_T>& opt = sparse_lu_options<_T>()) const;
+		virtual lu_factor_handle<_T,_Index> policy_lu_factorize_with_info_impl(
+			const sparse_lu_options<_T>& opt) const;
 
 		// ------------------------------------------------------------------
 		// Policy methods: eigenvalue _with_info (non-throwing, definitions in spmats_eigs.hpp)

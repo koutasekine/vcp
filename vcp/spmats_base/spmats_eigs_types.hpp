@@ -54,7 +54,15 @@ namespace vcp {
 		conjugate_gradient,
 		bicgstab,
 		gmres,
-		sparse_lu
+		sparse_lu,
+		// LSS-1 P-1 (D-1): appended LAST -- existing enumerator order/values
+		// are unchanged.  Resolved in policy_lss_with_info_impl BEFORE the
+		// method switch: symmetric (policy_is_symmetric, tol 1e-12) ->
+		// conjugate_gradient, nonsymmetric -> sparse_lu (signed Index only;
+		// unsigned Index throws vcp::state_error, D-4).  The returned
+		// result.method is the RESOLVED method, never auto_select (each solve
+		// helper stamps its own method value).
+		auto_select
 	};
 
 	enum class preconditioner_type {
@@ -82,8 +90,10 @@ namespace vcp {
 		preconditioner_type preconditioner;
 		vcp::sparse_lu_options<T> sparse_lu;
 
+		// LSS-1 P-1 (D-1): default method changed conjugate_gradient ->
+		// auto_select.  All other field defaults are unchanged.
 		linear_solve_options()
-			: method(linear_solver_method::conjugate_gradient), max_iter(1000),
+			: method(linear_solver_method::auto_select), max_iter(1000),
 			  tol(vcp::tsparse_scalar::decimal_power_negative<real_type>(12)),
 			  check_symmetric(true), use_relative_residual(true), restart(30),
 			  preconditioner(preconditioner_type::none) {}

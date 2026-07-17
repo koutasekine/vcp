@@ -148,11 +148,16 @@ namespace spmats_lss_detail {
 	            result.absolute_residual_norm = ir_info.final_residual;
 	            result.relative_residual_norm = ir_info.final_relative_residual;
 	        } else {
-	            // Plain solve path: byte-identical to pre-IR behavior.
-	            result.x                      = fac.solve(b);
-	            result.residual_norm          = real_type(0);
-	            result.absolute_residual_norm = real_type(0);
-	            result.relative_residual_norm = real_type(0);
+	            // Plain solve path (LSS-1 P-6): x is unchanged (byte-identical to
+	            // the pre-P-6 path); the residual fields now report the ACTUAL
+	            // residual of the returned x (one extra matvec, report-only)
+	            // instead of the former fabricated real_type(0).
+	            // initial_residual_norm = absolute_residual_norm is the
+	            // 0-iteration reading, consistent with the IR path above.
+	            // converged stays fac.info().success (D-7: unchanged).
+	            result.x = fac.solve(b);
+	            set_linear_residual_lss(result, A, b);
+	            result.initial_residual_norm = result.absolute_residual_norm;
 	        }
 	        result.solution  = result.x;
 	        result.converged = true;
@@ -179,6 +184,35 @@ namespace spmats_lss_detail {
 	    vcp::throw_error<vcp::state_error>(
 	        "spmats::policy_lss_with_info: sparse_lu requires a signed Index type");
 	    return linear_solve_result<_T>();
+	}
+
+	// ---------------------------------------------------------------------------
+	// resolve_auto_nonsymmetric_: SFINAE-guarded nonsymmetric branch of the
+	// LSS-1 P-1 auto_select resolution (same split pattern as
+	// dispatch_sparse_lu_ / dispatch_sparse_lu_extract_ -- the signed-only
+	// body is never instantiated for unsigned Index).
+	// ---------------------------------------------------------------------------
+
+	// signed Index path: direct method.  D-3: amd is set ONLY when the user
+	// left opt.sparse_lu.ordering == auto_select; the sparse_lu_options
+	// default itself is unchanged (no propagation to the eig shift-invert LU).
+	template <typename _T, typename _Index>
+	inline typename std::enable_if<std::is_signed<_Index>::value, void>::type
+	resolve_auto_nonsymmetric_(linear_solve_options<_T>& resolved)
+	{
+	    resolved.method = linear_solver_method::sparse_lu;
+	    if (resolved.sparse_lu.ordering == sparse_lu_ordering::auto_select)
+	        resolved.sparse_lu.ordering = sparse_lu_ordering::amd;   // D-3
+	}
+
+	// unsigned Index path: sparse_lu is impossible; no silent fallback (D-4).
+	template <typename _T, typename _Index>
+	inline typename std::enable_if<!std::is_signed<_Index>::value, void>::type
+	resolve_auto_nonsymmetric_(linear_solve_options<_T>& resolved)
+	{
+	    (void)resolved;
+	    vcp::throw_error<vcp::state_error>(
+	        "spmats::policy_lss_with_info: auto_select cannot solve a nonsymmetric system with unsigned Index (sparse_lu requires a signed Index type); specify an iterative method explicitly");
 	}
 
 } // namespace spmats_lss_detail
@@ -591,6 +625,33 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_lss_with_info_impl(
 	if (opt.tol <= scalar_real_type(0))
 		vcp::throw_error<vcp::invalid_argument>("spmats::policy_lss_with_info: tol must be positive");
 
+	// -------------------------------------------------------------------
+	// LSS-1 P-1: auto_select resolution (design §2.2).  Executed ONLY when
+	// the caller left method == auto_select; every explicitly requested
+	// method reaches the switch below through the unchanged path.
+	//   symmetric (policy_is_symmetric, default tol 1e-12; complex-symmetric
+	//   check, not Hermitian) -> conjugate_gradient (D-2; the CG-internal
+	//   check_symmetric with tol 1e-10 stays active, D-5),
+	//   nonsymmetric -> sparse_lu (signed Index; +amd only when the user's
+	//   sparse_lu.ordering == auto_select, D-3) or vcp::state_error for
+	//   unsigned Index (D-4, no silent fallback).
+	// The returned result.method is the RESOLVED method (each solve helper
+	// stamps its own value; auto_select is never returned).  Re-entry depth
+	// is exactly 1: resolved.method != auto_select.
+	// NOTE: auto is not a universal best pick — for a huge nonsymmetric
+	// system sparse_lu can be expensive; choose an explicit iterative
+	// method there.
+	// -------------------------------------------------------------------
+	if (opt.method == linear_solver_method::auto_select) {
+		linear_solve_options<_T> resolved = opt;
+		if (A.policy_is_symmetric(A)) {
+			resolved.method = linear_solver_method::conjugate_gradient;
+		} else {
+			spmats_lss_detail::resolve_auto_nonsymmetric_<_T, _Index>(resolved);
+		}
+		return policy_lss_with_info_impl(b, resolved);
+	}
+
 	try {
 		switch (opt.method) {
 		case linear_solver_method::jacobi:
@@ -640,6 +701,101 @@ std::vector<_T> spmats<_T, _Index>::policy_lss(
 	if (!result.converged)
 		vcp::throw_error<vcp::state_error>("spmats::policy_lss: iterative solver did not converge");
 	return result.x;
+}
+
+// ===========================================================================
+// LSS-1 P-4: policy_lu_factorize_with_info (reusable LU factorization handle)
+// Type: spmats_base/spmats_lu_factor.hpp.  Defined here so the handle's
+// solve semantics stay next to dispatch_sparse_lu_, which they mirror.
+// ===========================================================================
+
+namespace spmats_lss_detail {
+
+	// signed Index path: factorize once and pack the handle.  On success the
+	// handle keeps a finalized CSR copy of A for the IR residual (§3.3).
+	template <typename _T, typename _Index>
+	inline typename std::enable_if<std::is_signed<_Index>::value,
+	                               lu_factor_handle<_T,_Index> >::type
+	dispatch_lu_factorize_(
+	    const spmats<_T,_Index>& A,
+	    const sparse_lu_options<_T>& opt)
+	{
+	    lu_factor_handle<_T,_Index> handle;
+	    const _Index n = A.rowsize();
+	    vcp::sparse_lu_factorization<_T, _Index> fac =
+	        vcp::sparse_lu_factorize_with_info(A, opt);
+	    const bool ok = fac.info().success;
+	    spmats_lu_factor_detail::handle_access::assign(
+	        handle, std::move(fac),
+	        ok ? A.as_csr() : spmats<_T,_Index>(),
+	        opt, n, ok);
+	    return handle;
+	}
+
+	// unsigned Index path: sparse LU cannot be used (Index must be signed);
+	// same reporting convention as dispatch_sparse_lu_.
+	template <typename _T, typename _Index>
+	inline typename std::enable_if<!std::is_signed<_Index>::value,
+	                               lu_factor_handle<_T,_Index> >::type
+	dispatch_lu_factorize_(
+	    const spmats<_T,_Index>& A,
+	    const sparse_lu_options<_T>& opt)
+	{
+	    (void)A; (void)opt;
+	    vcp::throw_error<vcp::state_error>(
+	        "spmats::policy_lu_factorize_with_info: sparse_lu requires a signed Index type");
+	    return lu_factor_handle<_T,_Index>();
+	}
+
+} // namespace spmats_lss_detail
+
+// ---------------------------------------------------------------------------
+// policy_lu_factorize_with_info: NVI outer (non-virtual).  Finalize guarantee
+// + squareness entry check, then delegates to the virtual _impl.  Must never
+// be overridden -- override policy_lu_factorize_with_info_impl instead.
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+lu_factor_handle<_T,_Index> spmats<_T, _Index>::policy_lu_factorize_with_info(
+	const sparse_lu_options<_T>& opt) const
+{
+	const spmats<_T, _Index>& A = *this;   // WFIX-2: subject is *this
+	if (!A.is_finalized()) A.finalize();
+	if (A.rowsize() != A.columnsize())
+		vcp::throw_error<vcp::dimension_error>(
+		    "spmats::policy_lu_factorize_with_info: matrix must be square");
+	return policy_lu_factorize_with_info_impl(opt);
+}
+
+// ---------------------------------------------------------------------------
+// policy_lu_factorize_with_info_impl: virtual algorithm body (default:
+// signed-Index guard -> SLU factorization -> handle assembly).  Runtime
+// failure is a non-valid handle; misuse (vcp::error) keeps its throwing
+// contract; the final std::exception net returns a non-valid handle with
+// n recorded (same P3 pattern as the other policies).  Designated
+// replacement point for external-backend policies (spumar override is out
+// of scope for LSS-1; the default implementation runs its own SLU there).
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+lu_factor_handle<_T,_Index> spmats<_T, _Index>::policy_lu_factorize_with_info_impl(
+	const sparse_lu_options<_T>& opt) const
+{
+	const spmats<_T, _Index>& A = *this;   // WFIX-2: subject is *this
+	try {
+		return spmats_lss_detail::dispatch_lu_factorize_<_T, _Index>(A, opt);
+	} catch (const vcp::error&) {
+		// misuse / state errors keep their throwing contract (unchanged)
+		throw;
+	} catch (const std::exception&) {
+		// runtime failure net: non-valid handle, n recorded so the D5
+		// solve_with_info contract (converged=false, x = 0 of size n) holds.
+		lu_factor_handle<_T,_Index> handle;
+		spmats_lu_factor_detail::handle_access::assign(
+		    handle,
+		    vcp::sparse_lu_factorization<_T,
+		        typename lu_factor_handle<_T,_Index>::factor_index_type>(),
+		    spmats<_T,_Index>(), opt, A.rowsize(), false);
+		return handle;
+	}
 }
 
 } // namespace vcp
