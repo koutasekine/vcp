@@ -110,6 +110,8 @@ namespace vcp {
 		typedef vcp::inertia_result<typename _P::index_type> inertia_result_type;
 		typedef vcp::lu_extract_options<_T> lu_extract_options_type;
 		typedef vcp::lu_extract_result<_T, typename _P::index_type> lu_extract_result_type;
+		typedef vcp::chol_options<_T> chol_options_type;
+		typedef vcp::chol_result<_T, typename _P::index_type> chol_result_type;
 
 		spmatrix() : _P() {}
 		spmatrix(const index_type rows, const index_type cols) : _P() { this->resize(rows, cols); }
@@ -747,6 +749,58 @@ namespace vcp {
 				vcp::throw_error<vcp::numerical_error>(
 					"spmatrix::ldl: factorization failed with status ",
 					sparse_ldl_status_to_string(result.status));
+			}
+		}
+
+		// ---------------------------------------------------------------
+		// LL^T Cholesky factorization (CHOL-3) — delegates to
+		// policy_chol_with_info.  Convention P^T A P = L L^T with perm p
+		// new->old (A(p,p) = L L^T, MATLAB chol(A,'lower','vector') form)
+		// and P(p[k],k) = 1 (chol design v1 SS1.1; same orientation as
+		// ldl).  L is NON-unit lower triangular with positive diagonal;
+		// there is no D factor and no pivoting (p is the ordering output).
+		// L / p (P) are valid outputs only when the status is success
+		// (D-3: no partial factor).  strict chol: ANY status != success
+		// throws (not_positive_definite / inconclusive_pivot_test /
+		// not_symmetric included); use chol_with_info to inspect such
+		// inputs (D-4).
+		// ---------------------------------------------------------------
+
+		// non-strict, permutation-vector form
+		chol_result_type chol_with_info(spmatrix& L, std::vector<index_type>& p,
+		                                const chol_options_type& options = chol_options_type()) const {
+			return this->policy_chol_with_info(
+				static_cast<_P&>(L), p, options);
+		}
+
+		// non-strict, permutation-matrix form (P finalized, P(p[k],k) = 1;
+		// materialization lives in the policy-layer matrix-form overload --
+		// this wrapper only forwards)
+		chol_result_type chol_with_info(spmatrix& L, spmatrix& P,
+		                                const chol_options_type& options = chol_options_type()) const {
+			return this->policy_chol_with_info(
+				static_cast<_P&>(L), static_cast<_P&>(P), options);
+		}
+
+		// strict, permutation-vector form
+		void chol(spmatrix& L, std::vector<index_type>& p,
+		          const chol_options_type& options = chol_options_type()) const {
+			const chol_result_type result = chol_with_info(L, p, options);
+			if (result.status != sparse_chol_status::success) {
+				vcp::throw_error<vcp::numerical_error>(
+					"spmatrix::chol: factorization failed with status ",
+					sparse_chol_status_to_string(result.status));
+			}
+		}
+
+		// strict, permutation-matrix form
+		void chol(spmatrix& L, spmatrix& P,
+		          const chol_options_type& options = chol_options_type()) const {
+			const chol_result_type result = chol_with_info(L, P, options);
+			if (result.status != sparse_chol_status::success) {
+				vcp::throw_error<vcp::numerical_error>(
+					"spmatrix::chol: factorization failed with status ",
+					sparse_chol_status_to_string(result.status));
 			}
 		}
 
