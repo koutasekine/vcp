@@ -191,23 +191,36 @@ supernode_panel_lu_factorize(
     // the reference kernels (2026-07-18, i7-11700):
     //   - double: the GEMM path wins from m*nc >= blas_min_block_size (16)
     //     upward (lap3d16 1.56x vs 1.03x all-scalar);
-    //   - kv::dd: every small-block Ozaki tgemm call LOSES to the scalar
-    //     update (0.46x at gate 16 -- per-call split/pack overhead), and
-    //     tgemm<dd> only matches scalar dd throughput even at large sizes
-    //     while tgemm<double> stays at the ~1.5 GFLOP/s reference speed.
-    // Until SLU-K1 delivers a fast blocked tgemm<double>, non-fundamental
-    // scalar types use a 65536x higher gate (default option value 16 ->
-    // m*nc >= 1,048,576): at that setting the Ozaki dd GEMM effectively
-    // never fires on present problem sizes -- even the LARGE blocks of
-    // lap3d were measured 8% net-slower through tgemm<dd> at the current
-    // reference tgemm<double> speed (lap3d16 dd 0.92x with a 16384 gate).
-    // The §2.2 GEMM pipeline stays reachable for every T by lowering
-    // blas_min_block_size (exercised by slusp1_03's forced-GEMM dd case),
-    // and SLU-K1 re-tunes this constant when the kernel speed changes.
+    //   - non-floating-point scalars WITHOUT a blocked kernel (interval,
+    //     mpfr, dd in a TU that did not include tblas_dd.hpp): the 65536x
+    //     gate below keeps the (reference) GEMM off -- every small-block
+    //     call was measured a pure loss at reference speed (SLU-SP1 §6-3).
+    // SLU-K1 Phase 3 re-tune (kv::dd with the opt-in blocked-Ozaki kernel,
+    // i.e. vcp::tblas_blocked::has_blocked_kernel<T> and kernel=blocked):
+    // measured against the scalar member-column dd axpy on the panel
+    // shapes (n=8, full-dd data, sluk1_09, i7-11700, ratio scalar/ozaki):
+    //     tier          k=4    k=8    k=16   k=32   break-even
+    //     -O2           0.38   0.52   0.69   0.82   (none; 0.89 max)
+    //     -O3 -m64      0.35   0.61   0.90   1.13   k >= 32
+    //     -O3 native    0.65   1.16   1.70   2.20   k >= 8
+    // One compile-time gate must serve every tier, so the DEFAULT fires
+    // only in the all-tier-safe region: nc >= 2*blas_min_block_size (= 32)
+    // AND m*nc >= 64*blas_min_block_size (= 1024).  -march=native users
+    // reach the native-optimal region (k >= 8) by setting
+    // blas_min_block_size = 4.  kernel=reference keeps the pre-K1 gate
+    // EXACTLY (T-1 byte identity).
+    const bool dd_blocked_gate =
+        !std::is_floating_point<T>::value &&
+        vcp::tblas_blocked::has_blocked_kernel<T>::value &&
+        (opt.panel_gemm_kernel == sparse_lu_panel_gemm_kernel::blocked);
     const std::size_t gemm_min_elems =
         std::is_floating_point<T>::value
             ? opt.blas_min_block_size
-            : opt.blas_min_block_size * 65536u;
+            : dd_blocked_gate
+                ? opt.blas_min_block_size * 64u
+                : opt.blas_min_block_size * 65536u;
+    const std::size_t gemm_min_width =
+        dd_blocked_gate ? 2u * opt.blas_min_block_size : 1u;
 
     const real_type threshold        = opt.pivot_threshold;
     const real_type abs_tol          = opt.absolute_pivot_tolerance;
@@ -400,7 +413,8 @@ supernode_panel_lu_factorize(
             const std::size_t sm_pre = static_cast<std::size_t>(
                 (m > Index(0)) ? m : Index(0));
             const bool use_gemm =
-                (m > Index(0)) && (sm_pre * snc >= gemm_min_elems);
+                (m > Index(0)) && (sm_pre * snc >= gemm_min_elems) &&
+                (snc >= gemm_min_width);
             if (!use_gemm) {
                 ++result.scalar_update_count;
                 for (std::size_t jj = 0u; jj < w_p; ++jj) {
@@ -490,11 +504,17 @@ supernode_panel_lu_factorize(
             if (!any_active) continue;
 
             // ----- 2c. one GEMM per (supernode, panel) -----
+            // SLU-K1 kernel selector (design D-2): reference = the pre-K1
+            // vcp::tgemm<T> call, byte-identical by construction (T-1);
+            // blocked = vcp::tblas_blocked::gemm<T> (double blocked, other
+            // scalars forward verbatim to the reference inside it).
             const std::size_t sm = static_cast<std::size_t>(m);
             {
                 gemm_C.resize(sm * w_p);
                 const clock_type::time_point t_g0 = clock_type::now();
-                tgemm<T>('N', 'N',
+                if (opt.panel_gemm_kernel ==
+                        sparse_lu_panel_gemm_kernel::blocked) {
+                    vcp::tblas_blocked::gemm<T>('N', 'N',
                          static_cast<int>(m), static_cast<int>(w_p),
                          static_cast<int>(nc_eff),
                          T(1),
@@ -502,6 +522,17 @@ supernode_panel_lu_factorize(
                          static_cast<int>(ld),
                          frag_B.data(), static_cast<int>(nc_eff),
                          T(0), gemm_C.data(), static_cast<int>(m));
+                }
+                else {
+                    tgemm<T>('N', 'N',
+                         static_cast<int>(m), static_cast<int>(w_p),
+                         static_cast<int>(nc_eff),
+                         T(1),
+                         vals.data() + static_cast<std::size_t>(nc_eff - Index(1)),
+                         static_cast<int>(ld),
+                         frag_B.data(), static_cast<int>(nc_eff),
+                         T(0), gemm_C.data(), static_cast<int>(m));
+                }
                 result.gemm_time_ns += static_cast<std::size_t>(
                     std::chrono::duration_cast<std::chrono::nanoseconds>(
                         clock_type::now() - t_g0).count());

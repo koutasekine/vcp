@@ -28,6 +28,11 @@
 // They MUST be included before namespace vcp opens to avoid double-namespace nesting.
 #include <vcp/tblas/tblas.hpp>
 #include <vcp/tlapack/tlapack.hpp>
+// SLU-K1: blocked GEMM kernels for the opt-in supernode_panel path (options
+// field panel_gemm_kernel below).  Pure template header in namespace vcp;
+// same include discipline as tblas/tlapack above (before namespace vcp opens).
+// Non-specialized scalar types forward verbatim to vcp::tgemm inside it.
+#include <vcp/tblas/tblas_blocked.hpp>
 
 namespace vcp {
 
@@ -207,6 +212,20 @@ inline const char* sparse_lu_status_to_string(sparse_lu_status s) {
 }
 
 // ===========================================================================
+// SLU-K1: GEMM kernel selector for the opt-in method=supernode_panel path
+// (design SLU-K1 D-2).  reference = the pre-K1 vcp::tgemm<T> call (byte-
+// identical escape hatch, T-1 gate); blocked = vcp::tblas_blocked::gemm<T>
+// (double is blocked; non-specialized scalars forward verbatim to the
+// reference inside tblas_blocked, so the selector is byte-neutral for them).
+// Read ONLY by the supernode_panel numeric; every other path ignores it.
+// ===========================================================================
+
+enum class sparse_lu_panel_gemm_kernel {
+    reference,
+    blocked
+};
+
+// ===========================================================================
 // sparse_lu_options<T>
 // ===========================================================================
 
@@ -291,6 +310,11 @@ struct sparse_lu_options {
     // by the supernode_panel numeric; every other path ignores it.
     std::size_t supernode_panel_maxsup;
 
+    // SLU-K1 (appended LAST): GEMM kernel of the opt-in supernode_panel
+    // panel update (design D-2).  Default blocked; reference restores the
+    // pre-K1 byte-exact behavior.  Read ONLY by the supernode_panel numeric.
+    sparse_lu_panel_gemm_kernel panel_gemm_kernel;
+
     sparse_lu_options()
         : method(sparse_lu_method::auto_select),
           ordering(sparse_lu_ordering::auto_select),
@@ -321,7 +345,8 @@ struct sparse_lu_options {
           supernodal_self_symbolic(false),
           supernodal_inplace_frontal(false),
           supernodal_native_check_residual(false),
-          supernode_panel_maxsup(64) {}
+          supernode_panel_maxsup(64),
+          panel_gemm_kernel(sparse_lu_panel_gemm_kernel::blocked) {}
 };
 
 // ===========================================================================
