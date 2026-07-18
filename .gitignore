@@ -32,6 +32,7 @@ imats_old_before_0.0.5.hpp
 /hutchinson
 /test_doubly_fourier
 vcp/doubly_fourier_series.hpp
+vcp/spimats.hpp
 vcp/allsol
 AGENTS.md
 CLAUDE.md
