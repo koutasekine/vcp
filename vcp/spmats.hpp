@@ -23,6 +23,7 @@
 #include <vcp/spmats_base/spmats_lu_factor.hpp>
 #include <vcp/spmats_base/spmats_ainv.hpp>
 #include <vcp/spmats_base/spmats_fsai.hpp>
+#include <vcp/spmats_base/spmats_fsai_adaptive.hpp>
 #include <vcp/spmats_base/spmats_policy_traits.hpp>
 
 namespace vcp {
@@ -1772,6 +1773,49 @@ namespace vcp {
 			const spmats<_T,_Index>& U, const spmats<_T,_Index>& D,
 			const std::vector<_Index>& perm,
 			const std::vector<_T>& r, std::vector<_T>& z) const;
+
+		// ------------------------------------------------------------------
+		// Policy methods: ADAPTIVE FSAI factored approximate inverse
+		// (FSAI-2, fsai_adaptive design v0) -- [JFSG15] Algorithm 3,
+		// per-row adaptive pattern generation.  Pure addition over FSAI-1:
+		// the static path above is untouched.
+		//
+		// policy_fsai_adaptive_with_info: non-virtual outers, NVI pattern
+		// (finalize guarantee + entry checks -- NON-throwing, invalid_input
+		// like the fsai outer).  Must never be overridden; override the
+		// _impl overloads instead.  Outputs the SAME sqrt-free triple as
+		// FSAI-1 (F2-D6): U unit upper triangular (explicit unit diagonal),
+		// D diagonal with D_ii = psi_k,i (design SS3.3 derivation), perm
+		// new->old with P(perm[k],k) = 1, all born-finalized.
+		// R = P U D^{-1} U^T P^T is NEVER materialized; use the EXISTING
+		// policy_fsai_residual_norm_estimate / policy_fsai_apply on the
+		// returned triple (no adaptive-specific helpers).  Numerical events
+		// are lifted silently and never a failure status (F-D3/F-D4).
+		// The second overload starts from an initial factor (U0, perm0)
+		// ([JFSG15] Table VII combined strategy, F2-D3): U0 must be unit
+		// upper triangular in the same permuted frame as perm0;
+		// opt.ordering is ignored and perm0 is reused (design SS3.6).
+		// Definitions in spmats_base/spmats_fsai_adaptive_impl.hpp.
+		// ------------------------------------------------------------------
+		fsai_adaptive_result<_T,_Index> policy_fsai_adaptive_with_info(
+			spmats<_T,_Index>& U, spmats<_T,_Index>& D,
+			std::vector<_Index>& perm,
+			const fsai_adaptive_options<_T>& opt) const;
+		virtual fsai_adaptive_result<_T,_Index> policy_fsai_adaptive_with_info_impl(
+			spmats<_T,_Index>& U, spmats<_T,_Index>& D,
+			std::vector<_Index>& perm,
+			const fsai_adaptive_options<_T>& opt) const;
+
+		fsai_adaptive_result<_T,_Index> policy_fsai_adaptive_with_info(
+			spmats<_T,_Index>& U, spmats<_T,_Index>& D,
+			std::vector<_Index>& perm,
+			const spmats<_T,_Index>& U0, const std::vector<_Index>& perm0,
+			const fsai_adaptive_options<_T>& opt) const;
+		virtual fsai_adaptive_result<_T,_Index> policy_fsai_adaptive_with_info_impl(
+			spmats<_T,_Index>& U, spmats<_T,_Index>& D,
+			std::vector<_Index>& perm,
+			const spmats<_T,_Index>& U0, const std::vector<_Index>& perm0,
+			const fsai_adaptive_options<_T>& opt) const;
 	};
 }
 
@@ -1784,5 +1828,6 @@ namespace vcp {
 #include <vcp/spmats_base/spmats_lu_extract_impl.hpp>
 #include <vcp/spmats_base/spmats_ainv_impl.hpp>
 #include <vcp/spmats_base/spmats_fsai_impl.hpp>
+#include <vcp/spmats_base/spmats_fsai_adaptive_impl.hpp>
 
 #endif

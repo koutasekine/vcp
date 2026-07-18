@@ -116,6 +116,8 @@ namespace vcp {
 		typedef vcp::ainv_result<_T, typename _P::index_type> ainv_result_type;
 		typedef vcp::fsai_options<_T> fsai_options_type;
 		typedef vcp::fsai_result<_T, typename _P::index_type> fsai_result_type;
+		typedef vcp::fsai_adaptive_options<_T> fsai_adaptive_options_type;
+		typedef vcp::fsai_adaptive_result<_T, typename _P::index_type> fsai_adaptive_result_type;
 		// LSS-1 P-4
 		typedef vcp::sparse_lu_options<_T> sparse_lu_options_type;
 		typedef vcp::lu_factor_handle<_T, typename _P::index_type> lu_factor_handle_type;
@@ -1030,6 +1032,37 @@ namespace vcp {
 		                       const std::vector<_T>& r, std::vector<_T>& z) const {
 			return this->policy_fsai_apply(
 				static_cast<const _P&>(U), static_cast<const _P&>(D), perm, r, z);
+		}
+
+		// ---------------------------------------------------------------
+		// ADAPTIVE FSAI (FSAI-2) — thin forwarding wrappers only, same
+		// output contract as fsai_with_info (sqrt-free triple U / D /
+		// perm, born-finalized; R never materialized).  Estimate / apply
+		// on the returned triple: use fsai_residual_norm_estimate /
+		// fsai_apply above (no adaptive-specific helpers, F2-D6).  The
+		// implementation lives in the policy layer
+		// (spmats_base/spmats_fsai_adaptive_impl.hpp).
+		// ---------------------------------------------------------------
+
+		// diagonal-initialized adaptive construction
+		fsai_adaptive_result_type fsai_adaptive_with_info(spmatrix& U, spmatrix& D,
+		                                                  std::vector<index_type>& perm,
+		                                                  const fsai_adaptive_options_type& options = fsai_adaptive_options_type()) const {
+			return this->policy_fsai_adaptive_with_info(
+				static_cast<_P&>(U), static_cast<_P&>(D), perm, options);
+		}
+
+		// initial-value adaptive construction (combined strategy, F2-D3):
+		// U0 unit upper triangular in the same permuted frame as perm0;
+		// options.ordering is ignored and perm0 is reused (design SS3.6)
+		fsai_adaptive_result_type fsai_adaptive_with_info(spmatrix& U, spmatrix& D,
+		                                                  std::vector<index_type>& perm,
+		                                                  const spmatrix& U0,
+		                                                  const std::vector<index_type>& perm0,
+		                                                  const fsai_adaptive_options_type& options = fsai_adaptive_options_type()) const {
+			return this->policy_fsai_adaptive_with_info(
+				static_cast<_P&>(U), static_cast<_P&>(D), perm,
+				static_cast<const _P&>(U0), perm0, options);
 		}
 
 		// Convenience overloads — build options and delegate to solve / solve_with_info
