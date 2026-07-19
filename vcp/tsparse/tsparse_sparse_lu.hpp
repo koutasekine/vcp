@@ -41,14 +41,31 @@ namespace vcp {
 // ===========================================================================
 
 enum class sparse_lu_method {
+    // SLU-D1: auto_select is resolved at the numeric dispatches by the
+    // shared helper sparse_lu_detail::resolve_auto_method (single
+    // definition, referenced by BOTH sparse_lu_numeric and
+    // sparse_lu_factorize_with_info).  Resolution rule (full text):
+    //   auto_select -> supernode_panel, EXCEPT when
+    //     pivoting == static_mc64 || equilibration
+    //   in which case -> baseline_gp (the supernode_panel path answers
+    //   those option sets with not_implemented; auto keeps solving them).
+    // supernodal is NEVER selected by auto_select.
+    // Escape hatches (SLU-D1 D-2): (i) method = baseline_gp restores the
+    // pre-D1 default path; (ii) panel_gemm_kernel = reference restores the
+    // pre-K1 GEMM kernel; (iii) heavy scalar types (e.g. mpfr, a few
+    // percent slower on supernode_panel, accepted by D-3) should use (i).
+    // Extension point: once supernode_panel implements static_mc64 /
+    // equilibration, widening the promotion is just removing the condition
+    // in resolve_auto_method.
     auto_select,
     baseline_gp,
     supernodal,
-    // SLU-SP1 (appended LAST; existing enumerator values unchanged): opt-in
+    // SLU-SP1 (appended LAST; existing enumerator values unchanged):
     // left-looking supernode-panel path with zero-padding GEMM updates
     // (design SLU-SP1 §2, Li 2005 §2.3 technique ported to the sequential
-    // left-looking factorization).  NEVER selected by auto_select; the
-    // default behavior of every existing path is byte-identical (D-3).
+    // left-looking factorization).  Since SLU-D1 this is the auto_select
+    // resolution target for the default option set (see auto_select above);
+    // explicit requests behave exactly as before.
     supernode_panel
 };
 
@@ -2401,6 +2418,36 @@ inline sparse_lu_status validate_options(const sparse_lu_options<T>& opt) {
 }
 
 // ---------------------------------------------------------------------------
+// resolve_auto_method -- SLU-D1 shared auto_select resolution (design v1.2 D-1)
+//
+// SINGLE definition referenced by BOTH numeric dispatches (sparse_lu_numeric
+// and sparse_lu_factorize_with_info, which are independent implementations),
+// so the two APIs can never drift apart; this preserves the eigs-layer
+// invariant "sparse_lu_numeric is solve-bit-identical to
+// sparse_lu_factorize_with_info" (spmats_eigs.hpp).
+//
+// Rule: auto_select -> supernode_panel, EXCEPT when
+//   pivoting == static_mc64 || equilibration
+// (option sets the supernode_panel dispatch answers with not_implemented)
+// -> baseline_gp, so every option set that solved before the promotion keeps
+// solving (STOP-1 ruling; auto keeps its "always solvable" semantics).
+// Explicit method requests pass through unchanged; supernodal is NEVER
+// produced by resolution.  opt itself is never modified (local resolution).
+//
+// Extension point: once the supernode_panel path implements static_mc64 /
+// equilibration, widening the promotion is just removing the condition below.
+template <class T>
+inline sparse_lu_method resolve_auto_method(const sparse_lu_options<T>& opt) {
+    if (opt.method != sparse_lu_method::auto_select) {
+        return opt.method;
+    }
+    if (opt.pivoting == sparse_lu_pivoting::static_mc64 || opt.equilibration) {
+        return sparse_lu_method::baseline_gp;
+    }
+    return sparse_lu_method::supernode_panel;
+}
+
+// ---------------------------------------------------------------------------
 // sparse_lu_validate_csc_pattern_for_etree
 //
 // Validates CSC pattern before elimination tree computation.
@@ -4724,18 +4771,25 @@ sparse_lu_numeric(
             return fac;
         }
 
-        // SLU-SP1 Phase 2: opt-in supernode_panel numeric (left-looking
-        // supernode-panel factorization; design §2).  Default-pivoting path
-        // only: static_mc64 (D-6: the new path is MC64-independent) and
-        // equilibration are answered with an honest not_implemented.  The
-        // result is baseline CSC storage, so the existing solve / IR / LUX
-        // consumers work unchanged; method_used reports supernode_panel.
-        if (opt.method == sparse_lu_method::supernode_panel) {
+        // SLU-D1: resolve auto_select via the shared helper (single
+        // definition; see resolve_auto_method and the enum comment).
+        // Explicit methods pass through unchanged; opt is not modified.
+        const sparse_lu_method resolved_method =
+            sparse_lu_detail::resolve_auto_method(opt);
+        // SLU-SP1 Phase 2: supernode_panel numeric (left-looking
+        // supernode-panel factorization; design §2; default since SLU-D1).
+        // Default-pivoting path only: static_mc64 (D-6: the new path is
+        // MC64-independent) and equilibration are answered with an honest
+        // not_implemented (explicit requests only -- auto_select resolves
+        // those option sets to baseline_gp above).  The result is baseline
+        // CSC storage, so the existing solve / IR / LUX consumers work
+        // unchanged; method_used reports supernode_panel.
+        if (resolved_method == sparse_lu_method::supernode_panel) {
             if (opt.pivoting == sparse_lu_pivoting::static_mc64 ||
                 opt.equilibration) {
                 info.success = false;
                 info.status  = sparse_lu_status::not_implemented;
-                info.method_used = sparse_lu_method::supernode_panel;
+                info.method_used = resolved_method;
                 fac.set_info_(info);
                 return fac;
             }
@@ -4748,7 +4802,7 @@ sparse_lu_numeric(
             if (!pres.success) {
                 info.success = false;
                 info.status  = pres.status;
-                info.method_used = sparse_lu_method::supernode_panel;
+                info.method_used = resolved_method;
                 fac.set_info_(info);
                 return fac;
             }
@@ -4761,7 +4815,7 @@ sparse_lu_numeric(
             fac.set_supernode_info_(sym.supernode_info);
             {
                 sparse_lu_info<T, Index> ninfo = fac.info();
-                ninfo.method_used          = sparse_lu_method::supernode_panel;
+                ninfo.method_used          = resolved_method;
                 ninfo.number_of_supernodes = pres.number_of_supernodes;
                 fac.set_info_(ninfo);
             }
@@ -4984,14 +5038,20 @@ sparse_lu_factorize_with_info(
             return fac;
         }
 
-        // SLU-SP1 Phase 2: opt-in supernode_panel numeric (same contract and
-        // wiring as the matching branch in sparse_lu_numeric -- see there).
-        if (opt.method == sparse_lu_method::supernode_panel) {
+        // SLU-D1: resolve auto_select via the shared helper (single
+        // definition; see resolve_auto_method and the enum comment).
+        // Explicit methods pass through unchanged; opt is not modified.
+        const sparse_lu_method resolved_method =
+            sparse_lu_detail::resolve_auto_method(opt);
+        // SLU-SP1 Phase 2: supernode_panel numeric (same contract and
+        // wiring as the matching branch in sparse_lu_numeric -- see there;
+        // default since SLU-D1, auto_select resolved by the same helper).
+        if (resolved_method == sparse_lu_method::supernode_panel) {
             if (opt.pivoting == sparse_lu_pivoting::static_mc64 ||
                 opt.equilibration) {
                 info.success = false;
                 info.status  = sparse_lu_status::not_implemented;
-                info.method_used = sparse_lu_method::supernode_panel;
+                info.method_used = resolved_method;
                 fac.set_info_(info);
                 return fac;
             }
@@ -5004,7 +5064,7 @@ sparse_lu_factorize_with_info(
             if (!pres.success) {
                 info.success = false;
                 info.status  = pres.status;
-                info.method_used = sparse_lu_method::supernode_panel;
+                info.method_used = resolved_method;
                 fac.set_info_(info);
                 return fac;
             }
@@ -5017,7 +5077,7 @@ sparse_lu_factorize_with_info(
             fac.set_supernode_info_(sym.supernode_info);
             {
                 sparse_lu_info<T, Index> ninfo = fac.info();
-                ninfo.method_used          = sparse_lu_method::supernode_panel;
+                ninfo.method_used          = resolved_method;
                 ninfo.number_of_supernodes = pres.number_of_supernodes;
                 fac.set_info_(ninfo);
             }
