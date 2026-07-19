@@ -187,7 +187,7 @@ inline void ozaki_product(
 				continue;
 			}
 			tgemm<double>('N', 'N', m, n, k, one, DA[p].data(), m, DB[q].data(), k, zero, P.data(), m);
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (tblas_detail::use_parallel(static_cast<double>(m) * n))
 #endif
 			for (int idx = 0; idx < m * n; idx++) {
@@ -205,7 +205,7 @@ inline void merge_full_to_triangle(
 	kv::dd* C, const int ldc
 ) {
 	const bool zero_beta = (beta == kv::dd(0.0));
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (tblas_detail::use_parallel(0.5 * n * n))
 #endif
 	for (int j = 0; j < n; j++) {
@@ -260,7 +260,7 @@ inline void tgemm<kv::dd>(
 	ddd::ozaki_product(opA, opB, m, n, k, prod);
 
 	const bool zero_beta = (beta == kv::dd(0.0));
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(static_cast<double>(m) * n))
 #endif
 	for (int j = 0; j < n; j++) {
@@ -438,7 +438,7 @@ inline void ttrmm<kv::dd>(
 	else {
 		tgemm<kv::dd>('N', ntrans ? 'N' : 'T', m, n, n, alpha, B, ldb, Adense.data(), n, kv::dd(0.0), temp.data(), m);
 	}
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(static_cast<double>(m) * n))
 #endif
 	for (int j = 0; j < n; j++) {

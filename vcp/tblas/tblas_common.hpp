@@ -46,8 +46,20 @@
 #include <cstdlib>
 #include <stdexcept>
 
-#ifdef _OPENMP
-#include <omp.h>
+// --- tblas-layer OpenMP guard (SLU-K1F, mirrors spmats SS6.1 / ldbase) ---
+// VCP_NOMP             : global kill switch (implies VCP_TBLAS_NOMP)
+// VCP_TBLAS_NOMP       : tblas-layer kill switch
+// VCP_TBLAS_USE_OPENMP : 0/1, the ONLY symbol implementation code tests
+#ifdef VCP_NOMP
+#  ifndef VCP_TBLAS_NOMP
+#    define VCP_TBLAS_NOMP
+#  endif
+#endif
+#if defined(_OPENMP) && !defined(VCP_TBLAS_NOMP)
+#  define VCP_TBLAS_USE_OPENMP 1
+#  include <omp.h>
+#else
+#  define VCP_TBLAS_USE_OPENMP 0
 #endif
 
 // OpenMP 並列化を発動するスカラー演算回数の閾値 (T の 1 演算が重い型を想定して低め)
@@ -88,7 +100,7 @@ inline std::size_t packed_offset_lower(const int n, const int j) {
 
 // 演算量 ops が閾値を超えたら OpenMP 並列化する (if 句用)
 inline bool use_parallel(const double ops) {
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 	return ops >= TBLAS_OMP_THRESHOLD;
 #else
 	(void)ops;
@@ -98,7 +110,7 @@ inline bool use_parallel(const double ops) {
 
 // OpenMP 無効時にも compile できるようにする shim
 inline int region_threads() {
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 	return omp_get_num_threads();
 #else
 	return 1;
@@ -106,7 +118,7 @@ inline int region_threads() {
 }
 
 inline int region_thread_id() {
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 	return omp_get_thread_num();
 #else
 	return 0;
@@ -140,7 +152,7 @@ inline void scale_matrix(const int m, const int n, const T& beta, T* C, const in
 		return;
 	}
 	const bool zero = (beta == T(0));
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (use_parallel(static_cast<double>(m) * n))
 #endif
 	for (int j = 0; j < n; j++) {
@@ -165,7 +177,7 @@ inline void scale_triangle(const bool upper, const int n, const T& beta, T* C, c
 		return;
 	}
 	const bool zero = (beta == T(0));
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (use_parallel(0.5 * n * n))
 #endif
 	for (int j = 0; j < n; j++) {

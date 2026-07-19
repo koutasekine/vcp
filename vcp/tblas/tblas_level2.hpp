@@ -91,7 +91,7 @@ inline void tgemv(
 
 	if (ntrans) {
 		// y_i (行方向) で並列化し，各 thread が全列 j を走査する
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel if (par)
 #endif
 		{
@@ -120,7 +120,7 @@ inline void tgemv(
 		}
 	}
 	else {
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (par)
 #endif
 		for (int j = 0; j < n; j++) {
@@ -219,7 +219,7 @@ inline void tsymv(
 	const bool zero_beta = (beta == T(0));
 
 	// 出力行 i ごとの dot 形式 (行ごとに独立なので並列化できる)
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(2.0 * n * n))
 #endif
 	for (int i = 0; i < n; i++) {
@@ -857,7 +857,7 @@ inline void tger(
 	}
 	const int kx = det::vec_start(m, incx);
 	const int ky = det::vec_start(n, incy);
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(2.0 * m * n))
 #endif
 	for (int j = 0; j < n; j++) {
@@ -898,7 +898,7 @@ inline void tsyr(
 		return;
 	}
 	const int kx = det::vec_start(n, incx);
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(1.0 * n * n))
 #endif
 	for (int j = 0; j < n; j++) {
@@ -979,7 +979,7 @@ inline void tsyr2(
 	}
 	const int kx = det::vec_start(n, incx);
 	const int ky = det::vec_start(n, incy);
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(2.0 * n * n))
 #endif
 	for (int j = 0; j < n; j++) {

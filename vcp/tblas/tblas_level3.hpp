@@ -104,7 +104,7 @@ inline void tgemm(
 
 	if (!ta) {
 		// C(:,j) := beta*C(:,j) + sum_l (alpha*opB(l,j)) * A(:,l)
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (par)
 #endif
 		for (int j = 0; j < n; j++) {
@@ -134,7 +134,7 @@ inline void tgemm(
 	}
 	else {
 		// C(i,j) := alpha * (A(:,i)^T . opB(:,j)) + beta*C(i,j)
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (par)
 #endif
 		for (int j = 0; j < n; j++) {
@@ -238,7 +238,7 @@ inline void tsyrk(
 	const bool zero_beta = (beta == T(0));
 
 	// 三角部分のみ dot 形式: C(i,j) = alpha * sum_l opA(i,l)*opA(j,l) + beta*C(i,j)
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(1.0 * n * n * k))
 #endif
 	for (int j = 0; j < n; j++) {
@@ -302,7 +302,7 @@ inline void tsyr2k(
 
 	// 三角部分のみ dot 形式:
 	// C(i,j) = alpha*sum_l opA(i,l)*opB(j,l) + alpha*sum_l opB(i,l)*opA(j,l) + beta*C(i,j)
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(2.0 * n * n * k))
 #endif
 	for (int j = 0; j < n; j++) {
@@ -394,7 +394,7 @@ inline void ttrmm(
 		tgemm('N', ntrans ? 'N' : 'T', m, n, n, T(1), B, ldb, Adense.data(), n, T(0), temp.data(), m);
 	}
 	const bool one_alpha = (alpha == T(1));
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(static_cast<double>(m) * n))
 #endif
 	for (int j = 0; j < n; j++) {
@@ -454,7 +454,7 @@ inline void ttrsm(
 
 	if (lside) {
 		// B の各列を独立に三角 solve する (列ごとに独立なので並列化できる)
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(static_cast<double>(m) * m * n))
 #endif
 		for (int j = 0; j < n; j++) {
@@ -599,7 +599,7 @@ inline void tgemmtr(
 	const bool zero_beta = (beta == T(0));
 
 	// 三角部分のみ dot 形式: C(i,j) = alpha * sum_l opA(i,l)*opB(l,j) + beta*C(i,j)
-#ifdef _OPENMP
+#if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(1.0 * n * n * k))
 #endif
 	for (int j = 0; j < n; j++) {

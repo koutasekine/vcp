@@ -288,10 +288,6 @@ VCP_TBLAS_BLOCKED_NOINLINE void gemm_nn_blocked(
 
 			const double* apd = ap_buf.data();
 			const double* bpd = bp_buf.data();
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) \
-	if (tblas_detail::use_parallel(2.0 * mc * n * kc))
-#endif
 			for (int jp = 0; jp < npanels; jp++) {
 				const int j0 = jp * NR;
 				const int nr_eff = std::min(NR, n - j0);
@@ -335,10 +331,6 @@ VCP_TBLAS_BLOCKED_NOINLINE void skinny_col_group(
 	const double* B, const int ldb,   // B(0:k, j0:j0+NRS): first column base
 	const double beta, double* C, const int ldc   // C(:, j0) base
 ) {
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) \
-	if (tblas_detail::use_parallel(2.0 * m * NRS * k))
-#endif
 	for (int ib = 0; ib < m; ib += MRS) {
 		const int mb = std::min(MRS, m - ib);
 		double acc[MRS * NRS];
@@ -784,10 +776,6 @@ inline void ozaki_merge_accumulate(
 	double* VCP_TBLAS_BLOCKED_RESTRICT ch = &C_hi[0];
 	double* VCP_TBLAS_BLOCKED_RESTRICT cl = &C_lo[0];
 	const double* VCP_TBLAS_BLOCKED_RESTRICT pp = &P[0];
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) \
-	if (tblas_detail::use_parallel(static_cast<double>(mn)))
-#endif
 	for (int idx = 0; idx < mn; idx++) {
 		const double p = pp[idx];
 		double z1, z2, z3, z4;
@@ -889,9 +877,6 @@ inline void gemm<kv::dd>(
 	detail::ozaki_product_blocked(opA, opB, m, n, k, prod);
 
 	const bool zero_beta = (beta == kv::dd(0.0));
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) if (det::use_parallel(static_cast<double>(m) * n))
-#endif
 	for (int j = 0; j < n; j++) {
 		for (int i = 0; i < m; i++) {
 			const std::size_t pidx = i + static_cast<std::size_t>(m) * j;
