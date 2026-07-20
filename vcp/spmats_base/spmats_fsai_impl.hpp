@@ -36,6 +36,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <exception>
+#include <type_traits>
 #include <vector>
 
 #include <vcp/spmats_base/spmats_fsai.hpp>
@@ -524,6 +525,52 @@ namespace spmats_fsai_detail {
 		row_restore_skipped[i] = skipped;
 	}
 
+	// -----------------------------------------------------------------------
+	// fsai_ordering_perm_: SFINAE-split ordering resolution (SLU-HK1 D-B),
+	// same pattern as spmats_lu_extract_detail::dispatch_sparse_lu_extract_.
+	// The shared SLU ordering routines are signed-Index only (static_assert
+	// in tsparse_sparse_lu_ordering_impl.hpp), so the switch below must never
+	// be instantiated in an unsigned-Index TU (the whole TU would fail to
+	// build).  The runtime entry guard in policy_fsai_with_info_impl reports
+	// the honest failure (fsai_status::invalid_input) before this helper can
+	// be reached, so the unsigned overload is compile-only plumbing.  Returns
+	// false for an unknown enum value (-> invalid_input at the caller,
+	// unchanged semantics for signed Index).
+	// -----------------------------------------------------------------------
+	template <typename _T, typename _Index>
+	inline typename std::enable_if<std::is_signed<_Index>::value, bool>::type
+	fsai_ordering_perm_(const spmats<_T, _Index>& A,
+	                    const sparse_chol_ordering ord,
+	                    const _Index n,
+	                    std::vector<_Index>& perm)
+	{
+		const spmats<_T, _Index> Acsc = A.as_csc();
+		switch (ord) {
+		case sparse_chol_ordering::rcm:
+			perm = sparse_lu_rcm_ordering(n, Acsc.outer_index(), Acsc.inner_index());
+			return true;
+		case sparse_chol_ordering::amd:
+			perm = sparse_lu_amd_ordering(n, Acsc.outer_index(), Acsc.inner_index());
+			return true;
+		case sparse_chol_ordering::nested_dissection:
+			perm = sparse_lu_nested_dissection_ordering(n, Acsc.outer_index(), Acsc.inner_index());
+			return true;
+		default:
+			// unknown enum value (natural / auto_select handled by the caller)
+			return false;
+		}
+	}
+
+	template <typename _T, typename _Index>
+	inline typename std::enable_if<!std::is_signed<_Index>::value, bool>::type
+	fsai_ordering_perm_(const spmats<_T, _Index>&,
+	                    const sparse_chol_ordering,
+	                    const _Index,
+	                    std::vector<_Index>&)
+	{
+		return false;   // unreachable at runtime (entry guard rejects unsigned)
+	}
+
 } // namespace spmats_fsai_detail
 
 // ---------------------------------------------------------------------------
@@ -571,6 +618,20 @@ fsai_result<_T, _Index> spmats<_T, _Index>::policy_fsai_with_info_impl(
 	const spmats<_T, _Index>& A = *this;   // (a)-type: subject is *this
 	fsai_result<_T, _Index> out;
 	try {
+		// FSAI x unsigned Index guard (SLU-HK1 D-B): the ordering layer is
+		// signed-Index only; report the honest runtime failure through the
+		// existing status vocabulary BEFORE any ordering work, so unsigned
+		// TUs stay buildable (see fsai_ordering_perm_ above) and never get
+		// a silent fallback.
+		if (!std::is_signed<_Index>::value) {
+			U.resize(_Index(0), _Index(0));
+			D.resize(_Index(0), _Index(0));
+			perm.clear();
+			out = fsai_result<_T, _Index>();
+			out.status = fsai_status::invalid_input;
+			return out;
+		}
+
 		const _Index n = A.rowsize();
 		const std::size_t un = static_cast<std::size_t>(n);
 
@@ -603,19 +664,10 @@ fsai_result<_T, _Index> spmats<_T, _Index>::policy_fsai_with_info_impl(
 		perm.resize(un);
 		for (std::size_t k = 0; k < un; ++k) perm[k] = static_cast<_Index>(k);
 		if (ord != sparse_chol_ordering::natural) {
-			const spmats<_T, _Index> Acsc = A.as_csc();
-			switch (ord) {
-			case sparse_chol_ordering::rcm:
-				perm = sparse_lu_rcm_ordering(n, Acsc.outer_index(), Acsc.inner_index());
-				break;
-			case sparse_chol_ordering::amd:
-				perm = sparse_lu_amd_ordering(n, Acsc.outer_index(), Acsc.inner_index());
-				break;
-			case sparse_chol_ordering::nested_dissection:
-				perm = sparse_lu_nested_dissection_ordering(n, Acsc.outer_index(), Acsc.inner_index());
-				break;
-			default:
-				// unknown enum value (natural / auto_select handled above)
+			// SFINAE-split helper (SLU-HK1 D-B): identical calls in identical
+			// order for signed Index; false = unknown enum value (natural /
+			// auto_select handled above)
+			if (!spmats_fsai_detail::fsai_ordering_perm_<_T, _Index>(A, ord, n, perm)) {
 				U.resize(_Index(0), _Index(0));
 				D.resize(_Index(0), _Index(0));
 				perm.clear();
