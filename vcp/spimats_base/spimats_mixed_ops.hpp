@@ -10,6 +10,7 @@
 //   mul_m_im : 点疎 × 区間疎        -> 区間疎(R·(A x~ − b) 等)
 //   add_im_m : 区間疎 + 点疎        -> 区間疎(A − cB 等は点側を −c 倍して加算)
 //   add_m_im : 点疎 + 区間疎        -> 区間疎(可換性により add_im_m へ委譲)
+//   sub_im_m : 区間疎 − 点疎        -> 区間疎(点側の厳密符号反転 + add_im_m 委譲。SPI-K1)
 //   mul_im_v : 区間疎行列 × 点ベクトル   -> 区間ベクトル(残差 A x~)
 //   mul_m_iv : 点疎行列 × 区間ベクトル   -> 区間ベクトル(R の適用)
 //   mul_v_im : 点横ベクトル × 区間疎行列 -> 区間横ベクトル(RA − I の行ごと構成)
@@ -317,6 +318,48 @@ void mul_v_im(const std::vector<_TP>& x,
 }
 
 // >>> END [SPI-R2] <<<
+
+// >>> REVIEW-REQUIRED [SPI-R7: sub_im_m(区間疎 − 点疎)の薄い委譲(SPI-K1 K1-b)] <<<
+// STATUS: UNREVIEWED
+// CLAIM: sub_im_m(IA, B, IC) の出力は IA − B の要素ごとの真の差を包含する。
+//   根拠: −B の構成は値の単項符号反転のみ(IEEE 浮動小数点・kv::dd・
+//   kv::mpfr のいずれも符号反転は厳密演算・パターン不変)で丸めを含まず、
+//   包含は委譲先 add_im_m(SPI-R2)の CLAIM に帰着する(add_m_im の先例と
+//   同じレビュー面積削減方式)。
+// REDUCES-TO: add_im_m(SPI-R2)+ 単項符号反転の厳密性
+// SELF-ARITHMETIC: なし(符号反転のみ・丸めなし)
+// TESTS: sandbox/tests/spimats_k1_test.cpp
+// ---------------------------------------------------------------------------
+
+// sub_im_m: IC = IA − B(区間疎 − 点疎、同寸法。パターンは合併)
+// 点側を厳密に符号反転した −B を構成して add_im_m へ委譲する。
+// ループ不変条件・2 ポインタ合流規則は add_im_m 側に記載。
+template <typename _T, typename _TP, typename _Index>
+void sub_im_m(const spmats<kv::interval<_T>, _Index>& IA,
+              const spmats<_TP, _Index>& B,
+              spmats<kv::interval<_T>, _Index>& IC)
+{
+	if (IA.rowsize() != B.rowsize() || IA.columnsize() != B.columnsize()) {
+		vcp::throw_error<vcp::dimension_error>("spimats_kernel::sub_im_m: dimension mismatch");
+	}
+	if (!B.is_finalized()) B.finalize();
+	const spmats<_TP, _Index> Bc = B.as_csr();
+	const std::vector<_Index>& bo = Bc.outer_index();
+	const std::vector<_Index>& bi = Bc.inner_index();
+	const std::vector<_TP>& bv = Bc.values();
+	spmats<_TP, _Index> Bn;   // Bn = −B(単項符号反転のみ・パターン保存)
+	Bn.resize(Bc.rowsize(), Bc.columnsize());
+	Bn.reserve(Bc.stored_nnz());
+	for (_Index i = 0; i < Bc.rowsize(); i++) {
+		for (_Index p = bo[static_cast<std::size_t>(i)]; p < bo[static_cast<std::size_t>(i) + 1]; p++) {
+			Bn.add(i, bi[static_cast<std::size_t>(p)], -bv[static_cast<std::size_t>(p)]);
+		}
+	}
+	Bn.finalize();
+	add_im_m(IA, Bn, IC);
+}
+
+// >>> END [SPI-R7] <<<
 
 // 将来の追記方法(設計書 §6): mul_iv_m(区間ベクトル × 点疎)等の追加カーネルは
 // 本ファイルに REVIEW-REQUIRED 区画(SPI-R6 以降の新番号・STATUS は未レビュー
