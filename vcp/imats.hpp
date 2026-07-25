@@ -33,9 +33,10 @@
 #define VCP_IMATS_HPP
 
 #include <vcp/mats.hpp>
+#include <vcp/mats2.hpp>
 
 namespace vcp {
-	template <typename _T, class _P = vcp::mats< _T > > class imats : public mats< kv::interval< _T > > {
+	template <typename _T, class _P = vcp::mats2< _T > > class imats : public mats< kv::interval< _T > > {
 	protected:
 		void imid( _P& A )const{
 			A.zeros(this->row, this->column);
