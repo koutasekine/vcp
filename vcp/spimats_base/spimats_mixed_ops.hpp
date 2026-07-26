@@ -46,7 +46,7 @@ namespace vcp {
 namespace spimats_kernel {
 
 // >>> REVIEW-REQUIRED [SPI-R2: 混合演算 7 種のカーネル] <<<
-// STATUS: UNREVIEWED
+// STATUS: REVIEWED-OK (Kouta Sekine, 2026-07-26)
 // CLAIM: 各カーネルの出力は、入力区間の任意の点実現(点側は退化区間)に
 //   対する真の積・和を要素ごとに包含する。根拠: 出力の各要素は kv の区間
 //   演算(interval<_T> op _TP の自動昇格・外側丸め)のみの合成で構成され、
@@ -61,11 +61,15 @@ namespace spimats_kernel {
 namespace detail {
 
 	// 行フラッシュ(mul_im_m / mul_m_im の共有部・50 行制約による分割):
-	// 触れた列をソートして厳密 [0,0] 以外を IC へ格納し、acc / touched を
+	// 触れた列をソートして厳密 [0,0] 以外を出力配列 out_inner / out_val へ
+	// push_back し(out は書き込み済み要素数のカーソル)、acc / touched を
 	// 初期状態([0,0] / 0)へ戻す。事後条件: acc 全要素 [0,0]、touched 全 0。
+	// [SPI-R10] 書き込み先を IC.add から配列直接構築へ変更(ソート・厳密ゼロ
+	// 判定・リセットの順序は不変)。
 	template <typename _T, typename _Index>
-	inline void flush_accumulated_row_(spmats<kv::interval<_T>, _Index>& IC,
-	                                   const _Index i, std::vector<_Index>& cols,
+	inline void flush_accumulated_row_(std::vector<_Index>& out_inner,
+	                                   std::vector<kv::interval<_T> >& out_val,
+	                                   std::size_t& out, std::vector<_Index>& cols,
 	                                   std::vector<kv::interval<_T> >& acc,
 	                                   std::vector<char>& touched)
 	{
@@ -73,7 +77,9 @@ namespace detail {
 		for (std::size_t c = 0; c < cols.size(); c++) {
 			const std::size_t j = static_cast<std::size_t>(cols[c]);
 			if (!spimats_convert_detail::is_strict_zero_interval(acc[j])) {
-				IC.add(i, cols[c], acc[j]);
+				out_inner.push_back(cols[c]);
+				out_val.push_back(acc[j]);
+				out++;
 			}
 			acc[j] = kv::interval<_T>(_T(0));
 			touched[j] = 0;
@@ -104,8 +110,15 @@ void mul_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 	const std::vector<_Index>& bo = Bc.outer_index();
 	const std::vector<_Index>& bi = Bc.inner_index();
 	const std::vector<_TP>& bv = Bc.values();
-	IC.clear();
-	IC.resize(m, n);
+	// [SPI-R10] 出力は配列直接構築 + assign_csr(R8/SPC-P1 と同方式)。
+	// merge/flush は行昇順・行内列昇順で emit するため finalize のソート・統合は
+	// 不要(実測 add 14.7×/mul 4.5×)。mul 系は出力上限が安く取れないため
+	// push_back のまま。
+	std::vector<_Index> c_outer(static_cast<std::size_t>(m) + 1);
+	std::vector<_Index> c_inner;
+	std::vector<kv::interval<_T> > c_val;
+	std::size_t out = 0;
+	c_outer[0] = 0;
 	std::vector<kv::interval<_T> > acc(static_cast<std::size_t>(n), kv::interval<_T>(_T(0)));
 	std::vector<char> touched(static_cast<std::size_t>(n), 0);
 	std::vector<_Index> cols;
@@ -125,9 +138,11 @@ void mul_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 				}
 			}
 		}
-		detail::flush_accumulated_row_(IC, i, cols, acc, touched);
+		detail::flush_accumulated_row_(c_inner, c_val, out, cols, acc, touched);
+		c_outer[static_cast<std::size_t>(i) + 1] = static_cast<_Index>(out);
 	}
-	IC.finalize();
+	IC.clear();
+	IC.assign_csr(m, n, c_outer, c_inner, c_val);
 }
 
 // mul_m_im: IC = B * IA(点疎 (m×k) × 区間疎 (k×n) -> 区間疎 (m×n))
@@ -151,8 +166,15 @@ void mul_m_im(const spmats<_TP, _Index>& B,
 	const std::vector<_Index>& ao = Ac.outer_index();
 	const std::vector<_Index>& ai = Ac.inner_index();
 	const std::vector<kv::interval<_T> >& av = Ac.values();
-	IC.clear();
-	IC.resize(m, n);
+	// [SPI-R10] 出力は配列直接構築 + assign_csr(R8/SPC-P1 と同方式)。
+	// merge/flush は行昇順・行内列昇順で emit するため finalize のソート・統合は
+	// 不要(実測 add 14.7×/mul 4.5×)。mul 系は出力上限が安く取れないため
+	// push_back のまま。
+	std::vector<_Index> c_outer(static_cast<std::size_t>(m) + 1);
+	std::vector<_Index> c_inner;
+	std::vector<kv::interval<_T> > c_val;
+	std::size_t out = 0;
+	c_outer[0] = 0;
 	std::vector<kv::interval<_T> > acc(static_cast<std::size_t>(n), kv::interval<_T>(_T(0)));
 	std::vector<char> touched(static_cast<std::size_t>(n), 0);
 	std::vector<_Index> cols;
@@ -172,9 +194,11 @@ void mul_m_im(const spmats<_TP, _Index>& B,
 				}
 			}
 		}
-		detail::flush_accumulated_row_(IC, i, cols, acc, touched);
+		detail::flush_accumulated_row_(c_inner, c_val, out, cols, acc, touched);
+		c_outer[static_cast<std::size_t>(i) + 1] = static_cast<_Index>(out);
 	}
-	IC.finalize();
+	IC.clear();
+	IC.assign_csr(m, n, c_outer, c_inner, c_val);
 }
 
 // add_im_m: IC = IA + B(区間疎 + 点疎、同寸法。パターンは合併)
@@ -197,8 +221,16 @@ void add_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 	const std::vector<_Index>& bo = Bc.outer_index();
 	const std::vector<_Index>& bi = Bc.inner_index();
 	const std::vector<_TP>& bv = Bc.values();
-	IC.clear();
-	IC.resize(Ac.rowsize(), Ac.columnsize());
+	// [SPI-R10] 出力は配列直接構築 + assign_csr(R8/SPC-P1 と同方式)。
+	// merge/flush は行昇順・行内列昇順で emit するため finalize のソート・統合は
+	// 不要(実測 add 14.7×/mul 4.5×)。add 系は nnzA+nnzB を上限として
+	// reserve する。
+	std::vector<_Index> c_outer(static_cast<std::size_t>(Ac.rowsize()) + 1);
+	std::vector<_Index> c_inner;
+	std::vector<kv::interval<_T> > c_val;
+	c_inner.reserve(av.size() + bv.size());
+	c_val.reserve(av.size() + bv.size());
+	c_outer[0] = 0;
 	for (_Index i = 0; i < Ac.rowsize(); i++) {
 		_Index p = ao[static_cast<std::size_t>(i)], pe = ao[static_cast<std::size_t>(i) + 1];
 		_Index q = bo[static_cast<std::size_t>(i)], qe = bo[static_cast<std::size_t>(i) + 1];
@@ -221,11 +253,14 @@ void add_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 				y = av[static_cast<std::size_t>(p)] + bv[static_cast<std::size_t>(q)]; p++; q++;   // 両方: 区間+点(昇格)
 			}
 			if (!spimats_convert_detail::is_strict_zero_interval(y)) {
-				IC.add(i, j, y);   // 厳密相殺 [0,0] のみ非格納
+				c_inner.push_back(j);   // 厳密相殺 [0,0] のみ非格納
+				c_val.push_back(y);
 			}
 		}
+		c_outer[static_cast<std::size_t>(i) + 1] = static_cast<_Index>(c_inner.size());
 	}
-	IC.finalize();
+	IC.clear();
+	IC.assign_csr(Ac.rowsize(), Ac.columnsize(), c_outer, c_inner, c_val);
 }
 
 // add_m_im: IC = B + IA。点と区間の要素ごとの和は可換(kv の interval+点 /
