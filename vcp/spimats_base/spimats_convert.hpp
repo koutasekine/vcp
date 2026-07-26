@@ -60,7 +60,7 @@ namespace spimats_convert_detail {
 } // namespace spimats_convert_detail
 
 // >>> REVIEW-REQUIRED [SPI-R1: midrad_split / mid_for_approximation(行列・ベクトル)] <<<
-// STATUS: UNREVIEWED
+// STATUS: REVIEWED-OK (Kouta Sekine, 2026-07-26)
 // CLAIM: midrad_split(IA, M, R) は全格納要素で kv::midrad(x, m, r) を呼び、
 //   要素ごとに ∀a ∈ [IA]_ij : |a − M_ij| ≤ R_ij を満たす点行列対 (M, R) を
 //   構成する(非格納要素は IA=[0,0]・M=0・R=0 で自明に成立。m または r が
@@ -95,18 +95,31 @@ void mid_for_approximation(const spmats<kv::interval<_T>, _Index>& IA, _APM& M)
 	const std::vector<_Index>& outer = C.outer_index();
 	const std::vector<_Index>& inner = C.inner_index();
 	const std::vector<kv::interval<_T> >& val = C.values();
-	M.clear();
-	M.resize(C.rowsize(), C.columnsize());
-	for (_Index i = 0; i < C.rowsize(); i++) {
-		for (_Index p = outer[static_cast<std::size_t>(i)];
-		     p < outer[static_cast<std::size_t>(i) + 1]; p++) {
+	// [SPI-R8] 配列直接構築 + assign_csr(R5 と同方式)。入力は as_csr 済みで
+	// 行内昇順・重複なしのため finalize のソート/統合は不要(実測 4〜12 倍)。
+	const _Index rows = C.rowsize();
+	const _Index cols = C.columnsize();
+	const std::size_t nrows = static_cast<std::size_t>(rows);
+	std::vector<_Index> m_outer(nrows + 1);
+	std::vector<_Index> m_inner(val.size());
+	std::vector<_T> m_val(val.size());
+	std::size_t out = 0;
+	m_outer[0] = 0;
+	for (std::size_t i = 0; i < nrows; i++) {
+		for (_Index p = outer[i]; p < outer[i + 1]; p++) {
 			const _T m = mid(val[static_cast<std::size_t>(p)]);
 			if (!(m == _T(0))) {
-				M.add(i, inner[static_cast<std::size_t>(p)], m);
+				m_inner[out] = inner[static_cast<std::size_t>(p)];
+				m_val[out] = m;
+				out++;
 			}
 		}
+		m_outer[i + 1] = static_cast<_Index>(out);
 	}
-	M.finalize();
+	m_inner.resize(out);
+	m_val.resize(out);
+	M.clear();
+	M.assign_csr(rows, cols, m_outer, m_inner, m_val);
 }
 
 // mid_for_approximation(ベクトル版): 右辺 b 用。契約は行列版と同じ
@@ -137,22 +150,49 @@ void midrad_split(const spmats<kv::interval<_T>, _Index>& IA,
 	const std::vector<_Index>& outer = C.outer_index();
 	const std::vector<_Index>& inner = C.inner_index();
 	const std::vector<kv::interval<_T> >& val = C.values();
-	M.clear();
-	M.resize(C.rowsize(), C.columnsize());
-	R.clear();
-	R.resize(C.rowsize(), C.columnsize());
-	for (_Index i = 0; i < C.rowsize(); i++) {
-		for (_Index p = outer[static_cast<std::size_t>(i)];
-		     p < outer[static_cast<std::size_t>(i) + 1]; p++) {
+	// [SPI-R8] 配列直接構築 + assign_csr(R5 と同方式)。入力は as_csr 済みで
+	// 行内昇順・重複なしのため finalize のソート/統合は不要(実測 4〜12 倍)。
+	// M と R は落ちる位置が独立(m==0 / r==0)なので配列・カーソルを分離する。
+	const _Index rows = C.rowsize();
+	const _Index cols = C.columnsize();
+	const std::size_t nrows = static_cast<std::size_t>(rows);
+	std::vector<_Index> m_outer(nrows + 1);
+	std::vector<_Index> m_inner(val.size());
+	std::vector<_T> m_val(val.size());
+	std::vector<_Index> r_outer(nrows + 1);
+	std::vector<_Index> r_inner(val.size());
+	std::vector<_T> r_val(val.size());
+	std::size_t m_out = 0;
+	std::size_t r_out = 0;
+	m_outer[0] = 0;
+	r_outer[0] = 0;
+	for (std::size_t i = 0; i < nrows; i++) {
+		for (_Index p = outer[i]; p < outer[i + 1]; p++) {
 			_T m, r;
 			midrad(val[static_cast<std::size_t>(p)], m, r);
 			const _Index j = inner[static_cast<std::size_t>(p)];
-			if (!(m == _T(0))) M.add(i, j, m);
-			if (!(r == _T(0))) R.add(i, j, r);
+			if (!(m == _T(0))) {
+				m_inner[m_out] = j;
+				m_val[m_out] = m;
+				m_out++;
+			}
+			if (!(r == _T(0))) {
+				r_inner[r_out] = j;
+				r_val[r_out] = r;
+				r_out++;
+			}
 		}
+		m_outer[i + 1] = static_cast<_Index>(m_out);
+		r_outer[i + 1] = static_cast<_Index>(r_out);
 	}
-	M.finalize();
-	R.finalize();
+	m_inner.resize(m_out);
+	m_val.resize(m_out);
+	r_inner.resize(r_out);
+	r_val.resize(r_out);
+	M.clear();
+	M.assign_csr(rows, cols, m_outer, m_inner, m_val);
+	R.clear();
+	R.assign_csr(rows, cols, r_outer, r_inner, r_val);
 }
 
 // midrad_split(ベクトル版): 右辺 ib 用。密ベクトルなので零落としは行わず
@@ -171,7 +211,7 @@ void midrad_split(const std::vector<kv::interval<_T> >& iv,
 // >>> END [SPI-R1] <<<
 
 // >>> REVIEW-REQUIRED [SPI-R3: 点→区間化(行列・ベクトル)・厳密 B=I 構成] <<<
-// STATUS: UNREVIEWED
+// STATUS: REVIEWED-OK (Kouta Sekine, 2026-07-26)
 // CLAIM: point_to_interval は各格納要素 a を退化区間 [a, a] に厳密に写す
 //   (kv::interval<_T>(a) は同型 _T からの端点直接構成で丸めを含まない)。
 //   したがって [IA] = {A} であり A ∈ [IA]。identity_interval は対角 [1,1]
@@ -195,16 +235,29 @@ void point_to_interval(const spmats<_T, _Index>& A,
 	const std::vector<_Index>& outer = C.outer_index();
 	const std::vector<_Index>& inner = C.inner_index();
 	const std::vector<_T>& val = C.values();
-	IA.clear();
-	IA.resize(C.rowsize(), C.columnsize());
-	for (_Index i = 0; i < C.rowsize(); i++) {
-		for (_Index p = outer[static_cast<std::size_t>(i)];
-		     p < outer[static_cast<std::size_t>(i) + 1]; p++) {
-			IA.add(i, inner[static_cast<std::size_t>(p)],
-			       kv::interval<_T>(val[static_cast<std::size_t>(p)]));
+	// [SPI-R8] 配列直接構築 + assign_csr(R5 と同方式)。入力は as_csr 済みで
+	// 行内昇順・重複なしのため finalize のソート/統合は不要(実測 4〜12 倍)。
+	// 退化区間化はゼロ落としなし(out は常に nnz)だが R5 と同形に書く。
+	const _Index rows = C.rowsize();
+	const _Index cols = C.columnsize();
+	const std::size_t nrows = static_cast<std::size_t>(rows);
+	std::vector<_Index> ia_outer(nrows + 1);
+	std::vector<_Index> ia_inner(val.size());
+	std::vector<kv::interval<_T> > ia_val(val.size());
+	std::size_t out = 0;
+	ia_outer[0] = 0;
+	for (std::size_t i = 0; i < nrows; i++) {
+		for (_Index p = outer[i]; p < outer[i + 1]; p++) {
+			ia_inner[out] = inner[static_cast<std::size_t>(p)];
+			ia_val[out] = kv::interval<_T>(val[static_cast<std::size_t>(p)]);
+			out++;
 		}
+		ia_outer[i + 1] = static_cast<_Index>(out);
 	}
-	IA.finalize();
+	ia_inner.resize(out);
+	ia_val.resize(out);
+	IA.clear();
+	IA.assign_csr(rows, cols, ia_outer, ia_inner, ia_val);
 }
 
 // point_to_interval(ベクトル版): 退化区間化。
@@ -244,7 +297,7 @@ void identity_interval(const _Index n, spmats<kv::interval<_T>, _Index>& IB)
 // >>> END [SPI-R3] <<<
 
 // >>> REVIEW-REQUIRED [SPI-R5: 区間型間の疎外側丸め変換] <<<
-// STATUS: UNREVIEWED
+// STATUS: REVIEWED-OK (Kouta Sekine, 2026-07-26)
 // CLAIM: convert_interval_matrix(IA, IB) は要素ごとに vcp::convert の
 //   区間型間オーバーロード(vcp_converter.hpp L181-225: 下端 rnd=-1・
 //   上端 rnd=+1 の外側丸め)を適用し、[IA]_src ⊆ [IB]_dst を満たす

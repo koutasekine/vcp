@@ -320,7 +320,7 @@ void mul_v_im(const std::vector<_TP>& x,
 // >>> END [SPI-R2] <<<
 
 // >>> REVIEW-REQUIRED [SPI-R7: sub_im_m(区間疎 − 点疎)の薄い委譲(SPI-K1 K1-b)] <<<
-// STATUS: UNREVIEWED
+// STATUS: REVIEWED-OK (Kouta Sekine, 2026-07-26)
 // CLAIM: sub_im_m(IA, B, IC) の出力は IA − B の要素ごとの真の差を包含する。
 //   根拠: −B の構成は値の単項符号反転のみ(IEEE 浮動小数点・kv::dd・
 //   kv::mpfr のいずれも符号反転は厳密演算・パターン不変)で丸めを含まず、
@@ -343,19 +343,16 @@ void sub_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 		vcp::throw_error<vcp::dimension_error>("spimats_kernel::sub_im_m: dimension mismatch");
 	}
 	if (!B.is_finalized()) B.finalize();
-	const spmats<_TP, _Index> Bc = B.as_csr();
-	const std::vector<_Index>& bo = Bc.outer_index();
-	const std::vector<_Index>& bi = Bc.inner_index();
-	const std::vector<_TP>& bv = Bc.values();
-	spmats<_TP, _Index> Bn;   // Bn = −B(単項符号反転のみ・パターン保存)
-	Bn.resize(Bc.rowsize(), Bc.columnsize());
-	Bn.reserve(Bc.stored_nnz());
-	for (_Index i = 0; i < Bc.rowsize(); i++) {
-		for (_Index p = bo[static_cast<std::size_t>(i)]; p < bo[static_cast<std::size_t>(i) + 1]; p++) {
-			Bn.add(i, bi[static_cast<std::size_t>(p)], -bv[static_cast<std::size_t>(p)]);
-		}
+	// Bn = −B: as_csr() のコピー(非破壊性のため必須の 1 本)に対し、
+	// 非 const values()(SPI-R9)で値のみを 1 パス符号反転する。
+	// 符号反転は IEEE / kv::dd / kv::mpfr のいずれも厳密演算・パターン不変
+	// なので、outer/inner・finalized 状態・CSR 形式はそのまま保たれる
+	// (COO 再構築・finalize 不要 — 旧実装の廃止理由。SPI-R8-b)。
+	spmats<_TP, _Index> Bn = B.as_csr();
+	std::vector<_TP>& v = Bn.values();
+	for (std::size_t k = 0; k < v.size(); k++) {
+		v[k] = -v[k];   // 単項符号反転(厳密・丸めなし)
 	}
-	Bn.finalize();
 	add_im_m(IA, Bn, IC);
 }
 
