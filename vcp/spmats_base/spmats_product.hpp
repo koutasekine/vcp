@@ -16,6 +16,19 @@
 namespace vcp {
 
 // ---------------------------------------------------------------------------
+// SPC-P1 shared shape (policy_add / policy_sub / policy_mul_impl):
+// inputs are read directly when already finalized CSR (zero-copy); only a
+// finalized CSC input is converted via as_csr() (a necessary cost).  The
+// output is built by receiving emit directly into CSR arrays and installing
+// them with assign_csr() -- no COO staging, no finalize(), no re-sort.
+// This DEPENDS on the emit ordering contract of the tsparse_spgemm kernels:
+// emit is called in ascending row i, ascending column j within each row,
+// duplicate-merged and exact-zero-free (std::sort(touched) + workspace sweep,
+// tsparse_spgemm.hpp L49-57 / L87-93).  Rows with no emitted entry are fixed
+// up by the monotone fill pass after the kernel call.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
 // policy_add: C = A + B  (element-wise sparse addition)
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
@@ -25,20 +38,37 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_add(
 {
 	if (!A.is_finalized()) A.finalize();
 	if (!B.is_finalized()) B.finalize();
-	spmats<_T, _Index> Ac = A.as_csr();
-	spmats<_T, _Index> Bc = B.as_csr();
-	spmats<_T, _Index> C;
-	C.resize(A.rowsize(), A.columnsize());
-	C.reserve(Ac.stored_nnz() + Bc.stored_nnz());
+	const spmats<_T, _Index>* Ap; spmats<_T, _Index> Ac_storage;
+	if (A.format() == vcp::sparse_csr) { Ap = &A; }
+	else { Ac_storage = A.as_csr(); Ap = &Ac_storage; }
+	const spmats<_T, _Index>* Bp; spmats<_T, _Index> Bc_storage;
+	if (B.format() == vcp::sparse_csr) { Bp = &B; }
+	else { Bc_storage = B.as_csr(); Bp = &Bc_storage; }
+	const std::size_t nrows = index_to_size(A.rowsize(), "spmats::policy_add");
+	std::vector<_Index> new_outer(nrows + 1, _Index(0));
+	std::vector<_Index> new_inner;
+	std::vector<_T> new_value;
+	const std::size_t cap = index_to_size(Ap->stored_nnz(), "spmats::policy_add")
+	                      + index_to_size(Bp->stored_nnz(), "spmats::policy_add");
+	new_inner.reserve(cap);
+	new_value.reserve(cap);
 	vcp::tsparse_spgemm::csr_csr_linear_combination(
-		Ac.rowsize(), Ac.columnsize(),
-		Ac.outer_index(), Ac.inner_index(), Ac.values(),
-		Bc.outer_index(), Bc.inner_index(), Bc.values(),
+		Ap->rowsize(), Ap->columnsize(),
+		Ap->outer_index(), Ap->inner_index(), Ap->values(),
+		Bp->outer_index(), Bp->inner_index(), Bp->values(),
 		_T(1), _T(1),
 		[&](const _Index i, const _Index j, const _T& val) {
-			C.add(i, j, val);
+			new_inner.push_back(j);
+			new_value.push_back(val);
+			new_outer[static_cast<std::size_t>(i) + 1] =
+				size_to_index(new_inner.size(), "spmats::policy_add");
 		});
-	C.finalize();
+	for (std::size_t r = 1; r <= nrows; r++) {
+		if (new_outer[r] < new_outer[r - 1]) new_outer[r] = new_outer[r - 1];
+	}
+	spmats<_T, _Index> C;
+	C.clear();
+	C.assign_csr(A.rowsize(), A.columnsize(), new_outer, new_inner, new_value);
 	return C;
 }
 
@@ -52,20 +82,37 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_sub(
 {
 	if (!A.is_finalized()) A.finalize();
 	if (!B.is_finalized()) B.finalize();
-	spmats<_T, _Index> Ac = A.as_csr();
-	spmats<_T, _Index> Bc = B.as_csr();
-	spmats<_T, _Index> C;
-	C.resize(A.rowsize(), A.columnsize());
-	C.reserve(Ac.stored_nnz() + Bc.stored_nnz());
+	const spmats<_T, _Index>* Ap; spmats<_T, _Index> Ac_storage;
+	if (A.format() == vcp::sparse_csr) { Ap = &A; }
+	else { Ac_storage = A.as_csr(); Ap = &Ac_storage; }
+	const spmats<_T, _Index>* Bp; spmats<_T, _Index> Bc_storage;
+	if (B.format() == vcp::sparse_csr) { Bp = &B; }
+	else { Bc_storage = B.as_csr(); Bp = &Bc_storage; }
+	const std::size_t nrows = index_to_size(A.rowsize(), "spmats::policy_sub");
+	std::vector<_Index> new_outer(nrows + 1, _Index(0));
+	std::vector<_Index> new_inner;
+	std::vector<_T> new_value;
+	const std::size_t cap = index_to_size(Ap->stored_nnz(), "spmats::policy_sub")
+	                      + index_to_size(Bp->stored_nnz(), "spmats::policy_sub");
+	new_inner.reserve(cap);
+	new_value.reserve(cap);
 	vcp::tsparse_spgemm::csr_csr_linear_combination(
-		Ac.rowsize(), Ac.columnsize(),
-		Ac.outer_index(), Ac.inner_index(), Ac.values(),
-		Bc.outer_index(), Bc.inner_index(), Bc.values(),
+		Ap->rowsize(), Ap->columnsize(),
+		Ap->outer_index(), Ap->inner_index(), Ap->values(),
+		Bp->outer_index(), Bp->inner_index(), Bp->values(),
 		_T(1), _T(-1),
 		[&](const _Index i, const _Index j, const _T& val) {
-			C.add(i, j, val);
+			new_inner.push_back(j);
+			new_value.push_back(val);
+			new_outer[static_cast<std::size_t>(i) + 1] =
+				size_to_index(new_inner.size(), "spmats::policy_sub");
 		});
-	C.finalize();
+	for (std::size_t r = 1; r <= nrows; r++) {
+		if (new_outer[r] < new_outer[r - 1]) new_outer[r] = new_outer[r - 1];
+	}
+	spmats<_T, _Index> C;
+	C.clear();
+	C.assign_csr(A.rowsize(), A.columnsize(), new_outer, new_inner, new_value);
 	return C;
 }
 
@@ -93,18 +140,36 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_mul_impl(
 	const spmats<_T, _Index>& A,
 	const spmats<_T, _Index>& B) const
 {
-	spmats<_T, _Index> Ac = A.as_csr();
-	spmats<_T, _Index> Bc = B.as_csr();
-	spmats<_T, _Index> C;
-	C.resize(A.rowsize(), B.columnsize());
+	if (!A.is_finalized()) A.finalize();
+	if (!B.is_finalized()) B.finalize();
+	const spmats<_T, _Index>* Ap; spmats<_T, _Index> Ac_storage;
+	if (A.format() == vcp::sparse_csr) { Ap = &A; }
+	else { Ac_storage = A.as_csr(); Ap = &Ac_storage; }
+	const spmats<_T, _Index>* Bp; spmats<_T, _Index> Bc_storage;
+	if (B.format() == vcp::sparse_csr) { Bp = &B; }
+	else { Bc_storage = B.as_csr(); Bp = &Bc_storage; }
+	const std::size_t nrows = index_to_size(A.rowsize(), "spmats::policy_mul_impl");
+	std::vector<_Index> new_outer(nrows + 1, _Index(0));
+	std::vector<_Index> new_inner;
+	std::vector<_T> new_value;
+	// spgemm output size has no cheap a-priori bound: no reserve, amortized
+	// push_back (the previous COO path was push_back-based too).
 	vcp::tsparse_spgemm::csr_csr_multiply(
-		Ac.rowsize(), Ac.columnsize(), Bc.columnsize(),
-		Ac.outer_index(), Ac.inner_index(), Ac.values(),
-		Bc.outer_index(), Bc.inner_index(), Bc.values(),
+		Ap->rowsize(), Ap->columnsize(), Bp->columnsize(),
+		Ap->outer_index(), Ap->inner_index(), Ap->values(),
+		Bp->outer_index(), Bp->inner_index(), Bp->values(),
 		[&](const _Index i, const _Index j, const _T& val) {
-			C.add(i, j, val);
+			new_inner.push_back(j);
+			new_value.push_back(val);
+			new_outer[static_cast<std::size_t>(i) + 1] =
+				size_to_index(new_inner.size(), "spmats::policy_mul_impl");
 		});
-	C.finalize();
+	for (std::size_t r = 1; r <= nrows; r++) {
+		if (new_outer[r] < new_outer[r - 1]) new_outer[r] = new_outer[r - 1];
+	}
+	spmats<_T, _Index> C;
+	C.clear();
+	C.assign_csr(A.rowsize(), B.columnsize(), new_outer, new_inner, new_value);
 	return C;
 }
 
@@ -139,74 +204,145 @@ std::vector<_T> spmats<_T, _Index>::policy_left_mul_vec(
 }
 
 // ---------------------------------------------------------------------------
+// SPC-P1 destructive pattern-invariant policies: policy_mulsm / policy_divms
+// / policy_minusm.  In-place, zero extra allocation: the stored value array
+// of *this is updated directly.  Entries that become exact zero (alpha==0,
+// underflow, zeroing division) are compacted away on the fly so the
+// finalized-storage invariant (no stored zeros) is preserved.  The zero test
+// is the established kernel idiom `!(v == _T(0))` (same as tsparse_spgemm /
+// tcoo_remove_zeros / the previous functional policies).
+// The compaction loop is format-neutral: outer/inner are relative names, so
+// the identical code is correct for both finalized CSR and finalized CSC
+// (the major-axis count differs only).  A not-yet-finalized (COO) matrix is
+// finalized first.  Note the read cursor p0 is carried from the previous
+// row's original end: outer[i+1] is overwritten with the compacted end, so
+// it must not be re-read as the next row's start once compaction occurred.
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+void spmats<_T, _Index>::policy_mulsm(const _T& alpha)
+{
+	if (!is_finalized()) finalize();
+	const std::size_t nouter = (fmt == vcp::sparse_csr)
+		? index_to_size(row, "spmats::policy_mulsm")
+		: index_to_size(column, "spmats::policy_mulsm");
+	std::size_t out = 0;
+	index_type p0 = outer.empty() ? index_type(0) : outer[0];
+	for (std::size_t i = 0; i < nouter; i++) {
+		const index_type p1 = outer[i + 1];
+		for (index_type p = p0; p < p1; p++) {
+			const std::size_t sp = static_cast<std::size_t>(p);
+			const _T v = alpha * value[sp];
+			if (!(v == _T(0))) {
+				value[out] = v;
+				inner[out] = inner[sp];
+				out++;
+			}
+		}
+		outer[i + 1] = size_to_index(out, "spmats::policy_mulsm");
+		p0 = p1;
+	}
+	value.resize(out);
+	inner.resize(out);
+}
+
+template <typename _T, typename _Index>
+void spmats<_T, _Index>::policy_divms(const _T& alpha)
+{
+	if (!is_finalized()) finalize();
+	const std::size_t nouter = (fmt == vcp::sparse_csr)
+		? index_to_size(row, "spmats::policy_divms")
+		: index_to_size(column, "spmats::policy_divms");
+	std::size_t out = 0;
+	index_type p0 = outer.empty() ? index_type(0) : outer[0];
+	for (std::size_t i = 0; i < nouter; i++) {
+		const index_type p1 = outer[i + 1];
+		for (index_type p = p0; p < p1; p++) {
+			const std::size_t sp = static_cast<std::size_t>(p);
+			const _T v = value[sp] / alpha;
+			if (!(v == _T(0))) {
+				value[out] = v;
+				inner[out] = inner[sp];
+				out++;
+			}
+		}
+		outer[i + 1] = size_to_index(out, "spmats::policy_divms");
+		p0 = p1;
+	}
+	value.resize(out);
+	inner.resize(out);
+}
+
+template <typename _T, typename _Index>
+void spmats<_T, _Index>::policy_minusm()
+{
+	// Negation cannot create a zero from a stored non-zero (-x == 0 iff
+	// x == 0), but the unified compaction shape is kept for code sharing
+	// (the branch cost is negligible).
+	if (!is_finalized()) finalize();
+	const std::size_t nouter = (fmt == vcp::sparse_csr)
+		? index_to_size(row, "spmats::policy_minusm")
+		: index_to_size(column, "spmats::policy_minusm");
+	std::size_t out = 0;
+	index_type p0 = outer.empty() ? index_type(0) : outer[0];
+	for (std::size_t i = 0; i < nouter; i++) {
+		const index_type p1 = outer[i + 1];
+		for (index_type p = p0; p < p1; p++) {
+			const std::size_t sp = static_cast<std::size_t>(p);
+			const _T v = -value[sp];
+			if (!(v == _T(0))) {
+				value[out] = v;
+				inner[out] = inner[sp];
+				out++;
+			}
+		}
+		outer[i + 1] = size_to_index(out, "spmats::policy_minusm");
+		p0 = p1;
+	}
+	value.resize(out);
+	inner.resize(out);
+}
+
+// ---------------------------------------------------------------------------
 // policy_scalar_mul: B = alpha * A
-// finalize investigation (C-2): unchanged. Operates on A.as_csr(), a
-// throwaway copy that is converted correctly regardless of A's current
-// finalize state; A itself is never read via require_finalized()-guarded
-// APIs. Category 4 (self-contained), like transpose/policy_to_dense/
-// policy_is_symmetric — no auto-finalize needed.
+// SPC-P1: one as_csr() copy (the returned matrix itself) + delegation to the
+// destructive policy_mulsm.  Still category 4 (self-contained): as_csr() is
+// correct regardless of A's finalize state and A is never modified.
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 spmats<_T, _Index> spmats<_T, _Index>::policy_scalar_mul(
 	const spmats<_T, _Index>& A,
 	const _T& alpha) const
 {
-	spmats<_T, _Index> Ac = A.as_csr();
-	spmats<_T, _Index> C;
-	C.resize(Ac.rowsize(), Ac.columnsize());
-	const std::vector<_Index>& outer = Ac.outer_index();
-	const std::vector<_Index>& inner = Ac.inner_index();
-	const std::vector<_T>& val = Ac.values();
-	C.reserve(Ac.stored_nnz());
-	for (_Index i = 0; i < Ac.rowsize(); i++) {
-		for (_Index p = outer[static_cast<std::size_t>(i)];
-		     p < outer[static_cast<std::size_t>(i + 1)]; p++) {
-			const _T v = alpha * val[static_cast<std::size_t>(p)];
-			if (!(v == _T(0))) {
-				C.add(i, inner[static_cast<std::size_t>(p)], v);
-			}
-		}
-	}
-	C.finalize();
+	spmats<_T, _Index> C = A.as_csr();
+	C.policy_mulsm(alpha);
 	return C;
 }
 
 // ---------------------------------------------------------------------------
 // policy_scalar_div: B = A / alpha  (divide each non-zero by alpha)
+// SPC-P1: one as_csr() copy + delegation to the destructive policy_divms.
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 spmats<_T, _Index> spmats<_T, _Index>::policy_scalar_div(
 	const spmats<_T, _Index>& A,
 	const _T& alpha) const
 {
-	spmats<_T, _Index> Ac = A.as_csr();
-	spmats<_T, _Index> C;
-	C.resize(Ac.rowsize(), Ac.columnsize());
-	const std::vector<_Index>& outer = Ac.outer_index();
-	const std::vector<_Index>& inner = Ac.inner_index();
-	const std::vector<_T>& val = Ac.values();
-	C.reserve(Ac.stored_nnz());
-	for (_Index i = 0; i < Ac.rowsize(); i++) {
-		for (_Index p = outer[static_cast<std::size_t>(i)];
-		     p < outer[static_cast<std::size_t>(i + 1)]; p++) {
-			const _T v = val[static_cast<std::size_t>(p)] / alpha;
-			if (!(v == _T(0))) {
-				C.add(i, inner[static_cast<std::size_t>(p)], v);
-			}
-		}
-	}
-	C.finalize();
+	spmats<_T, _Index> C = A.as_csr();
+	C.policy_divms(alpha);
 	return C;
 }
 
 // ---------------------------------------------------------------------------
 // policy_neg: B = -A
+// SPC-P1: one as_csr() copy + delegation to the destructive policy_minusm.
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 spmats<_T, _Index> spmats<_T, _Index>::policy_neg(
 	const spmats<_T, _Index>& A) const
 {
-	return policy_scalar_mul(A, _T(-1));
+	spmats<_T, _Index> C = A.as_csr();
+	C.policy_minusm();
+	return C;
 }
 
 } // namespace vcp

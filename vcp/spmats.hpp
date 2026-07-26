@@ -1322,6 +1322,15 @@ namespace vcp {
 		spmats<_T,_Index> policy_scalar_div(const spmats<_T,_Index>& A, const _T& alpha) const;
 		spmats<_T,_Index> policy_neg(const spmats<_T,_Index>& A) const;
 
+		// SPC-P1(オーナー裁定 2026-07-26): パターン不変演算の破壊的
+		// (in-place)ポリシー。追加確保ゼロで *this の値配列を直接更新する。
+		// 厳密ゼロが生じた要素(alpha==0・アンダーフロー・div のゼロ化)は
+		// その場で前詰め圧縮しパターンから除く(invariant: 格納値は非零)。
+		// 未 finalize(COO)の場合は先に finalize() する。
+		void policy_mulsm(const _T& alpha);   // *this *= alpha
+		void policy_divms(const _T& alpha);   // *this /= alpha
+		void policy_minusm();                 // *this = -*this
+
 		// ------------------------------------------------------------------
 		// Policy methods: linear system solve
 		//

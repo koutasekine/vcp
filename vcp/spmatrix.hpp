@@ -506,24 +506,24 @@ namespace vcp {
 		}
 
 		// *this = alpha * *this
+		// SPC-P1: calls the destructive policy directly (in-place, no copy).
 		void mulsm(const _T& alpha) {
-			static_cast<_P&>(*this) = this->policy_scalar_mul(
-				static_cast<const _P&>(*this), alpha);
+			static_cast<_P&>(*this).policy_mulsm(alpha);
 		}
 
 		// *this = *this * alpha  (commutativity: same as mulsm)
 		void mulms(const _T& alpha) { mulsm(alpha); }
 
 		// *this = *this / alpha
+		// SPC-P1: calls the destructive policy directly (in-place, no copy).
 		void divms(const _T& alpha) {
-			static_cast<_P&>(*this) = this->policy_scalar_div(
-				static_cast<const _P&>(*this), alpha);
+			static_cast<_P&>(*this).policy_divms(alpha);
 		}
 
 		// *this = -*this
+		// SPC-P1: calls the destructive policy directly (in-place, no copy).
 		void minusm() {
-			static_cast<_P&>(*this) = this->policy_neg(
-				static_cast<const _P&>(*this));
+			static_cast<_P&>(*this).policy_minusm();
 		}
 
 		// ---------------------------------------------------------------
