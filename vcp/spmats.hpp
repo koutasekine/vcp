@@ -877,6 +877,24 @@ namespace vcp {
 		const std::vector<index_type>& coo_columns() const { return coo_col; }
 		const std::vector<_T>& coo_values() const { return coo_value; }
 
+		// 非 const アクセサ(SPI-R9、オーナー裁定 2026-07-25): ポリシー層
+		// (spmats)はアルゴリズムの作業層であり、ユーザ向けカプセル化は
+		// spmatrix 層(protected 継承 + const 転送窓)が担う。格納配列への
+		// 直接書き込みを許すことで、値のみの操作(符号反転・スケーリング等)を
+		// 一時配列や assign_* 再構成なしの O(nnz) 1 パスで行える。
+		// 【契約(呼び出し側の責務)】
+		//   - values() の書き換えは値のみ(パターン不変)が原則。
+		//   - outer/inner を書き換える場合は CSR/CSC 不変条件(ポインタ単調
+		//     増加・行内昇順・重複なし・配列長整合)を保つこと。破れば以後の
+		//     全操作が未定義。
+		//   - 厳密ゼロの書き込みは invariant(格納値は非零)を破る。ゼロ化は
+		//     パターンから除く操作(assign_* 再構成)で行うこと。
+		//   - spmatrix 側でこれらを using 宣言により再公開することを禁ずる
+		//     (const 転送窓 L1329-1334 がユーザ境界である)。
+		std::vector<index_type>& outer_index() { return outer; }
+		std::vector<index_type>& inner_index() { return inner; }
+		std::vector<_T>&         values()      { return value; }
+
 	protected:
 		index_type row;
 		index_type column;
