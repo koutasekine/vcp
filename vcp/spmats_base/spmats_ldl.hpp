@@ -41,6 +41,23 @@ struct ldl_result {
     sparse_ldl_method   method_used;
     bool dense_delegated;               // baseline_dynamic delegated to the dense kernel
 
+    // ---- SLDL-SP diagnostics (design v1 SS4), conducted verbatim from the
+    // tsparse result.  Integers and enums only (P4); growth_log2 is valid iff
+    // growth_valid, and gemm_time_ns is meaningful iff gemm_call_count > 0
+    // (it is never measured for non-floating scalars -- R-6).
+    sparse_ldl_pivoting    pivot_mode_used;
+    sparse_ldl_kernel_used diag_kernel_used;
+    Index n_supernodes;
+    Index max_supernode_width;
+    Index n_boundary_splits;
+    Index nnz_L_static;
+    Index n_zero_skips;
+    Index out_of_panel_at;              // -1 = none
+    long long gemm_call_count;
+    long long gemm_time_ns;
+    int  growth_log2;
+    bool growth_valid;
+
     ldl_result()
         : status(sparse_ldl_status::internal_error),
           n_pivots_1x1(Index(0)), n_pivots_2x2(Index(0)),
@@ -48,7 +65,14 @@ struct ldl_result {
           structural_empty_at(Index(-1)), nnz_L(Index(0)),
           ordering_used(sparse_ldl_ordering::auto_select),
           method_used(sparse_ldl_method::auto_select),
-          dense_delegated(false) {}
+          dense_delegated(false),
+          pivot_mode_used(sparse_ldl_pivoting::bk),
+          diag_kernel_used(sparse_ldl_kernel_used::not_applicable),
+          n_supernodes(Index(0)), max_supernode_width(Index(0)),
+          n_boundary_splits(Index(0)), nnz_L_static(Index(0)),
+          n_zero_skips(Index(0)), out_of_panel_at(Index(-1)),
+          gemm_call_count(0), gemm_time_ns(0),
+          growth_log2(0), growth_valid(false) {}
 };
 
 // ---------------------------------------------------------------------------

@@ -45,6 +45,21 @@ namespace spmats_ldl_detail {
 		out.ordering_used       = r.ordering_used;
 		out.method_used         = r.method_used;
 		out.dense_delegated     = r.dense_delegated;
+		// SLDL-SP diagnostics conduit (design v1 SS4: wired from the start,
+		// not retrofitted).  Every field is copied verbatim; the policy layer
+		// adds no interpretation of its own.
+		out.pivot_mode_used     = r.pivot_mode_used;
+		out.diag_kernel_used    = r.diag_kernel_used;
+		out.n_supernodes        = r.n_supernodes;
+		out.max_supernode_width = r.max_supernode_width;
+		out.n_boundary_splits   = r.n_boundary_splits;
+		out.nnz_L_static        = r.nnz_L_static;
+		out.n_zero_skips        = r.n_zero_skips;
+		out.out_of_panel_at     = r.out_of_panel_at;
+		out.gemm_call_count     = r.gemm_call_count;
+		out.gemm_time_ns        = r.gemm_time_ns;
+		out.growth_log2         = r.growth_log2;
+		out.growth_valid        = r.growth_valid;
 		return out;
 	}
 

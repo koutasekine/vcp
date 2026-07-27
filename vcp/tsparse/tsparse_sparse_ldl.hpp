@@ -29,6 +29,8 @@
 #ifndef VCP_TSPARSE_SPARSE_LDL_HPP
 #define VCP_TSPARSE_SPARSE_LDL_HPP
 
+#include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <exception>
 #include <type_traits>
@@ -37,6 +39,10 @@
 
 #include <vcp/error.hpp>
 #include <vcp/tsparse/tsparse_scalar.hpp>
+// Dense block kernels of the supernodal numeric phase (SLDL-SP SP-1).  The
+// include MUST stay here, at file scope: the detail impls below are injected
+// from INSIDE namespace vcp and tblas.hpp opens namespace vcp itself.
+#include <vcp/tblas/tblas.hpp>
 
 // pivot_decision {acceptable, reject, inconclusive} is reused from the SLU
 // header (design v2 SS1.3: include-only reuse; SLU itself is not modified).
@@ -53,8 +59,40 @@ namespace vcp {
 
 enum class sparse_ldl_method {
     auto_select,
-    baseline_dynamic
-    // Phase B (future, separate design doc): multifrontal
+    baseline_dynamic,
+    supernodal      // SLDL-SP (Phase B / B1): left-looking supernodal panels
+    // still open: multifrontal
+};
+
+// SLDL-SP design v1 SS3.3: the pivot strategy is ORTHOGONAL to the method.
+//   bk   : dynamic Bunch-Kaufman (1x1 / 2x2, symmetric exchanges) -- default,
+//          i.e. the pre-SLDL-SP behaviour of both baseline and supernodal.
+//   none : static, exchange-free.  Diagonal 1x1 pivots in their natural
+//          order; a certified zero pivot is skipped and counted (the
+//          zero-eigenvalue counting use case); a pivot that can be certified
+//          neither zero nor nonzero stops with inconclusive_pivot_test.
+// none exists for both methods: baseline x none is the scalar reference
+// system that supernodal x none is verified against (design v1 SS6-2).
+enum class sparse_ldl_pivoting {
+    bk,
+    none
+};
+
+// SLDL-SP design v1 D-3: which dense kernel computes the symmetric diagonal
+// block update C -= W * L1^T of a supernode panel.  auto_select is resolved
+// by the library and always reported in diag_kernel_used.
+enum class sparse_ldl_diag_kernel {
+    auto_select,   // resolved to gemmtr in v1 (SP-3 calibrates the default)
+    gemmtr,        // tgemmtr: triangular part only, half the flops
+    gemm           // tgemm: full block, the faster double kernel
+};
+
+// What the numeric phase actually used (result diagnostic).
+enum class sparse_ldl_kernel_used {
+    not_applicable,   // no supernodal numeric work was performed
+    scalar,           // scalar mirror (type gate not satisfied)
+    gemmtr,
+    gemm
 };
 
 enum class sparse_ldl_ordering {
@@ -72,6 +110,13 @@ enum class sparse_ldl_status {
     structural_singularity,   // structurally empty row/column (assembly-bug hint)
     zero_pivot,               // certified zero pivot(s); factorization completed
     inconclusive_pivot_test,  // pivot decision could not be certified; stopped (P1)
+    pivot_out_of_panel,       // SLDL-SP D-1: the supernodal panel needed a
+                              // symmetric exchange with a column OUTSIDE the
+                              // panel.  The BK test is never weakened and no
+                              // silent fallback is taken: the factorization
+                              // stops and returns diagnostics only.  Callers
+                              // may re-run with method = baseline_dynamic,
+                              // which handles exchanges at any distance.
     not_symmetric,            // symmetry of the input could not be certified
     invalid_options,          // colamd/pivot_threshold!=0/unimplemented method etc.
     invalid_input,            // n<0, malformed CSC, ...
@@ -84,6 +129,7 @@ inline const char* sparse_ldl_status_to_string(sparse_ldl_status s) {
     case sparse_ldl_status::structural_singularity: return "structural_singularity";
     case sparse_ldl_status::zero_pivot:              return "zero_pivot";
     case sparse_ldl_status::inconclusive_pivot_test: return "inconclusive_pivot_test";
+    case sparse_ldl_status::pivot_out_of_panel:      return "pivot_out_of_panel";
     case sparse_ldl_status::not_symmetric:           return "not_symmetric";
     case sparse_ldl_status::invalid_options:         return "invalid_options";
     case sparse_ldl_status::invalid_input:           return "invalid_input";
@@ -101,6 +147,14 @@ struct sparse_ldl_options {
     typedef typename vcp::tsparse_scalar::real_type<T>::type real_type;
 
     sparse_ldl_method   method;    // auto_select -> baseline_dynamic
+    sparse_ldl_pivoting pivoting;  // default bk (the pre-SLDL-SP behaviour)
+    // Type gate of the supernodal blocked kernels (design v1 SS3.2): dense
+    // block operations are used only for std::is_floating_point scalars AND
+    // only when the descendant supernode is at least this wide; every other
+    // case runs the scalar mirror.  The default is provisional and is
+    // calibrated in SP-3.
+    int ldl_min_block_size;
+    sparse_ldl_diag_kernel diag_kernel;
     // ordering contract (design v2 SS0.1 decision 1): auto_select is resolved
     // by the library; the resolution is always reported in the diagnostic
     // ordering_used.  The resolution may change in future versions -- specify
@@ -115,6 +169,12 @@ struct sparse_ldl_options {
 
     sparse_ldl_options()
         : method(sparse_ldl_method::auto_select),
+          pivoting(sparse_ldl_pivoting::bk),
+          // provisional default (implementation guide SS2-2): the LU value 16
+          // is a syrk-shaped threshold and is deliberately NOT inherited;
+          // SP-3 calibrates this on four machines.
+          ldl_min_block_size(24),
+          diag_kernel(sparse_ldl_diag_kernel::auto_select),
           ordering(sparse_ldl_ordering::auto_select),
           check_symmetry(true),
           // same default policy as policy_is_symmetric (B-4: via the D4
@@ -154,6 +214,31 @@ struct sparse_ldl_result {
     // dense fallback kernel (small n).  method_used stays baseline_dynamic.
     bool dense_delegated;
 
+    // ---- SLDL-SP diagnostics (design v1 SS4; integers and enums only, P4).
+    sparse_ldl_pivoting    pivot_mode_used;
+    sparse_ldl_kernel_used diag_kernel_used;   // not_applicable outside supernodal
+    Index n_supernodes;          // supernodes of the symbolic partition
+    Index max_supernode_width;
+    Index n_boundary_splits;     // 2x2 pivots that split a supernode (D-4)
+    Index nnz_L_static;          // entries of the static (exchange-free) factor
+    // Certified zero pivots that were skipped and counted.  Maintained by the
+    // static mode and by the supernodal kernel in both pivot modes.  The
+    // FROZEN baseline x bk path does not maintain it -- its code path is
+    // unchanged by contract (implementation guide SS0) -- so read
+    // first_zero_pivot / status there instead of this counter.
+    Index n_zero_skips;
+    Index out_of_panel_at;       // column that needed an out-of-panel exchange; -1 = none
+    long long gemm_call_count;   // dense block calls issued by the numeric phase
+    long long gemm_time_ns;      // time spent in them; valid only when
+                                 // gemm_call_count > 0 (never measured for
+                                 // non-floating scalars -- R-6)
+    // Growth diagnostic (D-5): floor(log2(max|d| / max|a_ii|)), clipped to
+    // +-1024.  growth_valid is the ONLY validity criterion (P4: no numeric
+    // sentinel); it stays false when the input diagonal is not certified
+    // nonzero or when the mode does not track growth.
+    int  growth_log2;
+    bool growth_valid;
+
     sparse_ldl_result()
         : status(sparse_ldl_status::internal_error),
           n_pivots_1x1(Index(0)), n_pivots_2x2(Index(0)),
@@ -161,7 +246,47 @@ struct sparse_ldl_result {
           structural_empty_at(Index(-1)), nnz_L(Index(0)),
           ordering_used(sparse_ldl_ordering::auto_select),
           method_used(sparse_ldl_method::auto_select),
-          dense_delegated(false) {}
+          dense_delegated(false),
+          pivot_mode_used(sparse_ldl_pivoting::bk),
+          diag_kernel_used(sparse_ldl_kernel_used::not_applicable),
+          n_supernodes(Index(0)), max_supernode_width(Index(0)),
+          n_boundary_splits(Index(0)), nnz_L_static(Index(0)),
+          n_zero_skips(Index(0)), out_of_panel_at(Index(-1)),
+          gemm_call_count(0), gemm_time_ns(0),
+          growth_log2(0), growth_valid(false) {}
+};
+
+// ---------------------------------------------------------------------------
+// symbolic phase (SLDL-SP SP-0): ordering, pattern, etree, postorder, column
+// counts, fundamental supernodes, workspace sizes.  T-independent.
+// ---------------------------------------------------------------------------
+#include <vcp/tsparse/detail/tsparse_sparse_ldl_symbolic_impl.hpp>
+
+// ===========================================================================
+// numeric phase (SLDL-SP SP-0): workspace, kernels, and the symbolic-driven
+// numeric entry
+// ===========================================================================
+
+// Reusable numeric scratch (design v1 SS4 / B2 boundary requirement 3).  The
+// buffers are owned by the caller so that a B2-style shift loop can factor
+// A - sigma*B repeatedly without reallocating.  The baseline kernels keep
+// their own internal state and ignore this object; it is used and sized by
+// the supernodal kernel.
+template <class T, class Index>
+struct sparse_ldl_numeric_workspace {
+    static_assert(std::is_signed<Index>::value,
+                  "sparse LDL Index must be signed");
+
+    std::vector<T>     panel;      // dense supernode panel (column-major)
+    std::vector<T>     panel_a;    // W = L*D of the current descendant update
+    std::vector<T>     update;     // dense update block from one descendant
+    std::vector<Index> relind;     // matrix row -> position inside the panel
+    std::vector<Index> iwork;      // general integer scratch
+
+    void clear_buffers() {
+        panel.clear(); panel_a.clear(); update.clear();
+        relind.clear(); iwork.clear();
+    }
 };
 
 // ---------------------------------------------------------------------------
@@ -170,9 +295,90 @@ struct sparse_ldl_result {
 #include <vcp/tsparse/detail/tsparse_sparse_ldl_dense_impl.hpp>
 
 // ---------------------------------------------------------------------------
-// sparse dynamic left-looking certified BK kernel (LDL-2)
+// sparse dynamic left-looking certified BK kernel (LDL-2) + the static
+// (pivoting = none) entry branch added by SLDL-SP SP-1
 // ---------------------------------------------------------------------------
 #include <vcp/tsparse/detail/tsparse_sparse_ldl_sparse_impl.hpp>
+
+// ---------------------------------------------------------------------------
+// left-looking supernodal numeric kernel (SLDL-SP SP-1)
+// ---------------------------------------------------------------------------
+#include <vcp/tsparse/detail/tsparse_sparse_ldl_supernodal_impl.hpp>
+
+// ---------------------------------------------------------------------------
+// sparse_ldl_factorize_numeric_with_info -- numeric phase driven by a symbolic
+// result (design v1 SS4: the one-shot API is a DELEGATION to this pair, never
+// an independent implementation).
+//
+// Preconditions (checked, reported through res.status):
+//   - sym.status == success and sym.n == n,
+//   - the CSC triple is the same one the symbolic phase analysed.
+// res.method_used / res.ordering_used must already be resolved by the caller;
+// this function does not re-resolve auto_select.
+// ---------------------------------------------------------------------------
+template <class T, class Index>
+void sparse_ldl_factorize_numeric_with_info(
+    const Index n,
+    const std::vector<Index>& col_ptr,
+    const std::vector<Index>& row_ind,
+    const std::vector<T>&     val,
+    const sparse_ldl_symbolic_result<Index>& sym,
+    const sparse_ldl_options<T>& opt,
+    sparse_ldl_numeric_workspace<T, Index>& ws,
+    sparse_ldl_result<T, Index>& res)
+{
+    static_assert(std::is_signed<Index>::value, "sparse LDL Index must be signed");
+
+    if (sym.status != sparse_ldl_symbolic_status::success || sym.n != n ||
+        sym.perm0.size() != static_cast<std::size_t>(n)) {
+        res.status = sparse_ldl_status::internal_error;
+        return;
+    }
+    const std::size_t un = static_cast<std::size_t>(n);
+    res.pivot_mode_used = opt.pivoting;
+
+    // ---- supernodal (SLDL-SP SP-1): needs the full symbolic analysis.
+    if (res.method_used == sparse_ldl_method::supernodal) {
+        if (sym.level != sparse_ldl_symbolic_level::full) {
+            res.status = sparse_ldl_status::internal_error;
+            return;
+        }
+        sparse_ldl_supernodal_factorize(n, col_ptr, row_ind, val, sym, opt, ws, res);
+        return;
+    }
+
+    // ---- baseline_dynamic: the frozen path.
+    // The dense fallback kernel is FROZEN (LDL-0 design decision D-3) and
+    // implements the dynamic BK rules only, so the small-n delegation applies
+    // to pivoting = bk alone; the static mode always runs the sparse kernel,
+    // which reports dense_delegated = false honestly.  bk therefore keeps its
+    // byte-identical behaviour at every n.
+    if (un <= 64u && opt.pivoting == sparse_ldl_pivoting::bk) {
+        // CSC -> dense scatter of the lower triangle (strictly upper entries
+        // are ignored, design v2 SS1.2) under P0: element (i,j) lands at
+        // (pinv[i], pinv[j]) of P0^T A P0, on the lower side.
+        std::vector<T> work(un * un, T(0));
+        for (std::size_t c = 0; c < un; ++c) {
+            for (Index k = col_ptr[c]; k < col_ptr[c + 1u]; ++k) {
+                const Index r = row_ind[static_cast<std::size_t>(k)];
+                if (r >= static_cast<Index>(c)) {
+                    const std::size_t a = static_cast<std::size_t>(sym.pinv0[static_cast<std::size_t>(r)]);
+                    const std::size_t b = static_cast<std::size_t>(sym.pinv0[c]);
+                    if (a >= b) work[a + b * un] = val[static_cast<std::size_t>(k)];
+                    else        work[b + a * un] = val[static_cast<std::size_t>(k)];
+                }
+            }
+        }
+        // BK exchanges are composed into perm in place, so seeding with P0
+        // yields the final perm = P0 o P_BK (new->old, design v2 SS5.4).
+        res.perm = sym.perm0;
+        res.dense_delegated = true;
+        sparse_ldl_dense_bk_factorize(n, work, res.perm, opt, res);
+    } else {
+        res.dense_delegated = false;
+        sparse_ldl_sparse_bk_factorize(n, col_ptr, row_ind, val, sym.perm0, opt, res);
+    }
+}
 
 // ===========================================================================
 // entry: sparse_ldl_factorize_with_info (design v2 SS4.3)
@@ -313,12 +519,36 @@ sparse_ldl_factorize_with_info(
 
         switch (opt.method) {
         case sparse_ldl_method::auto_select:
-            res.method_used = sparse_ldl_method::baseline_dynamic;
-            break;
         case sparse_ldl_method::baseline_dynamic:
-            res.method_used = sparse_ldl_method::baseline_dynamic;
+        case sparse_ldl_method::supernodal:
+            // auto_select resolution is centralised in resolve_auto_method
+            // (design v1 SS4); v1 keeps auto -> baseline_dynamic (switching
+            // it is the separate SP-D1 track).
+            res.method_used = sparse_ldl_detail::resolve_auto_method(opt.method);
             break;
         default:
+            res.status = sparse_ldl_status::invalid_options;
+            return res;
+        }
+        switch (opt.pivoting) {
+        case sparse_ldl_pivoting::bk:
+        case sparse_ldl_pivoting::none:
+            res.pivot_mode_used = opt.pivoting;
+            break;
+        default:
+            res.status = sparse_ldl_status::invalid_options;
+            return res;
+        }
+        switch (opt.diag_kernel) {
+        case sparse_ldl_diag_kernel::auto_select:
+        case sparse_ldl_diag_kernel::gemmtr:
+        case sparse_ldl_diag_kernel::gemm:
+            break;
+        default:
+            res.status = sparse_ldl_status::invalid_options;
+            return res;
+        }
+        if (opt.ldl_min_block_size < 1) {
             res.status = sparse_ldl_status::invalid_options;
             return res;
         }
@@ -383,62 +613,41 @@ sparse_ldl_factorize_with_info(
             }
         }
 
-        // ---- 5. ordering (LDL-1): pattern-only pre-permutation P0
-        // (perm0[new] = old) computed by the existing SLU ordering functions
-        // (integer-only, A+A^T graph; the graph builder symmetrizes every
-        // off-diagonal edge, so the lower-triangle CSC pattern is a valid
-        // direct input).  SLU files are reused by include only, unmodified.
-        std::vector<Index> perm0(un);
-        for (std::size_t i = 0; i < un; ++i) perm0[i] = static_cast<Index>(i);
-        switch (res.ordering_used) {
-        case sparse_ldl_ordering::natural:
-            break;   // identity
-        case sparse_ldl_ordering::rcm:
-            perm0 = sparse_lu_rcm_ordering(n, col_ptr, row_ind);
-            break;
-        case sparse_ldl_ordering::amd:
-            perm0 = sparse_lu_amd_ordering(n, col_ptr, row_ind);
-            break;
-        case sparse_ldl_ordering::nested_dissection:
-            perm0 = sparse_lu_nested_dissection_ordering(n, col_ptr, row_ind);
-            break;
-        default:
-            // auto_select was already resolved above; reaching here is a bug.
+        // ---- 5. symbolic phase (SLDL-SP SP-0): the pattern-only
+        // pre-permutation P0 (perm0[new] = old) and -- at analysis level
+        // full -- the etree / column counts / supernode structure.  The
+        // ordering functions themselves are the existing SLU ones, reused by
+        // include only and unmodified.
+        sparse_ldl_symbolic_options sopt;
+        sopt.ordering = opt.ordering;
+        // baseline_dynamic exchanges rows and columns dynamically, so the
+        // static structure has no meaning for it: analysing only the ordering
+        // keeps the frozen path free of the O(nnz_L) symbolic cost.  The
+        // supernodal method needs the full analysis.
+        sopt.level = (res.method_used == sparse_ldl_method::supernodal)
+                   ? sparse_ldl_symbolic_level::full
+                   : sparse_ldl_symbolic_level::ordering_only;
+        const sparse_ldl_symbolic_result<Index> sym =
+            sparse_ldl_symbolic_analyze(n, col_ptr, row_ind, sopt);
+        if (sym.status != sparse_ldl_symbolic_status::success) {
+            res.status = (sym.status == sparse_ldl_symbolic_status::invalid_options)
+                       ? sparse_ldl_status::invalid_options
+                       : ((sym.status == sparse_ldl_symbolic_status::invalid_input)
+                          ? sparse_ldl_status::invalid_input
+                          : sparse_ldl_status::internal_error);
+            return res;
+        }
+        // The ordering resolution lives in the symbolic phase now; the entry
+        // check above rejected out-of-enum values, so the two must agree.
+        if (sym.ordering_used != res.ordering_used) {
             res.status = sparse_ldl_status::internal_error;
             return res;
         }
 
-        // ---- 6. numeric factorization (LDL-2).  baseline_dynamic uses the
-        // sparse dynamic left-looking kernel; small problems (n <= 64) are
-        // delegated to the dense fallback kernel (reported via the
-        // dense_delegated diagnostic; method_used stays baseline_dynamic).
-        if (un <= 64u) {
-            // CSC -> dense scatter of the lower triangle (strictly upper
-            // entries are ignored, design v2 SS1.2) under P0: element (i,j)
-            // lands at (pinv[i], pinv[j]) of P0^T A P0, on the lower side.
-            std::vector<Index> pinv(un);   // old -> new
-            for (std::size_t i = 0; i < un; ++i) pinv[static_cast<std::size_t>(perm0[i])] = static_cast<Index>(i);
-            std::vector<T> work(un * un, T(0));
-            for (std::size_t c = 0; c < un; ++c) {
-                for (Index k = col_ptr[c]; k < col_ptr[c + 1u]; ++k) {
-                    const Index r = row_ind[static_cast<std::size_t>(k)];
-                    if (r >= static_cast<Index>(c)) {
-                        const std::size_t a = static_cast<std::size_t>(pinv[static_cast<std::size_t>(r)]);
-                        const std::size_t b = static_cast<std::size_t>(pinv[c]);
-                        if (a >= b) work[a + b * un] = val[static_cast<std::size_t>(k)];
-                        else        work[b + a * un] = val[static_cast<std::size_t>(k)];
-                    }
-                }
-            }
-            // BK exchanges are composed into perm in place, so seeding with
-            // P0 yields the final perm = P0 o P_BK (new->old, design v2 SS5.4).
-            res.perm = perm0;
-            res.dense_delegated = true;
-            sparse_ldl_dense_bk_factorize(n, work, res.perm, opt, res);
-        } else {
-            res.dense_delegated = false;
-            sparse_ldl_sparse_bk_factorize(n, col_ptr, row_ind, val, perm0, opt, res);
-        }
+        // ---- 6. numeric phase (LDL-2 kernels), by delegation.
+        sparse_ldl_numeric_workspace<T, Index> ws;
+        sparse_ldl_factorize_numeric_with_info(
+            n, col_ptr, row_ind, val, sym, opt, ws, res);
         return res;
 
     } catch (const std::exception&) {

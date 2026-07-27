@@ -176,6 +176,17 @@ void sparse_ldl_sparse_bk_factorize(
     bool any_zero_pivot = false;
     bool stopped_inconclusive = false;
 
+    // SLDL-SP SP-1: static (exchange-free) mode.  Selected at the TOP of the
+    // pivot loop below; the dynamic BK code path is not modified by it, so
+    // the frozen baseline x bk result stays byte-identical.
+    const bool static_mode = (opt.pivoting == sparse_ldl_pivoting::none);
+    // growth diagnostic (D-5): max|a_ii| of the input and max|d| of the
+    // factorization, tracked from values that are scanned anyway.  Only the
+    // static mode tracks it, so the dynamic path executes no extra
+    // instruction at all.
+    R growth_max_a = R(0), growth_max_d = R(0);
+    bool growth_max_a_valid = false;
+
     // ------ helpers (C++11 lambdas; integer sorts only, P6) ------
     // reset a working column through its stack (no O(n) clear)
 #define VCP_LDL_RESET(w, m, s) \
@@ -264,9 +275,82 @@ void sparse_ldl_sparse_bk_factorize(
         std::sort(s.begin(), s.end());
     };
 
+    // ------ growth reference: max |a_ii| over the input diagonal (static mode
+    // only; the adjacency is already built, so this is a max update over
+    // values that were scanned anyway -- no extra pass, no extra memory).
+    if (static_mode) {
+        for (std::size_t i = 0; i < un; ++i) {
+            for (Index k2 = adj_ptr[i]; k2 < adj_ptr[i + 1u]; ++k2) {
+                if (adj_ind[static_cast<std::size_t>(k2)] != static_cast<Index>(i)) continue;
+                const R a = abs(adj_val[static_cast<std::size_t>(k2)]);
+                if (a > growth_max_a) { growth_max_a = a; growth_max_a_valid = true; }
+                else if (a <= growth_max_a) { growth_max_a_valid = true; }
+                else { /* uncertifiable magnitude: leave the diagnostic invalid */ }
+            }
+        }
+    }
+
     // ------ main pivot loop ------
     std::size_t k = 0;
     while (k < un) {
+        // ---------------- SLDL-SP SP-1: static (pivoting = none) ----------
+        // Diagonal 1x1 pivots in natural order: no lambda search, no sigma,
+        // no exchange, no 2x2.  The division gate is the same certified
+        // three-way gate as the dynamic path (design v1 SS3.3): certified
+        // nonzero -> eliminate, certified zero -> skip the column and keep
+        // counting, otherwise -> inconclusive_pivot_test before any division.
+        if (static_mode) {
+            build_column(k, k, wa, ma, sa);
+            const T d = (ma[k] ? wa[k] : T(0));
+            const R absd = abs(d);
+            if (absd > opt.zero_pivot_tol) {
+                res.D_diag[k] = d;
+                if (absd > growth_max_d) growth_max_d = absd;
+                blocks.push_back(block_t());
+                block_t& B = blocks.back();
+                const Index bid = static_cast<Index>(blocks.size() - 1u);
+                B.jcol = static_cast<Index>(k);
+                B.width = 1;
+                for (std::size_t t = 0; t < sa.size(); ++t) {
+                    const std::size_t i = static_cast<std::size_t>(sa[t]);
+                    if (i <= k) continue;
+                    const T av = wa[i];
+                    const T l = av / d;
+                    B.rows.push_back(static_cast<Index>(i));
+                    // The static update term is L(i,j) * (L(c,j) * d_j), i.e.
+                    // the W = L*D form of design v1 SS3.2 -- the SAME
+                    // expression, in the same order, that the supernodal
+                    // kernel evaluates, which is what makes byte-identity
+                    // between the two systems possible.  a1 therefore carries
+                    // W = L*d here, not the pre-division value it carries on
+                    // the dynamic path (where the dense kernel's rounding has
+                    // to be reproduced instead).
+                    B.a1.push_back(l * d);
+                    B.l1.push_back(l);
+                    // register the block in the row list so that column i
+                    // picks this update up when it is built (without this the
+                    // factorization would silently produce a fill-free, wrong
+                    // factor)
+                    rowlist[i].push_back(
+                        std::make_pair(bid, static_cast<Index>(B.rows.size() - 1u)));
+                }
+                col_block_of[k] = bid;
+                ++res.n_pivots_1x1;
+            } else if (absd <= opt.zero_pivot_tol) {
+                if (!any_zero_pivot) {
+                    res.first_zero_pivot = static_cast<Index>(k);
+                    any_zero_pivot = true;
+                }
+                ++res.n_zero_skips;
+            } else {
+                res.inconclusive_at = static_cast<Index>(k);
+                stopped_inconclusive = true;
+                break;
+            }
+            ++k;
+            continue;
+        }
+
         build_column(k, k, wa, ma, sa);
 
         // lambda = max_{i>k} |w_k(i)|: certified explicit ascending loop.
@@ -480,6 +564,11 @@ void sparse_ldl_sparse_bk_factorize(
         res.L_col_ptr[j + 1u] = static_cast<Index>(res.L_row_ind.size());
     }
     res.nnz_L = static_cast<Index>(res.L_row_ind.size());
+
+    if (static_mode) {
+        sparse_ldl_detail::sparse_ldl_set_growth_(
+            growth_max_d, growth_max_a, growth_max_a_valid, res);
+    }
 
     res.status = any_zero_pivot ? sparse_ldl_status::zero_pivot
                                 : sparse_ldl_status::success;
