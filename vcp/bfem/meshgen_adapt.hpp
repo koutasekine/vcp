@@ -63,8 +63,13 @@ struct nvb_state {
     bool labeled;
     int fallback_labels;      // triangles labeled by the id fallback (T-A7)
     long long bisections;     // total single-triangle bisections performed
+    bool grading_capped;      // a refine_geometric_corner call hit its
+                              // sweep cap before the size field was met
+                              // (design C7: reported, never an exception)
+    int grading_sweeps;       // sweeps used by the last grading call
     nvb_state() : peak(), gen(), edge_tris(), labeled(false),
-                  fallback_labels(0), bisections(0) {}
+                  fallback_labels(0), bisections(0),
+                  grading_capped(false), grading_sweeps(0) {}
 };
 
 namespace meshgen_adapt_detail {
@@ -416,20 +421,32 @@ void refine_size_field(meshgen_detail::coarse_mesh<T>& cm, nvb_state<T>& nvb,
 }
 
 // ---------------------------------------------------------------------------
-// convenience 2, the main entrance (design 4.3, rulings Q5/C5): geometric
-// grading toward re-entrant corners. Layer k (k = 1..layers) is the ball
-// dist2(centroid, corner) < sigma^(2k) around any listed corner; every
-// pass bisects the current elements of that ball once, so an element in
-// the k-th ball ends up bisected k times: the refinement depth grows by
-// one per layer inward. Comparisons are certain-only (a not-certain
-// membership never marks). sigma is the user's geometric ratio (design
-// 4.3: not built in, certainly inside (0,1)).
+// convenience 2, the main entrance (design 4.3, semantics replaced by
+// ruling C7 -- the v1.1 per-layer-ball form was a recorded design error,
+// design C6): SIZE-FIELD grading toward re-entrant corners. The hp
+// geometric mesh's essence is "element size proportional to the distance
+// from the corner"; the target squared size of an element with centroid c
+// (centroid distance = ruling C5) is
+//
+//   h2_target(c) = max( (sigma^layers * h0)^2 , beta^2 * min_i dist2(c, corner_i) )
+//
+// with h0^2 = the largest squared edge length of the mesh AT CALL TIME
+// (adopted h0 definition, recorded in the report) and beta the gradient
+// parameter (default 1 - sigma). Elements whose longest edge CERTAINLY
+// exceeds the target are marked and bisected, sweep by sweep, until no
+// element qualifies (a not-certain comparison never marks: erring toward
+// less refinement never harms validity). Squared quantities and certain
+// comparisons only -- no square roots, no divisions.
+//
+// Sweep cap = layers * 4 + 8 (design directive Phase 3R); reaching it is
+// NOT an exception: it latches nvb.grading_capped and sets
+// nvb.grading_sweeps (adopted notification channel, recorded).
 // ---------------------------------------------------------------------------
 template <typename T>
 void refine_geometric_corner(meshgen_detail::coarse_mesh<T>& cm,
                              nvb_state<T>& nvb,
                              const std::vector<int>& corner_vertex_ids,
-                             const T& sigma, int layers) {
+                             const T& sigma, int layers, const T& beta) {
     if (layers < 0)
         throw meshgen_error(
             "vcp::bfem::meshgen_adapt: layers must be non-negative");
@@ -437,6 +454,9 @@ void refine_geometric_corner(meshgen_detail::coarse_mesh<T>& cm,
         !meshgen_adapt_detail::certainly_less(sigma, T(1)))
         throw meshgen_error(
             "vcp::bfem::meshgen_adapt: sigma must be certainly inside (0,1)");
+    if (!meshgen_detail::certainly_pos(beta))
+        throw meshgen_error(
+            "vcp::bfem::meshgen_adapt: beta must be certainly positive");
     // corner coordinates are frozen up front (ids denote input vertices)
     std::vector<std::array<T, 2> > corners;
     for (std::size_t i = 0; i < corner_vertex_ids.size(); ++i) {
@@ -446,24 +466,73 @@ void refine_geometric_corner(meshgen_detail::coarse_mesh<T>& cm,
                 "vcp::bfem::meshgen_adapt: corner vertex id out of range");
         corners.push_back(cm.vertices[static_cast<std::size_t>(v)]);
     }
+    nvb.grading_sweeps = 0;
+    if (corners.empty()) return;   // no corner -> empty min -> no target
+
+    // h0^2: largest squared edge length at call time (certain maximum;
+    // a not-certain comparison keeps the current candidate)
+    T h0sq(0);
+    for (std::size_t t = 0; t < cm.triangles.size(); ++t) {
+        const std::array<int, 3>& e = cm.triangles[t];
+        for (int k = 0; k < 3; ++k) {
+            const T d2 = meshgen_adapt_detail::dist2(
+                cm.vertices[static_cast<std::size_t>(e[static_cast<std::size_t>(k)])],
+                cm.vertices[static_cast<std::size_t>(e[static_cast<std::size_t>((k + 1) % 3)])]);
+            if (meshgen_adapt_detail::certainly_less(h0sq, d2)) h0sq = d2;
+        }
+    }
+    // floor = (sigma^layers * h0)^2 = (sigma^2)^layers * h0^2
     const T s2 = sigma * sigma;
-    T ball = T(1);
-    for (int k = 1; k <= layers; ++k) {
-        ball = ball * s2;      // sigma^(2k)
+    T floor2 = h0sq;
+    for (int k = 0; k < layers; ++k) floor2 = floor2 * s2;
+    const T b2 = beta * beta;
+
+    const int max_sweeps = layers * 4 + 8;
+    while (true) {
+        if (nvb.grading_sweeps == max_sweeps) {
+            nvb.grading_capped = true;
+            return;
+        }
         std::vector<int> marked;
         for (std::size_t t = 0; t < cm.triangles.size(); ++t) {
+            const std::array<int, 3>& e = cm.triangles[t];
             const std::array<T, 2> c =
                 meshgen_adapt_detail::centroid(cm, cm.triangles[t]);
-            for (std::size_t i = 0; i < corners.size(); ++i) {
-                if (meshgen_adapt_detail::certainly_less(
-                        meshgen_adapt_detail::dist2(c, corners[i]), ball)) {
+            // min_i dist2(c, corner_i); a not-certain comparison keeps the
+            // current (possibly larger) value -> larger target -> no mark
+            T dmin = meshgen_adapt_detail::dist2(c, corners[0]);
+            for (std::size_t i = 1; i < corners.size(); ++i) {
+                const T d2 = meshgen_adapt_detail::dist2(c, corners[i]);
+                if (meshgen_adapt_detail::certainly_less(d2, dmin)) dmin = d2;
+            }
+            const T q = b2 * dmin;
+            // longest edge exceeds max(floor2, q) iff SOME edge certainly
+            // exceeds BOTH (no explicit max needed)
+            for (int k = 0; k < 3; ++k) {
+                const T d2 = meshgen_adapt_detail::dist2(
+                    cm.vertices[static_cast<std::size_t>(e[static_cast<std::size_t>(k)])],
+                    cm.vertices[static_cast<std::size_t>(e[static_cast<std::size_t>((k + 1) % 3)])]);
+                if (meshgen_adapt_detail::certainly_less(floor2, d2) &&
+                    meshgen_adapt_detail::certainly_less(q, d2)) {
                     marked.push_back(static_cast<int>(t));
                     break;
                 }
             }
         }
-        if (!marked.empty()) refine_marked(cm, nvb, marked, 1);
+        if (marked.empty()) break;
+        refine_marked(cm, nvb, marked, 1);
+        nvb.grading_sweeps = nvb.grading_sweeps + 1;
     }
+}
+
+// default gradient beta = 1 - sigma (design C7)
+template <typename T>
+void refine_geometric_corner(meshgen_detail::coarse_mesh<T>& cm,
+                             nvb_state<T>& nvb,
+                             const std::vector<int>& corner_vertex_ids,
+                             const T& sigma, int layers) {
+    refine_geometric_corner(cm, nvb, corner_vertex_ids, sigma, layers,
+                            T(1) - sigma);
 }
 
 // ---------------------------------------------------------------------------
@@ -480,9 +549,11 @@ struct meshgen_adapt_spec {
     std::vector<int> corner_vertex_ids;  // grading corners (input vertex ids)
     T sigma;                             // geometric ratio, certainly in (0,1)
     int layers;                          // grading layers
+    T grading_beta;                      // gradient beta; the default T(0)
+                                         // means "use 1 - sigma" (C7)
     meshgen_adapt_spec()
         : use_delaunay(false), marked_elements(), marked_rounds(0),
-          corner_vertex_ids(), sigma(T(0)), layers(0) {}
+          corner_vertex_ids(), sigma(T(0)), layers(0), grading_beta(T(0)) {}
     bool empty() const {
         return marked_elements.empty() && corner_vertex_ids.empty();
     }
@@ -516,9 +587,15 @@ mesh<2, T> generate_mesh_adaptive(const polygon_domain<T>& dom, const T& h,
     nvb_state<T> nvb;
     if (!spec.marked_elements.empty())
         refine_marked(cm, nvb, spec.marked_elements, spec.marked_rounds);
-    if (!spec.corner_vertex_ids.empty())
+    if (!spec.corner_vertex_ids.empty()) {
+        // the T(0) sentinel selects the default gradient beta = 1 - sigma
+        const T beta =
+            meshgen_adapt_detail::certainly_equal(spec.grading_beta, T(0))
+                ? T(1) - spec.sigma
+                : spec.grading_beta;
         refine_geometric_corner(cm, nvb, spec.corner_vertex_ids,
-                                spec.sigma, spec.layers);
+                                spec.sigma, spec.layers, beta);
+    }
     std::vector<std::array<T, 2> > vertices;
     std::vector<std::array<int, 3> > elements;
     meshgen_detail::refine_and_finalize(cm, h * h, opt, status,
