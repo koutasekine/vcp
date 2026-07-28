@@ -21,6 +21,7 @@
 #include <vcp/spmats_base/spmats_chol.hpp>
 #include <vcp/spmats_base/spmats_lu_extract.hpp>
 #include <vcp/spmats_base/spmats_lu_factor.hpp>
+#include <vcp/spmats_base/spmats_ldl_shift.hpp>
 #include <vcp/spmats_base/spmats_ainv.hpp>
 #include <vcp/spmats_base/spmats_fsai.hpp>
 #include <vcp/spmats_base/spmats_fsai_adaptive.hpp>
@@ -1521,6 +1522,31 @@ namespace vcp {
 			const scalar_real_type& tol) const;
 
 		// ------------------------------------------------------------------
+		// Policy methods: A - sigma*B LDL^T shift handle (SLDL-SH / B2)
+		//
+		// policy_ldl_shift_setup_with_info: non-virtual outers, NVI pattern
+		// (finalize guarantee + squareness / dimension entry checks).  Must
+		// never be overridden; override the _impl instead (derived policies
+		// inherit the default unchanged).  The overload without B sets up
+		// the A - sigma*I iteration; the overload with B requires B to be
+		// certified symmetric only (never SPD-tested, H-4).  Every sigma-
+		// independent stage (conversion, symmetry checks, pattern merge,
+		// ordering, symbolic) runs once here; the returned handle is
+		// read-only afterwards and const-shareable across threads.  Failure
+		// reporting is info-only through the handle status (H-2; no strict
+		// variant exists).  Definitions in spmats_base/spmats_ldl_shift.hpp
+		// (phase 2 of its two-phase include).
+		// ------------------------------------------------------------------
+		ldl_shift_handle<_T,_Index> policy_ldl_shift_setup_with_info(
+			const ldl_options<_T>& opt) const;
+		virtual ldl_shift_handle<_T,_Index> policy_ldl_shift_setup_with_info_impl(
+			const ldl_options<_T>& opt) const;
+		ldl_shift_handle<_T,_Index> policy_ldl_shift_setup_with_info(
+			const spmats<_T,_Index>& B, const ldl_options<_T>& opt) const;
+		virtual ldl_shift_handle<_T,_Index> policy_ldl_shift_setup_with_info_impl(
+			const spmats<_T,_Index>& B, const ldl_options<_T>& opt) const;
+
+		// ------------------------------------------------------------------
 		// Policy methods: LU factor extraction (LUX-1, lux_design_v0 SS2)
 		//
 		// policy_lu_with_info: non-virtual outer, NVI pattern (finalize
@@ -1851,6 +1877,7 @@ namespace vcp {
 #include <vcp/spmats_base/spmats_lss.hpp>
 #include <vcp/spmats_base/spmats_eigs.hpp>
 #include <vcp/spmats_base/spmats_ldl_impl.hpp>
+#include <vcp/spmats_base/spmats_ldl_shift.hpp>
 #include <vcp/spmats_base/spmats_chol_impl.hpp>
 #include <vcp/spmats_base/spmats_lu_extract_impl.hpp>
 #include <vcp/spmats_base/spmats_ainv_impl.hpp>

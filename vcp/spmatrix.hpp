@@ -121,6 +121,10 @@ namespace vcp {
 		// LSS-1 P-4
 		typedef vcp::sparse_lu_options<_T> sparse_lu_options_type;
 		typedef vcp::lu_factor_handle<_T, typename _P::index_type> lu_factor_handle_type;
+		// SLDL-SH (B2)
+		typedef vcp::ldl_shift_handle<_T, typename _P::index_type> ldl_shift_handle_type;
+		typedef typename ldl_shift_handle_type::workspace_type ldl_shift_workspace_type;
+		typedef typename ldl_shift_handle_type::inertia_result_type ldl_shift_inertia_result_type;
 
 		spmatrix() : _P() {}
 		spmatrix(const index_type rows, const index_type cols) : _P() { this->resize(rows, cols); }
@@ -849,6 +853,28 @@ namespace vcp {
 					inertia_status_to_string(result.status));
 			}
 			return result;
+		}
+
+		// ---------------------------------------------------------------
+		// A - sigma*B LDL^T shift handle (SLDL-SH / B2) — delegates to
+		// policy_ldl_shift_setup_with_info.  Setup runs every
+		// sigma-independent stage once; the returned read-only handle then
+		// serves inertia_at(sigma [, ws]) (primary, H-5) without
+		// constructing L / D / perm.  The overload without B iterates
+		// A - sigma*I.  Defaults (H-1): method = supernodal,
+		// pivoting = none (ldl_shift_default_options; the one-shot ldl
+		// defaults are unchanged, H-6).  Info-only reporting through the
+		// handle status (H-2): no strict variant exists.
+		// ---------------------------------------------------------------
+
+		ldl_shift_handle_type ldl_shift_setup_with_info(
+			const ldl_options_type& options = vcp::ldl_shift_default_options<_T>()) const {
+			return this->policy_ldl_shift_setup_with_info(options);
+		}
+
+		ldl_shift_handle_type ldl_shift_setup_with_info(const spmatrix& B,
+			const ldl_options_type& options = vcp::ldl_shift_default_options<_T>()) const {
+			return this->policy_ldl_shift_setup_with_info(B, options);
 		}
 
 		// ---------------------------------------------------------------

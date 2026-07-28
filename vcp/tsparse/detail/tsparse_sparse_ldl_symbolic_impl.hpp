@@ -169,7 +169,7 @@ inline sparse_ldl_method resolve_auto_method(sparse_ldl_method m) {
 }
 
 // auto_select resolution for the diagonal-block kernel (design v1 D-3).
-// v1 resolves auto to gemmtr (half the flops); SP-3 decides the final default
+// auto resolves to gemm: the final default fixed by SP-3
 // from the four-machine calibration.
 inline sparse_ldl_diag_kernel resolve_auto_diag_kernel(sparse_ldl_diag_kernel k) {
     return (k == sparse_ldl_diag_kernel::auto_select) ? sparse_ldl_diag_kernel::gemm : k;
