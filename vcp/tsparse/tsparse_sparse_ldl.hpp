@@ -173,7 +173,7 @@ struct sparse_ldl_options {
           // provisional default (implementation guide SS2-2): the LU value 16
           // is a syrk-shaped threshold and is deliberately NOT inherited;
           // SP-3 calibrates this on four machines.
-          ldl_min_block_size(24),
+          ldl_min_block_size(32),
           diag_kernel(sparse_ldl_diag_kernel::auto_select),
           ordering(sparse_ldl_ordering::auto_select),
           check_symmetry(true),
