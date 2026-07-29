@@ -231,6 +231,19 @@ namespace vcp {
 
 		spumar() : base_type(), muar_opt(default_options_ref()) {}
 
+		// SPUM-FIX1 (design §2.1): spmatrix arithmetic and other
+		// result-returning APIs assign a base spmats<double> value through
+		// `static_cast<_P&>(C) = policy_xxx(...)` [spmatrix.hpp L452 etc.,
+		// 28 lines].  A derived policy needs this base-to-derived assignment
+		// hook, defined as assignment to the base subobject only
+		// (spimats.hpp L238 と同一規律).  muar_opt / last_delegate_info are
+		// NOT touched (design R-1 / R-2, SPI-1 precedent); the implicit copy
+		// assignment operator=(const spumar&) remains implicitly defined.
+		spumar& operator=(const base_type& rhs) {
+			base_type::operator=(rhs);
+			return *this;
+		}
+
 		// Process-wide default options (design §1.4; NOT thread-safe).
 		static void set_default_options(const spumar_options& o) {
 			default_options_ref() = o;

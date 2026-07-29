@@ -73,6 +73,13 @@ namespace vcp {
 
 		spcmodumar() : base_type() {}
 
+		// SPUM-FIX1 (design §2.2 案 A): the implicitly generated copy
+		// assignment operator=(const spcmodumar&) hides the base's
+		// operator=(const spmats<double>&) by name, so fixing spumar alone
+		// does not fix this class.  Re-expose every base assignment operator;
+		// the implicit copy assignment still wins for spcmodumar arguments.
+		using base_type::operator=;
+
 		// -------------------------------------------------------------------
 		// Override (design D-1): sparse LL^T Cholesky via CHOLMOD.  Called
 		// through the non-virtual outer policy_chol_with_info, which owns the
