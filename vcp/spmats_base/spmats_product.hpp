@@ -11,6 +11,10 @@
 #ifndef VCP_SPMATS_PRODUCT_HPP
 #define VCP_SPMATS_PRODUCT_HPP
 
+#include <atomic>
+#include <cstddef>
+#include <exception>
+
 #include <vcp/tsparse/tsparse_spgemm.hpp>
 
 namespace vcp {
@@ -50,6 +54,24 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_add(
 	std::vector<_T> new_value;
 	const std::size_t cap = index_to_size(Ap->stored_nnz(), "spmats::policy_add")
 	                      + index_to_size(Bp->stored_nnz(), "spmats::policy_add");
+#if VCP_SPARSE_USE_OPENMP
+	// SPOMP-1 A1 (design §3.1/§4.1): two-pass parallel builder above the
+	// work threshold (work = nnz(A)+nnz(B) = cap); bit-identical to the
+	// emit path below (identical per-row algorithm and order).  The emit
+	// path below stays untouched and serves the below-threshold case.
+	if (cap >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD)) {
+		vcp::tsparse_spgemm::csr_csr_linear_combination_par(
+			Ap->rowsize(), Ap->columnsize(),
+			Ap->outer_index(), Ap->inner_index(), Ap->values(),
+			Bp->outer_index(), Bp->inner_index(), Bp->values(),
+			_T(1), _T(1),
+			new_outer, new_inner, new_value);
+		spmats<_T, _Index> C;
+		C.clear();
+		C.assign_csr(A.rowsize(), A.columnsize(), new_outer, new_inner, new_value);
+		return C;
+	}
+#endif
 	new_inner.reserve(cap);
 	new_value.reserve(cap);
 	vcp::tsparse_spgemm::csr_csr_linear_combination(
@@ -94,6 +116,22 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_sub(
 	std::vector<_T> new_value;
 	const std::size_t cap = index_to_size(Ap->stored_nnz(), "spmats::policy_sub")
 	                      + index_to_size(Bp->stored_nnz(), "spmats::policy_sub");
+#if VCP_SPARSE_USE_OPENMP
+	// SPOMP-1 A1 (design §3.1/§4.1): same parallel-builder switch as
+	// policy_add, with beta = -1.
+	if (cap >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD)) {
+		vcp::tsparse_spgemm::csr_csr_linear_combination_par(
+			Ap->rowsize(), Ap->columnsize(),
+			Ap->outer_index(), Ap->inner_index(), Ap->values(),
+			Bp->outer_index(), Bp->inner_index(), Bp->values(),
+			_T(1), _T(-1),
+			new_outer, new_inner, new_value);
+		spmats<_T, _Index> C;
+		C.clear();
+		C.assign_csr(A.rowsize(), A.columnsize(), new_outer, new_inner, new_value);
+		return C;
+	}
+#endif
 	new_inner.reserve(cap);
 	new_value.reserve(cap);
 	vcp::tsparse_spgemm::csr_csr_linear_combination(
@@ -152,6 +190,26 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_mul_impl(
 	std::vector<_Index> new_outer(nrows + 1, _Index(0));
 	std::vector<_Index> new_inner;
 	std::vector<_T> new_value;
+#if VCP_SPARSE_USE_OPENMP
+	// SPOMP-1 A2 (design §3.1/§4.1): two-pass parallel builder above the
+	// work threshold (work = nnz(A)+nnz(B)); bit-identical to the emit
+	// path below (identical per-row algorithm and order).
+	{
+		const std::size_t par_work = index_to_size(Ap->stored_nnz(), "spmats::policy_mul_impl")
+		                           + index_to_size(Bp->stored_nnz(), "spmats::policy_mul_impl");
+		if (par_work >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD)) {
+			vcp::tsparse_spgemm::csr_csr_multiply_par(
+				Ap->rowsize(), Ap->columnsize(), Bp->columnsize(),
+				Ap->outer_index(), Ap->inner_index(), Ap->values(),
+				Bp->outer_index(), Bp->inner_index(), Bp->values(),
+				new_outer, new_inner, new_value);
+			spmats<_T, _Index> C;
+			C.clear();
+			C.assign_csr(A.rowsize(), B.columnsize(), new_outer, new_inner, new_value);
+			return C;
+		}
+	}
+#endif
 	// spgemm output size has no cheap a-priori bound: no reserve, amortized
 	// push_back (the previous COO path was push_back-based too).
 	vcp::tsparse_spgemm::csr_csr_multiply(
@@ -221,6 +279,62 @@ std::vector<_T> spmats<_T, _Index>::policy_left_mul_vec(
 template <typename _T, typename _Index>
 void spmats<_T, _Index>::policy_mulsm(const _T& alpha)
 {
+#if VCP_SPARSE_USE_OPENMP
+	// SPOMP-1 B1 (design §4.2, pass-2 modified -- see
+	// sandbox/docs/reports/SPOMP-1_stop_report.md): phase 1 multiplies every
+	// stored value IN PLACE (one multiplication per element, exactly the
+	// operation of the sequential path below) and counts survivors, in
+	// parallel.  If nothing became exact zero (the common case) the pattern
+	// is unchanged and outer/inner/value are already the final state.  Only
+	// when zeros appeared does the rare, memory-bound front-packing run --
+	// SEQUENTIALLY: the design's parallel pass 2 has a read/write race once
+	// any entry is dropped (a later line's write range [cnt_i, cnt_{i+1})
+	// can reach into an earlier line's not-yet-read source range), so the
+	// sequential compaction of the A5 precedent is used instead.  No
+	// O(rows) count array is needed in this form (the SPC-P1 zero-extra-
+	// allocation invariant holds unmodified).  Bit-identical either way.
+	if (!is_finalized()) finalize();
+	const std::size_t nouter = (fmt == vcp::sparse_csr)
+		? index_to_size(row, "spmats::policy_mulsm")
+		: index_to_size(column, "spmats::policy_mulsm");
+	std::atomic<bool> caught(false);
+	std::exception_ptr eptr;
+	const std::ptrdiff_t nnz_n = static_cast<std::ptrdiff_t>(value.size());
+	std::ptrdiff_t survivors = 0;
+#pragma omp parallel for schedule(static) reduction(+:survivors) if (static_cast<std::size_t>(nnz_n) >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+	for (std::ptrdiff_t k = 0; k < nnz_n; k++) {
+		try {
+			const std::size_t sp = static_cast<std::size_t>(k);
+			value[sp] = alpha * value[sp];
+			if (!(value[sp] == _T(0))) survivors++;
+		}
+		catch (...) {
+			bool expected = false;
+			if (caught.compare_exchange_strong(expected, true)) {
+				eptr = std::current_exception();
+			}
+		}
+	}
+	if (caught.load()) std::rethrow_exception(eptr);
+	if (survivors == nnz_n) return;
+	std::size_t out = 0;
+	index_type p0 = outer.empty() ? index_type(0) : outer[0];
+	for (std::size_t i = 0; i < nouter; i++) {
+		const index_type p1 = outer[i + 1];
+		for (index_type p = p0; p < p1; p++) {
+			const std::size_t sp = static_cast<std::size_t>(p);
+			if (!(value[sp] == _T(0))) {
+				value[out] = value[sp];
+				inner[out] = inner[sp];
+				out++;
+			}
+		}
+		outer[i + 1] = size_to_index(out, "spmats::policy_mulsm");
+		p0 = p1;
+	}
+	value.resize(out);
+	inner.resize(out);
+#else
 	if (!is_finalized()) finalize();
 	const std::size_t nouter = (fmt == vcp::sparse_csr)
 		? index_to_size(row, "spmats::policy_mulsm")
@@ -243,11 +357,59 @@ void spmats<_T, _Index>::policy_mulsm(const _T& alpha)
 	}
 	value.resize(out);
 	inner.resize(out);
+#endif
 }
 
 template <typename _T, typename _Index>
 void spmats<_T, _Index>::policy_divms(const _T& alpha)
 {
+#if VCP_SPARSE_USE_OPENMP
+	// SPOMP-1 B1: same two-phase scheme as policy_mulsm above (in-place
+	// parallel divide + survivor count; sequential compaction only when
+	// exact zeros appeared -- see the policy_mulsm comment / stop report).
+	if (!is_finalized()) finalize();
+	const std::size_t nouter = (fmt == vcp::sparse_csr)
+		? index_to_size(row, "spmats::policy_divms")
+		: index_to_size(column, "spmats::policy_divms");
+	std::atomic<bool> caught(false);
+	std::exception_ptr eptr;
+	const std::ptrdiff_t nnz_n = static_cast<std::ptrdiff_t>(value.size());
+	std::ptrdiff_t survivors = 0;
+#pragma omp parallel for schedule(static) reduction(+:survivors) if (static_cast<std::size_t>(nnz_n) >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+	for (std::ptrdiff_t k = 0; k < nnz_n; k++) {
+		try {
+			const std::size_t sp = static_cast<std::size_t>(k);
+			value[sp] = value[sp] / alpha;
+			if (!(value[sp] == _T(0))) survivors++;
+		}
+		catch (...) {
+			bool expected = false;
+			if (caught.compare_exchange_strong(expected, true)) {
+				eptr = std::current_exception();
+			}
+		}
+	}
+	if (caught.load()) std::rethrow_exception(eptr);
+	if (survivors == nnz_n) return;
+	std::size_t out = 0;
+	index_type p0 = outer.empty() ? index_type(0) : outer[0];
+	for (std::size_t i = 0; i < nouter; i++) {
+		const index_type p1 = outer[i + 1];
+		for (index_type p = p0; p < p1; p++) {
+			const std::size_t sp = static_cast<std::size_t>(p);
+			if (!(value[sp] == _T(0))) {
+				value[out] = value[sp];
+				inner[out] = inner[sp];
+				out++;
+			}
+		}
+		outer[i + 1] = size_to_index(out, "spmats::policy_divms");
+		p0 = p1;
+	}
+	value.resize(out);
+	inner.resize(out);
+	return;
+#else
 	if (!is_finalized()) finalize();
 	const std::size_t nouter = (fmt == vcp::sparse_csr)
 		? index_to_size(row, "spmats::policy_divms")
@@ -270,11 +432,37 @@ void spmats<_T, _Index>::policy_divms(const _T& alpha)
 	}
 	value.resize(out);
 	inner.resize(out);
+#endif
 }
 
 template <typename _T, typename _Index>
 void spmats<_T, _Index>::policy_minusm()
 {
+#if VCP_SPARSE_USE_OPENMP
+	// SPOMP-1 A4 (design §3.1): negation cannot create a zero from a
+	// stored non-zero (-x == 0 iff x == 0), so the pattern is invariant
+	// and no compaction pass is needed -- plain elementwise parallel map
+	// over the value array (work = nnz).  Bit-identical to the sequential
+	// path below: one negation per element, stored at the same position.
+	if (!is_finalized()) finalize();
+	std::atomic<bool> caught(false);
+	std::exception_ptr eptr;
+	const std::ptrdiff_t nnz_n = static_cast<std::ptrdiff_t>(value.size());
+#pragma omp parallel for schedule(static) if (static_cast<std::size_t>(nnz_n) >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+	for (std::ptrdiff_t k = 0; k < nnz_n; k++) {
+		try {
+			const std::size_t sp = static_cast<std::size_t>(k);
+			value[sp] = -value[sp];
+		}
+		catch (...) {
+			bool expected = false;
+			if (caught.compare_exchange_strong(expected, true)) {
+				eptr = std::current_exception();
+			}
+		}
+	}
+	if (caught.load()) std::rethrow_exception(eptr);
+#else
 	// Negation cannot create a zero from a stored non-zero (-x == 0 iff
 	// x == 0), but the unified compaction shape is kept for code sharing
 	// (the branch cost is negligible).
@@ -300,6 +488,7 @@ void spmats<_T, _Index>::policy_minusm()
 	}
 	value.resize(out);
 	inner.resize(out);
+#endif
 }
 
 // ---------------------------------------------------------------------------

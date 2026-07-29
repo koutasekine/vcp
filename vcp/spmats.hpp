@@ -9,7 +9,9 @@
 #define VCP_SPMATS_HPP
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
+#include <exception>
 #include <limits>
 #include <type_traits>
 #include <vector>
@@ -26,6 +28,28 @@
 #include <vcp/spmats_base/spmats_fsai.hpp>
 #include <vcp/spmats_base/spmats_fsai_adaptive.hpp>
 #include <vcp/spmats_base/spmats_policy_traits.hpp>
+
+// SPOMP-1 (design §2, D-1): two-stage OpenMP guard, mirrored from the
+// BFEM (VCP_BFEM_NOMP) / TBLAS (VCP_TBLAS_NOMP) precedent.
+// VCP_NOMP          : global kill switch (implies VCP_SPARSE_NOMP)
+// VCP_SPARSE_NOMP   : sparse-layer kill switch
+#ifdef VCP_NOMP
+#  ifndef VCP_SPARSE_NOMP
+#    define VCP_SPARSE_NOMP
+#  endif
+#endif
+#if defined(_OPENMP) && !defined(VCP_SPARSE_NOMP)
+#  define VCP_SPARSE_USE_OPENMP 1
+#  include <omp.h>
+#else
+#  define VCP_SPARSE_USE_OPENMP 0
+#endif
+
+// SPOMP-1 (design §2, D-8): parallelization threshold on the work measure
+// defined per function in design §3.  Compile-time overridable.
+#ifndef VCP_SPMATS_OMP_THRESHOLD
+#  define VCP_SPMATS_OMP_THRESHOLD 4096   /* provisional (SPOMP-1 D-8): 実測較正前 */
+#endif
 
 namespace vcp {
 
@@ -282,6 +306,15 @@ namespace vcp {
 		void mul_vec(const _T* x, _T* y) const {
 			require_finalized("spmats::mul_vec");
 			if (fmt == vcp::sparse_csr) {
+#if VCP_SPARSE_USE_OPENMP
+				// SPOMP-1 A3 (design §4.3, D-4): CSR x 'N' is the gather
+				// side -- row-parallel kernel above the work threshold
+				// (work = nnz), bit-identical to tcsrmv 'N'.
+				if (value.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD)) {
+					vcp::tcsrmv_gather_par(row, column, _T(1), outer.data(), inner.data(), value.data(), x, _T(0), y);
+					return;
+				}
+#endif
 				vcp::tcsrmv('N', row, column, _T(1), outer.data(), inner.data(), value.data(), x, _T(0), y);
 			}
 			else if (fmt == vcp::sparse_csc) {
@@ -307,6 +340,16 @@ namespace vcp {
 				vcp::tcsrmv('T', row, column, _T(1), outer.data(), inner.data(), value.data(), x, _T(0), y);
 			}
 			else if (fmt == vcp::sparse_csc) {
+#if VCP_SPARSE_USE_OPENMP
+				// SPOMP-1 A3 (design §4.3, D-4): CSC x 'T' is the gather
+				// side -- column-parallel kernel above the work threshold
+				// (work = nnz), bit-identical to tcscmv 'T'.  The scatter
+				// side (CSR x 'T' above) stays sequential (D-4 case (c)).
+				if (value.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD)) {
+					vcp::tcscmv_gather_par(row, column, _T(1), outer.data(), inner.data(), value.data(), x, _T(0), y);
+					return;
+				}
+#endif
 				vcp::tcscmv('T', row, column, _T(1), outer.data(), inner.data(), value.data(), x, _T(0), y);
 			}
 			else {
@@ -354,11 +397,43 @@ namespace vcp {
 		// matrix keeps its CSC format (value-array map is format-agnostic).
 		template <class _Fn> void spfn_map_stored_(_Fn f) {
 			if (!finalized) to_csr();
+#if VCP_SPARSE_USE_OPENMP
+			// SPOMP-1 A5 (design §3.1): elementwise parallel map (work =
+			// nnz) with OR-reduction on has_zero; f may throw (e.g. the
+			// sqrt negative-component guard), so exceptions are captured
+			// once and rethrown outside the region (design §6-1).  On
+			// throw the object is "valid but indeterminate" (a prefix may
+			// be mapped), same as the sequential path.  The compaction
+			// pass below stays sequential (rare + memory-bound, design
+			// §3.1 A5).
+			bool has_zero = false;
+			{
+				std::atomic<bool> caught(false);
+				std::exception_ptr eptr;
+				const std::ptrdiff_t nnz_n = static_cast<std::ptrdiff_t>(value.size());
+#pragma omp parallel for schedule(static) reduction(||:has_zero) if (static_cast<std::size_t>(nnz_n) >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+				for (std::ptrdiff_t k = 0; k < nnz_n; k++) {
+					try {
+						const std::size_t sk = static_cast<std::size_t>(k);
+						value[sk] = f(value[sk]);
+						if (value[sk] == _T(0)) has_zero = true;
+					}
+					catch (...) {
+						bool expected = false;
+						if (caught.compare_exchange_strong(expected, true)) {
+							eptr = std::current_exception();
+						}
+					}
+				}
+				if (caught.load()) std::rethrow_exception(eptr);
+			}
+#else
 			bool has_zero = false;
 			for (std::size_t k = 0; k < value.size(); k++) {
 				value[k] = f(value[k]);
 				if (value[k] == _T(0)) has_zero = true;
 			}
+#endif
 			if (!has_zero) return;
 			// compact within the current (CSR or CSC) format
 			const std::size_t nouter = (fmt == vcp::sparse_csr)
@@ -418,6 +493,92 @@ namespace vcp {
 			std::vector<index_type> new_outer(m + 1);
 			std::vector<index_type> new_inner;
 			std::vector<_T> new_value;
+#if VCP_SPARSE_USE_OPENMP
+			// SPOMP-1 B3 (design §3.2/§4.1): the per-row output nnz is
+			// value-dependent, so the same block-partition + stitch scheme
+			// as the spgemm builders is used (work = m*nc, the number of f
+			// evaluations).  f0 = f(_T(0)) is pre-evaluated sequentially
+			// above, exactly as before.  Each block runs the identical
+			// per-row algorithm of the sequential path below into a
+			// block-local buffer; a sequential prefix sum fixes new_outer;
+			// a parallel copy stitches the blocks.  Bit-identical.
+			{
+				const std::ptrdiff_t nrows = static_cast<std::ptrdiff_t>(m);
+				const bool par_on = (m * nc >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD));
+				std::ptrdiff_t nblocks = 1;
+				if (par_on) {
+					nblocks = static_cast<std::ptrdiff_t>(omp_get_max_threads());
+					if (nblocks < 1) nblocks = 1;
+					if (nblocks > nrows) nblocks = (nrows > 0) ? nrows : 1;
+				}
+				std::vector<std::vector<index_type> > block_inner(static_cast<std::size_t>(nblocks));
+				std::vector<std::vector<_T> > block_value(static_cast<std::size_t>(nblocks));
+				std::vector<index_type> cnt(m, index_type(0));
+				std::atomic<bool> caught(false);
+				std::exception_ptr eptr;
+#pragma omp parallel for schedule(static) if (par_on)
+				for (std::ptrdiff_t b = 0; b < nblocks; b++) {
+					try {
+						const std::ptrdiff_t r0 = b * nrows / nblocks;
+						const std::ptrdiff_t r1 = (b + 1) * nrows / nblocks;
+						std::vector<_T> rowbuf(nc);
+						std::vector<index_type>& li = block_inner[static_cast<std::size_t>(b)];
+						std::vector<_T>& lv = block_value[static_cast<std::size_t>(b)];
+						for (std::ptrdiff_t i = r0; i < r1; i++) {
+							const std::size_t si = static_cast<std::size_t>(i);
+							const std::size_t before = lv.size();
+							for (std::size_t j = 0; j < nc; j++) rowbuf[j] = f0;
+							for (index_type p = outer[si]; p < outer[si + 1]; p++) {
+								const std::size_t j = static_cast<std::size_t>(inner[static_cast<std::size_t>(p)]);
+								rowbuf[j] = f(value[static_cast<std::size_t>(p)]);
+							}
+							for (std::size_t j = 0; j < nc; j++) {
+								if (!(rowbuf[j] == _T(0))) {   // drop exact zeros (invariant)
+									li.push_back(static_cast<index_type>(j));
+									lv.push_back(rowbuf[j]);
+								}
+							}
+							cnt[si] = static_cast<index_type>(lv.size() - before);
+						}
+					}
+					catch (...) {
+						bool expected = false;
+						if (caught.compare_exchange_strong(expected, true)) {
+							eptr = std::current_exception();
+						}
+					}
+				}
+				if (caught.load()) std::rethrow_exception(eptr);
+				new_outer[0] = 0;
+				std::size_t total = 0;
+				for (std::size_t i = 0; i < m; i++) {
+					total += static_cast<std::size_t>(cnt[i]);
+					new_outer[i + 1] = size_to_index(total, routine);
+				}
+				new_inner.resize(total);
+				new_value.resize(total, _T(0));
+#pragma omp parallel for schedule(static) if (par_on)
+				for (std::ptrdiff_t b = 0; b < nblocks; b++) {
+					try {
+						const std::ptrdiff_t r0 = b * nrows / nblocks;
+						const std::vector<index_type>& li = block_inner[static_cast<std::size_t>(b)];
+						const std::vector<_T>& lv = block_value[static_cast<std::size_t>(b)];
+						const std::size_t dst = static_cast<std::size_t>(new_outer[static_cast<std::size_t>(r0)]);
+						for (std::size_t k = 0; k < lv.size(); k++) {
+							new_inner[dst + k] = li[k];
+							new_value[dst + k] = lv[k];
+						}
+					}
+					catch (...) {
+						bool expected = false;
+						if (caught.compare_exchange_strong(expected, true)) {
+							eptr = std::current_exception();
+						}
+					}
+				}
+				if (caught.load()) std::rethrow_exception(eptr);
+			}
+#else
 			new_inner.reserve(m * nc);
 			new_value.reserve(m * nc);
 			std::vector<_T> rowbuf(nc);
@@ -436,6 +597,7 @@ namespace vcp {
 				}
 				new_outer[i + 1] = size_to_index(new_value.size(), routine);
 			}
+#endif
 			assign_csr(row, column, new_outer, new_inner, new_value);
 		}
 		struct spfn_cos_ { _T operator()(const _T& x) const { using std::cos; return cos(x); } };
@@ -492,6 +654,48 @@ namespace vcp {
 		template <class _Cmp> void spfn_colreduce_(spmats& B, _Cmp better) const {
 			const spmats C = as_csc();
 			B.resize(1, column);
+#if VCP_SPARSE_USE_OPENMP
+			// SPOMP-1 B4 (design §3.2): column-parallel reduction into a
+			// results array (work = nnz; per-column fold order unchanged --
+			// max/min are exact, so bit-identical barring NaN payload
+			// selection); the B.set loop stays sequential (COO push is not
+			// thread-safe).
+			{
+				std::vector<_T> colbest(index_to_size(column, "spmats::spfn_colreduce_"), _T(0));
+				std::atomic<bool> caught(false);
+				std::exception_ptr eptr;
+				const std::ptrdiff_t ncols = static_cast<std::ptrdiff_t>(column);
+#pragma omp parallel for schedule(static) if (C.value.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+				for (std::ptrdiff_t j = 0; j < ncols; j++) {
+					try {
+						const index_type first = C.outer[static_cast<std::size_t>(j)];
+						const index_type last  = C.outer[static_cast<std::size_t>(j) + 1];
+						_T best;
+						if (first == last) {
+							best = _T(0);
+						}
+						else {
+							best = C.value[static_cast<std::size_t>(first)];
+							for (index_type p = first + 1; p < last; p++) {
+								best = better(C.value[static_cast<std::size_t>(p)], best);
+							}
+							if (last - first < row) best = better(_T(0), best);
+						}
+						colbest[static_cast<std::size_t>(j)] = best;
+					}
+					catch (...) {
+						bool expected = false;
+						if (caught.compare_exchange_strong(expected, true)) {
+							eptr = std::current_exception();
+						}
+					}
+				}
+				if (caught.load()) std::rethrow_exception(eptr);
+				for (index_type j = 0; j < column; j++) {
+					B.set(0, j, colbest[static_cast<std::size_t>(j)]);
+				}
+			}
+#else
 			for (index_type j = 0; j < column; j++) {
 				const index_type first = C.outer[static_cast<std::size_t>(j)];
 				const index_type last  = C.outer[static_cast<std::size_t>(j) + 1];
@@ -508,6 +712,7 @@ namespace vcp {
 				}
 				B.set(0, j, best);
 			}
+#endif
 			B.finalize();
 		}
 		// Whole-vector reduction (row==1 || column==1) incl. implicit zeros.
@@ -519,10 +724,54 @@ namespace vcp {
 				best = _T(0);
 			}
 			else {
+#if VCP_SPARSE_USE_OPENMP
+				// SPOMP-1 B4 (design §3.2): contiguous-block partial folds
+				// + sequential combine in block order (work = nnz).  max/
+				// min are exact, so the value equals the sequential fold
+				// bit-for-bit barring NaN payload selection (verified with
+				// NaN-free matrices, design §5); NaN still propagates.
+				{
+					const std::ptrdiff_t nnz_n = static_cast<std::ptrdiff_t>(C.value.size());
+					const bool par_on = (C.value.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD));
+					std::ptrdiff_t nblocks = 1;
+					if (par_on) {
+						nblocks = static_cast<std::ptrdiff_t>(omp_get_max_threads());
+						if (nblocks < 1) nblocks = 1;
+						if (nblocks > nnz_n) nblocks = nnz_n;
+					}
+					std::vector<_T> partial(static_cast<std::size_t>(nblocks), _T(0));
+					std::atomic<bool> caught(false);
+					std::exception_ptr eptr;
+#pragma omp parallel for schedule(static) if (par_on)
+					for (std::ptrdiff_t b = 0; b < nblocks; b++) {
+						try {
+							const std::ptrdiff_t k0 = b * nnz_n / nblocks;
+							const std::ptrdiff_t k1 = (b + 1) * nnz_n / nblocks;
+							_T pb = C.value[static_cast<std::size_t>(k0)];
+							for (std::ptrdiff_t k = k0 + 1; k < k1; k++) {
+								pb = better(C.value[static_cast<std::size_t>(k)], pb);
+							}
+							partial[static_cast<std::size_t>(b)] = pb;
+						}
+						catch (...) {
+							bool expected = false;
+							if (caught.compare_exchange_strong(expected, true)) {
+								eptr = std::current_exception();
+							}
+						}
+					}
+					if (caught.load()) std::rethrow_exception(eptr);
+					best = partial[0];
+					for (std::ptrdiff_t b = 1; b < nblocks; b++) {
+						best = better(partial[static_cast<std::size_t>(b)], best);
+					}
+				}
+#else
 				best = C.value[0];
 				for (std::size_t k = 1; k < C.value.size(); k++) {
 					best = better(C.value[k], best);
 				}
+#endif
 				if (size_to_index(C.value.size(), "spmats::spfn_vecreduce_") < len) best = better(_T(0), best);
 			}
 			B.resize(1, 1);
@@ -583,6 +832,41 @@ namespace vcp {
 			}
 			else {
 				const spmats C = as_csc();
+#if VCP_SPARSE_USE_OPENMP
+				// SPOMP-1 A7 (design §3.1): column-parallel column abs-sums
+				// (work = nnz; column-internal order unchanged), then a
+				// sequential max fold in the original column order (max is
+				// exact, no rounding).  Bit-identical to the path below.
+				{
+					std::vector<_T> colsum(index_to_size(column, "spmats::normone"), _T(0));
+					std::atomic<bool> caught(false);
+					std::exception_ptr eptr;
+					const std::ptrdiff_t ncols = static_cast<std::ptrdiff_t>(column);
+#pragma omp parallel for schedule(static) if (C.value.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+					for (std::ptrdiff_t j = 0; j < ncols; j++) {
+						try {
+							_T s = _T(0);
+							for (index_type p = C.outer[static_cast<std::size_t>(j)];
+							     p < C.outer[static_cast<std::size_t>(j) + 1]; p++) {
+								s += abs(C.value[static_cast<std::size_t>(p)]);
+							}
+							colsum[static_cast<std::size_t>(j)] = s;
+						}
+						catch (...) {
+							bool expected = false;
+							if (caught.compare_exchange_strong(expected, true)) {
+								eptr = std::current_exception();
+							}
+						}
+					}
+					if (caught.load()) std::rethrow_exception(eptr);
+					res = _T(0);
+					for (index_type j = 0; j < column; j++) {
+						res = (j == 0) ? colsum[static_cast<std::size_t>(j)]
+						               : spfn_takemax_()(colsum[static_cast<std::size_t>(j)], res);   // 判断F: NaN propagates
+					}
+				}
+#else
 				res = _T(0);
 				for (index_type j = 0; j < column; j++) {
 					_T s = _T(0);
@@ -592,6 +876,7 @@ namespace vcp {
 					}
 					res = (j == 0) ? s : spfn_takemax_()(s, res);   // 判断F: NaN propagates
 				}
+#endif
 			}
 			B.resize(1, 1);
 			B.set(0, 0, res);
@@ -615,6 +900,41 @@ namespace vcp {
 			}
 			else {
 				const spmats C = as_csr();
+#if VCP_SPARSE_USE_OPENMP
+				// SPOMP-1 A6 (design §3.1): row-parallel row abs-sums
+				// (work = nnz; row-internal order unchanged), then a
+				// sequential max fold in the original row order (max is
+				// exact, no rounding).  Bit-identical to the path below.
+				{
+					std::vector<_T> rowsum(index_to_size(row, "spmats::norminf"), _T(0));
+					std::atomic<bool> caught(false);
+					std::exception_ptr eptr;
+					const std::ptrdiff_t nr = static_cast<std::ptrdiff_t>(row);
+#pragma omp parallel for schedule(static) if (C.value.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+					for (std::ptrdiff_t i = 0; i < nr; i++) {
+						try {
+							_T s = _T(0);
+							for (index_type p = C.outer[static_cast<std::size_t>(i)];
+							     p < C.outer[static_cast<std::size_t>(i) + 1]; p++) {
+								s += abs(C.value[static_cast<std::size_t>(p)]);
+							}
+							rowsum[static_cast<std::size_t>(i)] = s;
+						}
+						catch (...) {
+							bool expected = false;
+							if (caught.compare_exchange_strong(expected, true)) {
+								eptr = std::current_exception();
+							}
+						}
+					}
+					if (caught.load()) std::rethrow_exception(eptr);
+					res = _T(0);
+					for (index_type i = 0; i < row; i++) {
+						res = (i == 0) ? rowsum[static_cast<std::size_t>(i)]
+						               : spfn_takemax_()(rowsum[static_cast<std::size_t>(i)], res);   // 判断F: NaN propagates
+					}
+				}
+#else
 				res = _T(0);
 				for (index_type i = 0; i < row; i++) {
 					_T s = _T(0);
@@ -624,6 +944,7 @@ namespace vcp {
 					}
 					res = (i == 0) ? s : spfn_takemax_()(s, res);   // 判断F: NaN propagates
 				}
+#endif
 			}
 			B.resize(1, 1);
 			B.set(0, 0, res);
@@ -657,9 +978,54 @@ namespace vcp {
 			if (row == 1 || column == 1) {
 				const spmats C = as_csr();
 				_T s = _T(0);
+#if VCP_SPARSE_USE_OPENMP
+				// SPOMP-1 B5 (design §3.2, D-6): contiguous-block partial
+				// sums + sequential combine (work = nnz).  The summation
+				// ORDER DIFFERS from the sequential path -- floating-point
+				// order change is PERMITTED for this one branch only
+				// (verified with a tolerance in §5, not bitwise).  The 1x1
+				// branch above and the matrix branch below are unchanged.
+				{
+					const std::ptrdiff_t nnz_n = static_cast<std::ptrdiff_t>(C.value.size());
+					const bool par_on = (C.value.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD));
+					std::ptrdiff_t nblocks = 1;
+					if (par_on) {
+						nblocks = static_cast<std::ptrdiff_t>(omp_get_max_threads());
+						if (nblocks < 1) nblocks = 1;
+						if (nnz_n > 0 && nblocks > nnz_n) nblocks = nnz_n;
+					}
+					std::vector<_T> partial(static_cast<std::size_t>(nblocks), _T(0));
+					std::atomic<bool> caught(false);
+					std::exception_ptr eptr;
+#pragma omp parallel for schedule(static) if (par_on)
+					for (std::ptrdiff_t b = 0; b < nblocks; b++) {
+						try {
+							const std::ptrdiff_t k0 = b * nnz_n / nblocks;
+							const std::ptrdiff_t k1 = (b + 1) * nnz_n / nblocks;
+							_T pb = _T(0);
+							for (std::ptrdiff_t k = k0; k < k1; k++) {
+								const std::size_t sk = static_cast<std::size_t>(k);
+								pb += C.value[sk] * C.value[sk];
+							}
+							partial[static_cast<std::size_t>(b)] = pb;
+						}
+						catch (...) {
+							bool expected = false;
+							if (caught.compare_exchange_strong(expected, true)) {
+								eptr = std::current_exception();
+							}
+						}
+					}
+					if (caught.load()) std::rethrow_exception(eptr);
+					for (std::ptrdiff_t b = 0; b < nblocks; b++) {
+						s += partial[static_cast<std::size_t>(b)];
+					}
+				}
+#else
 				for (std::size_t k = 0; k < C.value.size(); k++) {
 					s += C.value[k] * C.value[k];
 				}
+#endif
 				const _T res = sqrt(s);
 				this->resize(1, 1);
 				this->set(0, 0, res);
@@ -1182,6 +1548,50 @@ namespace vcp {
 			const std::vector<_Index>& outer = A.outer;
 			const std::vector<_Index>& inner = A.inner;
 			const std::vector<_T>& val = A.value;
+#if VCP_SPARSE_USE_OPENMP
+			// SPOMP-1 A9 (design §3.1): row-parallel check (work = nnz)
+			// with a logical-AND flag; no omp cancel -- once a mismatch is
+			// found, remaining rows spin through empty (design: フラグで
+			// 残り行を空回し).  The per-row check is the sequential code
+			// verbatim, so the boolean result is identical.
+			{
+				std::atomic<bool> failed(false);
+				std::atomic<bool> caught(false);
+				std::exception_ptr eptr;
+				const std::ptrdiff_t nr = static_cast<std::ptrdiff_t>(A.row);
+#pragma omp parallel for schedule(static) if (val.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+				for (std::ptrdiff_t i = 0; i < nr; i++) {
+					try {
+						if (failed.load()) continue;
+						const _Index ii = static_cast<_Index>(i);
+						for (_Index p = outer[static_cast<std::size_t>(ii)];
+						     p < outer[static_cast<std::size_t>(ii + 1)]; p++) {
+							const _Index j = inner[static_cast<std::size_t>(p)];
+							if (ii == j) continue;
+							const _Index first = outer[static_cast<std::size_t>(j)];
+							const _Index last = outer[static_cast<std::size_t>(j + 1)];
+							const typename std::vector<_Index>::const_iterator begin = inner.begin() + first;
+							const typename std::vector<_Index>::const_iterator end = inner.begin() + last;
+							typename std::vector<_Index>::const_iterator it = std::lower_bound(begin, end, ii);
+							_T mirrored = _T(0);
+							if (it != end && *it == ii)
+								mirrored = val[static_cast<std::size_t>(it - inner.begin())];
+							const scalar_real_type diff = vcp::tsparse_scalar::abs_value(
+								val[static_cast<std::size_t>(p)] - mirrored);
+							if (diff > tol) { failed.store(true); break; }
+						}
+					}
+					catch (...) {
+						bool expected = false;
+						if (caught.compare_exchange_strong(expected, true)) {
+							eptr = std::current_exception();
+						}
+					}
+				}
+				if (caught.load()) std::rethrow_exception(eptr);
+				return !failed.load();
+			}
+#else
 			for (_Index i = 0; i < A.row; i++) {
 				for (_Index p = outer[static_cast<std::size_t>(i)];
 				     p < outer[static_cast<std::size_t>(i + 1)]; p++) {
@@ -1201,6 +1611,7 @@ namespace vcp {
 				}
 			}
 			return true;
+#endif
 		}
 
 		// ------------------------------------------------------------------
@@ -1251,6 +1662,48 @@ namespace vcp {
 			const std::vector<_Index>& outerv = Acsr.outer_index();
 			const std::vector<_Index>& innerv = Acsr.inner_index();
 			const std::vector<_T>& val = Acsr.values();
+#if VCP_SPARSE_USE_OPENMP
+			// SPOMP-1 A9 (design §3.1): same row-parallel scheme as
+			// is_symmetric(tol) above (flag instead of early return; the
+			// per-row check is the sequential code verbatim).
+			{
+				std::atomic<bool> failed(false);
+				std::atomic<bool> caught(false);
+				std::exception_ptr eptr;
+				const std::ptrdiff_t nr = static_cast<std::ptrdiff_t>(Acsr.rowsize());
+#pragma omp parallel for schedule(static) if (val.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+				for (std::ptrdiff_t i = 0; i < nr; i++) {
+					try {
+						if (failed.load()) continue;
+						const _Index ii = static_cast<_Index>(i);
+						for (_Index p = outerv[static_cast<std::size_t>(ii)];
+						     p < outerv[static_cast<std::size_t>(ii + 1)]; p++) {
+							const _Index j = innerv[static_cast<std::size_t>(p)];
+							if (ii == j) continue;
+							const _Index first = outerv[static_cast<std::size_t>(j)];
+							const _Index last  = outerv[static_cast<std::size_t>(j + 1)];
+							const typename std::vector<_Index>::const_iterator begin = innerv.begin() + first;
+							const typename std::vector<_Index>::const_iterator end   = innerv.begin() + last;
+							typename std::vector<_Index>::const_iterator it = std::lower_bound(begin, end, ii);
+							_T mirrored = _T(0);
+							if (it != end && *it == ii)
+								mirrored = val[static_cast<std::size_t>(it - innerv.begin())];
+							const scalar_real_type diff = vcp::tsparse_scalar::abs_value(
+								val[static_cast<std::size_t>(p)] - mirrored);
+							if (diff > tol) { failed.store(true); break; }
+						}
+					}
+					catch (...) {
+						bool expected = false;
+						if (caught.compare_exchange_strong(expected, true)) {
+							eptr = std::current_exception();
+						}
+					}
+				}
+				if (caught.load()) std::rethrow_exception(eptr);
+				return !failed.load();
+			}
+#else
 			for (_Index i = 0; i < Acsr.rowsize(); i++) {
 				for (_Index p = outerv[static_cast<std::size_t>(i)];
 				     p < outerv[static_cast<std::size_t>(i + 1)]; p++) {
@@ -1270,6 +1723,7 @@ namespace vcp {
 				}
 			}
 			return true;
+#endif
 		}
 
 		// ------------------------------------------------------------------
