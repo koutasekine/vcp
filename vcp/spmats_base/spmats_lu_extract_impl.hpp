@@ -239,6 +239,142 @@ namespace spmats_lu_extract_detail {
 		return true;
 	}
 
+	// -----------------------------------------------------------------------
+	// SPOMP-2 (design §4.2, D-3/D-9): prepared LU factor bundle for repeated
+	// inverse-row extraction.  Two-phase discipline (D-9):
+	//   build phase = sequential, outside any parallel region, once
+	//     (CSC conversion x1 + structural validation x1 + qinv build O(n));
+	//   use phase   = const reads only (thread-safe to share across a
+	//     parallel row loop; the row core below touches nothing but the
+	//     const arrays of this bundle, its local y vector and the output).
+	// Invariant: CONSTRUCTION SUCCESS == VALIDATED (a prepared_lu_factors_
+	// that prepare_lu_factors_ returned success for satisfies the P-9
+	// structural contract).  No mutable members, no lazy caches, no
+	// diagnostic counters (D-9).
+	// -----------------------------------------------------------------------
+	template <typename _T, typename _Index>
+	struct prepared_lu_factors_ {
+		spmats<_T, _Index> Lcsc;      // CSC copy of L (validated unit lower)
+		spmats<_T, _Index> Ucsc;      // CSC copy of U (validated upper)
+		std::vector<_Index> p;        // row permutation copy (validated)
+		std::vector<_Index> qinv;     // inverse column permutation: qinv[q[k]] = k
+		_Index n;
+
+		prepared_lu_factors_() : Lcsc(), Ucsc(), p(), qinv(), n(_Index(0)) {}
+	};
+
+	// prepare_lu_factors_: build phase.  Validation failure = construction
+	// failure (invalid_input); out is meaningful only on success.  The
+	// checks are the LEXICALLY IDENTICAL calls the per-call impl used to
+	// make (is_permutation_ x2 / check_unit_lower_ / check_upper_), hoisted
+	// so they run once instead of once per row.
+	template <typename _T, typename _Index>
+	inline lu_apply_status prepare_lu_factors_(
+	    const spmats<_T, _Index>& L,
+	    const spmats<_T, _Index>& U,
+	    const std::vector<_Index>& p,
+	    const std::vector<_Index>& q,
+	    prepared_lu_factors_<_T, _Index>& out)
+	{
+		const _Index n = L.rowsize();
+
+		out.Lcsc = L.as_csc();
+		out.Ucsc = U.as_csc();
+		if (!is_permutation_<_Index>(n, p) ||
+		    !is_permutation_<_Index>(n, q) ||
+		    !check_unit_lower_<_T, _Index>(out.Lcsc, n) ||
+		    !check_upper_<_T, _Index>(out.Ucsc, n)) {
+			return lu_apply_status::invalid_input;
+		}
+		out.p = p;
+		out.qinv.assign(static_cast<std::size_t>(n), _Index(0));
+		for (_Index k = _Index(0); k < n; ++k) {
+			out.qinv[static_cast<std::size_t>(q[static_cast<std::size_t>(k)])] = k;
+		}
+		out.n = n;
+		return lu_apply_status::success;
+	}
+
+	// lu_inverse_row_core_: use phase.  The transposed triangular solves
+	// are the LEXICAL MOVE of the former policy_lu_inverse_row_with_info_impl
+	// body (P-8: row_i(A^{-1})^T = P^T L^{-T} U^{-T} Q^T e_i) -- the
+	// floating-point operation sequence is unchanged, statement for
+	// statement.  The only non-FP change: the O(n) linear search for k0
+	// (q[k0] = i) is replaced by the O(1) integer lookup qinv[i].
+	// Reads only the const arrays of F plus the local y vector; writes only
+	// row.  No spmats member function that can mutate (finalize/sort_coo
+	// type) is reachable from here (SPOMP-2 P0-5 enumeration).
+	// row is a valid output only when the returned status is success
+	// (callers that need the empty-on-failure contract clear it themselves,
+	// as the thin impl below does).
+	template <typename _T, typename _Index>
+	inline lu_apply_status lu_inverse_row_core_(
+	    const prepared_lu_factors_<_T, _Index>& F,
+	    const _Index i,
+	    std::vector<_T>& row)
+	{
+		const _Index n = F.n;
+		const std::size_t un = static_cast<std::size_t>(n);
+
+		// seed: w = Q^T e_i = e_{k0},  q[k0] = i  (O(1) via qinv -- SPOMP-2)
+		const _Index k0 = F.qinv[static_cast<std::size_t>(i)];
+
+		const std::vector<_Index>& up = F.Ucsc.outer_index();
+		const std::vector<_Index>& ui = F.Ucsc.inner_index();
+		const std::vector<_T>&     uv = F.Ucsc.values();
+
+		// stage 1: U^T y = e_{k0}.  Row j of U^T = column j of U:
+		//   U(j,j) y[j] + sum_{r<j} U(r,j) y[r] = delta_{j,k0}.
+		// y[j] = 0 for j < k0, so the loop starts at k0; every processed
+		// column divides through the certified gate.
+		std::vector<_T> y(un, _T(0));
+		for (_Index j = k0; j < n; ++j) {
+			const std::size_t sj = static_cast<std::size_t>(j);
+			_T s = (j == k0) ? _T(1) : _T(0);
+			bool found = false;
+			_T d = _T(0);
+			for (_Index k = up[sj]; k < up[sj + 1u]; ++k) {
+				const std::size_t sk = static_cast<std::size_t>(k);
+				const _Index r = ui[sk];
+				if (r == j) { d = uv[sk]; found = true; }
+				else        { s -= uv[sk] * y[static_cast<std::size_t>(r)]; }
+			}
+			if (!found) {
+				return lu_apply_status::singular_factor;
+			}
+			const lu_apply_status g =
+			    spmats_lu_extract_detail::certified_division_gate_<_T>(d);
+			if (g != lu_apply_status::success) {
+				return g;
+			}
+			y[sj] = s / d;
+		}
+
+		const std::vector<_Index>& lp = F.Lcsc.outer_index();
+		const std::vector<_Index>& li = F.Lcsc.inner_index();
+		const std::vector<_T>&     lv = F.Lcsc.values();
+
+		// stage 2: L^T z = y (in place).  Row j of L^T = column j of L;
+		// unit diagonal, so no division:
+		//   z[j] = y[j] - sum_{r>j} L(r,j) z[r],  j = n-1 .. 0.
+		for (_Index jj = n; jj-- > _Index(0); ) {
+			const std::size_t sj = static_cast<std::size_t>(jj);
+			for (_Index k = lp[sj]; k < lp[sj + 1u]; ++k) {
+				const std::size_t sk = static_cast<std::size_t>(k);
+				const _Index r = li[sk];
+				if (r == jj) continue;
+				y[sj] -= lv[sk] * y[static_cast<std::size_t>(r)];
+			}
+		}
+
+		// exit: row[p[k]] = z[k]
+		row.assign(un, _T(0));
+		for (std::size_t k = 0; k < un; ++k) {
+			row[static_cast<std::size_t>(F.p[k])] = y[k];
+		}
+		return lu_apply_status::success;
+	}
+
 } // namespace spmats_lu_extract_detail
 
 // ---------------------------------------------------------------------------
@@ -438,81 +574,23 @@ lu_apply_result spmats<_T, _Index>::policy_lu_inverse_row_with_info_impl(
 		lu_apply_result out;
 		row.clear();
 
-		const _Index n = L.rowsize();
-		const std::size_t un = static_cast<std::size_t>(n);
-
-		const spmats<_T, _Index> Lc = L.as_csc();
-		const spmats<_T, _Index> Uc = U.as_csc();
-		if (!spmats_lu_extract_detail::is_permutation_<_Index>(n, p) ||
-		    !spmats_lu_extract_detail::is_permutation_<_Index>(n, q) ||
-		    !spmats_lu_extract_detail::check_unit_lower_<_T, _Index>(Lc, n) ||
-		    !spmats_lu_extract_detail::check_upper_<_T, _Index>(Uc, n)) {
-			out.status = lu_apply_status::invalid_input;
+		// SPOMP-2 (design §4.2-3): thin form -- build the prepared factor
+		// bundle (CSC conversion + validation + qinv, formerly done inline
+		// here on every call) and delegate the transposed triangular solves
+		// to the lexically-moved row core.  Signature, external behaviour
+		// and the status mapping (invalid_input / singular_factor /
+		// certified division gate) are unchanged; row stays empty on any
+		// non-success status (cleared above, the core writes it only on
+		// success).
+		spmats_lu_extract_detail::prepared_lu_factors_<_T, _Index> F;
+		const lu_apply_status ps =
+		    spmats_lu_extract_detail::prepare_lu_factors_<_T, _Index>(L, U, p, q, F);
+		if (ps != lu_apply_status::success) {
+			out.status = ps;
 			return out;
 		}
-
-		// seed: w = Q^T e_i = e_{k0},  q[k0] = i
-		_Index k0 = _Index(0);
-		for (_Index k = _Index(0); k < n; ++k) {
-			if (q[static_cast<std::size_t>(k)] == i) { k0 = k; break; }
-		}
-
-		const std::vector<_Index>& up = Uc.outer_index();
-		const std::vector<_Index>& ui = Uc.inner_index();
-		const std::vector<_T>&     uv = Uc.values();
-
-		// stage 1: U^T y = e_{k0}.  Row j of U^T = column j of U:
-		//   U(j,j) y[j] + sum_{r<j} U(r,j) y[r] = delta_{j,k0}.
-		// y[j] = 0 for j < k0, so the loop starts at k0; every processed
-		// column divides through the certified gate.
-		std::vector<_T> y(un, _T(0));
-		for (_Index j = k0; j < n; ++j) {
-			const std::size_t sj = static_cast<std::size_t>(j);
-			_T s = (j == k0) ? _T(1) : _T(0);
-			bool found = false;
-			_T d = _T(0);
-			for (_Index k = up[sj]; k < up[sj + 1u]; ++k) {
-				const std::size_t sk = static_cast<std::size_t>(k);
-				const _Index r = ui[sk];
-				if (r == j) { d = uv[sk]; found = true; }
-				else        { s -= uv[sk] * y[static_cast<std::size_t>(r)]; }
-			}
-			if (!found) {
-				out.status = lu_apply_status::singular_factor;
-				return out;
-			}
-			const lu_apply_status g =
-			    spmats_lu_extract_detail::certified_division_gate_<_T>(d);
-			if (g != lu_apply_status::success) {
-				out.status = g;
-				return out;
-			}
-			y[sj] = s / d;
-		}
-
-		const std::vector<_Index>& lp = Lc.outer_index();
-		const std::vector<_Index>& li = Lc.inner_index();
-		const std::vector<_T>&     lv = Lc.values();
-
-		// stage 2: L^T z = y (in place).  Row j of L^T = column j of L;
-		// unit diagonal, so no division:
-		//   z[j] = y[j] - sum_{r>j} L(r,j) z[r],  j = n-1 .. 0.
-		for (_Index jj = n; jj-- > _Index(0); ) {
-			const std::size_t sj = static_cast<std::size_t>(jj);
-			for (_Index k = lp[sj]; k < lp[sj + 1u]; ++k) {
-				const std::size_t sk = static_cast<std::size_t>(k);
-				const _Index r = li[sk];
-				if (r == jj) continue;
-				y[sj] -= lv[sk] * y[static_cast<std::size_t>(r)];
-			}
-		}
-
-		// exit: row[p[k]] = z[k]
-		row.assign(un, _T(0));
-		for (std::size_t k = 0; k < un; ++k) {
-			row[static_cast<std::size_t>(p[k])] = y[k];
-		}
-		out.status = lu_apply_status::success;
+		out.status =
+		    spmats_lu_extract_detail::lu_inverse_row_core_<_T, _Index>(F, i, row);
 		return out;
 	} catch (const vcp::error&) {
 		throw;

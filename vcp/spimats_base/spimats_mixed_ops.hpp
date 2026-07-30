@@ -33,7 +33,9 @@
 #define VCP_SPIMATS_MIXED_OPS_HPP
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
+#include <exception>
 #include <vector>
 
 #include <kv/interval.hpp>
@@ -41,6 +43,27 @@
 #include <vcp/error.hpp>
 #include <vcp/spmats.hpp>
 #include <vcp/spimats_base/spimats_convert.hpp>   // spimats_convert_detail::is_strict_zero_interval
+
+// SPOMP-2 (design §2, D-1): two-stage OpenMP guard, replicated per file so
+// the header stands alone (same block as spmats.hpp / tsparse_spgemm.hpp;
+// identical re-definition is well-formed).  The threshold macro
+// VCP_SPMATS_OMP_THRESHOLD is shared with spmats.hpp (no new macros, D-1).
+// Thread-safety precondition (design §5-3): the parallel kernels below may
+// only run on matrices that entered the kernel finalized OR became
+// finalized by the kernel's own sequential entry guard -- finalize() const
+// writes mutable state, so concurrently handing one unfinalized matrix to
+// several kernel calls is undefined.
+#ifdef VCP_NOMP
+#  ifndef VCP_SPARSE_NOMP
+#    define VCP_SPARSE_NOMP
+#  endif
+#endif
+#if defined(_OPENMP) && !defined(VCP_SPARSE_NOMP)
+#  define VCP_SPARSE_USE_OPENMP 1
+#  include <omp.h>
+#else
+#  define VCP_SPARSE_USE_OPENMP 0
+#endif
 
 namespace vcp {
 namespace spimats_kernel {
@@ -114,6 +137,97 @@ void mul_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 	// merge/flush は行昇順・行内列昇順で emit するため finalize のソート・統合は
 	// 不要(実測 add 14.7×/mul 4.5×)。mul 系は出力上限が安く取れないため
 	// push_back のまま。
+#if VCP_SPARSE_USE_OPENMP
+	// SPOMP-2(設計 §3.1、D-8/D-10): tsparse_spgemm::csr_csr_multiply_par
+	// (SPOMP-1 §4.1)鏡映の行ブロック 2 パス構築。ブロック内の行順序と
+	// 行内の演算列は逐次カーネルと同一なので、出力 CSR はスレッド数に
+	// よらずビット一致。work = nnz(A)+nnz(B)、入れ子並列は抑止(D-10)。
+	{
+		const std::ptrdiff_t nrows = static_cast<std::ptrdiff_t>(m);
+		const bool par_on =
+			(av.size() + bv.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+			&& !omp_in_parallel();
+		std::ptrdiff_t nblocks = 1;
+		if (par_on) {
+			nblocks = static_cast<std::ptrdiff_t>(omp_get_max_threads());
+			if (nblocks < 1) nblocks = 1;
+			if (nblocks > nrows) nblocks = (nrows > 0) ? nrows : 1;
+		}
+		std::vector<std::vector<_Index> > block_inner(static_cast<std::size_t>(nblocks));
+		std::vector<std::vector<kv::interval<_T> > > block_value(static_cast<std::size_t>(nblocks));
+		std::vector<_Index> row_cnt(static_cast<std::size_t>(nrows), _Index(0));
+		std::atomic<bool> caught(false);
+		std::exception_ptr eptr;
+#pragma omp parallel for schedule(static) if(par_on)
+		for (std::ptrdiff_t blk = 0; blk < nblocks; blk++) {
+			try {
+				const std::ptrdiff_t r0 = blk * nrows / nblocks;
+				const std::ptrdiff_t r1 = (blk + 1) * nrows / nblocks;
+				std::vector<kv::interval<_T> > acc(static_cast<std::size_t>(n), kv::interval<_T>(_T(0)));
+				std::vector<char> touched(static_cast<std::size_t>(n), 0);
+				std::vector<_Index> cols;
+				std::vector<_Index>& li = block_inner[static_cast<std::size_t>(blk)];
+				std::vector<kv::interval<_T> >& lv = block_value[static_cast<std::size_t>(blk)];
+				std::size_t out = 0;
+				for (std::ptrdiff_t i = r0; i < r1; i++) {
+					const std::size_t before = li.size();
+					for (_Index p = ao[static_cast<std::size_t>(i)]; p < ao[static_cast<std::size_t>(i) + 1]; p++) {
+						const kv::interval<_T>& a = av[static_cast<std::size_t>(p)];
+						const _Index k = ai[static_cast<std::size_t>(p)];
+						for (_Index q = bo[static_cast<std::size_t>(k)]; q < bo[static_cast<std::size_t>(k) + 1]; q++) {
+							const _Index j = bi[static_cast<std::size_t>(q)];
+							acc[static_cast<std::size_t>(j)] += a * bv[static_cast<std::size_t>(q)];
+							if (!touched[static_cast<std::size_t>(j)]) {
+								touched[static_cast<std::size_t>(j)] = 1;
+								cols.push_back(j);
+							}
+						}
+					}
+					detail::flush_accumulated_row_(li, lv, out, cols, acc, touched);
+					row_cnt[static_cast<std::size_t>(i)] = static_cast<_Index>(li.size() - before);
+				}
+			}
+			catch (...) {
+				bool expected = false;
+				if (caught.compare_exchange_strong(expected, true)) {
+					eptr = std::current_exception();
+				}
+			}
+		}
+		if (caught.load()) std::rethrow_exception(eptr);
+		std::vector<_Index> c_outer(static_cast<std::size_t>(m) + 1);
+		c_outer[0] = 0;
+		for (std::ptrdiff_t i = 0; i < nrows; i++) {
+			c_outer[static_cast<std::size_t>(i) + 1] =
+				c_outer[static_cast<std::size_t>(i)] + row_cnt[static_cast<std::size_t>(i)];
+		}
+		std::vector<_Index> c_inner(static_cast<std::size_t>(c_outer[static_cast<std::size_t>(nrows)]));
+		std::vector<kv::interval<_T> > c_val(static_cast<std::size_t>(c_outer[static_cast<std::size_t>(nrows)]),
+		                                     kv::interval<_T>(_T(0)));
+#pragma omp parallel for schedule(static) if(par_on)
+		for (std::ptrdiff_t blk = 0; blk < nblocks; blk++) {
+			try {
+				const std::ptrdiff_t r0 = blk * nrows / nblocks;
+				const std::vector<_Index>& li = block_inner[static_cast<std::size_t>(blk)];
+				const std::vector<kv::interval<_T> >& lv = block_value[static_cast<std::size_t>(blk)];
+				const std::size_t dst = static_cast<std::size_t>(c_outer[static_cast<std::size_t>(r0)]);
+				for (std::size_t k = 0; k < li.size(); k++) {
+					c_inner[dst + k] = li[k];
+					c_val[dst + k] = lv[k];
+				}
+			}
+			catch (...) {
+				bool expected = false;
+				if (caught.compare_exchange_strong(expected, true)) {
+					eptr = std::current_exception();
+				}
+			}
+		}
+		if (caught.load()) std::rethrow_exception(eptr);
+		IC.clear();
+		IC.assign_csr(m, n, c_outer, c_inner, c_val);
+	}
+#else
 	std::vector<_Index> c_outer(static_cast<std::size_t>(m) + 1);
 	std::vector<_Index> c_inner;
 	std::vector<kv::interval<_T> > c_val;
@@ -143,6 +257,7 @@ void mul_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 	}
 	IC.clear();
 	IC.assign_csr(m, n, c_outer, c_inner, c_val);
+#endif
 }
 
 // mul_m_im: IC = B * IA(点疎 (m×k) × 区間疎 (k×n) -> 区間疎 (m×n))
@@ -170,6 +285,96 @@ void mul_m_im(const spmats<_TP, _Index>& B,
 	// merge/flush は行昇順・行内列昇順で emit するため finalize のソート・統合は
 	// 不要(実測 add 14.7×/mul 4.5×)。mul 系は出力上限が安く取れないため
 	// push_back のまま。
+#if VCP_SPARSE_USE_OPENMP
+	// SPOMP-2(設計 §3.1、D-8/D-10): mul_im_m と同じ行ブロック 2 パス構築
+	// (SPOMP-1 §4.1 鏡映)。行内の演算列は逐次カーネルと同一 = ビット一致。
+	// work = nnz(A)+nnz(B)、入れ子並列は抑止(D-10)。
+	{
+		const std::ptrdiff_t nrows = static_cast<std::ptrdiff_t>(m);
+		const bool par_on =
+			(av.size() + bv.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+			&& !omp_in_parallel();
+		std::ptrdiff_t nblocks = 1;
+		if (par_on) {
+			nblocks = static_cast<std::ptrdiff_t>(omp_get_max_threads());
+			if (nblocks < 1) nblocks = 1;
+			if (nblocks > nrows) nblocks = (nrows > 0) ? nrows : 1;
+		}
+		std::vector<std::vector<_Index> > block_inner(static_cast<std::size_t>(nblocks));
+		std::vector<std::vector<kv::interval<_T> > > block_value(static_cast<std::size_t>(nblocks));
+		std::vector<_Index> row_cnt(static_cast<std::size_t>(nrows), _Index(0));
+		std::atomic<bool> caught(false);
+		std::exception_ptr eptr;
+#pragma omp parallel for schedule(static) if(par_on)
+		for (std::ptrdiff_t blk = 0; blk < nblocks; blk++) {
+			try {
+				const std::ptrdiff_t r0 = blk * nrows / nblocks;
+				const std::ptrdiff_t r1 = (blk + 1) * nrows / nblocks;
+				std::vector<kv::interval<_T> > acc(static_cast<std::size_t>(n), kv::interval<_T>(_T(0)));
+				std::vector<char> touched(static_cast<std::size_t>(n), 0);
+				std::vector<_Index> cols;
+				std::vector<_Index>& li = block_inner[static_cast<std::size_t>(blk)];
+				std::vector<kv::interval<_T> >& lv = block_value[static_cast<std::size_t>(blk)];
+				std::size_t out = 0;
+				for (std::ptrdiff_t i = r0; i < r1; i++) {
+					const std::size_t before = li.size();
+					for (_Index p = bo[static_cast<std::size_t>(i)]; p < bo[static_cast<std::size_t>(i) + 1]; p++) {
+						const _TP& b = bv[static_cast<std::size_t>(p)];
+						const _Index k = bi[static_cast<std::size_t>(p)];
+						for (_Index q = ao[static_cast<std::size_t>(k)]; q < ao[static_cast<std::size_t>(k) + 1]; q++) {
+							const _Index j = ai[static_cast<std::size_t>(q)];
+							acc[static_cast<std::size_t>(j)] += av[static_cast<std::size_t>(q)] * b;
+							if (!touched[static_cast<std::size_t>(j)]) {
+								touched[static_cast<std::size_t>(j)] = 1;
+								cols.push_back(j);
+							}
+						}
+					}
+					detail::flush_accumulated_row_(li, lv, out, cols, acc, touched);
+					row_cnt[static_cast<std::size_t>(i)] = static_cast<_Index>(li.size() - before);
+				}
+			}
+			catch (...) {
+				bool expected = false;
+				if (caught.compare_exchange_strong(expected, true)) {
+					eptr = std::current_exception();
+				}
+			}
+		}
+		if (caught.load()) std::rethrow_exception(eptr);
+		std::vector<_Index> c_outer(static_cast<std::size_t>(m) + 1);
+		c_outer[0] = 0;
+		for (std::ptrdiff_t i = 0; i < nrows; i++) {
+			c_outer[static_cast<std::size_t>(i) + 1] =
+				c_outer[static_cast<std::size_t>(i)] + row_cnt[static_cast<std::size_t>(i)];
+		}
+		std::vector<_Index> c_inner(static_cast<std::size_t>(c_outer[static_cast<std::size_t>(nrows)]));
+		std::vector<kv::interval<_T> > c_val(static_cast<std::size_t>(c_outer[static_cast<std::size_t>(nrows)]),
+		                                     kv::interval<_T>(_T(0)));
+#pragma omp parallel for schedule(static) if(par_on)
+		for (std::ptrdiff_t blk = 0; blk < nblocks; blk++) {
+			try {
+				const std::ptrdiff_t r0 = blk * nrows / nblocks;
+				const std::vector<_Index>& li = block_inner[static_cast<std::size_t>(blk)];
+				const std::vector<kv::interval<_T> >& lv = block_value[static_cast<std::size_t>(blk)];
+				const std::size_t dst = static_cast<std::size_t>(c_outer[static_cast<std::size_t>(r0)]);
+				for (std::size_t k = 0; k < li.size(); k++) {
+					c_inner[dst + k] = li[k];
+					c_val[dst + k] = lv[k];
+				}
+			}
+			catch (...) {
+				bool expected = false;
+				if (caught.compare_exchange_strong(expected, true)) {
+					eptr = std::current_exception();
+				}
+			}
+		}
+		if (caught.load()) std::rethrow_exception(eptr);
+		IC.clear();
+		IC.assign_csr(m, n, c_outer, c_inner, c_val);
+	}
+#else
 	std::vector<_Index> c_outer(static_cast<std::size_t>(m) + 1);
 	std::vector<_Index> c_inner;
 	std::vector<kv::interval<_T> > c_val;
@@ -199,6 +404,7 @@ void mul_m_im(const spmats<_TP, _Index>& B,
 	}
 	IC.clear();
 	IC.assign_csr(m, n, c_outer, c_inner, c_val);
+#endif
 }
 
 // add_im_m: IC = IA + B(区間疎 + 点疎、同寸法。パターンは合併)
@@ -225,6 +431,101 @@ void add_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 	// merge/flush は行昇順・行内列昇順で emit するため finalize のソート・統合は
 	// 不要(実測 add 14.7×/mul 4.5×)。add 系は nnzA+nnzB を上限として
 	// reserve する。
+#if VCP_SPARSE_USE_OPENMP
+	// SPOMP-2(設計 §3.1、D-8/D-10): 行ブロック 2 パス構築(SPOMP-1 §4.1
+	// 鏡映)。行内は既存の 2 ポインタ合流コードそのまま = ビット一致。
+	// work = nnz(A)+nnz(B)、入れ子並列は抑止(D-10)。
+	{
+		const std::ptrdiff_t nrows = static_cast<std::ptrdiff_t>(Ac.rowsize());
+		const bool par_on =
+			(av.size() + bv.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+			&& !omp_in_parallel();
+		std::ptrdiff_t nblocks = 1;
+		if (par_on) {
+			nblocks = static_cast<std::ptrdiff_t>(omp_get_max_threads());
+			if (nblocks < 1) nblocks = 1;
+			if (nblocks > nrows) nblocks = (nrows > 0) ? nrows : 1;
+		}
+		std::vector<std::vector<_Index> > block_inner(static_cast<std::size_t>(nblocks));
+		std::vector<std::vector<kv::interval<_T> > > block_value(static_cast<std::size_t>(nblocks));
+		std::vector<_Index> row_cnt(static_cast<std::size_t>(nrows), _Index(0));
+		std::atomic<bool> caught(false);
+		std::exception_ptr eptr;
+#pragma omp parallel for schedule(static) if(par_on)
+		for (std::ptrdiff_t blk = 0; blk < nblocks; blk++) {
+			try {
+				const std::ptrdiff_t r0 = blk * nrows / nblocks;
+				const std::ptrdiff_t r1 = (blk + 1) * nrows / nblocks;
+				std::vector<_Index>& li = block_inner[static_cast<std::size_t>(blk)];
+				std::vector<kv::interval<_T> >& lv = block_value[static_cast<std::size_t>(blk)];
+				for (std::ptrdiff_t i = r0; i < r1; i++) {
+					const std::size_t before = li.size();
+					_Index p = ao[static_cast<std::size_t>(i)], pe = ao[static_cast<std::size_t>(i) + 1];
+					_Index q = bo[static_cast<std::size_t>(i)], qe = bo[static_cast<std::size_t>(i) + 1];
+					while (p < pe || q < qe) {
+						kv::interval<_T> y;
+						_Index j;
+						if (q >= qe || (p < pe && ai[static_cast<std::size_t>(p)] < bi[static_cast<std::size_t>(q)])) {
+							j = ai[static_cast<std::size_t>(p)];
+							y = av[static_cast<std::size_t>(p)]; p++;              // IA のみ: 値コピー(演算なし)
+						}
+						else if (p >= pe || bi[static_cast<std::size_t>(q)] < ai[static_cast<std::size_t>(p)]) {
+							j = bi[static_cast<std::size_t>(q)];
+							y = kv::interval<_T>(bv[static_cast<std::size_t>(q)]); q++;   // B のみ: 退化区間(厳密)
+						}
+						else {
+							j = ai[static_cast<std::size_t>(p)];
+							y = av[static_cast<std::size_t>(p)] + bv[static_cast<std::size_t>(q)]; p++; q++;   // 両方: 区間+点(昇格)
+						}
+						if (!spimats_convert_detail::is_strict_zero_interval(y)) {
+							li.push_back(j);   // 厳密相殺 [0,0] のみ非格納
+							lv.push_back(y);
+						}
+					}
+					row_cnt[static_cast<std::size_t>(i)] = static_cast<_Index>(li.size() - before);
+				}
+			}
+			catch (...) {
+				bool expected = false;
+				if (caught.compare_exchange_strong(expected, true)) {
+					eptr = std::current_exception();
+				}
+			}
+		}
+		if (caught.load()) std::rethrow_exception(eptr);
+		std::vector<_Index> c_outer(static_cast<std::size_t>(Ac.rowsize()) + 1);
+		c_outer[0] = 0;
+		for (std::ptrdiff_t i = 0; i < nrows; i++) {
+			c_outer[static_cast<std::size_t>(i) + 1] =
+				c_outer[static_cast<std::size_t>(i)] + row_cnt[static_cast<std::size_t>(i)];
+		}
+		std::vector<_Index> c_inner(static_cast<std::size_t>(c_outer[static_cast<std::size_t>(nrows)]));
+		std::vector<kv::interval<_T> > c_val(static_cast<std::size_t>(c_outer[static_cast<std::size_t>(nrows)]),
+		                                     kv::interval<_T>(_T(0)));
+#pragma omp parallel for schedule(static) if(par_on)
+		for (std::ptrdiff_t blk = 0; blk < nblocks; blk++) {
+			try {
+				const std::ptrdiff_t r0 = blk * nrows / nblocks;
+				const std::vector<_Index>& li = block_inner[static_cast<std::size_t>(blk)];
+				const std::vector<kv::interval<_T> >& lv = block_value[static_cast<std::size_t>(blk)];
+				const std::size_t dst = static_cast<std::size_t>(c_outer[static_cast<std::size_t>(r0)]);
+				for (std::size_t k = 0; k < li.size(); k++) {
+					c_inner[dst + k] = li[k];
+					c_val[dst + k] = lv[k];
+				}
+			}
+			catch (...) {
+				bool expected = false;
+				if (caught.compare_exchange_strong(expected, true)) {
+					eptr = std::current_exception();
+				}
+			}
+		}
+		if (caught.load()) std::rethrow_exception(eptr);
+		IC.clear();
+		IC.assign_csr(Ac.rowsize(), Ac.columnsize(), c_outer, c_inner, c_val);
+	}
+#else
 	std::vector<_Index> c_outer(static_cast<std::size_t>(Ac.rowsize()) + 1);
 	std::vector<_Index> c_inner;
 	std::vector<kv::interval<_T> > c_val;
@@ -261,6 +562,7 @@ void add_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 	}
 	IC.clear();
 	IC.assign_csr(Ac.rowsize(), Ac.columnsize(), c_outer, c_inner, c_val);
+#endif
 }
 
 // add_m_im: IC = B + IA。点と区間の要素ごとの和は可換(kv の interval+点 /
@@ -289,6 +591,35 @@ void mul_im_v(const spmats<kv::interval<_T>, _Index>& IA,
 	const std::vector<_Index>& ai = Ac.inner_index();
 	const std::vector<kv::interval<_T> >& av = Ac.values();
 	iy.assign(static_cast<std::size_t>(Ac.rowsize()), kv::interval<_T>(_T(0)));
+#if VCP_SPARSE_USE_OPENMP
+	// SPOMP-2(設計 §3.1、SPOMP-1 A3 同型): 行並列 gather。行内累積順序は
+	// 不変・書き込み先 iy[i] は行ごとに素 = ビット一致。work = nnz、
+	// 入れ子並列は抑止(D-10)。例外は exception_ptr で領域外 rethrow。
+	{
+		const std::ptrdiff_t nrows = static_cast<std::ptrdiff_t>(Ac.rowsize());
+		const bool par_on =
+			(av.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+			&& !omp_in_parallel();
+		std::atomic<bool> caught(false);
+		std::exception_ptr eptr;
+#pragma omp parallel for schedule(static) if(par_on)
+		for (std::ptrdiff_t i = 0; i < nrows; i++) {
+			try {
+				for (_Index p = ao[static_cast<std::size_t>(i)]; p < ao[static_cast<std::size_t>(i) + 1]; p++) {
+					iy[static_cast<std::size_t>(i)] +=
+						av[static_cast<std::size_t>(p)] * x[static_cast<std::size_t>(ai[static_cast<std::size_t>(p)])];
+				}
+			}
+			catch (...) {
+				bool expected = false;
+				if (caught.compare_exchange_strong(expected, true)) {
+					eptr = std::current_exception();
+				}
+			}
+		}
+		if (caught.load()) std::rethrow_exception(eptr);
+	}
+#else
 	for (_Index i = 0; i < Ac.rowsize(); i++) {
 		// LOOP INVARIANT(p ループ各周回開始時): iy[i] は行 i の部分和
 		//   Σ_{既処理の p} IA(i, ai[p]) * x[ai[p]] を保持する(非格納要素の
@@ -298,6 +629,7 @@ void mul_im_v(const spmats<kv::interval<_T>, _Index>& IA,
 				av[static_cast<std::size_t>(p)] * x[static_cast<std::size_t>(ai[static_cast<std::size_t>(p)])];
 		}
 	}
+#endif
 }
 
 // mul_m_iv: iy = B * ix(点疎 (m×n) × 区間ベクトル (n) -> 区間ベクトル (m)、密出力)
@@ -315,6 +647,33 @@ void mul_m_iv(const spmats<_TP, _Index>& B,
 	const std::vector<_Index>& bi = Bc.inner_index();
 	const std::vector<_TP>& bv = Bc.values();
 	iy.assign(static_cast<std::size_t>(Bc.rowsize()), kv::interval<_T>(_T(0)));
+#if VCP_SPARSE_USE_OPENMP
+	// SPOMP-2(設計 §3.1、SPOMP-1 A3 同型): 行並列 gather(mul_im_v と同旨)。
+	{
+		const std::ptrdiff_t nrows = static_cast<std::ptrdiff_t>(Bc.rowsize());
+		const bool par_on =
+			(bv.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+			&& !omp_in_parallel();
+		std::atomic<bool> caught(false);
+		std::exception_ptr eptr;
+#pragma omp parallel for schedule(static) if(par_on)
+		for (std::ptrdiff_t i = 0; i < nrows; i++) {
+			try {
+				for (_Index p = bo[static_cast<std::size_t>(i)]; p < bo[static_cast<std::size_t>(i) + 1]; p++) {
+					iy[static_cast<std::size_t>(i)] +=
+						ix[static_cast<std::size_t>(bi[static_cast<std::size_t>(p)])] * bv[static_cast<std::size_t>(p)];
+				}
+			}
+			catch (...) {
+				bool expected = false;
+				if (caught.compare_exchange_strong(expected, true)) {
+					eptr = std::current_exception();
+				}
+			}
+		}
+		if (caught.load()) std::rethrow_exception(eptr);
+	}
+#else
 	for (_Index i = 0; i < Bc.rowsize(); i++) {
 		// LOOP INVARIANT(p ループ各周回開始時): iy[i] は行 i の部分和
 		//   Σ_{既処理の p} B(i, bi[p]) * ix[bi[p]] を保持する。点値は昇格のみ。
@@ -323,6 +682,7 @@ void mul_m_iv(const spmats<_TP, _Index>& B,
 				ix[static_cast<std::size_t>(bi[static_cast<std::size_t>(p)])] * bv[static_cast<std::size_t>(p)];
 		}
 	}
+#endif
 }
 
 // mul_v_im: iy^T = x^T * IA(点横ベクトル (m) × 区間疎 (m×n) -> 区間横ベクトル (n)、
@@ -385,13 +745,83 @@ void sub_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 	// (COO 再構築・finalize 不要 — 旧実装の廃止理由。SPI-R8-b)。
 	spmats<_TP, _Index> Bn = B.as_csr();
 	std::vector<_TP>& v = Bn.values();
+#if VCP_SPARSE_USE_OPENMP
+	// SPOMP-2(設計 §3.1): 符号反転は厳密演算(丸めなし)・要素ごとに素
+	// なので要素並列化してよい(順序によらず値同一 = ビット一致)。
+	// work = nnz、入れ子並列は抑止(D-10)。委譲部(add_im_m)は無変更。
+	{
+		const std::ptrdiff_t nn = static_cast<std::ptrdiff_t>(v.size());
+		const bool par_on =
+			(v.size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+			&& !omp_in_parallel();
+		std::atomic<bool> caught(false);
+		std::exception_ptr eptr;
+#pragma omp parallel for schedule(static) if(par_on)
+		for (std::ptrdiff_t k = 0; k < nn; k++) {
+			try {
+				v[static_cast<std::size_t>(k)] = -v[static_cast<std::size_t>(k)];   // 単項符号反転(厳密・丸めなし)
+			}
+			catch (...) {
+				bool expected = false;
+				if (caught.compare_exchange_strong(expected, true)) {
+					eptr = std::current_exception();
+				}
+			}
+		}
+		if (caught.load()) std::rethrow_exception(eptr);
+	}
+#else
 	for (std::size_t k = 0; k < v.size(); k++) {
 		v[k] = -v[k];   // 単項符号反転(厳密・丸めなし)
 	}
+#endif
 	add_im_m(IA, Bn, IC);
 }
 
 // >>> END [SPI-R7] <<<
+
+// >>> REVIEW-REQUIRED [SPOMP-2: mul_v_im 生配列オーバーロード(D-7)] <<<
+// STATUS: UNREVIEWED (SPOMP-2, 2026-07-29)
+// CLAIM: 出力は公開カーネル mul_v_im(x, IA, iy) と同一。根拠: 入力配列が
+//   finalize 済み CSR(IA.as_csr() の outer/inner/values と同内容)である
+//   とき、値・走査順・演算列が公開カーネルの本体ループと字句的に同一
+//   (per-call as_csr() コピーを外へ括り出しただけ)。包含の正しさは
+//   SPI-R2 の CLAIM に帰着する。
+// REDUCES-TO: mul_v_im(SPI-R2)
+// SELF-ARITHMETIC: なし
+// TESTS: sandbox/tests/spomp2_equiv_dump.cpp
+// ---------------------------------------------------------------------------
+
+// mul_v_im(生配列版): iy^T = x^T * A(CSR 生配列)。SPOMP-2 §3.1-B --- U3 の
+// 行ループが per-call as_csr() コピー(D-7)を回避するための純増オーバー
+// ロード。呼び出し側の契約: (rows, cols, ao, ai, av) は finalize 済み CSR の
+// 内容であること(U3 はループ前に as_csr() を 1 回だけ作って渡す)。
+// 本体は【逐次】(scatter --- SPOMP-1 D-4 と同じ理由で並列化しない。U3 の
+// 行並列ループの内側から呼ばれる設計 --- D-10 の入れ子抑止の実現形)。
+template <typename _T, typename _TP, typename _Index>
+void mul_v_im(const std::vector<_TP>& x,
+              const _Index rows, const _Index cols,
+              const std::vector<_Index>& ao,
+              const std::vector<_Index>& ai,
+              const std::vector<kv::interval<_T> >& av,
+              std::vector<kv::interval<_T> >& iy)
+{
+	if (x.size() != static_cast<std::size_t>(rows)) {
+		vcp::throw_error<vcp::dimension_error>("spimats_kernel::mul_v_im: dimension mismatch");
+	}
+	iy.assign(static_cast<std::size_t>(cols), kv::interval<_T>(_T(0)));
+	for (_Index i = 0; i < rows; i++) {
+		// LOOP INVARIANT(i ループ各周回開始時): iy[j] は部分和
+		//   Σ_{i' < i} x[i'] * A(i', j) を保持する(公開カーネルと同一の
+		//   CSR 行走査による散布加算)。
+		for (_Index p = ao[static_cast<std::size_t>(i)]; p < ao[static_cast<std::size_t>(i) + 1]; p++) {
+			iy[static_cast<std::size_t>(ai[static_cast<std::size_t>(p)])] +=
+				x[static_cast<std::size_t>(i)] * av[static_cast<std::size_t>(p)];
+		}
+	}
+}
+
+// >>> END [SPOMP-2] <<<
 
 // 将来の追記方法(設計書 §6): mul_iv_m(区間ベクトル × 点疎)等の追加カーネルは
 // 本ファイルに REVIEW-REQUIRED 区画(SPI-R6 以降の新番号・STATUS は未レビュー
