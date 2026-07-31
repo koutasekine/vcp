@@ -87,8 +87,29 @@ extern "C" {
 
 	void dgemm_(const char*, const char*, const int*, const int*, const int*, const double*,
 		const double*, const int*, const double*, const int*, const double*, double*, const int*);
+	// TBF-1: GEMMT routine-name variants.  Both operations are identical
+	// (general product, triangular part of C updated only); the linked BLAS
+	// provides one name or the other:
+	//   dgemmtr_ (standard, LAPACK >= 3.12): netlib LAPACK >= 3.12 [x in MKL,
+	//            OpenBLAS <= 0.3.26; o in OpenBLAS 0.3.30.dev]
+	//   dgemmt_  (legacy MKL extension)    : MKL, OpenBLAS <= 0.3.26
+	//            [x in netlib]
+	// On GNU-compatible compilers both are declared weak so that
+	// tgemmtr<double> (vcp/tblas/tblas_double.hpp) can dispatch at run time
+	// on symbol presence, and so that a TU that merely instantiates it still
+	// links against a GEMMT-free BLAS.  Elsewhere the previous strong
+	// declaration of the standard name is kept unchanged.
+#    if defined(__GNUC__) || defined(__clang__)
+	void dgemmtr_(const char*, const char*, const char*, const int*, const int*, const double*,
+		const double*, const int*, const double*, const int*, const double*, double*, const int*)
+		__attribute__((weak));
+	void dgemmt_(const char*, const char*, const char*, const int*, const int*, const double*,
+		const double*, const int*, const double*, const int*, const double*, double*, const int*)
+		__attribute__((weak));
+#    else
 	void dgemmtr_(const char*, const char*, const char*, const int*, const int*, const double*,
 		const double*, const int*, const double*, const int*, const double*, double*, const int*);
+#    endif
 	void dsymm_(const char*, const char*, const int*, const int*, const double*, const double*,
 		const int*, const double*, const int*, const double*, double*, const int*);
 	void dsyrk_(const char*, const char*, const int*, const int*, const double*, const double*,

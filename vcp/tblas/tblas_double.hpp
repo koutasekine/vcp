@@ -7,6 +7,7 @@
 #define TBLAS_TBLAS_DOUBLE_HPP
 
 #include <vcp/dblas_dlapack.hpp>
+#include <vcp/error.hpp>
 #include <vcp/tblas/tblas.hpp>
 
 namespace vcp {
@@ -285,7 +286,27 @@ inline void tgemmtr<double>(
 	const double* B, const int ldb,
 	const double& beta, double* C, const int ldc
 ) {
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(USE_VCP_BLAS)
+	// TBF-1: both GEMMT names are declared weak in vcp/dblas_dlapack.hpp;
+	// dispatch at run time on whichever the linked BLAS provides.  If the
+	// BLAS has neither, die honestly -- no silent fallback to a reference
+	// implementation (it would fake the performance of the blocked path).
+	if (dgemmtr_) {   // standard name, LAPACK >= 3.12
+		dgemmtr_(&uplo, &transa, &transb, &n, &k, &alpha, A, &lda, B, &ldb, &beta, C, &ldc);
+		return;
+	}
+	if (dgemmt_) {    // legacy name, MKL / OpenBLAS <= 0.3.26
+		dgemmt_(&uplo, &transa, &transb, &n, &k, &alpha, A, &lda, B, &ldb, &beta, C, &ldc);
+		return;
+	}
+	vcp::throw_error<vcp::state_error>(
+		"vcp::tgemmtr<double>: linked BLAS provides neither dgemmtr_ "
+		"(LAPACK>=3.12) nor dgemmt_ (MKL/OpenBLAS extension)");
+#else
+	// non-GNU compilers (no weak attribute) and USE_VCP_BLAS (dgemmtr_ is
+	// VCP's own inline function, always present): direct call as before.
 	dgemmtr_(&uplo, &transa, &transb, &n, &k, &alpha, A, &lda, B, &ldb, &beta, C, &ldc);
+#endif
 }
 
 } // namespace vcp
