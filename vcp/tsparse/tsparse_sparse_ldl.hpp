@@ -87,6 +87,19 @@ enum class sparse_ldl_diag_kernel {
     gemm           // tgemm: full block, the faster double kernel
 };
 
+// SLDL-AM design v1.1 SS2: relaxed amalgamation of the supernodal SYMBOLIC
+// partition.  off (the default until ruling AM-D2) keeps the fundamental
+// partition and is byte-identical to the pre-SLDL-AM behaviour: the merge
+// pass is not even entered.  relaxed merges adjacent parent-child supernode
+// pairs under the staged rule of SS2 (constants below); the merged panels
+// carry EXPLICIT ZEROS that are exact 0.0 through the numeric phase and are
+// dropped by the output emission, so L/D patterns and nnz_L are unchanged --
+// only the summation order (and hence ulps) of true-pattern values moves.
+enum class sparse_ldl_amalgamation {
+    off,
+    relaxed
+};
+
 // What the numeric phase actually used (result diagnostic).
 enum class sparse_ldl_kernel_used {
     not_applicable,   // no supernodal numeric work was performed
@@ -155,6 +168,20 @@ struct sparse_ldl_options {
     // calibrated in SP-3.
     int ldl_min_block_size;
     sparse_ldl_diag_kernel diag_kernel;
+    // SLDL-AM: relaxed amalgamation switch + staged-rule constants (design
+    // v1.1 SS2, ruling AM-D1).  A merged candidate of width w, panel rows m
+    // and zero PERCENTAGE z (= 100 * padded zeros / (m*w), integers only --
+    // P4) is merged iff
+    //     w <= n0                        (unconditional small-supernode rescue)
+    //  or (w <= n1 and z < z0)
+    //  or (w <= n2 and z < z1)
+    //  or (z < z2).
+    // The default constants are the CHOLMOD-equivalent (4,16,48 / 80,10,5).
+    // ldl_amalgamation stays off until ruling AM-D2 (default-ON is a separate
+    // one-line owner-decided commit).
+    sparse_ldl_amalgamation ldl_amalgamation;
+    int ldl_amalg_n0, ldl_amalg_n1, ldl_amalg_n2;   // stage widths
+    int ldl_amalg_z0, ldl_amalg_z1, ldl_amalg_z2;   // integer percentages
     // ordering contract (design v2 SS0.1 decision 1): auto_select is resolved
     // by the library; the resolution is always reported in the diagnostic
     // ordering_used.  The resolution may change in future versions -- specify
@@ -175,6 +202,9 @@ struct sparse_ldl_options {
           // SP-3 calibrates this on four machines.
           ldl_min_block_size(32),
           diag_kernel(sparse_ldl_diag_kernel::auto_select),
+          ldl_amalgamation(sparse_ldl_amalgamation::off),
+          ldl_amalg_n0(4), ldl_amalg_n1(16), ldl_amalg_n2(48),
+          ldl_amalg_z0(80), ldl_amalg_z1(10), ldl_amalg_z2(5),
           ordering(sparse_ldl_ordering::auto_select),
           check_symmetry(true),
           // same default policy as policy_is_symmetric (B-4: via the D4
@@ -239,6 +269,22 @@ struct sparse_ldl_result {
     int  growth_log2;
     bool growth_valid;
 
+    // ---- SLDL-AM diagnostics (design v1.1 SS2.1 / SS5-7; integers only, P4).
+    // Filled from the symbolic analysis by the numeric driver for the
+    // supernodal method; they keep their defaults on the baseline paths.
+    sparse_ldl_amalgamation amalgamation_used;
+    Index     n_amalgamations;            // merges performed by the relax pass
+    long long n_padded_zeros;             // explicit zeros of the padded pattern
+    long long mean_supernode_width_x100;  // 100*n / n_supernodes (integer)
+    // Exact flop estimates Sum_snode h*w*(w+h) (h = below-diagonal rows,
+    // w = width), as 128-bit values split into (hi,lo) 64-bit halves
+    // (SS2.1: the >64-bit pair).  flops_true is the sum over the FUNDAMENTAL
+    // partition (= the relax=off work); flops_padded is the sum over the
+    // partition the numeric phase actually runs (merged when relax=on, equal
+    // to flops_true when off).  flop_pad_ratio = flops_padded / flops_true.
+    unsigned long long flops_padded_lo, flops_padded_hi;
+    unsigned long long flops_true_lo,   flops_true_hi;
+
     sparse_ldl_result()
         : status(sparse_ldl_status::internal_error),
           n_pivots_1x1(Index(0)), n_pivots_2x2(Index(0)),
@@ -253,7 +299,12 @@ struct sparse_ldl_result {
           n_boundary_splits(Index(0)), nnz_L_static(Index(0)),
           n_zero_skips(Index(0)), out_of_panel_at(Index(-1)),
           gemm_call_count(0), gemm_time_ns(0),
-          growth_log2(0), growth_valid(false) {}
+          growth_log2(0), growth_valid(false),
+          amalgamation_used(sparse_ldl_amalgamation::off),
+          n_amalgamations(Index(0)), n_padded_zeros(0),
+          mean_supernode_width_x100(0),
+          flops_padded_lo(0u), flops_padded_hi(0u),
+          flops_true_lo(0u), flops_true_hi(0u) {}
 };
 
 // ---------------------------------------------------------------------------
@@ -343,7 +394,68 @@ void sparse_ldl_factorize_numeric_with_info(
             res.status = sparse_ldl_status::internal_error;
             return;
         }
+        // ---- SLDL-AM bridge (design v2 SS3-4 / SS2.0).  The B2 shift
+        // handle builds its symbolic analysis with default (off)
+        // amalgamation options -- its setup code is frozen and copies only
+        // ordering and level -- so an explicit relax=on request must be
+        // honoured HERE: the relaxed analysis (postorder relabelling BEFORE
+        // fundamental detection, then the merge pass) is recomputed locally
+        // by the same deterministic sparse_ldl_symbolic_analyze the one-shot
+        // entry runs, on the same CSC pattern and resolved ordering.  Both
+        // sides therefore hand the kernel identical arrays, which is what
+        // makes acceptance 4 (factor_at == one-shot, byte identity) hold.
+        // Cost note: this path pays one full symbolic analysis (ordering
+        // included) per numeric call; it exists only for the off-built-
+        // analysis + relax=on combination.  The off path below remains a
+        // plain pass-through that enters neither relabelling nor merging.
+        if (opt.ldl_amalgamation == sparse_ldl_amalgamation::relaxed &&
+            sym.amalgamation_used == sparse_ldl_amalgamation::off) {
+            sparse_ldl_symbolic_options sopt2;
+            sopt2.ordering = sym.ordering_used;   // already resolved
+            sopt2.level = sparse_ldl_symbolic_level::full;
+            sopt2.amalgamation = sparse_ldl_amalgamation::relaxed;
+            sopt2.amalg_n0 = opt.ldl_amalg_n0;
+            sopt2.amalg_n1 = opt.ldl_amalg_n1;
+            sopt2.amalg_n2 = opt.ldl_amalg_n2;
+            sopt2.amalg_z0 = opt.ldl_amalg_z0;
+            sopt2.amalg_z1 = opt.ldl_amalg_z1;
+            sopt2.amalg_z2 = opt.ldl_amalg_z2;
+            const sparse_ldl_symbolic_result<Index> relaxed_sym =
+                sparse_ldl_symbolic_analyze(n, col_ptr, row_ind, sopt2);
+            if (relaxed_sym.status != sparse_ldl_symbolic_status::success ||
+                relaxed_sym.ordering_used != sym.ordering_used) {
+                res.status = sparse_ldl_status::internal_error;
+                return;
+            }
+            sparse_ldl_supernodal_factorize(
+                n, col_ptr, row_ind, val, relaxed_sym, opt, ws, res);
+            res.amalgamation_used         = relaxed_sym.amalgamation_used;
+            res.n_amalgamations           = relaxed_sym.n_amalgamations;
+            res.n_padded_zeros            = relaxed_sym.n_padded_zeros;
+            res.mean_supernode_width_x100 = relaxed_sym.mean_supernode_width_x100;
+            res.flops_padded_lo = relaxed_sym.flops_padded_lo;
+            res.flops_padded_hi = relaxed_sym.flops_padded_hi;
+            res.flops_true_lo   = relaxed_sym.flops_true_lo;
+            res.flops_true_hi   = relaxed_sym.flops_true_hi;
+            return;
+        }
+        if (opt.ldl_amalgamation == sparse_ldl_amalgamation::off &&
+            sym.amalgamation_used == sparse_ldl_amalgamation::relaxed) {
+            // A merged analysis cannot be un-merged (the fundamental
+            // partition is gone); honest death instead of a silently
+            // different structure.
+            res.status = sparse_ldl_status::internal_error;
+            return;
+        }
         sparse_ldl_supernodal_factorize(n, col_ptr, row_ind, val, sym, opt, ws, res);
+        res.amalgamation_used         = sym.amalgamation_used;
+        res.n_amalgamations           = sym.n_amalgamations;
+        res.n_padded_zeros            = sym.n_padded_zeros;
+        res.mean_supernode_width_x100 = sym.mean_supernode_width_x100;
+        res.flops_padded_lo = sym.flops_padded_lo;
+        res.flops_padded_hi = sym.flops_padded_hi;
+        res.flops_true_lo   = sym.flops_true_lo;
+        res.flops_true_hi   = sym.flops_true_hi;
         return;
     }
 
@@ -552,6 +664,21 @@ sparse_ldl_factorize_with_info(
             res.status = sparse_ldl_status::invalid_options;
             return res;
         }
+        switch (opt.ldl_amalgamation) {
+        case sparse_ldl_amalgamation::off:
+        case sparse_ldl_amalgamation::relaxed:
+            break;
+        default:
+            res.status = sparse_ldl_status::invalid_options;
+            return res;
+        }
+        if (opt.ldl_amalg_n0 < 0 || opt.ldl_amalg_n1 < 0 || opt.ldl_amalg_n2 < 0 ||
+            opt.ldl_amalg_z0 < 0 || opt.ldl_amalg_z0 > 100 ||
+            opt.ldl_amalg_z1 < 0 || opt.ldl_amalg_z1 > 100 ||
+            opt.ldl_amalg_z2 < 0 || opt.ldl_amalg_z2 > 100) {
+            res.status = sparse_ldl_status::invalid_options;
+            return res;
+        }
 
         switch (opt.ordering) {
         case sparse_ldl_ordering::auto_select:
@@ -627,6 +754,16 @@ sparse_ldl_factorize_with_info(
         sopt.level = (res.method_used == sparse_ldl_method::supernodal)
                    ? sparse_ldl_symbolic_level::full
                    : sparse_ldl_symbolic_level::ordering_only;
+        // SLDL-AM: the one-shot entry merges at the SYMBOLIC side; the
+        // numeric driver's bridge then sees a matching analysis and passes
+        // it through unchanged (effective only at level full).
+        sopt.amalgamation = opt.ldl_amalgamation;
+        sopt.amalg_n0 = opt.ldl_amalg_n0;
+        sopt.amalg_n1 = opt.ldl_amalg_n1;
+        sopt.amalg_n2 = opt.ldl_amalg_n2;
+        sopt.amalg_z0 = opt.ldl_amalg_z0;
+        sopt.amalg_z1 = opt.ldl_amalg_z1;
+        sopt.amalg_z2 = opt.ldl_amalg_z2;
         const sparse_ldl_symbolic_result<Index> sym =
             sparse_ldl_symbolic_analyze(n, col_ptr, row_ind, sopt);
         if (sym.status != sparse_ldl_symbolic_status::success) {

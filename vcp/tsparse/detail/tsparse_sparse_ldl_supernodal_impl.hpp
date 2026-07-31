@@ -627,9 +627,26 @@ void sparse_ldl_supernodal_factorize(
                     // what makes narrow (width-1) supernodes workable at all.
                     // Anything further away cannot be rescued: stop honestly
                     // (D-1), never weaken the test, never fall back silently.
+                    //
+                    // SP-FIX1 (STOP-2 / AM-D4): the split carry-out is only
+                    // correct at the FINAL panel column (q + 1 == w): it
+                    // carries column j's diagonal and below-panel rows, and
+                    // the finished part's row list becomes {j} u R_s.  At an
+                    // inner column that would lose the rows (j+1 .. pb-1) of
+                    // the carried column, the same rows of the finished
+                    // part's pattern, and the already-consumed descendant
+                    // contributions to the discarded columns -- a silently
+                    // corrupt factor reported as success (measured; see
+                    // SLDL-AM_stop2_issue).  An inner column asking for an
+                    // out-of-panel sigma therefore stops honestly instead.
                     if (rrow >= pb) {
-                        want_split = true;
-                        split_partner = rrow;
+                        if (q + 1u == w) {
+                            want_split = true;
+                            split_partner = rrow;
+                        } else {
+                            res.out_of_panel_at = j;
+                            stopped_out_of_panel = true;
+                        }
                         break;
                     }
                     const std::size_t lr = static_cast<std::size_t>(rrow - pa);
