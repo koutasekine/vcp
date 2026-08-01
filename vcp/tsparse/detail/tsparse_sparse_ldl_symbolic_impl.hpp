@@ -74,13 +74,22 @@ struct sparse_ldl_symbolic_options {
     sparse_ldl_amalgamation  amalgamation;
     int amalg_n0, amalg_n1, amalg_n2;   // stage widths
     int amalg_z0, amalg_z1, amalg_z2;   // integer percentages
+    // ORD-1: parameters of ordering = nested_dissection_ml, read ONLY on
+    // that ordering.  Negative = library default (sparse_order_ndml_params,
+    // the single OR-2 calibration source).
+    long long ndml_coarsen_stop;
+    int       ndml_fm_passes;
+    int       ndml_balance_pct;
+    long long ndml_leaf_size;
 
     sparse_ldl_symbolic_options()
         : ordering(sparse_ldl_ordering::auto_select),
           level(sparse_ldl_symbolic_level::full),
           amalgamation(sparse_ldl_amalgamation::off),
           amalg_n0(4), amalg_n1(16), amalg_n2(48),
-          amalg_z0(80), amalg_z1(10), amalg_z2(5) {}
+          amalg_z0(80), amalg_z1(10), amalg_z2(5),
+          ndml_coarsen_stop(-1), ndml_fm_passes(-1),
+          ndml_balance_pct(-1), ndml_leaf_size(-1) {}
 };
 
 // ---------------------------------------------------------------------------
@@ -681,6 +690,7 @@ sparse_ldl_symbolic_analyze(
     case sparse_ldl_ordering::rcm:
     case sparse_ldl_ordering::amd:
     case sparse_ldl_ordering::nested_dissection:
+    case sparse_ldl_ordering::nested_dissection_ml:
         break;
     default:
         sym.status = sparse_ldl_symbolic_status::invalid_options;
@@ -722,6 +732,17 @@ sparse_ldl_symbolic_analyze(
     case sparse_ldl_ordering::nested_dissection:
         sym.perm0 = sparse_lu_nested_dissection_ordering(n, col_ptr, row_ind);
         break;
+    case sparse_ldl_ordering::nested_dissection_ml: {
+        // ORD-1: multilevel ND.  Negative option fields keep the library
+        // default of sparse_order_ndml_params (single calibration source).
+        sparse_order_ndml_params prm;
+        if (sopt.ndml_coarsen_stop >= 0) prm.coarsen_stop = sopt.ndml_coarsen_stop;
+        if (sopt.ndml_fm_passes    >= 0) prm.fm_passes    = sopt.ndml_fm_passes;
+        if (sopt.ndml_balance_pct  >= 0) prm.balance_pct  = sopt.ndml_balance_pct;
+        if (sopt.ndml_leaf_size    >= 0) prm.leaf_size    = sopt.ndml_leaf_size;
+        sym.perm0 = sparse_lu_nested_dissection_ml_ordering(n, col_ptr, row_ind, prm);
+        break;
+    }
     default:
         sym.status = sparse_ldl_symbolic_status::internal_error;
         return sym;

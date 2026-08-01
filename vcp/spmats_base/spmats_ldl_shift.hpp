@@ -588,6 +588,7 @@ namespace spmats_ldl_shift_detail {
 		case sparse_ldl_ordering::rcm:
 		case sparse_ldl_ordering::amd:
 		case sparse_ldl_ordering::nested_dissection:
+		case sparse_ldl_ordering::nested_dissection_ml:
 			break;
 		default:
 			shift_handle_access::fail(h, sparse_ldl_status::invalid_options, n, 0);

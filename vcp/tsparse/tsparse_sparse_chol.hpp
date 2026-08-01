@@ -83,7 +83,11 @@ enum class sparse_chol_ordering {
     natural,              // identity permutation; calls no ordering function
     rcm,
     amd,
-    nested_dissection
+    nested_dissection,
+    // ORD-1 (pure addition, ruling D-1): multilevel nested dissection
+    // (dependency-free, METIS-class target; tsparse_order_ndml_impl.hpp).
+    // The existing nested_dissection is kept unchanged for reproducibility.
+    nested_dissection_ml
     // colamd is intentionally absent at the type level (A^T A graph is for
     // nonsymmetric LU; full parity with sparse_ldl_ordering, G3).
 };
@@ -135,6 +139,13 @@ struct sparse_chol_options {
     real_type pd_tol;              // pivot acceptance: certified d > pd_tol.
                                    // default 0 = only certified d > 0 (D-9:
                                    // a certified zero pivot is rejected)
+    // ORD-1 (appended; additive): parameters of ordering =
+    // nested_dissection_ml, read ONLY on that ordering.  Negative = library
+    // default (sparse_order_ndml_params, the single OR-2 calibration source).
+    long long ndml_coarsen_stop;
+    int       ndml_fm_passes;
+    int       ndml_balance_pct;
+    long long ndml_leaf_size;
 
     sparse_chol_options()
         : method(sparse_chol_method::auto_select),
@@ -143,7 +154,9 @@ struct sparse_chol_options {
           // same default policy as policy_is_symmetric (B-4: via the D4
           // customization point, not numeric_limits).
           symmetry_tol(vcp::tsparse_scalar::decimal_power_negative<real_type>(12u)),
-          pd_tol(real_type(0)) {}
+          pd_tol(real_type(0)),
+          ndml_coarsen_stop(-1), ndml_fm_passes(-1),
+          ndml_balance_pct(-1), ndml_leaf_size(-1) {}
 };
 
 template <class T, class Index>
@@ -377,7 +390,11 @@ bool sparse_chol_compute_ordering_(
     const std::vector<Index>& col_ptr,
     const std::vector<Index>& row_ind,
     const sparse_chol_ordering ordering,
-    std::vector<Index>& perm0)
+    std::vector<Index>& perm0,
+    // ORD-1: parameters of nested_dissection_ml only; defaulted so every
+    // pre-ORD-1 caller (incl. the read-only spimats debug layer) compiles
+    // and behaves unchanged.
+    const sparse_order_ndml_params& ndml_prm = sparse_order_ndml_params())
 {
     const std::size_t un = static_cast<std::size_t>(n);
     perm0.resize(un);
@@ -393,6 +410,11 @@ bool sparse_chol_compute_ordering_(
         return true;
     case sparse_chol_ordering::nested_dissection:
         perm0 = sparse_lu_nested_dissection_ordering(n, col_ptr, row_ind);
+        return true;
+    case sparse_chol_ordering::nested_dissection_ml:
+        // ORD-1: multilevel ND (pattern-only, deterministic, D-2).
+        perm0 = sparse_lu_nested_dissection_ml_ordering(n, col_ptr, row_ind,
+                                                        ndml_prm);
         return true;
     default:
         return false;  // auto_select not resolved / unknown: caller bug
@@ -903,6 +925,7 @@ sparse_chol_factorize_with_info(
         case sparse_chol_ordering::rcm:
         case sparse_chol_ordering::amd:
         case sparse_chol_ordering::nested_dissection:
+        case sparse_chol_ordering::nested_dissection_ml:
             res.ordering_used = opt.ordering;
             break;
         default:
@@ -938,8 +961,15 @@ sparse_chol_factorize_with_info(
         // bijective return from the ordering layer is stopped here as
         // internal_error before it can touch the factorization.
         std::vector<Index> perm0;
+        // ORD-1: nested_dissection_ml parameters (negative = library
+        // default); ignored by every other ordering.
+        sparse_order_ndml_params ndml_prm;
+        if (opt.ndml_coarsen_stop >= 0) ndml_prm.coarsen_stop = opt.ndml_coarsen_stop;
+        if (opt.ndml_fm_passes    >= 0) ndml_prm.fm_passes    = opt.ndml_fm_passes;
+        if (opt.ndml_balance_pct  >= 0) ndml_prm.balance_pct  = opt.ndml_balance_pct;
+        if (opt.ndml_leaf_size    >= 0) ndml_prm.leaf_size    = opt.ndml_leaf_size;
         if (!sparse_chol_detail::sparse_chol_compute_ordering_(
-                n, col_ptr, row_ind, res.ordering_used, perm0)) {
+                n, col_ptr, row_ind, res.ordering_used, perm0, ndml_prm)) {
             res.status = sparse_chol_status::internal_error;
             return res;
         }

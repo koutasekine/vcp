@@ -80,7 +80,11 @@ enum class sparse_lu_ordering {
     // width k for the multifrontal numeric source.  Pattern-only column
     // permutation Q (col_perm[new]=old), like rcm/amd/colamd.  Opt-in; the
     // existing orderings are unchanged.
-    nested_dissection
+    nested_dissection,
+    // ORD-1 (pure addition, ruling D-1): multilevel nested dissection
+    // (dependency-free, METIS-class target; tsparse_order_ndml_impl.hpp).
+    // The existing nested_dissection is kept unchanged for reproducibility.
+    nested_dissection_ml
 };
 
 enum class sparse_lu_pivoting {
@@ -332,6 +336,15 @@ struct sparse_lu_options {
     // pre-K1 byte-exact behavior.  Read ONLY by the supernode_panel numeric.
     sparse_lu_panel_gemm_kernel panel_gemm_kernel;
 
+    // ORD-1 (appended LAST; additive): parameters of ordering =
+    // nested_dissection_ml, read ONLY on that ordering.  A negative value
+    // means "use the library default" (sparse_order_ndml_params, the single
+    // OR-2 calibration source); every other ordering ignores these fields.
+    long long ndml_coarsen_stop;
+    int       ndml_fm_passes;
+    int       ndml_balance_pct;
+    long long ndml_leaf_size;
+
     sparse_lu_options()
         : method(sparse_lu_method::auto_select),
           ordering(sparse_lu_ordering::auto_select),
@@ -363,7 +376,9 @@ struct sparse_lu_options {
           supernodal_inplace_frontal(false),
           supernodal_native_check_residual(false),
           supernode_panel_maxsup(64),
-          panel_gemm_kernel(sparse_lu_panel_gemm_kernel::blocked) {}
+          panel_gemm_kernel(sparse_lu_panel_gemm_kernel::blocked),
+          ndml_coarsen_stop(-1), ndml_fm_passes(-1),
+          ndml_balance_pct(-1), ndml_leaf_size(-1) {}
 };
 
 // ===========================================================================
@@ -2564,6 +2579,13 @@ void sparse_lu_validate_etree_reach_inputs(
 #include <vcp/tsparse/detail/tsparse_sparse_lu_ordering_impl.hpp>
 
 // ===========================================================================
+// ORD-1: multilevel nested dissection ordering (dependency-free, METIS-class
+// target).  Injected right after the ordering implementation: it reuses the
+// A + A^T pattern-graph builder and the AMD entry (leaf ordering) from it.
+// ===========================================================================
+#include <vcp/tsparse/detail/tsparse_order_ndml_impl.hpp>
+
+// ===========================================================================
 // SLU-2: Baseline triangular solve helpers and test factory
 // Injected here after convert helpers are available.
 // ===========================================================================
@@ -4321,7 +4343,8 @@ sparse_lu_symbolic(
             (effective_ordering == sparse_lu_ordering::rcm) ||
             (effective_ordering == sparse_lu_ordering::amd) ||
             (effective_ordering == sparse_lu_ordering::colamd) ||
-            (effective_ordering == sparse_lu_ordering::nested_dissection);
+            (effective_ordering == sparse_lu_ordering::nested_dissection) ||
+            (effective_ordering == sparse_lu_ordering::nested_dissection_ml);
         if (effective_ordering == sparse_lu_ordering::rcm) {
             // S-1: pattern-only (reads col_ptr/row_ind, never values).
             sym.col_perm = sparse_lu_rcm_ordering(
@@ -4341,6 +4364,17 @@ sparse_lu_symbolic(
             // Recursive graph bisection; separators numbered last -> wide fronts.
             sym.col_perm = sparse_lu_nested_dissection_ordering(
                 n, A_csc_nat.col_ptr, A_csc_nat.row_ind);
+        } else if (effective_ordering == sparse_lu_ordering::nested_dissection_ml) {
+            // ORD-1: multilevel ND (pattern-only, deterministic, D-2).
+            // Negative option fields keep the library default of
+            // sparse_order_ndml_params (single OR-2 calibration source).
+            sparse_order_ndml_params ndml_prm;
+            if (opt.ndml_coarsen_stop >= 0) ndml_prm.coarsen_stop = opt.ndml_coarsen_stop;
+            if (opt.ndml_fm_passes    >= 0) ndml_prm.fm_passes    = opt.ndml_fm_passes;
+            if (opt.ndml_balance_pct  >= 0) ndml_prm.balance_pct  = opt.ndml_balance_pct;
+            if (opt.ndml_leaf_size    >= 0) ndml_prm.leaf_size    = opt.ndml_leaf_size;
+            sym.col_perm = sparse_lu_nested_dissection_ml_ordering(
+                n, A_csc_nat.col_ptr, A_csc_nat.row_ind, ndml_prm);
         } else {
             // natural (explicit): identity permutation, byte-identical legacy.
             sym.col_perm = sparse_lu_identity_permutation(n);

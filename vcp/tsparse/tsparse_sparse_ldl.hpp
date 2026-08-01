@@ -113,7 +113,11 @@ enum class sparse_ldl_ordering {
     natural,
     rcm,
     amd,
-    nested_dissection
+    nested_dissection,
+    // ORD-1 (pure addition, ruling D-1): multilevel nested dissection
+    // (dependency-free, METIS-class target; tsparse_order_ndml_impl.hpp).
+    // The existing nested_dissection is kept unchanged for reproducibility.
+    nested_dissection_ml
     // colamd is intentionally absent at the type level (A^T A graph is for
     // nonsymmetric LU; design v2 SS3).
 };
@@ -193,6 +197,14 @@ struct sparse_ldl_options {
     real_type pivot_threshold;     // RESERVED (design v2 SS1.3): v0 rejects
                                    // any value not certified equal to 0 with
                                    // invalid_options.
+    // ORD-1 (appended; additive): parameters of ordering =
+    // nested_dissection_ml, read ONLY on that ordering.  A negative value
+    // means "use the library default" (sparse_order_ndml_params, the single
+    // OR-2 calibration source); every other ordering ignores these fields.
+    long long ndml_coarsen_stop;
+    int       ndml_fm_passes;
+    int       ndml_balance_pct;
+    long long ndml_leaf_size;
 
     sparse_ldl_options()
         : method(sparse_ldl_method::auto_select),
@@ -211,7 +223,9 @@ struct sparse_ldl_options {
           // customization point, not numeric_limits).
           symmetry_tol(vcp::tsparse_scalar::decimal_power_negative<real_type>(12u)),
           zero_pivot_tol(real_type(0)),
-          pivot_threshold(real_type(0)) {}
+          pivot_threshold(real_type(0)),
+          ndml_coarsen_stop(-1), ndml_fm_passes(-1),
+          ndml_balance_pct(-1), ndml_leaf_size(-1) {}
 };
 
 template <class T, class Index>
@@ -420,6 +434,12 @@ void sparse_ldl_factorize_numeric_with_info(
             sopt2.amalg_z0 = opt.ldl_amalg_z0;
             sopt2.amalg_z1 = opt.ldl_amalg_z1;
             sopt2.amalg_z2 = opt.ldl_amalg_z2;
+            // ORD-1: keep the ndml parameters aligned with the one-shot
+            // analysis so the recomputed ordering is identical.
+            sopt2.ndml_coarsen_stop = opt.ndml_coarsen_stop;
+            sopt2.ndml_fm_passes    = opt.ndml_fm_passes;
+            sopt2.ndml_balance_pct  = opt.ndml_balance_pct;
+            sopt2.ndml_leaf_size    = opt.ndml_leaf_size;
             const sparse_ldl_symbolic_result<Index> relaxed_sym =
                 sparse_ldl_symbolic_analyze(n, col_ptr, row_ind, sopt2);
             if (relaxed_sym.status != sparse_ldl_symbolic_status::success ||
@@ -694,6 +714,7 @@ sparse_ldl_factorize_with_info(
         case sparse_ldl_ordering::rcm:
         case sparse_ldl_ordering::amd:
         case sparse_ldl_ordering::nested_dissection:
+        case sparse_ldl_ordering::nested_dissection_ml:
             res.ordering_used = opt.ordering;
             break;
         default:
@@ -764,6 +785,12 @@ sparse_ldl_factorize_with_info(
         sopt.amalg_z0 = opt.ldl_amalg_z0;
         sopt.amalg_z1 = opt.ldl_amalg_z1;
         sopt.amalg_z2 = opt.ldl_amalg_z2;
+        // ORD-1: nested_dissection_ml parameters (ignored by every other
+        // ordering; negative = library default).
+        sopt.ndml_coarsen_stop = opt.ndml_coarsen_stop;
+        sopt.ndml_fm_passes    = opt.ndml_fm_passes;
+        sopt.ndml_balance_pct  = opt.ndml_balance_pct;
+        sopt.ndml_leaf_size    = opt.ndml_leaf_size;
         const sparse_ldl_symbolic_result<Index> sym =
             sparse_ldl_symbolic_analyze(n, col_ptr, row_ind, sopt);
         if (sym.status != sparse_ldl_symbolic_status::success) {
