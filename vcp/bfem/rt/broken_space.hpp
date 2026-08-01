@@ -25,6 +25,7 @@
 #include <vcp/spmatrix.hpp>
 
 #include <vcp/bfem/mesh.hpp>
+#include <vcp/bfem/poly_field.hpp>
 #include <vcp/bfem/dofmap.hpp>
 #include <vcp/bfem/fe_space.hpp>          // detail::coo_buffer / spm_adapter
 #include <vcp/bfem/geometry.hpp>
@@ -186,6 +187,63 @@ public:
 #endif
         buf_.combine();
         return detail::spm_adapter<T, SP>::build(ndof(), ndof(), buf_);
+    }
+
+    // ---- PF-1 L2-2: load (f, q_i) for a coordinate polynomial field ----
+    //
+    // L2-2 の用途(重要)(PF-1 設計書 §4 より全文転記):
+    // broken_space::load は荷重ベクトル (f, q_i) の計算を提供するだけであり、
+    // NS の非圧縮制約の右辺は 0 のままなので NS 本体では呼ばれない。SV の
+    // 厳密 div-free 性は制約側((div u_h, q_h) = 0 ∀q_h、div V_h ⊆ Q_h)の
+    // 性質であって右辺の API とは独立に保たれる。L2-2 の実際の用途は:
+    //
+    //   (i)   hypercircle の制約右辺 (ϵ div p_h − g, q_h) = 0 における
+    //         (g, q_h) の計算
+    //   (ii)  div u = g 型(圧縮性・湧き出しあり)の問題を意図的に解く場合
+    //   (iii) 双対問題・誤差評価での汎関数計算
+    //
+    // 誤って NS の圧力ブロック右辺に置けば div u_h = g を課したことになる。
+    // その帰結は API のバグではなく問題設定の変更だが、誤用防止のため
+    // ここに明記する。
+    //
+    // The polynomial degree of this space is fixed at construction, so no
+    // degree argument is taken (design section 2, rule 4); the integrand is
+    // restricted at n = max(f.total_degree(), order()). Element loop /
+    // local_load kernel / identity scatter mirror
+    // fe_space::load(poly_field, m). broken_space stores no mesh member, so
+    // the mesh view required by restrict_to is rebuilt once per call from
+    // the stored element geometries -- vertex order is exactly the element
+    // vertex order used at construction, hence the restriction is identical.
+    vcp::matrix<T, P> load(const poly_field<D, T>& f) {
+        vcp::matrix<T, P> F;
+        F.zeros(ndof(), 1);
+        if (f.is_zero()) return F;
+        const int n = f.total_degree() > l_ ? f.total_degree() : l_;
+        std::vector<std::array<T, D> > verts;
+        verts.reserve(static_cast<std::size_t>(nt_)
+                      * static_cast<std::size_t>(D + 1));
+        std::vector<std::array<int, D + 1> > elems(
+            static_cast<std::size_t>(nt_));
+        for (int e = 0; e < nt_; ++e) {
+            const std::array<std::array<T, D>, D + 1>& vv =
+                geom_[static_cast<std::size_t>(e)].vertices();
+            for (int k = 0; k <= D; ++k) {
+                elems[static_cast<std::size_t>(e)][static_cast<std::size_t>(k)] =
+                    static_cast<int>(verts.size());
+                verts.push_back(vv[static_cast<std::size_t>(k)]);
+            }
+        }
+        mesh<D, T> msh =
+            mesh<D, T>::from_lists(std::move(verts), std::move(elems));
+        bpoly<D, T> w;
+        for (int e = 0; e < nt_; ++e) {              // element order (X9)
+            op_.set_geometry(geom_[static_cast<std::size_t>(e)]);
+            w = f.restrict_to(msh, e, n);
+            op_.local_load(w, l_, loc_);
+            detail::scatter_vector(dm_, e, loc_.data(), nloc_, F,
+                                   detail::broken_dofmap::family_tag());
+        }
+        return F;
     }
 
     // ---- L2 scalar: (u, v)_{L2(Omega)} of two broken fields ----

@@ -46,6 +46,7 @@
 #include <vcp/spmatrix.hpp>
 
 #include <vcp/bfem/mesh.hpp>
+#include <vcp/bfem/poly_field.hpp>
 #include <vcp/bfem/dofmap.hpp>
 #include <vcp/bfem/d3/dofmap3.hpp>
 #include <vcp/bfem/fe_function.hpp>
@@ -183,6 +184,28 @@ public:
             for (std::size_t k = 0; k < s.size(); ++k)
                 out.push_back(d * N + s[k]);
         return out;
+    }
+
+    // ---- PF-1 L2-3: load (f_c, psi_i) per component, component-major ----
+    // Runs L2-1 (fe_space::load(poly_field, m)) on the wrapped scalar space
+    // for each component and places component c at rows [c*N, (c+1)*N)
+    // (SV-2 numbering, the same convention as the sv_assemble vector
+    // assemblers); is_zero() components are skipped and their block stays
+    // zero. The array argument keeps the call a single load per field
+    // (design section 2, rule 5).
+    vcp::matrix<T, P> load(const std::array<poly_field<D, T>, D>& f,
+                           int m) const {
+        const int N = scalar_->ndof(m);
+        vcp::matrix<T, P> F;
+        F.zeros(D * N, 1);
+        for (int c = 0; c < D; ++c) {
+            if (f[static_cast<std::size_t>(c)].is_zero()) continue;
+            vcp::matrix<T, P> Fc =
+                scalar_->load(f[static_cast<std::size_t>(c)], m);
+            for (int i = 0; i < N; ++i)
+                F(c * N + i, 0) = Fc(i, 0);
+        }
+        return F;
     }
 
     // ---- component view (copy extraction) and write-back ----

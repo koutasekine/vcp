@@ -67,6 +67,7 @@
 #include <vcp/spmatrix.hpp>
 
 #include <vcp/bfem/mesh.hpp>
+#include <vcp/bfem/poly_field.hpp>
 #include <vcp/bfem/dofmap.hpp>
 #include <vcp/bfem/d3/dofmap3.hpp>
 #include <vcp/bfem/fe_function.hpp>
@@ -431,6 +432,28 @@ public:
             op_.set_geometry(geom_[static_cast<std::size_t>(e)]);
             gather_fn(dmu, e, uh, uloc_);
             compose_into(wloc_, f, uloc_, cws_);             // B-5: fe_space buffers
+            op_.local_load(wloc_, m, loc_);
+            detail::scatter_vector(dmm, e, loc_.data(), dmm.local_size(), F,
+                                   typename dofmap<D>::family_tag());
+        }
+        return F;
+    }
+
+    // ---- PF-1 L2-1: load (f, psi_i) for a coordinate polynomial field ----
+    // Same element loop / kernel / scatter as load(poly1, uh, m) above; only
+    // the composed bpoly is replaced by f.restrict_to. The integrand degree
+    // n = max(f.total_degree(), m) (>= total_degree, so restrict_to is
+    // exact); local_load's degree argument is the TEST BASIS degree m
+    // (element_op.hpp G4: F_alpha = (w, phi^m_alpha)_T, exact for any deg w).
+    vcp::matrix<T, P> load(const poly_field<D, T>& f, int m) {
+        const dofmap<D>& dmm = dofs(m);
+        vcp::matrix<T, P> F;
+        F.zeros(dmm.ndof(), 1);
+        if (f.is_zero()) return F;
+        const int n = f.total_degree() > m ? f.total_degree() : m;
+        for (int e = 0; e < topo_.nt; ++e) {                 // element order (X9)
+            op_.set_geometry(geom_[static_cast<std::size_t>(e)]);
+            wloc_ = f.restrict_to(mesh_, e, n);
             op_.local_load(wloc_, m, loc_);
             detail::scatter_vector(dmm, e, loc_.data(), dmm.local_size(), F,
                                    typename dofmap<D>::family_tag());

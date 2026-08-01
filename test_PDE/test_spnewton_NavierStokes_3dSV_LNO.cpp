@@ -68,14 +68,13 @@
 // This file prints the L2 quantities for comparison.
 //
 // The body force f = (15(1-y)^2, 0, 10 z^2) depends on the COORDINATES, not
-// on a finite element function, so fe_space::load(poly1, fe_function, m)
-// cannot be used directly.  Instead the load vector is assembled from
-// coordinate functions built by interpolation: for the P^m LAGRANGE basis the
-// coefficient vector of any polynomial of degree <= m is simply its values at
-// the Lagrange nodes, and fe_space exposes the node coordinates through
-// dof_points(m).  The composition 15(1-y)^2 is then evaluated through the
-// poly1 machinery on the coordinate function y, which is exact because
-// deg( (1-y)^2 ) = 2 <= m.
+// on a finite element function.  It is assembled through the PF-1 unified
+// load API: each component is a vcp::bfem::poly_field<3,T> built with
+// add_term, and the load vector is one vfe_space::load(fvec, m) call
+// (component-major).  The restriction of f to every element is exact
+// (poly_field::restrict_to, Bernstein degree products), so this is
+// mathematically the same load vector as the former workaround (coordinate
+// functions by dofmap traversal + load(poly1, uh, m)), which PF-1 removed.
 //
 // Build (headers only):
 //     g++ -O2 -std=c++11 -I<path to vcp root> test_spnewton_NavierStokes_3dSV_LNO.cpp
@@ -106,8 +105,7 @@
 #include <vcp/bfem/meshgen3.hpp>
 #include <vcp/bfem/fe_space.hpp>
 #include <vcp/bfem/dirichlet.hpp>
-#include <vcp/bfem/poly1.hpp>
-#include <vcp/bfem/multi_index.hpp>
+#include <vcp/bfem/poly_field.hpp>
 #include <vcp/bfem/rt/broken_space.hpp>
 #include <vcp/bfem/sv/alfeld.hpp>
 #include <vcp/bfem/sv/vfe_space.hpp>
@@ -142,7 +140,7 @@ struct NAVIERSTOKES3DSVLNO : public vcp::SpNewton< _T, _PM, _SP > {
     std::unique_ptr< constraint_type > SvRows;
     std::unique_ptr< dirichlet_type >  PinPressure;
 
-    std::unique_ptr< vcp::bfem::mesh< 3, _T > > Th;  // kept for coordinate functions
+    std::unique_ptr< vcp::bfem::mesh< 3, _T > > Th;  // owner of the Alfeld mesh
     spmatrix_type Kfull;                     // vector stiffness, UNSCALED, full
     spmatrix_type Mscal;                     // scalar mass, full
     spmatrix_type A;                         // nu * vector stiffness (reduced)
@@ -311,32 +309,6 @@ private:
         return v;
     }
 
-    // Coordinate function x_d as an fe_function.  fe_function stores
-    // BERNSTEIN coefficients (fe_function.hpp header note); by the linear
-    // precision of the Bernstein basis, the degree-m Bernstein coefficients
-    // of a LINEAR polynomial are its values at the barycentric lattice
-    // points alpha/m.  So the coefficient of global dof g is the coordinate
-    // of its lattice point, reconstructed from the element/local-rank pairs
-    // of the dofmap.  Exact for linear functions -- y and z are linear.
-    vector_type coordinate_function(const int d) {
-        const vcp::bfem::dofmap< 3 >& dm = Vs->dofs(m);
-        const vcp::bfem::index_map< 3 > im(m);
-        vector_type c;
-        c.zeros(Vs->ndof(m), 1);
-        for (int e = 0; e < Th->num_elements(); e++) {
-            const std::array< int, 4 >& tet = Th->element(e);
-            for (int r = 0; r < dm.local_size(); r++) {
-                const vcp::bfem::multi_index< 3 > al = im.unrank(r);
-                _T x = _T(0);
-                for (int i = 0; i < 4; i++) {
-                    x += (_T(al.a[i]) / _T(m)) * Th->vertex(tet[i])[d];
-                }
-                c(dm.global_dof(e, r), 0) = x;
-            }
-        }
-        return c;
-    }
-
     // std::vector -> n x 1 vcp::matrix (std::copy; no hand-written loop)
     static vector_type as_column(const std::vector< _T >& v, int n) {
         vector_type col;
@@ -346,33 +318,24 @@ private:
     }
 
     vector_type body_force_LNO() {
-        // f1 = 15 (1-y)^2 = 15 - 30 y + 15 y^2  (degree 2 <= m: exact)
-        std::vector< _T > a1(3, _T(0));
-        a1[0] = _T(15);
-        a1[1] = _T(-30);
-        a1[2] = _T(15);
-        vcp::bfem::poly1< _T > f1 = vcp::bfem::poly1< _T >::from_coeffs(a1);
+        // PF-1 unified load API: f = ( 15(1-y)^2, 0, 10 z^2 ) as coordinate
+        // polynomials, one poly_field per component, one load call on the
+        // velocity space (component-major layout inside vfe_space::load).
+        vcp::bfem::poly_field< 3, _T > f1;           // 15(1-y)^2
+        f1.add_term(_T(15),  0, 0, 0);
+        f1.add_term(_T(-30), 0, 1, 0);
+        f1.add_term(_T(15),  0, 2, 0);
 
-        // f3 = 10 z^2  (degree 2 <= m: exact)
-        std::vector< _T > a3(3, _T(0));
-        a3[2] = _T(10);
-        vcp::bfem::poly1< _T > f3 = vcp::bfem::poly1< _T >::from_coeffs(a3);
+        vcp::bfem::poly_field< 3, _T > f2;           // 0 (zero polynomial)
 
-        typename scalar_space::function_type ycoord =
-            Vs->function_from_coeffs(m, coordinate_function(1));
-        typename scalar_space::function_type zcoord =
-            Vs->function_from_coeffs(m, coordinate_function(2));
+        vcp::bfem::poly_field< 3, _T > f3;           // 10 z^2
+        f3.add_term(_T(10), 0, 0, 2);
 
-        vector_type l1 = Vs->load(f1, ycoord, m);   // ( 15(1-y)^2, psi_i )
-        vector_type l3 = Vs->load(f3, zcoord, m);   // ( 10 z^2,    psi_i )
-
-        // component-major layout: component c occupies [c*N, (c+1)*N)
-        const int N = Vs->ndof(m);
-        vector_type F;
-        F.zeros(Vh->ndof(m), 1);
-        std::copy(l1.vecpointer().begin(), l1.vecpointer().end(), F.data());
-        std::copy(l3.vecpointer().begin(), l3.vecpointer().end(), F.data() + 2 * N);
-        return NoSlip->reduce(F);
+        std::array< vcp::bfem::poly_field< 3, _T >, 3 > fvec;
+        fvec[0] = f1;
+        fvec[1] = f2;
+        fvec[2] = f3;
+        return NoSlip->reduce(Vh->load(fvec, m));
     }
 };
 
