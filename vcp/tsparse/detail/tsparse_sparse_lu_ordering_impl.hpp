@@ -387,6 +387,27 @@ inline void sparse_lu_amd_sorted_remove_set(std::vector<Index>& a,
     a.swap(out);
 }
 
+// ORD-F2 Phase A2: in-place variant of the set difference above, used by the
+// amd section only (the colamd section keeps the allocating form).  Same
+// two-pointer scan compacting into `a` itself (write cursor k <= read cursor
+// i at all times), so the resulting content is identical while the per-call
+// output allocation disappears.
+template <class Index>
+inline void sparse_lu_amd_sorted_remove_set_inplace_(
+    std::vector<Index>& a,
+    const std::vector<Index>& rm)
+{
+    if (rm.empty() || a.empty()) return;
+    const std::size_t an = a.size(), rn = rm.size();
+    std::size_t i = 0, j = 0, k = 0;
+    while (i < an) {
+        while (j < rn && rm[j] < a[i]) ++j;
+        if (j < rn && rm[j] == a[i]) { ++i; continue; }
+        a[k++] = a[i++];
+    }
+    a.resize(k);
+}
+
 template <class Index>
 inline bool sparse_lu_amd_lists_equal(const std::vector<Index>& a,
                                       const std::vector<Index>& b)
@@ -429,6 +450,81 @@ inline void sparse_lu_ordering_cand_retire_(
     cand.erase(std::make_pair(degree[static_cast<std::size_t>(i)], i));
 }
 
+// ---------------------------------------------------------------------------
+// ORD-F2 Phase A1: lazy-deletion binary-heap variant of the update_degree
+// helper above, used by the amd section only (the colamd section keeps the
+// std::set form; the helper overloads on the container type).  Same total
+// order as the std::set it replaces -- minimum (degree, index) entry on top
+// via std::push_heap / std::pop_heap with the "greater" comparator below
+// (the ORD-F1 Phase 2 mechanism; a local functor instead of std::greater
+// because this header is injected inside namespace vcp and must not pull in
+// <functional> there).  Entries are pushed on every degree rewrite and never
+// erased; a popped entry is valid iff
+//     alive[v] && !is_element[v] && key == degree[v]
+// (checked at the selection site).  A retire helper is unnecessary for the
+// heap (ORD-F3 P2): eligibility-loss sites just flip alive[v] to 0, which
+// stales every stored entry of v -- lazy deletion needs nothing else.
+// Duplicate live (key, v) entries can exist when a degree returns to a
+// former value; selection adopts exactly one entry per pivot and the adopted
+// vertex immediately becomes an element (!alive && is_element), so leftover
+// duplicates are invalidated -- no ORD-F1-style duplicate-scan stamp needed.
+// ---------------------------------------------------------------------------
+struct sparse_lu_ordering_pq_greater_ {
+    template <class E>
+    bool operator()(const E& a, const E& b) const { return b < a; }
+};
+
+// ORD-F3 P1: compaction guard for the lazy-deletion heap.  Rebuilds `cand`
+// in place keeping ONLY the currently-valid entries
+//     key == degree[v] && alive[v] && !is_element[v]
+// and re-heapifies with the same comparator.  Byte-identity argument: the
+// pop-time validity check already discards every stale entry, so dropping
+// them here preserves the multiset of VALID entries exactly (equal-key
+// duplicates of a still-valid vertex are kept) -- the sequence of adopted
+// (degree, index) minima, hence the emitted permutation, is unchanged.
+template <class Index>
+inline void sparse_lu_ordering_heap_compact_(
+    std::vector<std::pair<Index, Index> >& cand,
+    const std::vector<Index>& degree,
+    const std::vector<char>& alive,
+    const std::vector<char>& is_element)
+{
+    std::size_t k = 0;
+    for (std::size_t s = 0; s < cand.size(); ++s) {
+        const std::size_t uv = static_cast<std::size_t>(cand[s].second);
+        if (alive[uv] && !is_element[uv] && cand[s].first == degree[uv]) {
+            cand[k++] = cand[s];
+        }
+    }
+    cand.resize(k);
+    std::make_heap(cand.begin(), cand.end(), sparse_lu_ordering_pq_greater_());
+}
+
+template <class Index>
+inline void sparse_lu_ordering_cand_update_degree_(
+    std::vector<std::pair<Index, Index> >& cand,
+    std::vector<Index>& degree,
+    const Index i,
+    const Index new_degree,
+    const std::vector<char>& alive,
+    const std::vector<char>& is_element,
+    const Index n_hint)
+{
+    degree[static_cast<std::size_t>(i)] = new_degree;
+    cand.push_back(std::make_pair(new_degree, i));
+    std::push_heap(cand.begin(), cand.end(), sparse_lu_ordering_pq_greater_());
+    // ORD-F3 P1 compaction guard.  Internal constant 8n: 2x head-room over
+    // the observed ~3.9n series peak (design §1 P1), so it never fires on
+    // the normal series and exists purely as a hard O(n)-rebuild memory
+    // bound.  Amortized O(1): a rebuild of size > 8n is preceded by > 4n
+    // pushes since the previous one (a rebuild leaves <= one valid entry
+    // per selectable vertex plus equal-key duplicates <= heap growth since
+    // then).
+    if (cand.size() > 8u * static_cast<std::size_t>(n_hint)) {
+        sparse_lu_ordering_heap_compact_(cand, degree, alive, is_element);
+    }
+}
+
 template <class Index>
 std::vector<Index> sparse_lu_amd_ordering(
     Index n,
@@ -463,7 +559,16 @@ std::vector<Index> sparse_lu_amd_ordering(
     std::vector<std::vector<Index> > A_var(un);
     std::vector<std::vector<Index> > E_elem(un);
     std::vector<std::vector<Index> > V_elem(un);
-    std::vector<std::vector<Index> > members(un);  // original variables represented
+    // ORD-F3 P3: the represented-original-variables list `members` (formerly
+    // vector<vector<Index>>, one allocation per vertex) flattened to an
+    // intrusive linked list over the vertex ids: the chain of principal i,
+    // followed head -> next until -1, enumerates EXACTLY the sequence the
+    // former members[i] vector held (init = singleton {i}; merge = append
+    // j's whole chain at i's tail, the same concatenation order as the
+    // former insert(end, begin, end)).
+    std::vector<Index> mem_head(un);               // chain start (= i itself)
+    std::vector<Index> mem_next(un, Index(-1));    // successor, -1 terminates
+    std::vector<Index> mem_tail(un);               // last node of i's chain
     std::vector<Index> nv(un, Index(1));           // supervariable mass
     std::vector<Index> elem_size(un, Index(0));    // |Le| mass (elements only)
     std::vector<Index> degree(un, Index(0));       // approximate external degree
@@ -475,15 +580,20 @@ std::vector<Index> sparse_lu_amd_ordering(
         const std::size_t e = static_cast<std::size_t>(adj_ptr[i + 1u]);
         A_var[i].assign(adj_ind.begin() + b, adj_ind.begin() + e);
         degree[i] = static_cast<Index>(A_var[i].size());  // nv == 1 initially
-        members[i].push_back(static_cast<Index>(i));
+        mem_head[i] = static_cast<Index>(i);   // singleton chain {i}
+        mem_tail[i] = static_cast<Index>(i);
     }
 
-    // SLU-OQ1: ordered candidate set (design D-1).  Invariant: one
-    // (degree[i], i) pair per selectable vertex (alive && !is_element).
-    std::set<std::pair<Index, Index> > cand;
+    // SLU-OQ1: ordered candidate set (design D-1) -- since ORD-F2 Phase A1 a
+    // lazy-deletion binary heap with the same total order (see the helper
+    // block above): at least one (degree[i], i) entry per selectable vertex,
+    // stale entries discarded at pop time.
+    std::vector<std::pair<Index, Index> > cand;
+    cand.reserve(un);
     for (Index i = Index(0); i < n; ++i) {
-        cand.insert(std::make_pair(degree[static_cast<std::size_t>(i)], i));
+        cand.push_back(std::make_pair(degree[static_cast<std::size_t>(i)], i));
     }
+    std::make_heap(cand.begin(), cand.end(), sparse_lu_ordering_pq_greater_());
 
     std::vector<Index> order;
     order.reserve(un);
@@ -496,20 +606,47 @@ std::vector<Index> sparse_lu_amd_ordering(
     // Per-pivot Lp membership marker (reset via lp_touched after each pivot).
     std::vector<char> in_lp(un, 0);
 
+    // ORD-F2 Phase A2: per-pivot scratch hoisted out of the pivot loop so the
+    // capacities are reused across pivots (cleared / re-assigned at the top of
+    // each use; contents per pivot are identical to the former loop-local
+    // vectors).
+    std::vector<Index> lp;
+    std::vector<Index> lp_touched;
+    std::vector<Index> absorbed;
+    std::vector<Index> rmv;
+    std::vector<Index> touched_elems;
+    std::vector<Index> agg;
+    std::vector<Index> merged;
+    std::vector<std::pair<unsigned long long, Index> > hb;
+
     Index eliminated = Index(0);
 
     while (eliminated < n) {
         // ---- pivot selection: min approximate degree, tie-break smallest index.
-        // SLU-OQ1: *cand.begin() = lexicographic min of (degree, index) --
-        // identical to the former ascending linear scan (design F1), O(log n).
-        if (cand.empty()) break;  // defensive (was: p < 0 fallthrough)
-        const Index p = cand.begin()->second;
-        cand.erase(cand.begin());  // p becomes an element below (T-A1)
+        // SLU-OQ1 / ORD-F2 Phase A1: the first VALID popped entry
+        // (alive && !is_element && key == degree[v]) is the lexicographic min
+        // of (degree, index) among selectable vertices -- identical to
+        // *cand.begin() of the former std::set (design F1), so the emitted
+        // permutation is bit-identical.  Adopting the popped entry replaces
+        // the former cand.erase(cand.begin()) (T-A1).
+        Index p = Index(-1);
+        while (!cand.empty()) {
+            const std::pair<Index, Index> top = cand.front();
+            std::pop_heap(cand.begin(), cand.end(),
+                          sparse_lu_ordering_pq_greater_());
+            cand.pop_back();
+            const std::size_t uv = static_cast<std::size_t>(top.second);
+            if (alive[uv] && !is_element[uv] && top.first == degree[uv]) {
+                p = top.second;  // p becomes an element below (T-A1)
+                break;
+            }
+        }
+        if (p < Index(0)) break;  // defensive (was: cand.empty() fallthrough)
         const std::size_t up = static_cast<std::size_t>(p);
 
         // ---- form Lp = (A_var[p]) U (U_{e in E_elem[p]} V_elem[e]) \ {p}.
-        std::vector<Index> lp;
-        std::vector<Index> lp_touched;
+        lp.clear();
+        lp_touched.clear();
         for (std::size_t t = 0; t < A_var[up].size(); ++t) {
             const Index j = A_var[up][t];
             const std::size_t uj = static_cast<std::size_t>(j);
@@ -531,7 +668,7 @@ std::vector<Index> sparse_lu_amd_ordering(
         std::sort(lp.begin(), lp.end());
 
         // Elements absorbed exactly into the new element ep := p.
-        std::vector<Index> absorbed = E_elem[up];  // sorted
+        absorbed.assign(E_elem[up].begin(), E_elem[up].end());  // sorted
 
         // ---- turn p into element ep.  Its members are already eliminated below.
         is_element[up] = 1;
@@ -544,15 +681,15 @@ std::vector<Index> sparse_lu_amd_ordering(
         elem_size[up] = lp_mass;
 
         // Removal set for variable lists: Lp U {p}.
-        std::vector<Index> rmv = lp;
+        rmv.assign(lp.begin(), lp.end());
         sparse_lu_amd_sorted_insert(rmv, p);
 
         // ---- rewrite each i in Lp: drop redundant variable edges (Lp, p), drop
         // absorbed elements, attach ep.
         for (std::size_t t = 0; t < lp.size(); ++t) {
             const std::size_t ui = static_cast<std::size_t>(lp[t]);
-            sparse_lu_amd_sorted_remove_set(A_var[ui], rmv);
-            sparse_lu_amd_sorted_remove_set(E_elem[ui], absorbed);
+            sparse_lu_amd_sorted_remove_set_inplace_(A_var[ui], rmv);
+            sparse_lu_amd_sorted_remove_set_inplace_(E_elem[ui], absorbed);
             sparse_lu_amd_sorted_insert(E_elem[ui], p);
         }
         // Retire absorbed elements (only Lp referenced them).
@@ -565,7 +702,7 @@ std::vector<Index> sparse_lu_amd_ordering(
         // ---- set differences elem_w[e] = |Le \ Lp| for elements e adjacent to
         // Lp (e != ep), via the standard stamp trick.
         ++stamp;
-        std::vector<Index> touched_elems;
+        touched_elems.clear();
         for (std::size_t t = 0; t < lp.size(); ++t) {
             const std::size_t ui = static_cast<std::size_t>(lp[t]);
             const std::vector<Index>& Ei = E_elem[ui];
@@ -584,7 +721,7 @@ std::vector<Index> sparse_lu_amd_ordering(
 
         // ---- aggressive element absorption: |Le \ Lp| == 0  =>  Le subset of Lp
         // (all of e's variables are in ep), so e is redundant; absorb into ep.
-        std::vector<Index> agg;
+        agg.clear();
         for (std::size_t s = 0; s < touched_elems.size(); ++s) {
             const Index e = touched_elems[s];
             if (elem_w[static_cast<std::size_t>(e)] == Index(0)) agg.push_back(e);
@@ -592,7 +729,7 @@ std::vector<Index> sparse_lu_amd_ordering(
         if (!agg.empty()) {
             std::sort(agg.begin(), agg.end());
             for (std::size_t t = 0; t < lp.size(); ++t) {
-                sparse_lu_amd_sorted_remove_set(
+                sparse_lu_amd_sorted_remove_set_inplace_(
                     E_elem[static_cast<std::size_t>(lp[t])], agg);
             }
             for (std::size_t s = 0; s < agg.size(); ++s) {
@@ -608,7 +745,7 @@ std::vector<Index> sparse_lu_amd_ordering(
         // Bucket by a structural hash via a sorted (hash, index) vector, then
         // compare exactly within a run of equal hashes.
         if (lp.size() > 1u) {
-            std::vector<std::pair<unsigned long long, Index> > hb;
+            hb.clear();
             hb.reserve(lp.size());
             for (std::size_t t = 0; t < lp.size(); ++t) {
                 const Index i = lp[t];
@@ -632,6 +769,7 @@ std::vector<Index> sparse_lu_amd_ordering(
             for (std::size_t a = 0; a < hb.size(); ++a) {
                 const std::size_t ui = static_cast<std::size_t>(hb[a].second);
                 if (!alive[ui]) continue;
+                merged.clear();
                 for (std::size_t b = a + 1;
                      b < hb.size() && hb[b].first == hb[a].first; ++b) {
                     const Index j = hb[b].second;
@@ -639,24 +777,51 @@ std::vector<Index> sparse_lu_amd_ordering(
                     if (!alive[uj]) continue;
                     if (!sparse_lu_amd_lists_equal(A_var[ui], A_var[uj])) continue;
                     if (!sparse_lu_amd_lists_equal(E_elem[ui], E_elem[uj])) continue;
-                    // Merge j (larger index) into i (smaller index).
+                    // Merge j (larger index) into i (smaller index).  The
+                    // V_elem / A_var removals of j are deferred to the batch
+                    // below (ORD-F2 Phase A2).
                     nv[ui] += nv[uj];
-                    members[ui].insert(members[ui].end(),
-                                       members[uj].begin(), members[uj].end());
-                    members[uj].clear();
-                    for (std::size_t s = 0; s < E_elem[uj].size(); ++s) {
-                        sparse_lu_amd_sorted_remove_one(
-                            V_elem[static_cast<std::size_t>(E_elem[uj][s])], j);
-                    }
-                    for (std::size_t s = 0; s < A_var[uj].size(); ++s) {
-                        sparse_lu_amd_sorted_remove_one(
-                            A_var[static_cast<std::size_t>(A_var[uj][s])], j);
-                    }
-                    sparse_lu_ordering_cand_retire_(cand, degree, j);  // T-A2
+                    // ORD-F3 P3: append j's whole chain at i's tail -- the
+                    // same concatenation order as the former
+                    // members[ui].insert(end, begin, end).  No clear of j's
+                    // chain is needed: j goes !alive here and is never
+                    // selected as pivot nor as principal again, so its chain
+                    // is only ever reached through i from now on.
+                    mem_next[static_cast<std::size_t>(mem_tail[ui])] =
+                        mem_head[uj];
+                    mem_tail[ui] = mem_tail[uj];
+                    merged.push_back(j);
+                    // T-A2: no cand retire needed (lazy heap) -- flipping
+                    // alive[uj] below stales every stored entry of j.
                     alive[uj] = 0;
                     nv[uj] = Index(0);
                     A_var[uj].clear();
                     E_elem[uj].clear();
+                }
+                // ORD-F2 Phase A2: batched removal of the merged j's.  Every
+                // merged j had A_var[uj] == A_var[ui] and E_elem[uj] ==
+                // E_elem[ui] (the merge condition), and the principal's two
+                // lists never change during this run (i is not a member of
+                // its own lists, so no removal above targets them).  Hence
+                // one remove-set pass per target list over the ascending
+                // `merged` values performs exactly the removals the former
+                // per-j sorted_remove_one calls did.  Deferral cannot flip a
+                // later verdict in the run: a candidate whose lists a
+                // deferred removal would touch is adjacent to a merged j,
+                // i.e. it appears in A_var[ui] while never containing itself
+                // -- such a candidate fails lists_equal against the
+                // principal in both orderings.
+                if (!merged.empty()) {
+                    const std::vector<Index>& Ei = E_elem[ui];
+                    for (std::size_t s = 0; s < Ei.size(); ++s) {
+                        sparse_lu_amd_sorted_remove_set_inplace_(
+                            V_elem[static_cast<std::size_t>(Ei[s])], merged);
+                    }
+                    const std::vector<Index>& Ai = A_var[ui];
+                    for (std::size_t s = 0; s < Ai.size(); ++s) {
+                        sparse_lu_amd_sorted_remove_set_inplace_(
+                            A_var[static_cast<std::size_t>(Ai[s])], merged);
+                    }
                 }
             }
         }
@@ -688,12 +853,16 @@ std::vector<Index> sparse_lu_amd_ordering(
             if (dB < d) d = dB;
             if (dA < d) d = dA;
             if (d < Index(0)) d = Index(0);
-            sparse_lu_ordering_cand_update_degree_(cand, degree, lp[t], d);  // W-A2
+            sparse_lu_ordering_cand_update_degree_(cand, degree, lp[t], d,
+                                                   alive, is_element, n);  // W-A2
         }
 
-        // ---- emit the original variables represented by p, in member order.
-        for (std::size_t s = 0; s < members[up].size(); ++s) {
-            order.push_back(members[up][s]);
+        // ---- emit the original variables represented by p, in member order
+        // (ORD-F3 P3: walk the chain head -> next; same sequence as the
+        // former members[up] vector iteration).
+        for (Index s = mem_head[up]; s >= Index(0);
+             s = mem_next[static_cast<std::size_t>(s)]) {
+            order.push_back(s);
         }
         eliminated += nv[up];
 
@@ -837,12 +1006,28 @@ std::vector<Index> sparse_lu_colamd_ordering(
         col_deg[uj] = cnt;
     }
 
-    // SLU-OQ1: ordered candidate set (design D-1).  Invariant: one
-    // (col_deg[j], j) pair per selectable column (col_alive).
-    std::set<std::pair<Index, Index> > cand;
+    // SLU-OQ1: ordered candidate set (design D-1) -- since ORD-F3 P4 a
+    // lazy-deletion binary heap (the ORD-F2 A1 mechanism rolled out
+    // horizontally): at least one (col_deg[j], j) entry per selectable
+    // column, minimum on top via pq_greater_, stale entries discarded at
+    // pop time by the validity check
+    //     col_alive[v] && key == col_deg[v].
+    // No duplicate-scan stamp is needed, same argument as amd: exactly one
+    // entry is adopted per pivot and the adopted column immediately goes
+    // col_alive = 0, which stales every leftover entry of it.  Named candq
+    // (not cand) because the aggressive-absorption block below has a local
+    // scratch vector `cand` of its own (candidate ELEMENTS -- untouched).
+    // The pop-time validity check reuses the shared update helper, whose
+    // is_element argument is served by an all-zero array (columns never
+    // become elements in colamd's column view; new elements live in V_elem
+    // ids >= n and never enter candq).
+    std::vector<std::pair<Index, Index> > candq;
+    candq.reserve(un);
     for (Index j = Index(0); j < n; ++j) {
-        cand.insert(std::make_pair(col_deg[static_cast<std::size_t>(j)], j));
+        candq.push_back(std::make_pair(col_deg[static_cast<std::size_t>(j)], j));
     }
+    std::make_heap(candq.begin(), candq.end(), sparse_lu_ordering_pq_greater_());
+    const std::vector<char> col_is_element(un, 0);  // always 0, see above
 
     std::vector<Index> order;
     order.reserve(un);
@@ -851,11 +1036,25 @@ std::vector<Index> sparse_lu_colamd_ordering(
 
     while (eliminated < n) {
         // ---- pivot: minimum external degree, tie-break smallest index (S-5).
-        // SLU-OQ1: *cand.begin() = lexicographic min of (degree, index) --
-        // identical to the former ascending linear scan (design F1), O(log n).
-        if (cand.empty()) break;  // defensive (was: p < 0 fallthrough)
-        const Index p = cand.begin()->second;
-        cand.erase(cand.begin());  // p is eliminated below (T-C1)
+        // SLU-OQ1 / ORD-F3 P4: the first VALID popped entry
+        // (col_alive && key == col_deg[v]) is the lexicographic min of
+        // (degree, index) among selectable columns -- identical to
+        // *cand.begin() of the former std::set (design F1), so the emitted
+        // permutation is bit-identical.  Adopting the popped entry replaces
+        // the former cand.erase(cand.begin()) (T-C1).
+        Index p = Index(-1);
+        while (!candq.empty()) {
+            const std::pair<Index, Index> top = candq.front();
+            std::pop_heap(candq.begin(), candq.end(),
+                          sparse_lu_ordering_pq_greater_());
+            candq.pop_back();
+            const std::size_t uv = static_cast<std::size_t>(top.second);
+            if (col_alive[uv] && top.first == col_deg[uv]) {
+                p = top.second;  // p goes col_alive = 0 below (T-C1)
+                break;
+            }
+        }
+        if (p < Index(0)) break;  // defensive (was: cand.empty() fallthrough)
         const std::size_t up = static_cast<std::size_t>(p);
 
         // ---- form Lp = union of V_elem[e] over e in E_col[p], live columns,
@@ -987,7 +1186,9 @@ std::vector<Index> sparse_lu_colamd_ordering(
                         sparse_lu_amd_sorted_remove_one(
                             V_elem[static_cast<std::size_t>(E_col[uj][s])], j);
                     }
-                    sparse_lu_ordering_cand_retire_(cand, col_deg, j);  // T-C2
+                    // T-C2: no candq retire needed (lazy heap, ORD-F3 P4)
+                    // -- flipping col_alive[uj] below stales every stored
+                    // entry of j.
                     col_alive[uj] = 0;
                     nv[uj] = Index(0);
                     E_col[uj].clear();
@@ -1015,7 +1216,9 @@ std::vector<Index> sparse_lu_colamd_ordering(
                     cnt += nv[uc];
                 }
             }
-            sparse_lu_ordering_cand_update_degree_(cand, col_deg, lp[t], cnt);  // W-C2
+            sparse_lu_ordering_cand_update_degree_(candq, col_deg, lp[t], cnt,
+                                                   col_alive, col_is_element,
+                                                   n);  // W-C2
         }
     }
 
