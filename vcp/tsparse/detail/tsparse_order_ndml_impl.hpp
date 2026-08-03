@@ -37,7 +37,8 @@
 //         - matching: vertices visited ascending; the mate is the unmatched
 //           neighbour of maximum edge weight, tie-broken by smallest index;
 //         - initial bisection: start vertices enumerated ascending (strided
-//           when the coarsest graph is larger than 128 vertices); the grown
+//           when the coarsest graph is larger than 16 (kInitStarts, ORD-F1)
+//           vertices); the grown
 //           vertex is the maximum-gain frontier vertex, tie smallest index;
 //           the winning start is the lexicographically smallest
 //           (cut, imbalance, start-order) triple, strict improvement only;
@@ -120,6 +121,19 @@ struct sparse_order_ndml_params {
 };
 
 namespace sparse_ndml_detail {
+
+// ---------------------------------------------------------------------------
+// Comparator for the lazy-deletion binary-heap priority queues (ORD-F1
+// Phase 2, design SS13): "greater" over the entry's operator< -- with
+// std::push_heap / std::pop_heap this puts the MINIMUM (key, v) entry on
+// top, i.e. exactly the std::set begin() total order the heaps replace.
+// (A local functor instead of std::greater: this header is injected inside
+// namespace vcp and must not pull in <functional> there.)
+// ---------------------------------------------------------------------------
+struct ndml_pq_greater {
+    template <class E>
+    bool operator()(const E& a, const E& b) const { return b < a; }
+};
 
 // ---------------------------------------------------------------------------
 // Weighted level graph.  xadj/adjncy is the CSR adjacency (neighbour lists
@@ -321,19 +335,36 @@ void ndml_initial_bisection(
         for (std::size_t p = b; p < e; ++p) wdeg[u] += g.ewt[p];
     }
 
-    // Deterministic start set: every vertex when nv <= 128, else an
-    // ascending stride keeping at most 128 starts.
-    const std::size_t stride = (nv <= 128u) ? 1u : (nv + 127u) / 128u;
+    // Deterministic start set: every vertex when nv <= kInitStarts, else an
+    // ascending stride keeping at most kInitStarts starts.  kInitStarts is an
+    // INTERNAL constant like max_sep_pct / best_of_two (ORD-F1 ruling F-6,
+    // deliberately not in the factorization options): 16 was fixed by the
+    // ORD-F1 seven-point sweep (design v1 SS4: 3D golden ratio 1.0438 ->
+    // 1.0412 i.e. slightly BETTER, 2D amd ratio +0.0004, ~2x faster; 8 and
+    // below degrade 3D stepwise to 1.06).  Note coarsen_stop = 128 means the
+    // pre-ORD-F1 cap of 128 never engaged (measured: starts == nv always).
+    const std::size_t kInitStarts = 16u;
+    const std::size_t stride =
+        (nv <= kInitStarts) ? 1u : (nv + kInitStarts - 1u) / kInitStarts;
 
     std::vector<char> cur(nv);
     std::vector<Index> conn(nv);
+    // cand: lazy-deletion binary heap (ORD-F1 Phase 2), same total order as
+    // the std::set it replaces -- min (key, v) on top, key = wdeg - 2*conn
+    // = -gain, tie smallest index.  Entries are pushed on every key update
+    // (never erased); a popped entry is valid iff the vertex is still
+    // ungrown AND its stored key equals the current key.  conn only grows
+    // within one start, so keys strictly decrease per vertex and a stale
+    // entry can never collide with the current key (no duplicate-scan
+    // handling needed at this site).
+    typedef std::pair<Index, Index> pq_entry;
+    std::vector<pq_entry> cand;
     bool have_best = false;
     Index best_cut = Index(0), best_imb = Index(0);
     for (std::size_t s0 = 0; s0 < nv; s0 += stride) {
         std::fill(cur.begin(), cur.end(), char(1));
         std::fill(conn.begin(), conn.end(), Index(0));
-        // cand keyed (-gain, v): begin() = max gain, tie smallest index.
-        std::set<std::pair<Index, Index> > cand;
+        cand.clear();
         std::size_t cursor = 0;      // min-index scan position for reseeding
         Index wA = Index(0);
         Index grown = static_cast<Index>(s0);
@@ -349,20 +380,25 @@ void ndml_initial_bisection(
                     const Index v = g.adjncy[p];
                     const std::size_t uv = static_cast<std::size_t>(v);
                     if (cur[uv] == 0) continue;
-                    if (conn[uv] > Index(0)) {
-                        cand.erase(std::make_pair(
-                            wdeg[uv] - Index(2) * conn[uv], v));
-                    }
                     conn[uv] += g.ewt[p];
-                    cand.insert(std::make_pair(
+                    cand.push_back(std::make_pair(
                         wdeg[uv] - Index(2) * conn[uv], v));
+                    std::push_heap(cand.begin(), cand.end(), ndml_pq_greater());
                 }
             }
-            Index nextv;
-            if (!cand.empty()) {
-                nextv = cand.begin()->second;
-                cand.erase(cand.begin());
-            } else {
+            Index nextv = Index(-1);
+            while (!cand.empty()) {
+                const pq_entry top = cand.front();
+                std::pop_heap(cand.begin(), cand.end(), ndml_pq_greater());
+                cand.pop_back();
+                const std::size_t uv = static_cast<std::size_t>(top.second);
+                if (cur[uv] != 0 &&
+                    top.first == wdeg[uv] - Index(2) * conn[uv]) {
+                    nextv = top.second;   // valid: the minimum live entry
+                    break;
+                }
+            }
+            if (nextv < Index(0)) {
                 while (cursor < nv && cur[cursor] == 0) ++cursor;
                 if (cursor >= nv) break;   // everything grown (defensive)
                 nextv = static_cast<Index>(cursor);
@@ -416,6 +452,18 @@ void ndml_fm_refine(
     std::vector<char> locked(nv);
     std::vector<Index> moves;
     moves.reserve(nv);
+    // Lazy-deletion heap PQ (ORD-F1 Phase 2), same total order as the set
+    // ((key, v) ascending, key = wdeg - 2*ext = -gain).  A popped entry is
+    // valid iff !locked AND ext > 0 AND stored key == current key.  ext can
+    // leave and return to a value, so the SAME (key, v) can sit in the heap
+    // twice while valid; the per-round scan stamp discards duplicates
+    // without counting them (the set iterates DISTINCT live entries --
+    // ruling F-7 keeps the 256-entry scan semantics identical).  `popped`
+    // stashes live-but-unusable entries during one selection round; they are
+    // pushed back afterwards (the set never erased them either).
+    typedef std::pair<Index, Index> pq_entry;
+    std::vector<pq_entry> cand, popped;
+    std::vector<Index> scan_stamp(nv);
 
     for (int pass = 0; pass < passes; ++pass) {
         Index sw[2] = { Index(0), Index(0) };
@@ -434,13 +482,16 @@ void ndml_fm_refine(
         }
         std::fill(locked.begin(), locked.end(), char(0));
         // cand keyed (-gain, v) over unlocked BOUNDARY vertices (ext > 0).
-        std::set<std::pair<Index, Index> > cand;
+        cand.clear();
         for (std::size_t u = 0; u < nv; ++u) {
             if (ext[u] > Index(0)) {
-                cand.insert(std::make_pair(
+                cand.push_back(std::make_pair(
                     wdeg[u] - Index(2) * ext[u], static_cast<Index>(u)));
             }
         }
+        std::make_heap(cand.begin(), cand.end(), ndml_pq_greater());
+        std::fill(scan_stamp.begin(), scan_stamp.end(), Index(-1));
+        Index round = Index(0);   // selection-round stamp (reset per pass)
         Index cur_cut = ndml_cut_of(g, side);
         const Index viol0 =
             (floor_w > sw[0] ? floor_w - sw[0] : Index(0)) +
@@ -454,37 +505,72 @@ void ndml_fm_refine(
                 (sw[0] < floor_w) ? Index(0)
                                   : ((sw[1] < floor_w) ? Index(1) : Index(-1));
             Index pick = Index(-1);
+            ++round;   // one selection round (stamp epoch for duplicates)
             if (light < Index(0)) {
                 // balanced: best feasible boundary move (max gain, tie min
                 // index); feasible = source side stays at or above floor_w.
                 // The scan over infeasible candidates is capped (256) so a
                 // pathological all-infeasible prefix cannot go quadratic;
                 // the cap is deterministic (it only ends the pass earlier).
+                // Heap form (F-7, semantics preserved): pop ascending; stale
+                // entries are dropped WITHOUT counting; live duplicates
+                // (same (key, v), round-stamped) likewise; live entries
+                // count toward the 256 cap, infeasible ones are stashed and
+                // pushed back after the round (still live, like the set).
                 std::size_t scanned = 0u;
-                for (typename std::set<std::pair<Index, Index> >::const_iterator
-                         it = cand.begin();
-                     it != cand.end() && scanned < 256u; ++it, ++scanned) {
-                    const std::size_t v = static_cast<std::size_t>(it->second);
+                popped.clear();
+                while (!cand.empty() && scanned < 256u) {
+                    const pq_entry top = cand.front();
+                    std::pop_heap(cand.begin(), cand.end(), ndml_pq_greater());
+                    cand.pop_back();
+                    const std::size_t v = static_cast<std::size_t>(top.second);
+                    if (locked[v] || ext[v] <= Index(0) ||
+                        top.first != wdeg[v] - Index(2) * ext[v]) {
+                        continue;   // stale: discard, not counted
+                    }
+                    if (scan_stamp[v] == round) continue;   // duplicate live
+                    scan_stamp[v] = round;
+                    ++scanned;
                     if (sw[static_cast<std::size_t>(side[v])] - g.vwt[v]
                             >= floor_w) {
-                        pick = it->second;
+                        pick = top.second;
                         break;
                     }
+                    popped.push_back(top);   // live but infeasible: keep
+                }
+                for (std::size_t t = 0; t < popped.size(); ++t) {
+                    cand.push_back(popped[t]);
+                    std::push_heap(cand.begin(), cand.end(), ndml_pq_greater());
                 }
                 if (pick < Index(0)) break;   // no feasible move: pass ends
             } else {
                 // rebalance: best unlocked move INTO the light side (gain
                 // order among boundary candidates first, then a
                 // deterministic linear scan for non-boundary vertices).
+                // Same pop / stash / push-back form as the balanced branch.
                 std::size_t scanned = 0u;
-                for (typename std::set<std::pair<Index, Index> >::const_iterator
-                         it = cand.begin();
-                     it != cand.end() && scanned < 256u; ++it, ++scanned) {
-                    const std::size_t v = static_cast<std::size_t>(it->second);
+                popped.clear();
+                while (!cand.empty() && scanned < 256u) {
+                    const pq_entry top = cand.front();
+                    std::pop_heap(cand.begin(), cand.end(), ndml_pq_greater());
+                    cand.pop_back();
+                    const std::size_t v = static_cast<std::size_t>(top.second);
+                    if (locked[v] || ext[v] <= Index(0) ||
+                        top.first != wdeg[v] - Index(2) * ext[v]) {
+                        continue;   // stale: discard, not counted
+                    }
+                    if (scan_stamp[v] == round) continue;   // duplicate live
+                    scan_stamp[v] = round;
+                    ++scanned;
                     if (static_cast<Index>(side[v]) != light) {
-                        pick = it->second;
+                        pick = top.second;
                         break;
                     }
+                    popped.push_back(top);   // live but on the light side
+                }
+                for (std::size_t t = 0; t < popped.size(); ++t) {
+                    cand.push_back(popped[t]);
+                    std::push_heap(cand.begin(), cand.end(), ndml_pq_greater());
                 }
                 if (pick < Index(0)) {
                     Index bg = Index(0);
@@ -502,11 +588,10 @@ void ndml_fm_refine(
                 }
             }
 
+            // (No PQ erase here: a heap-adopted entry was popped above, and
+            // any remaining entry of the picked vertex -- including one for
+            // a linear-scan fallback pick -- goes stale via locked below.)
             const std::size_t v = static_cast<std::size_t>(pick);
-            if (ext[v] > Index(0)) {
-                cand.erase(std::make_pair(
-                    wdeg[v] - Index(2) * ext[v], pick));
-            }
             const Index gain = Index(2) * ext[v] - wdeg[v];
             sw[static_cast<std::size_t>(side[v])] -= g.vwt[v];
             side[v] = static_cast<char>(1 - side[v]);
@@ -522,15 +607,13 @@ void ndml_fm_refine(
                 const Index u = g.adjncy[p];
                 const std::size_t uu = static_cast<std::size_t>(u);
                 if (locked[uu]) continue;
-                if (ext[uu] > Index(0)) {
-                    cand.erase(std::make_pair(
-                        wdeg[uu] - Index(2) * ext[uu], u));
-                }
                 if (side[uu] == side[v]) ext[uu] -= g.ewt[p];
                 else                     ext[uu] += g.ewt[p];
                 if (ext[uu] > Index(0)) {
-                    cand.insert(std::make_pair(
+                    // push-only update (the old entry goes stale lazily)
+                    cand.push_back(std::make_pair(
                         wdeg[uu] - Index(2) * ext[uu], u));
+                    std::push_heap(cand.begin(), cand.end(), ndml_pq_greater());
                 }
             }
 
@@ -652,6 +735,14 @@ void ndml_separator_refine(
     std::vector<char> best_part;
     // key: ((-gain, v), dir) -- max gain first, tie smallest index, then A.
     typedef std::pair<std::pair<Index, Index>, Index> nkey;
+    // Lazy-deletion heap PQ (ORD-F1 Phase 2), same total order as the set
+    // over nkey.  A popped entry is valid iff part[v] == 2 AND !locked[v]
+    // AND stored key == cnt[1-dir][v] - vwt[v].  Duplicate live entries are
+    // possible (cnt can return to a value); the per-round scan stamp is per
+    // (v, dir) -- index 2*v + dir -- and discards them without counting
+    // (F-7: the 256-entry scan semantics of the set are preserved).
+    std::vector<nkey> cand, popped;
+    std::vector<Index> scan_stamp(2u * nv);
 
     for (int pass = 0; pass < passes; ++pass) {
         Index sz[3] = { Index(0), Index(0), Index(0) };
@@ -671,15 +762,18 @@ void ndml_separator_refine(
             }
         }
         std::fill(locked.begin(), locked.end(), char(0));
-        std::set<nkey> cand;
+        cand.clear();
         for (std::size_t u = 0; u < nv; ++u) {
             if (part[u] != char(2)) continue;
             for (Index d = Index(0); d < Index(2); ++d) {
-                cand.insert(nkey(std::make_pair(
+                cand.push_back(nkey(std::make_pair(
                     cnt[static_cast<std::size_t>(Index(1) - d)][u] - g.vwt[u],
                     static_cast<Index>(u)), d));
             }
         }
+        std::make_heap(cand.begin(), cand.end(), ndml_pq_greater());
+        std::fill(scan_stamp.begin(), scan_stamp.end(), Index(-1));
+        Index round = Index(0);   // selection-round stamp (reset per pass)
         const Index viol0 =
             (floor_w > sz[0] ? floor_w - sz[0] : Index(0)) +
             (floor_w > sz[1] ? floor_w - sz[1] : Index(0));
@@ -691,27 +785,46 @@ void ndml_separator_refine(
         while (moved < nv && !cand.empty()) {
             // best feasible move: expelling N(v) on the other side from that
             // side must keep it at or above floor_w (scan capped like the
-            // edge-FM: deterministic, only ends the pass earlier).
+            // edge-FM: deterministic, only ends the pass earlier).  Heap
+            // form (F-7): pop ascending; stale entries dropped uncounted,
+            // live duplicates stamp-discarded uncounted, live infeasible
+            // entries counted, stashed and pushed back after the round.
             Index pick = Index(-1), dir = Index(0);
             std::size_t scanned = 0u;
-            for (typename std::set<nkey>::const_iterator it = cand.begin();
-                 it != cand.end() && scanned < 256u; ++it, ++scanned) {
-                const std::size_t v = static_cast<std::size_t>(it->first.second);
-                const std::size_t od = static_cast<std::size_t>(Index(1) - it->second);
-                if (sz[od] - cnt[od][v] >= floor_w) {
-                    pick = it->first.second;
-                    dir = it->second;
+            popped.clear();
+            ++round;
+            while (!cand.empty() && scanned < 256u) {
+                const nkey top = cand.front();
+                std::pop_heap(cand.begin(), cand.end(), ndml_pq_greater());
+                cand.pop_back();
+                const std::size_t v = static_cast<std::size_t>(top.first.second);
+                const std::size_t d0 = static_cast<std::size_t>(top.second);
+                if (part[v] != char(2) || locked[v] ||
+                    top.first.first != cnt[1u - d0][v] - g.vwt[v]) {
+                    continue;   // stale: discard, not counted
+                }
+                if (scan_stamp[2u * v + d0] == round) continue;   // duplicate
+                scan_stamp[2u * v + d0] = round;
+                ++scanned;
+                const std::size_t od0 = 1u - d0;
+                if (sz[od0] - cnt[od0][v] >= floor_w) {
+                    pick = top.first.second;
+                    dir = top.second;
                     break;
                 }
+                popped.push_back(top);   // live but infeasible: keep
+            }
+            for (std::size_t t = 0; t < popped.size(); ++t) {
+                cand.push_back(popped[t]);
+                std::push_heap(cand.begin(), cand.end(), ndml_pq_greater());
             }
             if (pick < Index(0)) break;
             const std::size_t v = static_cast<std::size_t>(pick);
             const std::size_t d = static_cast<std::size_t>(dir);
             const std::size_t od = 1u - d;
 
-            // remove both directional entries of v
-            cand.erase(nkey(std::make_pair(cnt[1u - 0u][v] - g.vwt[v], pick), Index(0)));
-            cand.erase(nkey(std::make_pair(cnt[0u][v] - g.vwt[v], pick), Index(1)));
+            // (No PQ erase of v's two directional entries: the adopted one
+            // was popped above, the other goes stale via part[v] != 2.)
 
             // move v into side d; pull its other-side neighbours into S
             part[v] = static_cast<char>(d);
@@ -751,11 +864,7 @@ void ndml_separator_refine(
             touch.erase(std::unique(touch.begin(), touch.end()), touch.end());
             for (std::size_t t = 0; t < touch.size(); ++t) {
                 const std::size_t u = static_cast<std::size_t>(touch[t]);
-                // drop stale candidate entries keyed with the OLD counts
-                cand.erase(nkey(std::make_pair(cnt[1][u] - g.vwt[u],
-                                               touch[t]), Index(0)));
-                cand.erase(nkey(std::make_pair(cnt[0][u] - g.vwt[u],
-                                               touch[t]), Index(1)));
+                // (old-count candidate entries go stale lazily; no erase)
                 cnt[0][u] = Index(0);
                 cnt[1][u] = Index(0);
                 const std::size_t b = static_cast<std::size_t>(g.xadj[u]);
@@ -767,10 +876,12 @@ void ndml_separator_refine(
                     }
                 }
                 if (part[u] == char(2) && !locked[u]) {
-                    cand.insert(nkey(std::make_pair(cnt[1][u] - g.vwt[u],
-                                                    touch[t]), Index(0)));
-                    cand.insert(nkey(std::make_pair(cnt[0][u] - g.vwt[u],
-                                                    touch[t]), Index(1)));
+                    cand.push_back(nkey(std::make_pair(cnt[1][u] - g.vwt[u],
+                                                       touch[t]), Index(0)));
+                    std::push_heap(cand.begin(), cand.end(), ndml_pq_greater());
+                    cand.push_back(nkey(std::make_pair(cnt[0][u] - g.vwt[u],
+                                                       touch[t]), Index(1)));
+                    std::push_heap(cand.begin(), cand.end(), ndml_pq_greater());
                 }
             }
 
