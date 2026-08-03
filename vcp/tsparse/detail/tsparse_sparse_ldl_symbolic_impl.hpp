@@ -205,8 +205,14 @@ bool sparse_ldl_validate_pattern_(
 // auto_select resolution for the ordering, in ONE place (design v1 SS4).
 // Contract (ldl_design_v2 SS0.1 decision 1): the library chooses, and the
 // choice is always reported in ordering_used.
+// D-4 裁定 2026-08-01: auto_select は nested_dissection_ml に解決(4 機実測
+// 3D ldl 3.1-3.4x / chol 8.5-10.1x / lu 2.9-3.5x、fill・メモリ半減。2D
+// one-shot は順序コストで劣後するが主用途(handle 経由 σ 走査)では setup
+// 償却で全次元純益)。sparse_ldl_factorize_with_info の記録側 switch と
+// 常に一致させること(不一致は internal_error ゲートで検出される)。
 inline sparse_ldl_ordering resolve_auto_ordering(sparse_ldl_ordering o) {
-    return (o == sparse_ldl_ordering::auto_select) ? sparse_ldl_ordering::amd : o;
+    return (o == sparse_ldl_ordering::auto_select)
+        ? sparse_ldl_ordering::nested_dissection_ml : o;
 }
 
 // auto_select resolution for the method, in ONE place (design v1 SS4).

@@ -193,18 +193,17 @@ namespace spmats_lss_detail {
 	// body is never instantiated for unsigned Index).
 	// ---------------------------------------------------------------------------
 
-	// signed Index path: direct method.  D-3: amd is set ONLY when the user
-	// left opt.sparse_lu.ordering == auto_select; the sparse_lu_options
-	// default itself is unchanged (no propagation to the eig shift-invert LU).
+	// signed Index path: direct method.  ORD-D4b (D-4 裁定 2026-08-01):
+	// 旧 D-3 の「auto_select なら amd を明示設定」する防御は撤去し、ordering の
+	// 解決は sparse_lu_symbolic の一元解決点(auto -> nested_dissection_ml)に
+	// 委譲する。防御意図(当該経路で ordering が未解決のまま事故になる事の防止)
+	// は、validate_symbolic_options が auto を受理し symbolic が必ず解決する
+	// 構造で保たれる。sparse_lu_options の既定自体は不変。
 	template <typename _T, typename _Index>
 	inline typename std::enable_if<std::is_signed<_Index>::value, void>::type
 	resolve_auto_nonsymmetric_(linear_solve_options<_T>& resolved)
 	{
 	    resolved.method = linear_solver_method::sparse_lu;
-	    // SLU-L1 L-1 makes this redundant (auto_select now resolves to amd inside
-	    // sparse_lu_symbolic); RETAINED as defense for the auto path (design §4.4).
-	    if (resolved.sparse_lu.ordering == sparse_lu_ordering::auto_select)
-	        resolved.sparse_lu.ordering = sparse_lu_ordering::amd;   // D-3
 	}
 
 	// unsigned Index path: sparse_lu is impossible; no silent fallback (D-4).
@@ -634,9 +633,9 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_lss_with_info_impl(
 	//   symmetric (policy_is_symmetric, default tol 1e-12; complex-symmetric
 	//   check, not Hermitian) -> conjugate_gradient (D-2; the CG-internal
 	//   check_symmetric with tol 1e-10 stays active, D-5),
-	//   nonsymmetric -> sparse_lu (signed Index; +amd only when the user's
-	//   sparse_lu.ordering == auto_select, D-3) or vcp::state_error for
-	//   unsigned Index (D-4, no silent fallback).
+	//   nonsymmetric -> sparse_lu (signed Index; ordering は sparse_lu_symbolic
+	//   の一元解決に委譲、ORD-D4b で旧 D-3 の amd 明示設定を撤去) or
+	//   vcp::state_error for unsigned Index (D-4, no silent fallback).
 	// The returned result.method is the RESOLVED method (each solve helper
 	// stamps its own value; auto_select is never returned).  Re-entry depth
 	// is exactly 1: resolved.method != auto_select.

@@ -703,12 +703,14 @@ sparse_ldl_factorize_with_info(
         switch (opt.ordering) {
         case sparse_ldl_ordering::auto_select:
             // Contract (design v2 SS0.1 decision 1 / SS3): auto_select is
-            // resolved BY THE LIBRARY; this version resolves it to amd.  The
-            // resolution is always reported in ordering_used and may change
-            // in future versions -- specify an explicit ordering when
-            // reproducibility is required.  (The SLU auto_select semantics
-            // are frozen and untouched by this.)
-            res.ordering_used = sparse_ldl_ordering::amd;
+            // resolved BY THE LIBRARY; this version resolves it to
+            // nested_dissection_ml.  The resolution is always reported in
+            // ordering_used and may change in future versions -- specify an
+            // explicit ordering when reproducibility is required.
+            // D-4 裁定 2026-08-01: 4 機実測 3D ldl 3.1-3.4x / chol 8.5-10.1x /
+            // lu 2.9-3.5x、fill・メモリ半減。2D one-shot は順序コストで劣後するが
+            // 主用途(handle 経由 σ 走査)では setup 償却で全次元純益。
+            res.ordering_used = sparse_ldl_ordering::nested_dissection_ml;
             break;
         case sparse_ldl_ordering::natural:
         case sparse_ldl_ordering::rcm:

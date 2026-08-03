@@ -4336,9 +4336,13 @@ sparse_lu_symbolic(
         // storage pipeline unchanged.  Q enters ONLY this column slot; numeric
         // threshold partial pivoting and row_perm are untouched (S-4).
         const csc_storage<T, Index> A_csc_nat = sparse_lu_make_csc_storage(A);
+        // D-4 裁定 2026-08-01: auto_select は nested_dissection_ml に解決。4 機
+        // 実測 3D ldl 3.1-3.4x / chol 8.5-10.1x / lu 2.9-3.5x、fill・メモリ半減。
+        // 2D one-shot は順序コストで劣後するが主用途(handle 経由 σ 走査)では
+        // setup 償却で全次元純益。
         const sparse_lu_ordering effective_ordering =
             (opt.ordering == sparse_lu_ordering::auto_select)
-                ? sparse_lu_ordering::amd : opt.ordering;
+                ? sparse_lu_ordering::nested_dissection_ml : opt.ordering;
         const bool ordering_active =
             (effective_ordering == sparse_lu_ordering::rcm) ||
             (effective_ordering == sparse_lu_ordering::amd) ||
