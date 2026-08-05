@@ -81,6 +81,13 @@ struct sparse_ldl_symbolic_options {
     int       ndml_fm_passes;
     int       ndml_balance_pct;
     long long ndml_leaf_size;
+    // F2-b G-2 (ruling H-2): caller-supplied pre-permutation (new -> old).
+    // When non-empty the ordering call is bypassed and this vector is adopted
+    // as perm0; it is validated by the same size / bijection checks as any
+    // ordering output.  Stored as long long (this struct is not templated on
+    // Index); entries are narrowed to Index at adoption.  Default: empty
+    // (= behaviour unchanged).
+    std::vector<long long> user_perm0;
 
     sparse_ldl_symbolic_options()
         : ordering(sparse_ldl_ordering::auto_select),
@@ -724,6 +731,17 @@ sparse_ldl_symbolic_analyze(
     // ---- 1. ordering (pattern-only, integer-only; the SLU ordering functions
     // are reused by include, unmodified: the graph builder symmetrizes every
     // off-diagonal edge, so the lower-triangle CSC pattern is a valid input).
+    if (!sopt.user_perm0.empty()) {
+        // F2-b G-2: caller-supplied pre-permutation.  Must be a bijection on
+        // [0, n); the size check and the pinv0 construction below reject any
+        // malformed input exactly like an ordering output.  The ordering
+        // switch is bypassed entirely (sym.ordering_used keeps reporting the
+        // resolved request for diagnostic continuity).
+        sym.perm0.resize(sopt.user_perm0.size());
+        for (std::size_t i = 0; i < sopt.user_perm0.size(); ++i) {
+            sym.perm0[i] = static_cast<Index>(sopt.user_perm0[i]);
+        }
+    } else {
     sym.perm0.resize(un);
     for (std::size_t i = 0; i < un; ++i) sym.perm0[i] = static_cast<Index>(i);
     switch (sym.ordering_used) {
@@ -753,6 +771,7 @@ sparse_ldl_symbolic_analyze(
         sym.status = sparse_ldl_symbolic_status::internal_error;
         return sym;
     }
+    }   // end of the empty-user_perm0 (ordering-call) branch
     if (sym.perm0.size() != un) {
         sym.status = sparse_ldl_symbolic_status::internal_error;
         return sym;

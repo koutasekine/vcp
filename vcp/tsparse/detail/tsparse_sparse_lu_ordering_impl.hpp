@@ -418,43 +418,12 @@ inline bool sparse_lu_amd_lists_equal(const std::vector<Index>& a,
 }
 
 // ---------------------------------------------------------------------------
-// SLU-OQ1: ordered candidate set for O(log n) pivot selection.
-//
-// `cand` holds exactly one (degree[i], i) pair for every selectable vertex i
-// (amd: alive && !is_element; colamd: col_alive).  Selection is *cand.begin()
-// = the lexicographic minimum of (degree, index), which is IDENTICAL to the
-// former ascending linear scan with strict-< update (first index attaining
-// the running minimum) -- design F1, so the emitted permutation is
-// bit-identical.  Every degree[] rewrite and every eligibility loss MUST go
-// through these two helpers so the stored degree and the set key never
-// diverge (Phase 0 inventory §2/§3 enumerates all call sites).
-// ---------------------------------------------------------------------------
-template <class Index>
-inline void sparse_lu_ordering_cand_update_degree_(
-    std::set<std::pair<Index, Index> >& cand,
-    std::vector<Index>& degree,
-    const Index i,
-    const Index new_degree)
-{
-    cand.erase(std::make_pair(degree[static_cast<std::size_t>(i)], i));
-    degree[static_cast<std::size_t>(i)] = new_degree;
-    cand.insert(std::make_pair(new_degree, i));
-}
-
-template <class Index>
-inline void sparse_lu_ordering_cand_retire_(
-    std::set<std::pair<Index, Index> >& cand,
-    const std::vector<Index>& degree,
-    const Index i)
-{
-    cand.erase(std::make_pair(degree[static_cast<std::size_t>(i)], i));
-}
-
-// ---------------------------------------------------------------------------
-// ORD-F2 Phase A1: lazy-deletion binary-heap variant of the update_degree
-// helper above, used by the amd section only (the colamd section keeps the
-// std::set form; the helper overloads on the container type).  Same total
-// order as the std::set it replaces -- minimum (degree, index) entry on top
+// ORD-F2 Phase A1: lazy-deletion binary-heap candidate PQ for O(log n) pivot
+// selection, used by the colamd section (candq, ORD-F3 P2).  The SLU-OQ1
+// std::set form it replaced was removed in F2-b Phase 5 together with the
+// pre-F2-b amd body (a private verbatim copy lives in
+// sandbox/probes/colprof.hpp).  Same total order as that std::set --
+// minimum (degree, index) entry on top
 // via std::push_heap / std::pop_heap with the "greater" comparator below
 // (the ORD-F1 Phase 2 mechanism; a local functor instead of std::greater
 // because this header is injected inside namespace vcp and must not pull in
@@ -525,8 +494,67 @@ inline void sparse_lu_ordering_cand_update_degree_(
     }
 }
 
+// ===========================================================================
+// F2-b Phase 1 — sparse_lu_amd_ordering_v2_: ADD-96-faithful re-implementation
+// of the AMD orderer (Amestoy/Davis/Duff, SIAM J. Matrix Anal. Appl. 17(4),
+// 1996).  Detail name; NOT wired to any public entry until the Phase 3
+// switch-over ruling.  Algorithmic content (paper sections in brackets):
+//
+//   - quotient graph on ONE flat Index work array `iw` [SS5]: variable lists
+//     are [elements..., variables...] slices (pe/len/elen bookkeeping),
+//     element lists are member-variable slices carved from the pivot's Lp;
+//     new Lp goes in place of Ap when |Ep| == 0, otherwise into elbow room
+//     at the tail, with DETERMINISTIC garbage collection (ascending-index
+//     compaction) when the elbow is exhausted [SS5, MA27 storage].
+//   - degree bucket lists dhead/dnext/dprev with a monotone-forward minimum-
+//     degree pointer that retreats on insertion.  TIE-BREAK CONTRACT
+//     (Phase 1 ruling 2026-08-04, superseding the design v1.1 SS4 min-index
+//     pivot tie): pivot = minimum approximate degree; among equal degrees
+//     the BUCKET HEAD is taken (head-insert / head-extract discipline, the
+//     plain reading of ADD-96 SS5).  Supervariable principal selection,
+//     merge order and every OTHER tie in this function remain smallest-index.
+//     Determinism (D-2) is carried entirely by the following total order of
+//     bucket operations -- no address values, no randomness:
+//       (i)   initial fill scans vertices by DESCENDING index, inserting at
+//             the head, so every initial bucket lists its members in
+//             ascending index order;
+//       (ii)  removal (unlink) never reorders the survivors;
+//       (iii) every later insertion is a head insertion, and insertions
+//             happen in a deterministic sequence: the degree-update pass
+//             re-inserts the surviving members of Lp in Lp storage order
+//             (which is itself deterministic, [V2-N2]);
+//       (iv)  garbage collection moves list storage only and never touches
+//             the bucket structure.
+//     Two consecutive runs on the same input are verified byte-identical by
+//     the unit test.
+//   - approximate external degree = min of the ADD-96 THREE upper bounds,
+//     eq (4), with |Le \ Lp| computed by the w(e) scan of Algorithm 2 and
+//     eq (5).  All degrees/masses count ORIGINAL variables (supervariable
+//     masses nv), as in the paper.
+//   - mass elimination [SS3.2] and supervariable detection restricted to
+//     i in Lp, via the paper's hash  Hash(i) = (sum(A_i) + sum(E_i))
+//     mod (n-1) + 1  [SS5], exact list comparison inside a hash bucket,
+//     pairs compared and merged in ASCENDING INDEX order (principal =
+//     smallest index -- S-5; NOT affected by the pivot tie-break ruling).
+//   - element absorption: natural (e in Ep) and aggressive (|Le \ Lp| == 0,
+//     i.e. w(e) == 0) [SS5] -- the same rule as the F2-a orderer.
+//   - NO dense-row special-casing (ruling H-4).  No randomness (D-2).
+//
+// Deviation ledger (documented, not silent):
+//   [V2-N1] bound 1 of eq (4) is taken literally as n - k with k = the pivot
+//           mass eliminated THROUGH p (the paper's "size of the active
+//           submatrix" after step k).
+//   [V2-N2] the rewritten element list of a variable i in Lp is ordered
+//           [p, surviving old elements in stored order]; Lp itself collects
+//           Ap first (stored order), then the members of each e in Ep
+//           (stored order), first occurrence only.  The paper fixes no
+//           order; this one is deterministic and documented.
+//   [V2-N3] when the elbow room is exhausted even after a garbage
+//           collection, iw grows by 3/2 (deterministic amount).  The paper
+//           assumes "elbow room of size n is sufficient in practice".
+// ===========================================================================
 template <class Index>
-std::vector<Index> sparse_lu_amd_ordering(
+std::vector<Index> sparse_lu_amd_ordering_v2_(
     Index n,
     const std::vector<Index>& col_ptr,
     const std::vector<Index>& row_ind)
@@ -534,7 +562,7 @@ std::vector<Index> sparse_lu_amd_ordering(
     static_assert(std::is_signed<Index>::value, "sparse LU Index must be signed");
     if (n < Index(0)) {
         vcp::throw_error<vcp::invalid_argument>(
-            "sparse_lu_amd_ordering: negative n");
+            "sparse_lu_amd_ordering_v2_: negative n");
     }
     const std::size_t un = static_cast<std::size_t>(n);
 
@@ -546,343 +574,417 @@ std::vector<Index> sparse_lu_amd_ordering(
         return perm;
     }
 
-    // A + A^T pattern graph (S-1: pattern-only).  Neighbour lists are sorted
-    // ascending and unique, which is exactly the invariant the quotient-graph
-    // set operations below rely on.
+    // ---- A + A^T pattern graph (S-1), sorted unique neighbour lists.
     std::vector<Index> adj_ptr, adj_ind;
     sparse_lu_build_symmetric_pattern_graph(n, col_ptr, row_ind, adj_ptr, adj_ind);
+    const std::size_t adj_total = adj_ind.size();
 
-    // Quotient-graph state.  For a (principal) variable i: A_var[i] is the set
-    // of adjacent principal variables and E_elem[i] the set of adjacent
-    // elements.  For an element e: V_elem[e] is the set of its member principal
-    // variables and elem_size[e] its mass |Le| = sum of nv over its members.
-    std::vector<std::vector<Index> > A_var(un);
-    std::vector<std::vector<Index> > E_elem(un);
-    std::vector<std::vector<Index> > V_elem(un);
-    // ORD-F3 P3: the represented-original-variables list `members` (formerly
-    // vector<vector<Index>>, one allocation per vertex) flattened to an
-    // intrusive linked list over the vertex ids: the chain of principal i,
-    // followed head -> next until -1, enumerates EXACTLY the sequence the
-    // former members[i] vector held (init = singleton {i}; merge = append
-    // j's whole chain at i's tail, the same concatenation order as the
-    // former insert(end, begin, end)).
-    std::vector<Index> mem_head(un);               // chain start (= i itself)
-    std::vector<Index> mem_next(un, Index(-1));    // successor, -1 terminates
-    std::vector<Index> mem_tail(un);               // last node of i's chain
-    std::vector<Index> nv(un, Index(1));           // supervariable mass
-    std::vector<Index> elem_size(un, Index(0));    // |Le| mass (elements only)
-    std::vector<Index> degree(un, Index(0));       // approximate external degree
-    std::vector<char>  is_element(un, 0);
-    std::vector<char>  alive(un, 1);               // principal variable, not yet eliminated
-
+    // ---- flat storage: iw holds every list; pe[i] start, len[i] entries.
+    // For a live VARIABLE i the slice is [elements (elen[i])..., variables].
+    // For an ELEMENT e the slice is its member variables (elen unused).
+    std::vector<Index> iw(adj_total + un + 1u);
+    std::vector<Index> pe(un), len(un), elen(un, Index(0));
     for (std::size_t i = 0; i < un; ++i) {
-        const std::size_t b = static_cast<std::size_t>(adj_ptr[i]);
-        const std::size_t e = static_cast<std::size_t>(adj_ptr[i + 1u]);
-        A_var[i].assign(adj_ind.begin() + b, adj_ind.begin() + e);
-        degree[i] = static_cast<Index>(A_var[i].size());  // nv == 1 initially
-        mem_head[i] = static_cast<Index>(i);   // singleton chain {i}
+        pe[i]  = adj_ptr[i];
+        len[i] = adj_ptr[i + 1u] - adj_ptr[i];
+    }
+    for (std::size_t k = 0; k < adj_total; ++k) iw[k] = adj_ind[k];
+    std::size_t pfree = adj_total;             // first free slot (elbow room)
+
+    std::vector<Index> nv(un, Index(1));       // supervariable mass (0 = non-principal)
+    std::vector<Index> degree(un);             // approximate external degree (mass)
+    std::vector<Index> esize(un, Index(0));    // element mass |Le| at formation
+    std::vector<char>  is_elem(un, 0);
+    std::vector<char>  dead(un, 0);            // absorbed element / non-principal var
+    // Emission chains (same intrusive idiom as the F2-a orderer): the chain
+    // of principal i enumerates the original variables it represents, in
+    // merge-concatenation order.
+    std::vector<Index> mem_head(un), mem_next(un, Index(-1)), mem_tail(un);
+    for (std::size_t i = 0; i < un; ++i) {
+        mem_head[i] = static_cast<Index>(i);
         mem_tail[i] = static_cast<Index>(i);
     }
 
-    // SLU-OQ1: ordered candidate set (design D-1) -- since ORD-F2 Phase A1 a
-    // lazy-deletion binary heap with the same total order (see the helper
-    // block above): at least one (degree[i], i) entry per selectable vertex,
-    // stale entries discarded at pop time.
-    std::vector<std::pair<Index, Index> > cand;
-    cand.reserve(un);
-    for (Index i = Index(0); i < n; ++i) {
-        cand.push_back(std::make_pair(degree[static_cast<std::size_t>(i)], i));
+    // ---- degree buckets (head-insert / head-extract discipline, see the
+    // tie-break contract in the function header).
+    std::vector<Index> dhead(un, Index(-1)), dnext(un, Index(-1)), dprev(un, Index(-1));
+    std::vector<char>  in_bucket(un, 0);
+    for (std::size_t s = un; s-- > 0u; ) {     // (i) descending index -> ascending initial lists
+        const Index i = static_cast<Index>(s);
+        degree[s] = Index(0);
+        for (Index k = pe[s]; k < pe[s] + len[s]; ++k) {
+            degree[s] += nv[static_cast<std::size_t>(iw[static_cast<std::size_t>(k)])];
+        }
+        const std::size_t d = static_cast<std::size_t>(degree[s]);
+        dnext[s] = dhead[d];
+        dprev[s] = Index(-1);
+        if (dhead[d] >= Index(0)) dprev[static_cast<std::size_t>(dhead[d])] = i;
+        dhead[d] = i;
+        in_bucket[s] = 1;
     }
-    std::make_heap(cand.begin(), cand.end(), sparse_lu_ordering_pq_greater_());
+
+    // ---- per-round scratch
+    std::vector<Index> w(un, Index(-1));       // Algorithm 2: |Le \ Lp| masses
+    std::vector<char>  in_lp(un, 0);           // marks Lp members and p
+    std::vector<Index> touched_w;              // elements with w set this round
+    std::vector<Index> hhead(un, Index(-1)), hnext(un, Index(-1));
+    std::vector<Index> touched_h;              // hash buckets used this round
+    std::vector<char>  cmp_mark(un, 0);
+    std::vector<Index> bucket_members;         // scratch for one hash bucket
+    std::vector<Index> rebuf;                  // list-rewrite scratch (SPC-P1
+    rebuf.reserve(un);                         // lesson: never let an in-place
+                                               // write cursor pass unread slots)
 
     std::vector<Index> order;
     order.reserve(un);
-
-    // Per-pivot scratch for the |Le \ Lp| set-difference computation.
-    std::vector<Index> elem_w(un, Index(0));
-    std::vector<Index> elem_stamp(un, Index(-1));
-    Index stamp = Index(0);
-
-    // Per-pivot Lp membership marker (reset via lp_touched after each pivot).
-    std::vector<char> in_lp(un, 0);
-
-    // ORD-F2 Phase A2: per-pivot scratch hoisted out of the pivot loop so the
-    // capacities are reused across pivots (cleared / re-assigned at the top of
-    // each use; contents per pivot are identical to the former loop-local
-    // vectors).
-    std::vector<Index> lp;
-    std::vector<Index> lp_touched;
-    std::vector<Index> absorbed;
-    std::vector<Index> rmv;
-    std::vector<Index> touched_elems;
-    std::vector<Index> agg;
-    std::vector<Index> merged;
-    std::vector<std::pair<unsigned long long, Index> > hb;
-
     Index eliminated = Index(0);
+    std::size_t mindeg = 0;
+
+    // O(1) unlink from the degree bucket structure.
+    // (local lambdas: C++11, no captures beyond references)
+    struct bucket_ops {
+        std::vector<Index>& dhead; std::vector<Index>& dnext;
+        std::vector<Index>& dprev; std::vector<char>& in_bucket;
+        const std::vector<Index>& degree;
+        void remove(Index i) {
+            const std::size_t ui = static_cast<std::size_t>(i);
+            if (!in_bucket[ui]) return;
+            const Index pv = dprev[ui], nx = dnext[ui];
+            if (pv >= Index(0)) dnext[static_cast<std::size_t>(pv)] = nx;
+            else dhead[static_cast<std::size_t>(degree[ui])] = nx;
+            if (nx >= Index(0)) dprev[static_cast<std::size_t>(nx)] = pv;
+            dprev[ui] = dnext[ui] = Index(-1);
+            in_bucket[ui] = 0;
+        }
+        // (iii) O(1) HEAD insertion into bucket degree[i] (ruling: bucket-head
+        // pivot tie-break; the caller sequence is the deterministic source of
+        // the within-bucket order)
+        void insert_head(Index i) {
+            const std::size_t ui = static_cast<std::size_t>(i);
+            const std::size_t d = static_cast<std::size_t>(degree[ui]);
+            dprev[ui] = Index(-1);
+            dnext[ui] = dhead[d];
+            if (dhead[d] >= Index(0)) dprev[static_cast<std::size_t>(dhead[d])] = i;
+            dhead[d] = i;
+            in_bucket[ui] = 1;
+        }
+    } buckets = { dhead, dnext, dprev, in_bucket, degree };
 
     while (eliminated < n) {
-        // ---- pivot selection: min approximate degree, tie-break smallest index.
-        // SLU-OQ1 / ORD-F2 Phase A1: the first VALID popped entry
-        // (alive && !is_element && key == degree[v]) is the lexicographic min
-        // of (degree, index) among selectable vertices -- identical to
-        // *cand.begin() of the former std::set (design F1), so the emitted
-        // permutation is bit-identical.  Adopting the popped entry replaces
-        // the former cand.erase(cand.begin()) (T-A1).
-        Index p = Index(-1);
-        while (!cand.empty()) {
-            const std::pair<Index, Index> top = cand.front();
-            std::pop_heap(cand.begin(), cand.end(),
-                          sparse_lu_ordering_pq_greater_());
-            cand.pop_back();
-            const std::size_t uv = static_cast<std::size_t>(top.second);
-            if (alive[uv] && !is_element[uv] && top.first == degree[uv]) {
-                p = top.second;  // p becomes an element below (T-A1)
-                break;
-            }
+        // ---- pivot: head of the first non-empty bucket = minimum degree,
+        // smallest index (bucket lists are ascending).  The pointer only
+        // moves forward here; insert sites retreat it.
+        while (mindeg < un && dhead[mindeg] < Index(0)) ++mindeg;
+        if (mindeg >= un) {
+            vcp::throw_error<vcp::state_error>(
+                "sparse_lu_amd_ordering_v2_: degree lists exhausted early");
         }
-        if (p < Index(0)) break;  // defensive (was: cand.empty() fallthrough)
+        const Index p = dhead[mindeg];
         const std::size_t up = static_cast<std::size_t>(p);
+        buckets.remove(p);
 
-        // ---- form Lp = (A_var[p]) U (U_{e in E_elem[p]} V_elem[e]) \ {p}.
-        lp.clear();
-        lp_touched.clear();
-        for (std::size_t t = 0; t < A_var[up].size(); ++t) {
-            const Index j = A_var[up][t];
-            const std::size_t uj = static_cast<std::size_t>(j);
-            if (alive[uj] && !is_element[uj] && j != p && !in_lp[uj]) {
-                in_lp[uj] = 1; lp.push_back(j); lp_touched.push_back(j);
+        // ---- build Lp = (Ap  U  union of Le over e in Ep) minus p's own
+        // supervariable, deduplicated via in_lp marks.  Storage: in place of
+        // Ap when |Ep| == 0 (Lp is then a subset of Ap), else elbow room.
+        in_lp[up] = 1;
+        std::size_t lp_start;
+        if (elen[up] == Index(0)) {
+            lp_start = static_cast<std::size_t>(pe[up]);
+        } else {
+            // worst-case need for the deduplicated union
+            std::size_t need = static_cast<std::size_t>(len[up] - elen[up]);
+            for (Index k = pe[up]; k < pe[up] + elen[up]; ++k) {
+                const std::size_t ue = static_cast<std::size_t>(iw[static_cast<std::size_t>(k)]);
+                if (!dead[ue]) need += static_cast<std::size_t>(len[ue]);
             }
-        }
-        for (std::size_t te = 0; te < E_elem[up].size(); ++te) {
-            const Index e = E_elem[up][te];
-            const std::vector<Index>& Ve = V_elem[static_cast<std::size_t>(e)];
-            for (std::size_t t = 0; t < Ve.size(); ++t) {
-                const Index j = Ve[t];
-                const std::size_t uj = static_cast<std::size_t>(j);
-                if (alive[uj] && !is_element[uj] && j != p && !in_lp[uj]) {
-                    in_lp[uj] = 1; lp.push_back(j); lp_touched.push_back(j);
+            if (pfree + need > iw.size()) {
+                // deterministic garbage collection.  The slices MUST be
+                // compacted in ascending STORAGE (pe) order -- not node-id
+                // order: after a relocation the two orders diverge, and an
+                // id-ordered forward copy lets the write cursor overrun
+                // still-unread slices (in-bounds corruption).  Sorting by pe
+                // is deterministic (live slices are disjoint, so keys are
+                // unique).  Positions change, contents do not.
+                std::vector<std::pair<Index, Index> > live;   // (pe, node)
+                live.reserve(un);
+                for (std::size_t v = 0; v < un; ++v) {
+                    const bool live_var  = !is_elem[v] && !dead[v] && nv[v] > Index(0)
+                                           && v != up;
+                    const bool live_self = (v == up);
+                    const bool live_elem = is_elem[v] && !dead[v];
+                    if (!(live_var || live_elem || live_self)) { len[v] = Index(0); continue; }
+                    live.push_back(std::make_pair(pe[v], static_cast<Index>(v)));
+                }
+                std::sort(live.begin(), live.end());
+                std::size_t cursor = 0;
+                for (std::size_t s = 0; s < live.size(); ++s) {
+                    const std::size_t v = static_cast<std::size_t>(live[s].second);
+                    const std::size_t b = static_cast<std::size_t>(pe[v]);
+                    const std::size_t l = static_cast<std::size_t>(len[v]);
+                    for (std::size_t t = 0; t < l; ++t) iw[cursor + t] = iw[b + t];
+                    pe[v] = static_cast<Index>(cursor);
+                    cursor += l;
+                }
+                pfree = cursor;
+                if (pfree + need > iw.size()) {
+                    iw.resize(pfree + need + (iw.size() >> 1));   // [V2-N3]
                 }
             }
-        }
-        std::sort(lp.begin(), lp.end());
-
-        // Elements absorbed exactly into the new element ep := p.
-        absorbed.assign(E_elem[up].begin(), E_elem[up].end());  // sorted
-
-        // ---- turn p into element ep.  Its members are already eliminated below.
-        is_element[up] = 1;
-        alive[up] = 0;
-        V_elem[up] = lp;
-        Index lp_mass = Index(0);
-        for (std::size_t t = 0; t < lp.size(); ++t) {
-            lp_mass += nv[static_cast<std::size_t>(lp[t])];
-        }
-        elem_size[up] = lp_mass;
-
-        // Removal set for variable lists: Lp U {p}.
-        rmv.assign(lp.begin(), lp.end());
-        sparse_lu_amd_sorted_insert(rmv, p);
-
-        // ---- rewrite each i in Lp: drop redundant variable edges (Lp, p), drop
-        // absorbed elements, attach ep.
-        for (std::size_t t = 0; t < lp.size(); ++t) {
-            const std::size_t ui = static_cast<std::size_t>(lp[t]);
-            sparse_lu_amd_sorted_remove_set_inplace_(A_var[ui], rmv);
-            sparse_lu_amd_sorted_remove_set_inplace_(E_elem[ui], absorbed);
-            sparse_lu_amd_sorted_insert(E_elem[ui], p);
-        }
-        // Retire absorbed elements (only Lp referenced them).
-        for (std::size_t t = 0; t < absorbed.size(); ++t) {
-            const std::size_t ue = static_cast<std::size_t>(absorbed[t]);
-            V_elem[ue].clear();
-            elem_size[ue] = Index(0);
+            lp_start = pfree;
         }
 
-        // ---- set differences elem_w[e] = |Le \ Lp| for elements e adjacent to
-        // Lp (e != ep), via the standard stamp trick.
-        ++stamp;
-        touched_elems.clear();
-        for (std::size_t t = 0; t < lp.size(); ++t) {
-            const std::size_t ui = static_cast<std::size_t>(lp[t]);
-            const std::vector<Index>& Ei = E_elem[ui];
-            for (std::size_t s = 0; s < Ei.size(); ++s) {
-                const Index e = Ei[s];
-                if (e == p) continue;
+        std::size_t lp_len = 0;
+        Index degp = Index(0);                 // |Lp| in original-variable mass
+        {
+            // Ap part (stored order) -- read BEFORE writing when in place:
+            // the write cursor lp_start + lp_len never passes the read
+            // cursor (elen == 0 case writes over its own prefix).
+            const std::size_t ab = static_cast<std::size_t>(pe[up]) +
+                                   static_cast<std::size_t>(elen[up]);
+            const std::size_t al = static_cast<std::size_t>(len[up] - elen[up]);
+            for (std::size_t t = 0; t < al; ++t) {
+                const Index v = iw[ab + t];
+                const std::size_t uv = static_cast<std::size_t>(v);
+                // is_elem: a stale variable entry whose vertex has since been
+                // eliminated must NOT enter Lp -- treating an element id as a
+                // variable would corrupt its member list in the update pass.
+                if (is_elem[uv] || dead[uv] || nv[uv] <= Index(0) || in_lp[uv]) continue;
+                in_lp[uv] = 1;
+                iw[lp_start + lp_len++] = v;
+                degp += nv[uv];
+            }
+            // members of each element of Ep (stored order), first occurrence
+            // only; the element itself is absorbed naturally.
+            for (Index k = pe[up]; k < pe[up] + elen[up]; ++k) {
+                const Index e = iw[static_cast<std::size_t>(k)];
                 const std::size_t ue = static_cast<std::size_t>(e);
-                if (elem_stamp[ue] != stamp) {
-                    elem_stamp[ue] = stamp;
-                    elem_w[ue] = elem_size[ue];
-                    touched_elems.push_back(e);
+                if (dead[ue]) continue;
+                for (Index t = pe[ue]; t < pe[ue] + len[ue]; ++t) {
+                    const Index v = iw[static_cast<std::size_t>(t)];
+                    const std::size_t uv = static_cast<std::size_t>(v);
+                    if (is_elem[uv] || dead[uv] || nv[uv] <= Index(0) || in_lp[uv]) continue;
+                    in_lp[uv] = 1;
+                    iw[lp_start + lp_len++] = v;
+                    degp += nv[uv];
                 }
-                elem_w[ue] -= nv[ui];
+                dead[ue] = 1;                  // natural absorption
+                len[ue] = Index(0);
+            }
+        }
+        if (elen[up] != Index(0)) pfree = lp_start + lp_len;
+
+        // every Lp member leaves the degree lists for this round
+        for (std::size_t t = 0; t < lp_len; ++t) buckets.remove(iw[lp_start + t]);
+
+        // ---- Algorithm 2: w(e) = |Le \ Lp| (mass) for every element on the
+        // element list of some i in Lp.  w starts < 0 (eq 5 sentinel).
+        for (std::size_t t = 0; t < lp_len; ++t) {
+            const std::size_t ui = static_cast<std::size_t>(iw[lp_start + t]);
+            for (Index k = pe[ui]; k < pe[ui] + elen[ui]; ++k) {
+                const Index e = iw[static_cast<std::size_t>(k)];
+                const std::size_t ue = static_cast<std::size_t>(e);
+                if (dead[ue]) continue;
+                if (w[ue] < Index(0)) {
+                    w[ue] = esize[ue];
+                    touched_w.push_back(e);
+                }
+                w[ue] -= nv[ui];
             }
         }
 
-        // ---- aggressive element absorption: |Le \ Lp| == 0  =>  Le subset of Lp
-        // (all of e's variables are in ep), so e is redundant; absorb into ep.
-        agg.clear();
-        for (std::size_t s = 0; s < touched_elems.size(); ++s) {
-            const Index e = touched_elems[s];
-            if (elem_w[static_cast<std::size_t>(e)] == Index(0)) agg.push_back(e);
-        }
-        if (!agg.empty()) {
-            std::sort(agg.begin(), agg.end());
-            for (std::size_t t = 0; t < lp.size(); ++t) {
-                sparse_lu_amd_sorted_remove_set_inplace_(
-                    E_elem[static_cast<std::size_t>(lp[t])], agg);
+        // ---- degree update pass over i in Lp (stored order).  Compresses
+        // both list halves in place, performs aggressive absorption, applies
+        // the eq (4) three-bound minimum, and hashes i for supervariable
+        // detection.
+        const Index k_after = eliminated + nv[up];       // [V2-N1]
+        touched_h.clear();
+        for (std::size_t t = 0; t < lp_len; ++t) {
+            const Index i = iw[lp_start + t];
+            const std::size_t ui = static_cast<std::size_t>(i);
+
+            // The rewritten list is assembled in `rebuf` and placed back:
+            // in the same slice when it fits (the usual case -- either p was
+            // in A_i or an element of E_i died, so the list shrank), else
+            // RELOCATED to the elbow room (stale entries can break the
+            // usual-case size argument, so fitting is checked, not assumed).
+            rebuf.clear();
+            // element half: p first, then surviving old elements [V2-N2]
+            rebuf.push_back(p);
+            Index esum = Index(0);
+            unsigned long long hsum = static_cast<unsigned long long>(p);
+            for (Index k = pe[ui]; k < pe[ui] + elen[ui]; ++k) {
+                const Index e = iw[static_cast<std::size_t>(k)];
+                const std::size_t ue = static_cast<std::size_t>(e);
+                if (dead[ue]) continue;
+                if (w[ue] == Index(0)) {       // aggressive absorption
+                    dead[ue] = 1;
+                    len[ue] = Index(0);
+                    continue;
+                }
+                rebuf.push_back(e);
+                esum += (w[ue] >= Index(0)) ? w[ue] : esize[ue];   // eq (5)
+                hsum += static_cast<unsigned long long>(e);
             }
-            for (std::size_t s = 0; s < agg.size(); ++s) {
-                const std::size_t ue = static_cast<std::size_t>(agg[s]);
-                V_elem[ue].clear();
-                elem_size[ue] = Index(0);
+            const Index new_elen = static_cast<Index>(rebuf.size());
+            // variable half: drop Lp members (now represented by p), p
+            // itself, dead and non-principal entries
+            Index asum = Index(0);
+            for (Index k = pe[ui] + elen[ui]; k < pe[ui] + len[ui]; ++k) {
+                const Index v = iw[static_cast<std::size_t>(k)];
+                const std::size_t uv = static_cast<std::size_t>(v);
+                if (is_elem[uv] || in_lp[uv] || dead[uv] || nv[uv] <= Index(0)) continue;
+                rebuf.push_back(v);
+                asum += nv[uv];
+                hsum += static_cast<unsigned long long>(v);
             }
+            std::size_t base = static_cast<std::size_t>(pe[ui]);
+            if (rebuf.size() > static_cast<std::size_t>(len[ui])) {
+                // does not fit in place: relocate to the elbow room.  No
+                // garbage collection here (the Lp slice is not yet owned by
+                // the not-yet-finalized element p and must not move);
+                // deterministic resize instead when the elbow is short.
+                if (pfree + rebuf.size() > iw.size()) {
+                    iw.resize(pfree + rebuf.size() + (iw.size() >> 1));   // [V2-N3]
+                }
+                base = pfree;
+                pe[ui] = static_cast<Index>(base);
+                pfree += rebuf.size();
+            }
+            for (std::size_t t2 = 0; t2 < rebuf.size(); ++t2) {
+                iw[base + t2] = rebuf[t2];
+            }
+            elen[ui] = new_elen;
+            len[ui]  = static_cast<Index>(rebuf.size());
+
+            // eq (4): min of the three upper bounds (all masses)
+            const Index lp_minus_i = degp - nv[ui];
+            Index d_new = n - k_after;                        // bound 1
+            const Index b2 = degree[ui] + lp_minus_i;         // bound 2
+            if (b2 < d_new) d_new = b2;
+            const Index b3 = asum + lp_minus_i + esum;        // bound 3
+            if (b3 < d_new) d_new = b3;
+            degree[ui] = d_new;
+
+            // paper hash, buckets chained in first-touch order
+            const std::size_t h =
+                static_cast<std::size_t>(hsum % static_cast<unsigned long long>(un - 1u)) + 1u;
+            const std::size_t hslot = h - 1u;                 // store in [0, n-1)
+            if (hhead[hslot] < Index(0)) touched_h.push_back(static_cast<Index>(hslot));
+            hnext[ui] = hhead[hslot];
+            hhead[hslot] = i;
         }
 
-        // ---- supervariable (indistinguishable-variable) detection within Lp.
-        // Two variables with identical variable-lists AND element-lists are
-        // indistinguishable; merge the larger index into the smaller (S-5).
-        // Bucket by a structural hash via a sorted (hash, index) vector, then
-        // compare exactly within a run of equal hashes.
-        if (lp.size() > 1u) {
-            hb.clear();
-            hb.reserve(lp.size());
-            for (std::size_t t = 0; t < lp.size(); ++t) {
-                const Index i = lp[t];
-                const std::size_t ui = static_cast<std::size_t>(i);
-                if (!alive[ui]) continue;
-                unsigned long long h = 1469598103934665603ull;
-                for (std::size_t s = 0; s < A_var[ui].size(); ++s) {
-                    h = (h ^ static_cast<unsigned long long>(A_var[ui][s] + 1))
-                        * 1099511628211ull;
-                }
-                h = h * 31ull + 0x9e3779b97f4a7c15ull;
-                for (std::size_t s = 0; s < E_elem[ui].size(); ++s) {
-                    h = (h ^ static_cast<unsigned long long>(E_elem[ui][s] + 2))
-                        * 1099511628211ull;
-                }
-                hb.push_back(std::make_pair(h, i));
+        // ---- supervariable detection inside each used hash bucket: compare
+        // pairs in ascending index order; the smaller index is principal.
+        for (std::size_t hb = 0; hb < touched_h.size(); ++hb) {
+            const std::size_t hslot = static_cast<std::size_t>(touched_h[hb]);
+            bucket_members.clear();
+            for (Index c = hhead[hslot]; c >= Index(0);
+                 c = hnext[static_cast<std::size_t>(c)]) {
+                bucket_members.push_back(c);
             }
-            // Sort by (hash, index): equal-hash candidates become contiguous and
-            // ascending in index, so the principal (smallest index) comes first.
-            std::sort(hb.begin(), hb.end());
-            for (std::size_t a = 0; a < hb.size(); ++a) {
-                const std::size_t ui = static_cast<std::size_t>(hb[a].second);
-                if (!alive[ui]) continue;
-                merged.clear();
-                for (std::size_t b = a + 1;
-                     b < hb.size() && hb[b].first == hb[a].first; ++b) {
-                    const Index j = hb[b].second;
-                    const std::size_t uj = static_cast<std::size_t>(j);
-                    if (!alive[uj]) continue;
-                    if (!sparse_lu_amd_lists_equal(A_var[ui], A_var[uj])) continue;
-                    if (!sparse_lu_amd_lists_equal(E_elem[ui], E_elem[uj])) continue;
-                    // Merge j (larger index) into i (smaller index).  The
-                    // V_elem / A_var removals of j are deferred to the batch
-                    // below (ORD-F2 Phase A2).
-                    nv[ui] += nv[uj];
-                    // ORD-F3 P3: append j's whole chain at i's tail -- the
-                    // same concatenation order as the former
-                    // members[ui].insert(end, begin, end).  No clear of j's
-                    // chain is needed: j goes !alive here and is never
-                    // selected as pivot nor as principal again, so its chain
-                    // is only ever reached through i from now on.
-                    mem_next[static_cast<std::size_t>(mem_tail[ui])] =
-                        mem_head[uj];
-                    mem_tail[ui] = mem_tail[uj];
-                    merged.push_back(j);
-                    // T-A2: no cand retire needed (lazy heap) -- flipping
-                    // alive[uj] below stales every stored entry of j.
-                    alive[uj] = 0;
-                    nv[uj] = Index(0);
-                    A_var[uj].clear();
-                    E_elem[uj].clear();
+            hhead[hslot] = Index(-1);
+            if (bucket_members.size() < 2u) continue;
+            std::sort(bucket_members.begin(), bucket_members.end());
+            for (std::size_t ia = 0; ia < bucket_members.size(); ++ia) {
+                const Index a = bucket_members[ia];
+                const std::size_t ua = static_cast<std::size_t>(a);
+                if (nv[ua] <= Index(0)) continue;             // already merged away
+                // mark a's list
+                for (Index k = pe[ua]; k < pe[ua] + len[ua]; ++k) {
+                    cmp_mark[static_cast<std::size_t>(iw[static_cast<std::size_t>(k)])] = 1;
                 }
-                // ORD-F2 Phase A2: batched removal of the merged j's.  Every
-                // merged j had A_var[uj] == A_var[ui] and E_elem[uj] ==
-                // E_elem[ui] (the merge condition), and the principal's two
-                // lists never change during this run (i is not a member of
-                // its own lists, so no removal above targets them).  Hence
-                // one remove-set pass per target list over the ascending
-                // `merged` values performs exactly the removals the former
-                // per-j sorted_remove_one calls did.  Deferral cannot flip a
-                // later verdict in the run: a candidate whose lists a
-                // deferred removal would touch is adjacent to a merged j,
-                // i.e. it appears in A_var[ui] while never containing itself
-                // -- such a candidate fails lists_equal against the
-                // principal in both orderings.
-                if (!merged.empty()) {
-                    const std::vector<Index>& Ei = E_elem[ui];
-                    for (std::size_t s = 0; s < Ei.size(); ++s) {
-                        sparse_lu_amd_sorted_remove_set_inplace_(
-                            V_elem[static_cast<std::size_t>(Ei[s])], merged);
+                for (std::size_t ib = ia + 1u; ib < bucket_members.size(); ++ib) {
+                    const Index b = bucket_members[ib];
+                    const std::size_t ub = static_cast<std::size_t>(b);
+                    if (nv[ub] <= Index(0)) continue;
+                    if (len[ub] != len[ua] || elen[ub] != elen[ua]) continue;
+                    bool same = true;
+                    for (Index k = pe[ub]; k < pe[ub] + len[ub]; ++k) {
+                        if (!cmp_mark[static_cast<std::size_t>(iw[static_cast<std::size_t>(k)])]) {
+                            same = false;
+                            break;
+                        }
                     }
-                    const std::vector<Index>& Ai = A_var[ui];
-                    for (std::size_t s = 0; s < Ai.size(); ++s) {
-                        sparse_lu_amd_sorted_remove_set_inplace_(
-                            A_var[static_cast<std::size_t>(Ai[s])], merged);
-                    }
+                    if (!same) continue;
+                    // merge b into a (principal = smaller index, S-5)
+                    nv[ua] += nv[ub];
+                    degree[ua] -= nv[ub];                     // Algorithm 1: d_i -= |j|
+                    nv[ub] = Index(0);
+                    dead[ub] = 1;
+                    len[ub] = Index(0);
+                    elen[ub] = Index(0);
+                    mem_next[static_cast<std::size_t>(mem_tail[ua])] = mem_head[ub];
+                    mem_tail[ua] = mem_tail[ub];
+                }
+                for (Index k = pe[ua]; k < pe[ua] + len[ua]; ++k) {
+                    cmp_mark[static_cast<std::size_t>(iw[static_cast<std::size_t>(k)])] = 0;
                 }
             }
         }
 
-        // ---- approximate external degree for surviving principals in Lp:
-        // d_i = min( n - elim_after - nv[i],          (A) remaining-variable bound
-        //            deg_old[i] + (|Lp| - nv[i]),     (B) previous-degree bound
-        //            |Ai| + (|Lp| - nv[i]) + sum_e |Le \ Lp| )  (C) approx external
-        const Index elim_after = eliminated + nv[up];
-        for (std::size_t t = 0; t < lp.size(); ++t) {
-            const std::size_t ui = static_cast<std::size_t>(lp[t]);
-            if (!alive[ui]) continue;
-            const Index ln = elem_size[up] - nv[ui];  // |Lp \ {i}| in mass
-            Index a_mass = Index(0);
-            for (std::size_t s = 0; s < A_var[ui].size(); ++s) {
-                a_mass += nv[static_cast<std::size_t>(A_var[ui][s])];
+        // ---- surviving Lp members re-enter the degree lists at the bucket
+        // head, in Lp storage order (determinism source (iii)); mindeg
+        // retreats.
+        for (std::size_t t = 0; t < lp_len; ++t) {
+            const Index i = iw[lp_start + t];
+            const std::size_t ui = static_cast<std::size_t>(i);
+            if (nv[ui] <= Index(0) || dead[ui]) continue;
+            if (degree[ui] < Index(0)) degree[ui] = Index(0);  // defensive clamp
+            buckets.insert_head(i);
+            if (static_cast<std::size_t>(degree[ui]) < mindeg) {
+                mindeg = static_cast<std::size_t>(degree[ui]);
             }
-            Index e_diff = Index(0);
-            for (std::size_t s = 0; s < E_elem[ui].size(); ++s) {
-                const Index e = E_elem[ui][s];
-                if (e == p) continue;
-                e_diff += elem_w[static_cast<std::size_t>(e)];
-            }
-            Index dC = a_mass + ln + e_diff;
-            Index dB = degree[ui] + ln;
-            Index dA = n - elim_after - nv[ui];
-            if (dA < Index(0)) dA = Index(0);
-            Index d = dC;
-            if (dB < d) d = dB;
-            if (dA < d) d = dA;
-            if (d < Index(0)) d = Index(0);
-            sparse_lu_ordering_cand_update_degree_(cand, degree, lp[t], d,
-                                                   alive, is_element, n);  // W-A2
         }
 
-        // ---- emit the original variables represented by p, in member order
-        // (ORD-F3 P3: walk the chain head -> next; same sequence as the
-        // former members[up] vector iteration).
+        // ---- finalize element p; emit its represented original variables.
+        is_elem[up] = 1;
+        pe[up] = static_cast<Index>(lp_start);
+        len[up] = static_cast<Index>(lp_len);
+        elen[up] = Index(0);
+        esize[up] = degp;
         for (Index s = mem_head[up]; s >= Index(0);
              s = mem_next[static_cast<std::size_t>(s)]) {
             order.push_back(s);
         }
         eliminated += nv[up];
 
-        // reset Lp markers for the next pivot.
-        for (std::size_t s = 0; s < lp_touched.size(); ++s) {
-            in_lp[static_cast<std::size_t>(lp_touched[s])] = 0;
+        // ---- reset the per-round marks (touch lists only)
+        in_lp[up] = 0;
+        for (std::size_t t = 0; t < lp_len; ++t) {
+            in_lp[static_cast<std::size_t>(iw[lp_start + t])] = 0;
         }
+        for (std::size_t t = 0; t < touched_w.size(); ++t) {
+            w[static_cast<std::size_t>(touched_w[t])] = Index(-1);
+        }
+        touched_w.clear();
     }
 
-    // Coverage invariant: every vertex eliminated exactly once.
     if (order.size() != un) {
         vcp::throw_error<vcp::state_error>(
-            "sparse_lu_amd_ordering: elimination did not cover all vertices");
+            "sparse_lu_amd_ordering_v2_: elimination did not cover all vertices");
     }
-
-    // Elimination order is the fill-reducing permutation directly.  perm[new] = old.
     for (std::size_t i = 0; i < un; ++i) {
         perm[i] = order[i];
     }
     return perm;
+}
+
+// ---------------------------------------------------------------------------
+// F2-b Phase 3 (gate-2 continuation ruling 2026-08-04): the PUBLIC AMD entry.
+// Forwards to the ADD-96 v2 implementation above; every amd consumer (lu /
+// ldl / chol / ndml leaves / fsai) resolves through this name.  The pre-F2-b
+// body (sparse_lu_amd_ordering_legacy_, zero callers) was physically removed
+// in F2-b Phase 5 per the close-out ruling (H-3-iv); roll-back = git history
+// (last present at commit aa5a108).
+// ---------------------------------------------------------------------------
+template <class Index>
+std::vector<Index> sparse_lu_amd_ordering(
+    Index n,
+    const std::vector<Index>& col_ptr,
+    const std::vector<Index>& row_ind)
+{
+    return sparse_lu_amd_ordering_v2_(n, col_ptr, row_ind);
 }
 
 // ===========================================================================
