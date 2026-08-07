@@ -7,14 +7,20 @@
 //     || u - P_h u ||_V <= C_M || f ||_X                        ... (38)
 //     C_M = sqrt( (C_{h,0})^2 + kappa^2 )                       ... Thm 3.6
 //
-// The single public entry point is
+// The public entry points (CM-1R design 2) are
 //
-//     vcp::fem2d_assist::projection_error_constant<T, DP, SP>(Th, k)
+//     c0_element_bound(o, a, b)          Lemma 3.2, one vertex labelling
+//     c0_element(Th, e)                  C_0(K_h) of element e
+//     c_h0(Th)                           (39), k independent
+//     kappa_squared(Th, k)               (47)
+//     projection_error_constant(Th, k)   Theorem 3.6; .upper() is the bound
+//     projection_constants(Th, k)        all three in ONE dense pass
 //
-// whose .upper() is the guaranteed bound.  Everything else lives in
+// all in namespace vcp::fem2d_assist.  The pipeline itself stays in
 // namespace detail.
 //
-// Authority: sandbox/docs/design/CM-1_design_v1.0.md.
+// Authority: sandbox/docs/design/CM-1_design_v1.0.md and
+// sandbox/docs/design/CM-1R_design_v1.0.md.
 //
 // Lexical policy (design 6.1): no decimal literals, no `double` / `float`
 // tokens; the underlying point type is reached through typename T::base_type
@@ -38,18 +44,49 @@
 
 #include <vcp/error.hpp>
 #include <vcp/matrix.hpp>
+// vcp::compsym.  imats_assist.hpp does not pull in its own dependencies: it is
+// normally reached only through vcp/matrix_assist.hpp, which includes
+// vcp/vcp_metafunction.hpp (vcp::is_interval) first.  matrix.hpp does not
+// include matrix_assist.hpp, so the metafunction header has to precede it here
+// or vcp::is_interval is undeclared inside imats_assist.hpp.
+#include <vcp/vcp_metafunction.hpp>
+#include <vcp/imats_assist.hpp>
 #include <vcp/spmatrix.hpp>
 #include <vcp/imats.hpp>
 #include <vcp/spimats.hpp>
 
 #include <vcp/bfem/mesh.hpp>
 #include <vcp/bfem/fe_space.hpp>
+#include <vcp/bfem/dirichlet.hpp>
 #include <vcp/bfem/rt/rt_space.hpp>
 #include <vcp/bfem/rt/broken_space.hpp>
 #include <vcp/bfem/rt/rt_assemble.hpp>
 
 namespace vcp {
 namespace fem2d_assist {
+
+// ---------------------------------------------------------------------------
+// projection_constant_set (CM-1R design 2): the three constants of Theorem 3.6
+// together with the generalized spectrum they came from.  Returned by
+// projection_constants; kappa_squared and projection_error_constant are thin
+// projections of it.
+//
+// The two dense debug matrices of the CM-1 bundle (Q before symmetrisation and
+// M_h) are deliberately NOT here: Q before the symmetry intersection is not yet
+// a valid enclosure, so it must not be reachable from a public type.  They live
+// in detail::core_result instead (CM-1R design 2.2).
+// ---------------------------------------------------------------------------
+template <typename T, class DP>
+struct projection_constant_set {
+    T c_h0;                          // (39)
+    T kappa2;                        // (47)
+    T c_m;                           // Theorem 3.6
+    std::vector<T> lambda;           // diagonal of E from eigsymge(Q, Md, E)
+    int sym_pairs_checked;           // number of (i, j), i < j, intersected
+
+    projection_constant_set()
+        : c_h0(), kappa2(), c_m(), lambda(), sym_pairs_checked(0) {}
+};
 
 namespace detail {
 
@@ -70,25 +107,20 @@ struct interval_scalar_contract {
 };
 
 // ---------------------------------------------------------------------------
-// result bundle.  The public function returns only c_m; the remaining fields
-// exist so that the CM-1 audit gates (design 9) can inspect the intermediate
-// quantities without re-deriving them.  keep_debug controls whether the two
-// dense matrices are retained (they are not needed by the public path).
+// core_result: the public constant set plus the two dense matrices that the
+// CM-1 audit gates (design 9) need in order to inspect the intermediate
+// quantities without re-deriving them.  keep_debug controls whether those two
+// are retained (the public entry points pass false).
 // ---------------------------------------------------------------------------
 template <typename T, class DP>
-struct cm_parts {
-    T c_h0;                          // (39)
-    T kappa2;                        // (47)
-    T c_m;                           // Theorem 3.6
-    std::vector<T> lambda;           // diagonal of E from eigsymge(Q, Md, E)
-    int sym_pairs_checked;           // number of (i, j), i < j, intersected
+struct core_result : public projection_constant_set<T, DP> {
     vcp::matrix<T, DP> q_raw;        // Q BEFORE symmetrisation (debug only)
     vcp::matrix<T, DP> md;           // M_h mass matrix (debug only)
 
-    cm_parts()
-        : c_h0(), kappa2(), c_m(), lambda(), sym_pairs_checked(0),
-          q_raw(), md() {}
+    core_result() : projection_constant_set<T, DP>(), q_raw(), md() {}
 };
+
+} // namespace detail
 
 // ---------------------------------------------------------------------------
 // c0_element_bound: the Kikuchi-Liu bound for ONE choice of the origin
@@ -156,12 +188,40 @@ T c0_element_bound(const std::array<T, 2>& o,
 }
 
 // ---------------------------------------------------------------------------
+// c0_element: C_0(K_h) for the single element e.
+//
+// The three vertex labellings are candidates and the SMALLEST upper bound is
+// kept (design 5.1); the comparison is made on the upper ends and the selected
+// interval is returned unchanged (design 5.2).
+//
+// e outside [0, num_elements) is vcp::invalid_argument (this is the contract of
+// the function itself; c_h0 below never produces such an index).
+// ---------------------------------------------------------------------------
+template <typename T>
+T c0_element(const vcp::bfem::mesh<2, T>& Th, int e) {
+    if (e < 0 || e >= Th.num_elements())
+        vcp::throw_error<vcp::invalid_argument>(
+            "vcp::fem2d_assist::c0_element: element index out of range (e = ",
+            e, ", num_elements = ", Th.num_elements(), ")");
+
+    const std::array<int, 3>& el = Th.element(e);
+    const std::array<T, 2>& p0 = Th.vertex(el[0]);
+    const std::array<T, 2>& p1 = Th.vertex(el[1]);
+    const std::array<T, 2>& p2 = Th.vertex(el[2]);
+
+    T c = c0_element_bound(p0, p1, p2);
+    T c1 = c0_element_bound(p1, p2, p0);
+    if (c1.upper() < c.upper()) c = c1;
+    T c2 = c0_element_bound(p2, p0, p1);
+    if (c2.upper() < c.upper()) c = c2;
+    return c;
+}
+
+// ---------------------------------------------------------------------------
 // c_h0: C_{h,0} = max_{K_h} C_0(K_h)   ... (39)
 //
-// Per element the three vertex labellings are candidates and the SMALLEST
-// upper bound is kept (design 5.1); across elements the LARGEST is kept.
-// Both comparisons are made on the upper ends, and the selected interval is
-// returned unchanged (design 5.2).
+// Across elements the LARGEST upper bound is kept; the comparison is made on
+// the upper ends and the selected interval is returned unchanged (design 5.2).
 // ---------------------------------------------------------------------------
 template <typename T>
 T c_h0(const vcp::bfem::mesh<2, T>& Th) {
@@ -172,17 +232,7 @@ T c_h0(const vcp::bfem::mesh<2, T>& Th) {
     T best;
     bool have_best = false;
     for (int e = 0; e < Th.num_elements(); ++e) {
-        const std::array<int, 3>& el = Th.element(e);
-        const std::array<T, 2>& p0 = Th.vertex(el[0]);
-        const std::array<T, 2>& p1 = Th.vertex(el[1]);
-        const std::array<T, 2>& p2 = Th.vertex(el[2]);
-
-        T c = c0_element_bound(p0, p1, p2);
-        T c1 = c0_element_bound(p1, p2, p0);
-        if (c1.upper() < c.upper()) c = c1;
-        T c2 = c0_element_bound(p2, p0, p1);
-        if (c2.upper() < c.upper()) c = c2;
-
+        T c = c0_element(Th, e);
         if (!have_best || best.upper() < c.upper()) {
             best = c;
             have_best = true;
@@ -190,6 +240,8 @@ T c_h0(const vcp::bfem::mesh<2, T>& Th) {
     }
     return best;
 }
+
+namespace detail {
 
 // ---------------------------------------------------------------------------
 // dense material bundle after the homogeneous Dirichlet reduction
@@ -206,7 +258,7 @@ struct dense_materials {
 };
 
 // ---------------------------------------------------------------------------
-// assemble_dense: build the six materials of (46) and densify them.
+// assemble_dense_materials: build the six materials of (46) and densify them.
 //
 // Space correspondence (design 3):  V_h = P^k,  W_h = RT_{k-1},
 // M_h = P^{k-1}.  The KKT of (46) reduces to the pointwise per-element
@@ -214,16 +266,14 @@ struct dense_materials {
 // div(RT_j) = P_j.  [出典未逐語確認: the dissertation attributes
 // div(RT_j) = P_j to its reference [28]; no verbatim check was made.]
 //
-// Densification walks the sparse entries (COO before finalize, CSR/CSC
-// after) and accumulates into matrix<T, DP> with +=; spmatrix::to_dense()
-// and the policy dependent dense_matrix_type are deliberately not used
-// (design 4, P3).
+// Densification is matrix<T, DP>::operator=(const spmatrix&) (CM-1R R2, SPC-2):
+// every source is finalized first, so each (i, j) carries exactly one value and
+// the assignment reproduces the CM-1 `+=` accumulation onto a zeroed matrix
+// entry for entry.
 // ---------------------------------------------------------------------------
 template <typename T, class DP, class SP>
-void assemble_dense(const vcp::bfem::mesh<2, T>& Th, int k,
+void assemble_dense_materials(const vcp::bfem::mesh<2, T>& Th, int k,
                     dense_materials<T, DP>& out) {
-    typedef vcp::bfem::detail::spm_adapter<T, SP> adapter;
-
     vcp::bfem::fe_space<2, T, DP, SP> fs(Th, k);
     vcp::bfem::rt_space<2, T, DP, SP> rs(Th, k - 1);
     vcp::bfem::broken_space<2, T, DP, SP> bs(Th, k - 1);
@@ -232,24 +282,20 @@ void assemble_dense(const vcp::bfem::mesh<2, T>& Th, int k,
     const int nr = rs.ndof();
     const int nb = bs.ndof();
 
-    // interior (non-Dirichlet) index list of V_h
-    const std::vector<int> bdry = fs.dofs(k).boundary_dofs();
-    std::vector<int> pos(static_cast<std::size_t>(nd), -1);
-    for (std::size_t t = 0; t < bdry.size(); ++t)
-        pos[static_cast<std::size_t>(bdry[t])] = -2;      // mark as boundary
-    int ni = 0;
-    for (int i = 0; i < nd; ++i)
-        if (pos[static_cast<std::size_t>(i)] != -2)
-            pos[static_cast<std::size_t>(i)] = ni++;
-    for (std::size_t t = 0; t < bdry.size(); ++t)
-        pos[static_cast<std::size_t>(bdry[t])] = -1;
+    // homogeneous Dirichlet reduction of V_h (CM-1R R1): dirichlet_reduction
+    // numbers the unconstrained dofs in increasing order of their global index
+    // and maps the constrained ones to -1, which is exactly the index map the
+    // CM-1 `pos` array carried.  The reduction itself stays SPARSE.
+    vcp::bfem::dirichlet_reduction<T, DP, SP> dr(nd, fs.dofs(k).boundary_dofs());
+    const int ni = dr.reduced_size();
 
     // ni == 0 is legitimate (e.g. the 2-element unit square with k = 1): the
     // reduced V_h is then {0}, the Galerkin solution operator K is the zero
-    // map and the two K-terms of Q drop out.  It is handled in compute().
+    // map and the two K-terms of Q drop out.  It is handled in
+    // projection_constants_core().
     if (nr <= 0 || nb <= 0)
         vcp::throw_error<vcp::dimension_error>(
-            "vcp::fem2d_assist::assemble_dense: empty W_h or M_h (nr = ", nr,
+            "vcp::fem2d_assist::assemble_dense_materials: empty W_h or M_h (nr = ", nr,
             ", nb = ", nb, ")");
 
     // ---- P2: sparse assembly (all six, then finalize) ----
@@ -266,53 +312,40 @@ void assemble_dense(const vcp::bfem::mesh<2, T>& Th, int k,
     Bm.finalize();
     Xm.finalize();
 
-    // ---- P3: densify with the Dirichlet reduction folded in ----
+    // ---- P3a: the Dirichlet reduction, still sparse (CM-1R R1 / R3) ----
+    // Xm has rows = RT, columns = fe, and Gr = Xm[:, interior]^T (design 4 P3;
+    // same orientation as bfem_rt_e2e_tests.cpp L368 Gr.at(a,j) = X.at(j,in[a])).
+    // Transposing FIRST turns the fe index into the row index, so the interior
+    // selection is the same row filter the other two use:
+    //     transpose(Xm)(j, i) = Xm(i, j)  ==>  Gr(a, i) = Xm(i, interior(a)).
+    vcp::spmatrix<T, SP> Ssp = dr.reduce(S);                    // ni x ni
+    vcp::spmatrix<T, SP> Bsp = dr.reduce_rows(Bm);              // ni x nb
+    vcp::spmatrix<T, SP> Gsp = dr.reduce_rows(transpose(Xm));   // ni x nr
+    Ssp.finalize();
+    Bsp.finalize();
+    Gsp.finalize();
+
+    // ---- P3b: densify (every source is finalized) ----
     out.ni = ni;
     out.nr = nr;
     out.nb = nb;
-    out.Sr.zeros(ni, ni);
-    out.Br.zeros(ni, nb);
-    out.Gr.zeros(ni, nr);
-    out.Pd.zeros(nr, nr);
-    out.Md.zeros(nb, nb);
-    out.Nd.zeros(nb, nr);
-
-    vcp::matrix<T, DP>& Sr = out.Sr;
-    vcp::matrix<T, DP>& Br = out.Br;
-    vcp::matrix<T, DP>& Gr = out.Gr;
-    vcp::matrix<T, DP>& Pd = out.Pd;
-    vcp::matrix<T, DP>& Md = out.Md;
-    vcp::matrix<T, DP>& Nd = out.Nd;
-
-    adapter::for_each_entry(S, [&](int i, int j, const T& v) {
-        const int a = pos[static_cast<std::size_t>(i)];
-        const int b = pos[static_cast<std::size_t>(j)];
-        if (a >= 0 && b >= 0) Sr(a, b) += v;
-    });
-    adapter::for_each_entry(Bm, [&](int i, int j, const T& v) {
-        const int a = pos[static_cast<std::size_t>(i)];
-        if (a >= 0) Br(a, j) += v;
-    });
-    // Xm has rows = RT, columns = fe; Gr = Xm[:, interior]^T (design 4 P3;
-    // same orientation as bfem_rt_e2e_tests.cpp L368 Gr.at(a,j) = X.at(j,in[a]))
-    adapter::for_each_entry(Xm, [&](int i, int j, const T& v) {
-        const int a = pos[static_cast<std::size_t>(j)];
-        if (a >= 0) Gr(a, i) += v;
-    });
-    adapter::for_each_entry(Pm, [&](int i, int j, const T& v) { Pd(i, j) += v; });
-    adapter::for_each_entry(Mm, [&](int i, int j, const T& v) { Md(i, j) += v; });
-    adapter::for_each_entry(Nm, [&](int i, int j, const T& v) { Nd(i, j) += v; });
+    out.Sr = Ssp;
+    out.Br = Bsp;
+    out.Gr = Gsp;
+    out.Pd = Pm;
+    out.Md = Mm;
+    out.Nd = Nm;
 }
 
 // ---------------------------------------------------------------------------
-// compute: the whole pipeline of design 4 (P1-P7).
+// projection_constants_core: the whole pipeline of design 4 (P1-P7).
 //
 // keep_debug retains q_raw (Q BEFORE the symmetry intersection) and md, which
-// the CM-1 audit gates need; the public entry point passes false.
+// the CM-1 audit gates need; the public entry points pass false.
 // ---------------------------------------------------------------------------
 template <typename T, class DP, class SP>
-void compute(const vcp::bfem::mesh<2, T>& Th, int k,
-             cm_parts<T, DP>& out, bool keep_debug) {
+void projection_constants_core(const vcp::bfem::mesh<2, T>& Th, int k,
+                               core_result<T, DP>& out, bool keep_debug) {
     interval_scalar_contract<T>::require();
     if (k < 1)
         vcp::throw_error<vcp::invalid_argument>(
@@ -323,7 +356,7 @@ void compute(const vcp::bfem::mesh<2, T>& Th, int k,
     out.c_h0 = c_h0(Th);
 
     dense_materials<T, DP> mat;
-    assemble_dense<T, DP, SP>(Th, k, mat);
+    assemble_dense_materials<T, DP, SP>(Th, k, mat);
     const int ni = mat.ni;
     const int nb = mat.nb;
 
@@ -350,20 +383,13 @@ void compute(const vcp::bfem::mesh<2, T>& Th, int k,
         vcp::matrix<T, DP> A, rhs;
         A.zeros(nr + nb, nr + nb);
         rhs.zeros(nr + nb, nb);
-        for (int i = 0; i < nr; ++i)
-            for (int j = 0; j < nr; ++j) A(i, j) = mat.Pd(i, j);
-        for (int i = 0; i < nb; ++i)
-            for (int j = 0; j < nr; ++j) {
-                A(nr + i, j) = mat.Nd(i, j);
-                A(j, nr + i) = mat.Nd(i, j);
-            }
-        for (int i = 0; i < nb; ++i)
-            for (int j = 0; j < nb; ++j) rhs(nr + i, j) = -mat.Md(i, j);
+        A({0, nr - 1}, {0, nr - 1}) = mat.Pd;
+        A({nr, nr + nb - 1}, {0, nr - 1}) = mat.Nd;
+        A({0, nr - 1}, {nr, nr + nb - 1}) = transpose(mat.Nd);
+        rhs({nr, nr + nb - 1}, {}) = -mat.Md;
 
         vcp::matrix<T, DP> sol = lss(A, rhs);
-        H.zeros(nr, nb);
-        for (int i = 0; i < nr; ++i)
-            for (int j = 0; j < nb; ++j) H(i, j) = sol(i, j);
+        H = sol({0, nr - 1}, {});
     }
 
     // ---- P6: Q = K^T (Sr K) + H^T (Pd H) - 2 K^T (Gr H)   ... (46) ----
@@ -372,8 +398,9 @@ void compute(const vcp::bfem::mesh<2, T>& Th, int k,
         vcp::matrix<T, DP> Kt = transpose(K);
         Q = Q + Kt * (mat.Sr * K);
         vcp::matrix<T, DP> C = Kt * (mat.Gr * H);
-        for (int i = 0; i < nb; ++i)
-            for (int j = 0; j < nb; ++j) Q(i, j) -= C(i, j) + C(i, j);
+        // componentwise Q(i, j) - (C(i, j) + C(i, j)): the same operation
+        // sequence as the CM-1 loop, so the rounding order is unchanged.
+        Q = Q - (C + C);
     }
     if (keep_debug) out.q_raw = Q;
 
@@ -382,24 +409,15 @@ void compute(const vcp::bfem::mesh<2, T>& Th, int k,
     // empty intersection means the computed enclosure does not contain the
     // exact value, i.e. the inclusion is broken -- no claim is made
     // (design 4 P6, design 7).
+    //
+    // vcp::compsym (CM-1R R7) is that operation verbatim: kv's overlap is
+    // max(lower) <= min(upper) and its intersect is [max(lower), min(upper)],
+    // and a non-overlapping pair raises vcp::verification_error.  It visits the
+    // same (i, j), i < j, pairs, so the count below is the number of pairs it
+    // examined.
     typedef typename T::base_type B;
-    out.sym_pairs_checked = 0;
-    for (int i = 0; i < nb; ++i)
-        for (int j = i + 1; j < nb; ++j) {
-            using std::min;
-            using std::max;
-            const B lo = max(Q(i, j).lower(), Q(j, i).lower());
-            const B up = min(Q(i, j).upper(), Q(j, i).upper());
-            if (up < lo)
-                vcp::throw_error<vcp::verification_error>(
-                    "vcp::fem2d_assist: Q and Q^T do not overlap at (", i, ", ",
-                    j, "): [", Q(i, j).lower(), ", ", Q(i, j).upper(),
-                    "] vs [", Q(j, i).lower(), ", ", Q(j, i).upper(), "]");
-            Q(i, j).lower() = lo;
-            Q(i, j).upper() = up;
-            Q(j, i) = Q(i, j);
-            ++out.sym_pairs_checked;
-        }
+    vcp::compsym(Q);
+    out.sym_pairs_checked = nb * (nb - 1) / 2;
 
     if (keep_debug) out.md = mat.Md;
 
@@ -410,11 +428,15 @@ void compute(const vcp::bfem::mesh<2, T>& Th, int k,
     vcp::matrix<T, DP> E;
     eigsymge(Q, mat.Md, E);
 
+    // diag(E) extracts the diagonal exactly into an nb x 1 column (CM-1R R8),
+    // leaving a single scan for the maximum.
+    vcp::matrix<T, DP> ev = diag(E);
+
     out.lambda.resize(static_cast<std::size_t>(nb));
-    B kappa2u = E(0, 0).upper();
+    B kappa2u = ev(0, 0).upper();
     for (int i = 0; i < nb; ++i) {
-        out.lambda[static_cast<std::size_t>(i)] = E(i, i);
-        if (kappa2u < E(i, i).upper()) kappa2u = E(i, i).upper();
+        out.lambda[static_cast<std::size_t>(i)] = ev(i, 0);
+        if (kappa2u < ev(i, 0).upper()) kappa2u = ev(i, 0).upper();
     }
     if (kappa2u < B(0))
         vcp::throw_error<vcp::verification_error>(
@@ -439,11 +461,12 @@ void compute(const vcp::bfem::mesh<2, T>& Th, int k,
 } // namespace detail
 
 // ---------------------------------------------------------------------------
-// projection_error_constant (design 6)
+// projection_constants (design 6, CM-1R design 2)
 //
-// Returns an enclosure of C_M for the pair (Th, P^k).  The GUARANTEED UPPER
-// BOUND IS THE RETURN VALUE'S .upper(); the lower end carries no claim beyond
-// being a valid enclosure end of the computed quantity.
+// The three constants of Theorem 3.6 for the pair (Th, P^k), obtained in ONE
+// pass through the dense path.  kappa_squared and projection_error_constant
+// below are thin projections of this function; calling both of them costs two
+// dense passes, so ask for the set when both are wanted.
 //
 // Throws vcp::invalid_argument (k < 1, degenerate element),
 // vcp::verification_error (inclusion broken, or lss / eigsymge could not
@@ -452,10 +475,39 @@ void compute(const vcp::bfem::mesh<2, T>& Th, int k,
 template <typename T,
           class DP = vcp::imats<typename T::base_type>,
           class SP = vcp::spimats<typename T::base_type> >
+projection_constant_set<T, DP>
+projection_constants(const vcp::bfem::mesh<2, T>& Th, int k) {
+    detail::core_result<T, DP> r;
+    detail::projection_constants_core<T, DP, SP>(Th, k, r, false);
+    return static_cast<const projection_constant_set<T, DP>&>(r);
+}
+
+// ---------------------------------------------------------------------------
+// kappa_squared: kappa^2 = lambda_max(Q, M)   ... (47)
+// ---------------------------------------------------------------------------
+template <typename T,
+          class DP = vcp::imats<typename T::base_type>,
+          class SP = vcp::spimats<typename T::base_type> >
+T kappa_squared(const vcp::bfem::mesh<2, T>& Th, int k) {
+    detail::core_result<T, DP> r;
+    detail::projection_constants_core<T, DP, SP>(Th, k, r, false);
+    return r.kappa2;
+}
+
+// ---------------------------------------------------------------------------
+// projection_error_constant (design 6)
+//
+// Returns an enclosure of C_M for the pair (Th, P^k).  The GUARANTEED UPPER
+// BOUND IS THE RETURN VALUE'S .upper(); the lower end carries no claim beyond
+// being a valid enclosure end of the computed quantity.
+// ---------------------------------------------------------------------------
+template <typename T,
+          class DP = vcp::imats<typename T::base_type>,
+          class SP = vcp::spimats<typename T::base_type> >
 T projection_error_constant(const vcp::bfem::mesh<2, T>& Th, int k) {
-    detail::cm_parts<T, DP> parts;
-    detail::compute<T, DP, SP>(Th, k, parts, false);
-    return parts.c_m;
+    detail::core_result<T, DP> r;
+    detail::projection_constants_core<T, DP, SP>(Th, k, r, false);
+    return r.c_m;
 }
 
 } // namespace fem2d_assist
