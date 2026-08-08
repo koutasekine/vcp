@@ -299,6 +299,17 @@ struct sparse_ldl_result {
     unsigned long long flops_padded_lo, flops_padded_hi;
     unsigned long long flops_true_lo,   flops_true_hi;
 
+    // ---- SLDL-R1 diagnostics (ruling R-A = A1, 2026-08-05; pure addition).
+    // The ONE-SHOT driver records here when the supernodal numeric phase
+    // stopped with pivot_out_of_panel and the factorization was re-run with
+    // method = baseline_dynamic on the same symbolic analysis.  The silent-
+    // fallback prohibition (SLDL-SP D-1) is kept: a fallback is always
+    // visible in these two fields, and the supernodal numeric core itself
+    // still stops honestly.  supernodal_fell_back stays false on every
+    // non-fallback path; fallback_from is meaningful only when it is true.
+    bool supernodal_fell_back;
+    sparse_ldl_status fallback_from;
+
     sparse_ldl_result()
         : status(sparse_ldl_status::internal_error),
           n_pivots_1x1(Index(0)), n_pivots_2x2(Index(0)),
@@ -318,7 +329,9 @@ struct sparse_ldl_result {
           n_amalgamations(Index(0)), n_padded_zeros(0),
           mean_supernode_width_x100(0),
           flops_padded_lo(0u), flops_padded_hi(0u),
-          flops_true_lo(0u), flops_true_hi(0u) {}
+          flops_true_lo(0u), flops_true_hi(0u),
+          supernodal_fell_back(false),
+          fallback_from(sparse_ldl_status::success) {}
 };
 
 // ---------------------------------------------------------------------------
@@ -814,6 +827,29 @@ sparse_ldl_factorize_with_info(
         sparse_ldl_numeric_workspace<T, Index> ws;
         sparse_ldl_factorize_numeric_with_info(
             n, col_ptr, row_ind, val, sym, opt, ws, res);
+
+        // ---- 7. SLDL-R1 (ruling R-A = A1, 2026-08-05): recorded driver
+        // fallback.  This is the single point where the supernodal numeric
+        // status reaches the one-shot caller; when it is pivot_out_of_panel
+        // (a coverage hole of the panel-local BK exchange, not a defect of
+        // the input), the factorization is re-run on the SAME symbolic
+        // analysis with method = baseline_dynamic, whose exchanges work at
+        // any distance.  The fallback is fully recorded (supernodal_fell_back
+        // / fallback_from) -- never silent -- and a failing fallback returns
+        // its own status honestly.  The handle path (spmats_ldl_shift) calls
+        // sparse_ldl_factorize_numeric_with_info directly and is unchanged.
+        if (res.status == sparse_ldl_status::pivot_out_of_panel &&
+            res.method_used == sparse_ldl_method::supernodal) {
+            sparse_ldl_result<T, Index> res2;
+            res2.ordering_used = res.ordering_used;
+            res2.method_used   = sparse_ldl_method::baseline_dynamic;
+            ws.clear_buffers();
+            sparse_ldl_factorize_numeric_with_info(
+                n, col_ptr, row_ind, val, sym, opt, ws, res2);
+            res2.supernodal_fell_back = true;
+            res2.fallback_from = sparse_ldl_status::pivot_out_of_panel;
+            res = res2;
+        }
         return res;
 
     } catch (const std::exception&) {
