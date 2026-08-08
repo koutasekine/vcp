@@ -87,6 +87,7 @@
 // kemeko-class machine.
 // ---------------------------------------------------------------------------
 
+#include <fstream>
 #include <iostream>
 #include <vector>
 #include <array>
@@ -109,6 +110,7 @@
 #include <vcp/bfem/rt/broken_space.hpp>
 #include <vcp/bfem/sv/alfeld.hpp>
 #include <vcp/bfem/sv/vfe_space.hpp>
+#include <vcp/bfem/graphics.hpp>
 #include <vcp/bfem/sv/sv_assemble.hpp>
 #include <vcp/bfem/sv/sv_rows.hpp>
 #include <vcp/bfem/sv/linear_reduction.hpp>
@@ -124,6 +126,7 @@ struct NAVIERSTOKES3DSVLNO : public vcp::SpNewton< _T, _PM, _SP > {
     typedef vcp::bfem::dirichlet_reduction< _T, _PM, _SP >  dirichlet_type;
     typedef vcp::bfem::linear_reduction< _T, _PM, _SP >     constraint_type;
     typedef vcp::bfem::vfe_function< 3, _T, _PM >           velocity_function;
+    typedef vcp::bfem::broken_field< 3, _T, _PM >           pressure_function;
     typedef vcp::spmatrix< _T, _SP >                        spmatrix_type;
     typedef vcp::matrix< _T, _PM >                          vector_type;
 
@@ -163,6 +166,13 @@ struct NAVIERSTOKES3DSVLNO : public vcp::SpNewton< _T, _PM, _SP > {
 
     velocity_function current_velocity() {
         return Vh->function_from_coeffs(m, U_full);
+    }
+
+    // p_h expanded back to the full broken space (GRF-2): undo the two
+    // pressure reductions in reverse order (pin, then the SV constraint
+    // rows -- expand is exact, see linear_reduction.hpp header note)
+    pressure_function current_pressure() {
+        return Qh->field_from_coeffs(SvRows->expand(PinPressure->expand(Pr)));
     }
 
     vector_type f() override {
@@ -387,6 +397,32 @@ int main(void) {
     std::cout << "|| uh ||   (LNO: 0.0356)  : " << N.velocity_l2_norm() << std::endl;
     std::cout << "|| grad uh || (LNO: 0.4543) : " << N.velocity_h1_seminorm() << std::endl;
     std::cout << "max | uh coeff |          : " << max(abs(N.U_full))(0) << std::endl;
+
+    // graphics output (GRF-2): velocity (x,y,z,ux,uy,uz) and pressure
+    // (x,y,z,p) samples on the SAME Alfeld mesh + tetrahedron connectivity
+    // (0-based; MATLAB tetramesh needs cells + 1).  The pressure is
+    // discontinuous P^(m-1): shared faces appear once per element ON
+    // PURPOSE, so the jumps survive.  Pass an element list to sample a
+    // subregion (the full mesh is large at the default h).
+    {
+        vcp::bfem::graphics_output< 3, TYPE, POLICY > gu =
+            vcp::bfem::output_uh_for_graphics(*N.Vh, N.current_velocity());
+        std::ofstream fu("ns_3dsv_lno_velocity_points.dat");
+        fu.precision(17);
+        fu << gu.points;
+        std::ofstream fuc("ns_3dsv_lno_cells.dat");
+        fuc << gu.cells;
+        vcp::bfem::graphics_output< 3, TYPE, POLICY > gp =
+            vcp::bfem::output_uh_for_graphics(*N.Qh, N.current_pressure());
+        std::ofstream fpp("ns_3dsv_lno_pressure_points.dat");
+        fpp.precision(17);
+        fpp << gp.points;
+        std::cout << "Graphics              : " << gu.num_points()
+                  << " velocity rows, " << gp.num_points()
+                  << " pressure rows, " << gu.num_cells()
+                  << " cells -> ns_3dsv_lno_*.dat" << std::endl;
+    }
+
     std::cout << "|| div uh ||^2            : "
               << vcp::bfem::div_norm_sq(*N.Vh, N.current_velocity()) << std::endl;
 

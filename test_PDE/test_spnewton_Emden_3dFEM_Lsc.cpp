@@ -63,6 +63,7 @@
 // machine that cannot hold it; see the notes at the parameters below.
 // ---------------------------------------------------------------------------
 
+#include <fstream>
 #include <iostream>
 #include <vector>
 #include <array>
@@ -81,6 +82,7 @@
 #include <vcp/bfem/fe_space.hpp>
 #include <vcp/bfem/dirichlet.hpp>
 #include <vcp/bfem/poly1.hpp>
+#include <vcp/bfem/graphics.hpp>
 
 #include <vcp/vcp_timer.hpp>
 
@@ -277,6 +279,24 @@ int main(void) {
 
     // full coefficient vector (large: ~9e5 entries at the default settings)
     // std::cout << uh_full << std::endl;
+
+    // graphics output (GRF-2): (x, y, z, uh) samples + tetrahedron
+    // connectivity (0-based; MATLAB tetramesh needs cells + 1).  The full
+    // mesh is large (~8e5 point rows at the default h); pass an element list
+    // (output_uh_for_graphics(*N.Vh, u, elems)) to sample a subregion.
+    {
+        vcp::bfem::graphics_output< 3, TYPE, POLICY > g =
+            vcp::bfem::output_uh_for_graphics(*N.Vh, N.current_function());
+        std::ofstream fp("emden_3dfem_lsc_points.dat");
+        fp.precision(17);
+        fp << g.points;
+        std::ofstream fc("emden_3dfem_lsc_cells.dat");
+        fc << g.cells;
+        std::cout << "Graphics             : " << g.num_points()
+                  << " points / " << g.num_cells()
+                  << " cells -> emden_3dfem_lsc_points.dat, emden_3dfem_lsc_cells.dat"
+                  << std::endl;
+    }
 
     return 0;
 }

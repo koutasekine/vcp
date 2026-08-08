@@ -53,6 +53,7 @@
 // add -fopenmp to use the parallel assembly paths of fe_space.
 // ---------------------------------------------------------------------------
 
+#include <fstream>
 #include <iostream>
 #include <vector>
 #include <array>
@@ -71,6 +72,7 @@
 #include <vcp/bfem/fe_space.hpp>
 #include <vcp/bfem/dirichlet.hpp>
 #include <vcp/bfem/poly1.hpp>
+#include <vcp/bfem/graphics.hpp>
 
 #include <vcp/vcp_timer.hpp>
 
@@ -234,6 +236,24 @@ int main(void) {
 
     // full coefficient vector (large: ~3e5 entries at the default settings)
     // std::cout << uh_full << std::endl;
+
+    // graphics output (GRF-2): (x, y, uh) samples + triangle connectivity,
+    // ready for matplotlib Triangulation / MATLAB trisurf (indices are
+    // 0-based; MATLAB needs cells + 1).  div = 1 samples the vertices only;
+    // raise it to see the P^k shape inside the elements.
+    {
+        vcp::bfem::graphics_output< 2, TYPE, POLICY > g =
+            vcp::bfem::output_uh_for_graphics(*N.Vh, N.current_function());
+        std::ofstream fp("emden_2dfem_points.dat");
+        fp.precision(17);
+        fp << g.points;
+        std::ofstream fc("emden_2dfem_cells.dat");
+        fc << g.cells;
+        std::cout << "Graphics             : " << g.num_points()
+                  << " points / " << g.num_cells()
+                  << " cells -> emden_2dfem_points.dat, emden_2dfem_cells.dat"
+                  << std::endl;
+    }
 
     return 0;
 }
