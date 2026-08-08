@@ -480,6 +480,61 @@ include:
 `c1_boundary` は `c1_coord_traits<T>` を使って、境界方向の符号判定と拘束係数用の有理数化を行います。
 `double` や独自スカラー型で使う場合は、この traits を利用者側で特殊化してください。
 
+## 図示用サンプリング(GRF-1)
+
+`<vcp/bfem/graphics.hpp>`。有限要素関数を要素ごとの重心格子でサンプルし、
+matplotlib / MATLAB / VTK 系が共通に要求する「点行列 + セル接続行列」の対で返します。
+RT 空間は対象外です(保証の道具であり、出口はスカラーであるため。GRF-1 外部設計 §2)。
+
+### `graphics_output<D, T, P>`
+
+| メンバ | 型 | 意味 |
+|---|---|---|
+| `points` | `matrix<T, P>` | `npoint × (D + ncomp)`。各行 = サンプル点 1 個、列 = 物理座標 D 列 + 値 `ncomp` 列 |
+| `cells` | `matrix<int>` | `ncell × (D + 1)`。各行 = 小単体 1 個、成分は `points` の行番号(**0 始まり**) |
+| `ncomp` | `int` | 値の成分数(スカラー 1、SV 速度 D) |
+| `div` | `int` | 生成に使った分割数 |
+| `num_points()` / `num_cells()` | `int` | 行数 |
+
+要素あたり `npt = C(div + D, D)` 点、`div^D` セル。隣接要素が共有する辺・面上の点は
+**要素ごとに重複して出力されます**(不連続場の跳びを保つための仕様)。後段で節点を
+併合する場合は許容誤差付きの座標照合を使ってください(隣接要素間で加算順が異なる
+ため、ビット一致は契約ではありません)。
+
+### `output_uh_for_graphics`(自由関数、5 空間で同名)
+
+| 対象 | シグネチャ | ncomp |
+|---|---|---|
+| `fe_space<D>` | `output_uh_for_graphics(Vh, u, div = 1)` | 1 |
+| `c1_space<2>` | 同上 | 1 |
+| `broken_space<D>` | 同上(`broken_field` を受ける。`const` 空間で可) | 1 |
+| `vfe_space<D>` | 同上(`vfe_function` を受ける) | D |
+
+各対象に `(space, u, elems, div = 1)` の部分集合版があり、`elems`(要素番号の
+リスト)の並び順どおりに行ブロックが並びます。`div < 1` と範囲外の要素番号は
+`std::invalid_argument` です。`div` の既定は 1(頂点のみ)。メッシュが十分細かければ
+既定で足ります。`div` を上げるのは、高次要素の要素内形状(特に `c1_space` の
+k ≥ 5)や 3 次元の粗いメッシュを見たいときです。
+
+```cpp
+#include <vcp/bfem/graphics.hpp>
+vcp::bfem::graphics_output<2, TYPE, POLICY> g =
+    vcp::bfem::output_uh_for_graphics(*Vh, uh, 2);
+std::cout << g.points;   // そのまま numpy.loadtxt / MATLAB readmatrix で読める
+std::cout << g.cells;    // MATLAB では添字に +1 が必要(trisurf(T+1, ...))
+```
+
+matplotlib: `tripcolor(Triangulation(x, y, cells), u)`。
+MATLAB: `trisurf(cells + 1, x, y, u)` / 3 次元は `tetramesh(cells + 1, XYZ)`。
+
+### 区間型・有理数型での意味
+
+区間型 `T` では座標列・値列とも区間で返り、各成分は対応する厳密値を包含します
+(通常の区間演算による包含。GRF-1 ゲート §8 で有理数厳密実行との包含を機械検証)。
+注意: 1 行の `(x の区間, u の区間)` は「その格子点における」座標と値の包含であり、
+x 区間内の任意の点で u が u 区間に入るという主張ではありません。有理数型では
+座標・値とも厳密です(`div` が 2 冪でなくても三分点等が厳密に出ます)。
+
 ## 代表的な例外
 
 | 例外 | 主な条件 |

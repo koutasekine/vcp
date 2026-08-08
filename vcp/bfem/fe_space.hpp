@@ -305,6 +305,13 @@ public:
             .first->second;
     }
     int num_elements() const { return topo_.nt; }
+    // GRF-1: read-only element geometry, mirroring rt_space / broken_space /
+    // vfe_space / c1_space (additive; fe_space previously exposed no
+    // per-element geometry)
+    const element_geometry<D, T>& geometry(int e) const {
+        assert(e >= 0 && e < topo_.nt);
+        return geom_[static_cast<std::size_t>(e)];
+    }
 
     // ---- B-1: fe_function factories ----
     function_type zero_function(int m) {

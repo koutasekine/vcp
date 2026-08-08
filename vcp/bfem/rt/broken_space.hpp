@@ -249,6 +249,20 @@ public:
     // ---- L2 scalar: (u, v)_{L2(Omega)} of two broken fields ----
     // const per external design section 4; the gather buffers are mutable
     // (the instance stays externally immutable; not thread safe, as usual)
+    // ---- GRF-1: point evaluation on one element ----
+    // Barycentric-defined block (W-RT9): the element block IS the bpoly
+    // coefficient vector in canonical L0 order, so evaluation is de
+    // Casteljau on the gathered block. const with mutable gather buffer,
+    // exactly the inner() pattern (externally immutable, not thread safe).
+    T eval(const field_type& u, int e, const bary_point<D, T>& lam) const {
+        validate(u);
+        if (e < 0 || e >= nt_)
+            throw std::invalid_argument(
+                "bfem::broken_space::eval: element out of range");
+        gather_block(u, e, ub_);
+        return ::vcp::bfem::eval(ub_, lam);
+    }
+
     T inner(const field_type& u, const field_type& v) const {
         validate(u);
         validate(v);

@@ -1,26 +1,40 @@
 // test_PDE/2dfem_assist.hpp
 //
-// CM-1: verified upper bound of the H^1_0 projection error constant C_M
-// (Liu and Oishi 2010, Theorem 3.6; notation follows section 3.2 of the
-// Takayasu dissertation, equations (31)-(47)).
+// CM-1: verified upper bound of the H^1_0 projection error constant C_h
+// (Liu and Oishi 2010).  Symbols and equation numbers follow chapter 8 of
 //
-//     || u - P_h u ||_V <= C_M || f ||_X                        ... (38)
-//     C_M = sqrt( (C_{h,0})^2 + kappa^2 )                       ... Thm 3.6
+//     劉 雪峰・関根 晃太「偏微分方程式の精度保証付き数値計算法」,
+//     『精度保証付き数値計算の基礎』第 8 章
+//
+// which is the primary source of this file (CM-1S design 1).
+//
+//     || u - u_h ||_V <= C_h || f ||_X               ... Theorem 8.3 / (8.25)
+//     C_h := sqrt( C_0^2 h^2 + kappa_h^2 )           ... (8.25)
+//
+// with u the solution of the variational problem (8.9), u_h = P_h u its
+// Galerkin approximation (8.10) and P_h the projection (8.11).
 //
 // The public entry points (CM-1R design 2) are
 //
-//     c0_element_bound(o, a, b)          Lemma 3.2, one vertex labelling
-//     c0_element(Th, e)                  C_0(K_h) of element e
-//     c_h0(Th)                           (39), k independent
-//     kappa_squared(Th, k)               (47)
-//     projection_error_constant(Th, k)   Theorem 3.6; .upper() is the bound
+//     c0_element_bound(o, a, b)          C_0^{(1)}(K), one vertex labelling
+//     c0_element(Th, e)                  C_0^{(1)}(K) of element e
+//     c_h0(Th)                           C_0 h, (8.19)(8.20), k independent
+//     kappa_squared(Th, k)               kappa_h^2 (kappa_h is (8.21))
+//     projection_error_constant(Th, k)   C_h, Theorem 8.3; .upper() is the bound
 //     projection_constants(Th, k)        all three in ONE dense pass
 //
 // all in namespace vcp::fem2d_assist.  The pipeline itself stays in
 // namespace detail.
 //
-// Authority: sandbox/docs/design/CM-1_design_v1.0.md and
-// sandbox/docs/design/CM-1R_design_v1.0.md.
+// C_0 h against C_h -- the two are easy to confuse.  (8.19)(8.20) normalise by
+// h, i.e. C_0 = max_K C_0^{(1)}(K) / h, so the quantity c_h0 returns is
+// C_0 h = max_K C_0^{(1)}(K) itself; it is the constant of the piecewise
+// constant projection pi_{0,h} of (8.18)(8.19) and only the FIRST term under
+// the square root of (8.25).  C_h is the projection error constant itself.
+//
+// Authority: sandbox/docs/design/CM-1_design_v1.0.md,
+// sandbox/docs/design/CM-1R_design_v1.0.md and
+// sandbox/docs/design/CM-1S_design_v1.0.md.
 //
 // Lexical policy (design 6.1): no decimal literals, no `double` / `float`
 // tokens; the underlying point type is reached through typename T::base_type
@@ -29,6 +43,25 @@
 // Scope note (design 8): this is the "make it work" pass.  Memory
 // reduction, blocking, sparse paths, parallelism and time optimisation are
 // explicitly out of scope; the dense path below is intentionally literal.
+//
+// Dense policy DP (CM-1T design 2).  The default stays
+// vcp::imats<typename T::base_type>, so that the header needs no external
+// BLAS.  When one is available, pass DP = vcp::pidblas.  It derives from
+// vcp::imats<double, vcp::pdblas> and overrides mulmm / mul_im_m / mul_m_im /
+// vmulmm / mulltmm, so that the INTERVAL products themselves are turned into
+// BLAS3 calls through a mid/rad split with directed rounding.
+//
+//     vcp::pidblas                      <- recommended when BLAS is available
+//     vcp::imats<double, vcp::pdblas>   <- NOT the same thing
+//
+// The second one accelerates the POINT operations only; interval x interval
+// still falls back to the scalar loops of imats, which is what dominates the
+// pipeline below.  Measured by the CM-1T author on the book mesh h = 1/4, one
+// core, reference BLAS: k = 1/2/3 took 1.26 / 38.41 / (over 300, unfinished)
+// seconds with vcp::imats<double> against 0.17 / 4.51 / 40.42 seconds with
+// vcp::pidblas, the two agreeing to nine digits.  Neither the timings nor the
+// agreement is contracted here: the rounding ORDER differs between policies,
+// so the results are not required to be bit-identical.
 
 #ifndef VCP_TEST_PDE_2DFEM_ASSIST_HPP
 #define VCP_TEST_PDE_2DFEM_ASSIST_HPP
@@ -44,13 +77,12 @@
 
 #include <vcp/error.hpp>
 #include <vcp/matrix.hpp>
-// vcp::compsym.  imats_assist.hpp does not pull in its own dependencies: it is
-// normally reached only through vcp/matrix_assist.hpp, which includes
-// vcp/vcp_metafunction.hpp (vcp::is_interval) first.  matrix.hpp does not
-// include matrix_assist.hpp, so the metafunction header has to precede it here
-// or vcp::is_interval is undeclared inside imats_assist.hpp.
-#include <vcp/vcp_metafunction.hpp>
-#include <vcp/imats_assist.hpp>
+// vcp::compsym.  matrix_assist.hpp is the proper entry point: it pulls in
+// vcp/vcp_metafunction.hpp (vcp::is_interval) and then takes in
+// vcp/imats_assist.hpp under #if defined(INTERVAL_HPP), which kv/interval.hpp
+// above has already defined.  It must follow matrix.hpp (it #errors otherwise),
+// which is also the order the existing test_PDE/*.cpp use.
+#include <vcp/matrix_assist.hpp>
 #include <vcp/spmatrix.hpp>
 #include <vcp/imats.hpp>
 #include <vcp/spimats.hpp>
@@ -66,21 +98,21 @@ namespace vcp {
 namespace fem2d_assist {
 
 // ---------------------------------------------------------------------------
-// projection_constant_set (CM-1R design 2): the three constants of Theorem 3.6
+// projection_constant_set (CM-1R design 2): the three constants of Theorem 8.3
 // together with the generalized spectrum they came from.  Returned by
 // projection_constants; kappa_squared and projection_error_constant are thin
 // projections of it.
 //
 // The two dense debug matrices of the CM-1 bundle (Q before symmetrisation and
-// M_h) are deliberately NOT here: Q before the symmetry intersection is not yet
-// a valid enclosure, so it must not be reachable from a public type.  They live
-// in detail::core_result instead (CM-1R design 2.2).
+// the X_h mass matrix) are deliberately NOT here: Q before the symmetry
+// intersection is not yet a valid enclosure, so it must not be reachable from a
+// public type.  They live in detail::core_result instead (CM-1R design 2.2).
 // ---------------------------------------------------------------------------
 template <typename T, class DP>
 struct projection_constant_set {
-    T c_h0;                          // (39)
-    T kappa2;                        // (47)
-    T c_m;                           // Theorem 3.6
+    T c_h0;                          // C_0 h, (8.19)(8.20)
+    T kappa2;                        // kappa_h^2, kappa_h is (8.21)
+    T c_m;                           // C_h, Theorem 8.3 / (8.25)
     std::vector<T> lambda;           // diagonal of E from eigsymge(Q, Md, E)
     int sym_pairs_checked;           // number of (i, j), i < j, intersected
 
@@ -107,33 +139,67 @@ struct interval_scalar_contract {
 };
 
 // ---------------------------------------------------------------------------
-// core_result: the public constant set plus the two dense matrices that the
+// core_result: the public constant set plus the three dense matrices that the
 // CM-1 audit gates (design 9) need in order to inspect the intermediate
-// quantities without re-deriving them.  keep_debug controls whether those two
-// are retained (the public entry points pass false).
+// quantities without re-deriving them.  keep_debug controls whether those are
+// retained (the public entry points pass false).
+//
+// q_raw and q_sym are Q on either side of vcp::compsym, so gate G2 can check
+// the post-conditions of the symmetrisation itself (CM-1S design 4): q_sym must
+// be exactly symmetric and must be contained in q_raw entry by entry.
 // ---------------------------------------------------------------------------
 template <typename T, class DP>
 struct core_result : public projection_constant_set<T, DP> {
     vcp::matrix<T, DP> q_raw;        // Q BEFORE symmetrisation (debug only)
-    vcp::matrix<T, DP> md;           // M_h mass matrix (debug only)
+    vcp::matrix<T, DP> q_sym;        // Q AFTER  symmetrisation (debug only)
+    vcp::matrix<T, DP> md;           // X_h mass matrix (debug only)
 
-    core_result() : projection_constant_set<T, DP>(), q_raw(), md() {}
+    core_result() : projection_constant_set<T, DP>(), q_raw(), q_sym(), md() {}
 };
 
 } // namespace detail
 
 // ---------------------------------------------------------------------------
-// c0_element_bound: the Kikuchi-Liu bound for ONE choice of the origin
-// vertex O (design 5, 5.1, 5.2).
+// c0_element_bound: an upper bound of C_0^{(1)}(K) (table 8.1, section 8.3) for
+// ONE choice of the origin vertex O (design 5, 5.1, 5.2).  The symbols O, A, B,
+// L, alpha, theta are those of figure 8.4 of the book.
 //
-//     C_0(K_h) <= (h / pi) * sqrt( nu_plus(alpha, theta) / 2 )
-//     nu_plus   = 1 + alpha^2 + sqrt( 1 + 2 alpha^2 cos 2theta + alpha^4 )
+//     C_0^{(1)}(K) <= (L / pi) * sqrt( nu_plus(alpha, theta) / 2 )
+//     nu_plus       = 1 + alpha^2 + sqrt( 1 + 2 alpha^2 cos 2theta + alpha^4 )
 //
-// with h = |OA|, alpha = |OB| / |OA| in (0, 1), theta = angle AOB in (0, pi).
+// with L = |OA|, alpha = |OB| / |OA| in (0, 1], theta = angle AOB in (0, pi).
 //
-// Source: Lemma 3.2 of the dissertation, attributed to Kikuchi and Liu
-// (2007).  [出典未逐語確認: the lemma is used as quoted by the dissertation;
-// no verbatim comparison against the Kikuchi-Liu original was performed.]
+// Which norm C_0^{(1)}(K) is taken over (CM-1T design 6.1).  It is the
+// SEMINORM.  Table 8.1 of the book writes the projection and its estimate as
+//
+//     Pi_0^{(1)} u := ( 1 / |K| ) int_K u dxdy,
+//     || u - Pi_0^{(1)} u ||_{0,K} <= C_0^{(1)} | u |_{1,K}
+//
+// so the denominator of the supremum defining C_0^{(1)}(K) is | u |_{1,K} and
+// not the full H^1 norm.  That is the reading this implementation uses; it was
+// left as an open question by CM-1S, and the book settles it.  It is also what
+// makes C_0^{(1)} = 1 / pi on the unit right isosceles triangle an equality
+// rather than an estimate (section 8.3, and (b) at the end of this file).
+//
+// Which of the two bounds is implemented (CM-1S design 1.2).  Section 8.3 of
+// the book gives C_0^{(1)}(K) <= (L / pi) sqrt( 1 + |cos theta| ).  For
+// alpha = 1 the identity nu_plus / 2 = 1 + |cos theta| holds, so that estimate
+// is exactly the alpha = 1 specialisation of the one above; for alpha < 1 the
+// nu_plus form is sharper (up to 26 percent on the sampled alpha-theta grid),
+// so it is the one used here.  Its source is Lemma 3.2 of the Takayasu
+// dissertation, attributed there to Kikuchi and Liu (2007), and this is the
+// ONLY dissertation reference left in the file (CM-1S gate S-G9 exception).
+// [出典未逐語確認: the lemma is used as quoted by the dissertation; no verbatim
+// comparison against the Kikuchi-Liu original was performed.]
+//
+// The book's other estimate, C_0^{(1)}(K) <= |AB| / j_{1,1}, is NOT used: a
+// rigorous enclosure of j_{1,1} would need a decimal literal, which the lexical
+// policy below forbids.
+//
+// theta means the same angle in both forms.  The book takes the largest
+// interior angle; the reordering below makes |OB| <= |OA| within one call, and
+// c0_element keeps the smallest of the three vertex labellings, among which the
+// one placing O opposite the longest edge AB carries that largest angle.
 //
 // Evaluated in the squared form of design 5.2 so that the only square roots
 // are the three written below.  a and b are the two other vertices; they are
@@ -159,6 +225,20 @@ T c0_element_bound(const std::array<T, 2>& o,
         vcp::throw_error<vcp::invalid_argument>(
             "vcp::fem2d_assist::c0_element_bound: degenerate element "
             "(an edge from the origin vertex is not certainly nonzero)");
+
+    // collinear degeneracy (CM-1S design 3.2): three DISTINCT vertices can
+    // still span zero area, and the test above does not see it.  Twice the
+    // signed area is the cross product below; the same failure-side gate is
+    // applied to it, so a sign that cannot be certified either way -- an
+    // enclosure containing 0 -- is rejected.  This matches the philosophy of
+    // vcp/bfem/geometry.hpp's geometry_traits<T>::sign(), with the exception
+    // type kept inside the vcp::error hierarchy.  Either sign is accepted: the
+    // element orientation is free, only the area has to be certainly nonzero.
+    const T cross = ux * vy - uy * vx;           // 2 * signed area
+    if (!(cross > T(0)) && !(cross < T(0)))
+        vcp::throw_error<vcp::invalid_argument>(
+            "vcp::fem2d_assist::c0_element_bound: degenerate element "
+            "(zero or sign-indefinite area)");
 
     if (su.upper() < sv.upper()) {               // enforce |u| >= |v|
         T t = su; su = sv; sv = t;
@@ -188,7 +268,7 @@ T c0_element_bound(const std::array<T, 2>& o,
 }
 
 // ---------------------------------------------------------------------------
-// c0_element: C_0(K_h) for the single element e.
+// c0_element: C_0^{(1)}(K) for the single element e.
 //
 // The three vertex labellings are candidates and the SMALLEST upper bound is
 // kept (design 5.1); the comparison is made on the upper ends and the selected
@@ -218,7 +298,12 @@ T c0_element(const vcp::bfem::mesh<2, T>& Th, int e) {
 }
 
 // ---------------------------------------------------------------------------
-// c_h0: C_{h,0} = max_{K_h} C_0(K_h)   ... (39)
+// c_h0: C_0 h = max_K C_0^{(1)}(K)   ... (8.19)(8.20)
+//
+// This is the constant of the piecewise constant projection pi_{0,h} of (8.18):
+// (8.19) reads || v - pi_{0,h} v || <= C_0 h | v |_1, and (8.20) normalises it
+// as C_0 = max_K C_0^{(1)}(K) / h, so the value returned here is the
+// unnormalised max_K C_0^{(1)}(K) = C_0 h.  It does not depend on k.
 //
 // Across elements the LARGEST upper bound is kept; the comparison is made on
 // the upper ends and the selected interval is returned unchanged (design 5.2).
@@ -258,13 +343,16 @@ struct dense_materials {
 };
 
 // ---------------------------------------------------------------------------
-// assemble_dense_materials: build the six materials of (46) and densify them.
+// assemble_dense_materials: build the six materials of the mixed (saddle point)
+// minimisation of section 8.4.3 and densify them.
 //
-// Space correspondence (design 3):  V_h = P^k,  W_h = RT_{k-1},
-// M_h = P^{k-1}.  The KKT of (46) reduces to the pointwise per-element
-// condition div p_h + f_h = 0 only when M_h = div(W_h), and
-// div(RT_j) = P_j.  [出典未逐語確認: the dissertation attributes
-// div(RT_j) = P_j to its reference [28]; no verbatim check was made.]
+// Space correspondence (design 3):  V_h = P^k,  W_h = RT_{k-1} contained in
+// H(div, Omega) (8.7),  X_h = P^{k-1} (the piecewise polynomial space of
+// section 8.4.3).  The KKT system reduces to the pointwise per-element
+// condition div p_h + f_h = 0 only when X_h = div(W_h), and div(RT_j) = P_j.
+// [出典未逐語確認: section 8.4.3 attributes div(RT_j) = P_j to Boffi, Brezzi
+// and Fortin, "Mixed Finite Element Methods and Applications", Springer, 2013;
+// no verbatim check against that book was made.]
 //
 // Densification is matrix<T, DP>::operator=(const spmatrix&) (CM-1R R2, SPC-2):
 // every source is finalized first, so each (i, j) carries exactly one value and
@@ -290,18 +378,18 @@ void assemble_dense_materials(const vcp::bfem::mesh<2, T>& Th, int k,
     const int ni = dr.reduced_size();
 
     // ni == 0 is legitimate (e.g. the 2-element unit square with k = 1): the
-    // reduced V_h is then {0}, the Galerkin solution operator K is the zero
-    // map and the two K-terms of Q drop out.  It is handled in
+    // reduced V_h is then {0}, the Galerkin solution operator of (8.10) is the
+    // zero map and the two K-terms of Q drop out.  It is handled in
     // projection_constants_core().
     if (nr <= 0 || nb <= 0)
         vcp::throw_error<vcp::dimension_error>(
-            "vcp::fem2d_assist::assemble_dense_materials: empty W_h or M_h (nr = ", nr,
+            "vcp::fem2d_assist::assemble_dense_materials: empty W_h or X_h (nr = ", nr,
             ", nb = ", nb, ")");
 
     // ---- P2: sparse assembly (all six, then finalize) ----
     vcp::spmatrix<T, SP> S  = fs.stiffness(k);                       // S
     vcp::spmatrix<T, SP> Pm = rs.mass();                             // P
-    vcp::spmatrix<T, SP> Mm = bs.mass();                             // M
+    vcp::spmatrix<T, SP> Mm = bs.mass();                             // M (X_h)
     vcp::spmatrix<T, SP> Nm = vcp::bfem::assemble_div_mass(bs, rs);  // N
     vcp::spmatrix<T, SP> Bm = vcp::bfem::assemble_mixed_mass(fs, k, bs);  // B
     vcp::spmatrix<T, SP> Xm = vcp::bfem::assemble_cross_grad(rs, fs, k);  // G^T
@@ -351,7 +439,7 @@ void projection_constants_core(const vcp::bfem::mesh<2, T>& Th, int k,
         vcp::throw_error<vcp::invalid_argument>(
             "vcp::fem2d_assist: k must be >= 1 (got ", k, ")");
 
-    // C_{h,0} first: a degenerate element is reported as invalid_argument
+    // C_0 h first: a degenerate element is reported as invalid_argument
     // before any space is built (design 5.2).
     out.c_h0 = c_h0(Th);
 
@@ -360,23 +448,29 @@ void projection_constants_core(const vcp::bfem::mesh<2, T>& Th, int k,
     const int ni = mat.ni;
     const int nb = mat.nb;
 
-    // ---- P4: K = Sr^{-1} Br, the Galerkin solution operator (ni x nb) ----
+    // ---- P4: K = Sr^{-1} Br, the Galerkin solution operator of (8.10) ----
+    // (ni x nb; column j is the Galerkin approximation P_h of (8.11) applied to
+    // the j-th basis function of X_h.)
     // Sr is SPD; lss certifies through its ||RA - I|| < 1 test and throws
     // vcp::verification_error otherwise (design 4 P4, design 7).
     vcp::matrix<T, DP> K;
     if (ni > 0) K = lss(mat.Sr, mat.Br);
 
     // ---- P5: H, the equilibrated flux operator (nr x nb) ----
-    // Design 4 P5 solves the saddle system of the dissertation's variant a)
+    // The equilibrated flux p_h in W_h (div p_h + f_h = 0) is the ingredient of
+    // the hypercircle equation (8.17) / (8.24), which chapter 8 attributes to
+    // Prager and Synge; kappa_h of (8.21) is the bound it yields.
+    //
+    // Design 4 P5 solves the saddle system of section 8.4.3
     //
     //     [ Pd   Nd^T ] [ H ]   [   0  ]
     //     [ Nd    0   ] [ L ] = [ -Md  ]      (nb right hand sides)
     //
     // which is equivalent to the explicit form
-    // H = -P^{-1} N^T (N P^{-1} N^T)^{-1} M of (46).  The nonsingularity of
-    // N P^{-1} N^T assumed just after (46) is discharged by the ||RA - I|| < 1
-    // test inside lss; if it fails, vcp::verification_error propagates.
-    // Layout matches bfem_rt_e2e_tests.cpp L374-387.
+    // H = -P^{-1} N^T (N P^{-1} N^T)^{-1} M.  The nonsingularity of
+    // N P^{-1} N^T, assumed in the proof of Theorem 8.2, is discharged by the
+    // ||RA - I|| < 1 test inside lss; if it fails, vcp::verification_error
+    // propagates.  Layout matches bfem_rt_e2e_tests.cpp L374-387.
     const int nr = mat.nr;
     vcp::matrix<T, DP> H;
     {
@@ -392,7 +486,7 @@ void projection_constants_core(const vcp::bfem::mesh<2, T>& Th, int k,
         H = sol({0, nr - 1}, {});
     }
 
-    // ---- P6: Q = K^T (Sr K) + H^T (Pd H) - 2 K^T (Gr H)   ... (46) ----
+    // ---- P6: Q = K^T (Sr K) + H^T (Pd H) - 2 K^T (Gr H)  ... section 8.4.3 --
     vcp::matrix<T, DP> Q = transpose(H) * (mat.Pd * H);
     if (ni > 0) {
         vcp::matrix<T, DP> Kt = transpose(K);
@@ -418,12 +512,17 @@ void projection_constants_core(const vcp::bfem::mesh<2, T>& Th, int k,
     typedef typename T::base_type B;
     vcp::compsym(Q);
     out.sym_pairs_checked = nb * (nb - 1) / 2;
+    if (keep_debug) out.q_sym = Q;
 
     if (keep_debug) out.md = mat.Md;
 
-    // ---- P7: kappa^2 = max eigenvalue of Q f_v = lambda Md f_v ... (47) ----
+    // ---- P7: kappa_h^2 = max eigenvalue of Q f_v = lambda Md f_v ----
+    // kappa_h itself is defined by (8.21); Theorem 8.2 / (8.23) is the error
+    // estimate it carries.  NOTE that the book's kappa_h is NOT squared, while
+    // the quantity computed here (and returned by kappa_squared) is kappa_h^2.
+    //
     // eigsymge returns E diagonal with an enclosure of every generalized
-    // eigenvalue; Md (the M_h mass matrix) is SPD.  Its own certification
+    // eigenvalue; Md (the X_h mass matrix) is SPD.  Its own certification
     // (||YBX - I|| < 1) throws vcp::verification_error on failure.
     vcp::matrix<T, DP> E;
     eigsymge(Q, mat.Md, E);
@@ -440,18 +539,62 @@ void projection_constants_core(const vcp::bfem::mesh<2, T>& Th, int k,
     }
     if (kappa2u < B(0))
         vcp::throw_error<vcp::verification_error>(
-            "vcp::fem2d_assist: kappa^2 upper bound is negative (", kappa2u,
-            "); the enclosure of (47) is not usable");
+            "vcp::fem2d_assist: kappa_h^2 upper bound is negative (", kappa2u,
+            "); the enclosure is not usable");
 
     out.kappa2 = T(kappa2u);
 
-    // ---- C_M = sqrt( C_{h,0}^2 + kappa^2 )  ... Theorem 3.6 ----
-    // C_{h,0} comes from Lemma 3.2, which bounds the P^0 projection error.
-    // For k >= 2 the space M_h = P^{k-1} contains P^0, so its projection
-    // error is not larger and the bound stays VALID, though not sharp.
-    // [出典未逐語確認: this reuse of Lemma 3.2 for P^{k-1} is the design's own
-    // argument (design 3.1), with no source; C_M therefore remains O(h)
-    // regardless of k.]
+    // ---- C_h = sqrt( (C_0 h)^2 + kappa_h^2 )  ... Theorem 8.3 / (8.25) ----
+    // C_0 h is the constant of the piecewise constant projection pi_{0,h},
+    // (8.18)(8.19).  For k >= 2 the space X_h = P^{k-1} contains P^0, so its
+    // projection error is not larger and the bound stays VALID, though not
+    // sharp.
+    //
+    // WHERE THE SLACK IS, AND WHERE IT IS NOT (CM-1T design 3).  Three points,
+    // because the first two are the ones easy to get wrong.
+    //
+    // (a) The O(h) is ESSENTIAL; it is not an artefact of this implementation
+    //     and it cannot be removed by raising k.  In the proof of Theorem 8.3,
+    //     (8.27), the function that C_0 h is applied to is u - u~ in H^1_0:
+    //     the regularity available there is H^1 and nothing better, so that
+    //     term cannot decay faster than O(h) whatever the degree of X_h is.
+    //     What a larger k buys is a constant factor.
+    //
+    // (b) On a uniform partition there is NO slack in C_0 h itself, so
+    //     c0_element_bound is NOT the place to sharpen.  Section 8.3 quotes
+    //     Kikuchi and Liu for C_0^{(1)} = 1 / pi on the unit right isosceles
+    //     triangle, and that is an EQUALITY, not an estimate.  Every element of
+    //     a partition into right isosceles triangles attains it, so on such a
+    //     mesh C_0 h = h / pi is the optimal value rather than a bound with
+    //     room in it; the nu_plus form above reproduces exactly that at
+    //     alpha = 1, theta = pi/2.
+    //
+    // (c) The one slack that does remain is the DEGREE of the projection: X_h
+    //     is P^{k-1}, yet the constant carried for pi_{0,h} is the one of the
+    //     P^0 projection.  Sharpening it needs an upper bound of
+    //
+    //         sup_{v in H^1(K)} ||(I - pi_K^{(m)}) v||_{0,K} / |v|_{1,K},
+    //         m = k - 1 >= 1,
+    //
+    //     and table 8.1 of the book treats the 0-th order projection only
+    //     (C_0^{(1)}, C_0^{(2)}).  Whether values for m >= 1 are published
+    //     anywhere is UNKNOWN here.  C_0^{(1)} = 1 / sqrt(lambda_1) comes from
+    //     the Neumann eigenvalue problem (8.8), and the analogous quantity for
+    //     m >= 1 is not simply the (m+1)-st eigenvalue, because P^m is not
+    //     spanned by the eigenfunctions.  This may be an open research question
+    //     rather than a gap in the material at hand, so NO claim is made that
+    //     it is a matter of substituting a published value later on.
+    //
+    // Measured on the book mesh h = 1/4 (96 elements) by
+    // sandbox/probes/cm1t_u3_probe.cpp: kappa_h falls with k as 0.146500307 /
+    // 0.060494965 / 0.037385599 for k = 1/2/3, while C_0 h stays at
+    // 0.079577472 for every k, so C_h = 0.166718067 / 0.099961066 /
+    // 0.087921880 and the share (C_0 h / C_h)^2 that C_0 h contributes rises
+    // from 23 to 63 to 82 percent.  From k = 2 on, C_h is C_0 h limited:
+    // refining h is what helps, not raising k.
+    // [出典未逐語確認: this reuse of the pi_{0,h} constant for P^{k-1} is the
+    // design's own argument (CM-1T design 3), with no source; C_h therefore
+    // remains O(h) regardless of k.]
     {
         using std::sqrt;
         out.c_m = sqrt(out.c_h0 * out.c_h0 + out.kappa2);
@@ -463,14 +606,16 @@ void projection_constants_core(const vcp::bfem::mesh<2, T>& Th, int k,
 // ---------------------------------------------------------------------------
 // projection_constants (design 6, CM-1R design 2)
 //
-// The three constants of Theorem 3.6 for the pair (Th, P^k), obtained in ONE
+// The three constants of Theorem 8.3 for the pair (Th, P^k), obtained in ONE
 // pass through the dense path.  kappa_squared and projection_error_constant
 // below are thin projections of this function; calling both of them costs two
 // dense passes, so ask for the set when both are wanted.
 //
 // Throws vcp::invalid_argument (k < 1, degenerate element),
 // vcp::verification_error (inclusion broken, or lss / eigsymge could not
-// certify), vcp::dimension_error (internal size mismatch).
+// certify), vcp::dimension_error (internal size mismatch).  A degenerate mesh
+// may also let vcp::bfem::degenerate_element through from the space
+// construction; see projection_error_constant below.
 // ---------------------------------------------------------------------------
 template <typename T,
           class DP = vcp::imats<typename T::base_type>,
@@ -483,7 +628,11 @@ projection_constants(const vcp::bfem::mesh<2, T>& Th, int k) {
 }
 
 // ---------------------------------------------------------------------------
-// kappa_squared: kappa^2 = lambda_max(Q, M)   ... (47)
+// kappa_squared: lambda_max(Q, M), i.e. kappa_h^2 with kappa_h of (8.21).
+//
+// The book's kappa_h is NOT squared: this function returns kappa_h SQUARED, so
+// the quantity the book prints (for instance in table 8.2) is sqrt() of what is
+// returned here.  The squared form is what (8.25) needs directly.
 // ---------------------------------------------------------------------------
 template <typename T,
           class DP = vcp::imats<typename T::base_type>,
@@ -497,9 +646,18 @@ T kappa_squared(const vcp::bfem::mesh<2, T>& Th, int k) {
 // ---------------------------------------------------------------------------
 // projection_error_constant (design 6)
 //
-// Returns an enclosure of C_M for the pair (Th, P^k).  The GUARANTEED UPPER
-// BOUND IS THE RETURN VALUE'S .upper(); the lower end carries no claim beyond
-// being a valid enclosure end of the computed quantity.
+// Returns an enclosure of C_h (Theorem 8.3 / (8.25)) for the pair (Th, P^k).
+// The GUARANTEED UPPER BOUND IS THE RETURN VALUE'S .upper(); the lower end
+// carries NO claim beyond being a valid enclosure end of the computed
+// quantity.  In particular kappa_squared is reduced to the point interval
+// T(kappa2u) built from the largest upper end of the spectrum, so the lower end
+// of the value returned here is NOT a lower bound of C_h (CM-1S U2, kept as is
+// by the owner's decision).
+//
+// Exceptions: as for projection_constants above.  Note that on a degenerate
+// mesh vcp::bfem::degenerate_element may propagate from the space construction;
+// it derives from std::runtime_error and is NOT part of the vcp::error
+// hierarchy, so a catch on vcp::error alone does not see it.
 // ---------------------------------------------------------------------------
 template <typename T,
           class DP = vcp::imats<typename T::base_type>,
