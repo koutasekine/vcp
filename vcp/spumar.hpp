@@ -286,10 +286,15 @@ namespace vcp {
 		//     not extended); the actual backend is recorded in
 		//     last_delegate_info.
 		//   - UMFPACK defaults are allowed on this path (scaling + iterative
-		//     refinement): honesty is preserved because converged is decided
-		//     ONLY by our own residual re-evaluation with the exact operator
-		//     (*this), under the same threshold rule as the base iterative
-		//     solvers (make_residual_control).
+		//     refinement).  converged is decided by the UMFPACK
+		//     factorization / solve STATUS, exactly as the base
+		//     spmats dispatch_sparse_lu_ decides it from
+		//     fac.info().success (D-7 parity).  opt.tol is the stopping
+		//     criterion of the ITERATIVE solvers and is not an acceptance
+		//     criterion for a direct solve, so it is not used here.
+		//     Honesty is preserved by re-evaluating the residual with the
+		//     exact operator (*this) and REPORTING it (report-only): the
+		//     caller judges solution quality from result.residual_norm.
 		//   - status mapping: UMFPACK_OK -> re-evaluate residual;
 		//     WARNING_singular_matrix -> converged = false (x = 0, solve not
 		//     attempted); any other status -> converged = false (x = 0).
@@ -318,7 +323,8 @@ namespace vcp {
 			last_delegate_info.backend = "umfpack";
 			last_delegate_info.note =
 				"backend=umfpack (direct LU solve); requested linear_solver_method delegated as-is; "
-				"converged decided by own residual re-evaluation";
+				"converged decided by factorization/solve status (D-7 parity with spmats); "
+				"residual re-evaluated with the exact operator and reported (report-only)";
 
 			linear_solve_result<double> result;
 			result.method = opt.method; // requested value preserved (S-3 spirit)
@@ -371,17 +377,22 @@ namespace vcp {
 			}
 
 			// Self re-evaluation (B-4 / G5): residual with the exact operator
-			// *this; converged under the same threshold rule as the base
-			// iterative solvers.  A NaN/Inf residual fails the comparison and
-			// therefore maps to converged = false.
+			// *this, reported but NOT used as the verdict.
 			result.x = x;
 			result.solution = x;
 			const double ir_taken = lu.info[UMFPACK_IR_TAKEN];
 			result.iterations = ir_taken > 0.0 ? static_cast<std::size_t>(ir_taken) : 0;
-			const vcp::tsparse_solvers::residual_control<double> control =
-				vcp::tsparse_solvers::make_residual_control(b, opt.tol, opt.use_relative_residual);
+			// SPUM-CONV: 直接法の合否は分解・求解のステータスで決まる
+			// (基底 spmats の dispatch_sparse_lu_ と同じ D-7 規約)。
+			// opt.tol は反復解法の停止条件であって直接法の受理基準ではない
+			// ため、ここでは使わない。残差フィールドは
+			// set_linear_residual_fields が report-only で埋める
+			// (呼び出し側が result.residual_norm を見る責任を負う —
+			//  spmats が既にその規約)。
+			// is_finite は防御的な最終ゲートであり、現状の実装では発火
+			// しない(SPUM-CONV 設計 §3.3 の実測を参照)。
 			vcp::tsparse_solvers::set_linear_residual_fields(result, *this, b);
-			result.converged = (result.residual_norm <= control.threshold);
+			result.converged = vcp::tsparse_scalar::is_finite(result.residual_norm);
 			return result;
 		}
 
