@@ -12,6 +12,8 @@ vblas/a.out
 *.vcpmat.tmp
 *.log
 *.csv
+*.dat
+*.vtu
 imats_old_before_0.0.5.hpp
 /kv
 /sandbox
