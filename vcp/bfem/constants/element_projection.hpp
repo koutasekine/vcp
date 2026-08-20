@@ -69,7 +69,7 @@ namespace constants {
 // ---------------------------------------------------------------------------
 // element_projection_result (design 2): the (star) bound and its diagnostics.
 // The GUARANTEED UPPER BOUND is cd_sq_upper.upper(); the lower ends carry no
-// claim (same reading as ritz_projection_error_constant, CM-1S U2).
+// claim (same reading as ritz_projection_error_constant_h01, CM-1S U2).
 // ---------------------------------------------------------------------------
 template <int D, typename T>
 struct element_projection_result {
@@ -692,7 +692,7 @@ void interval_matrix_of_rmat(const ep_rmat& r, vcp::matrix<T, DP>& out) {
 // (eigsymge certification failed, or the mu_max enclosure is certainly
 // negative although N_h is positive semi-definite -- inclusion broken),
 // vcp::bfem::degenerate_element (flat input simplex; NOT in the vcp::error
-// hierarchy, same caveat as ritz_projection_error_constant),
+// hierarchy, same caveat as ritz_projection_error_constant_h01),
 // std::logic_error from solve_exact (the exact monomial Gram found singular
 // -- an implementation bug by theory, never an input condition).
 // ---------------------------------------------------------------------------

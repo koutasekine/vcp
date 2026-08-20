@@ -17,6 +17,13 @@
 // These are to be given bodies only after the vcr1 and the local div-free
 // constraint tracks are complete; nothing here is usable until then.
 //
+// Boundary-condition note (VER-1, same ledger format as the one at the head
+// of poisson_constants.hpp): the planned entries above are all framed on
+// H^1_0 VECTOR fields -- the div-free test space and the mixed hypercircle
+// assume homogeneous Dirichlet velocity -- so, when they are given bodies,
+// their names carry the BC tag of ruling R23 (concept name, then BC tag,
+// then form suffix).
+//
 // Lexical policy (inherited from poisson_constants.hpp, design 6.1): no
 // decimal literals, no `double` / `float` tokens in code; sqrt and
 // kv::constants<T>::pi() are allowed.

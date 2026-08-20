@@ -24,14 +24,59 @@
 // with the CM-1 / CM-1R / CM-1S / CM-1T documents:
 //
 //     old name                    new public entry point
-//     projection_error_constant   ritz_projection_error_constant(Th, k)  C_h
-//     projection_constants        ritz_projection_constants(Th, k)  the set
-//     projection_constant_set     ritz_projection_constant_set<T, DP>
-//     kappa_squared               hypercircle_kappa_squared(Th, k)  (8.21)
+//     projection_error_constant   ritz_projection_error_constant_h01(Th, k)  C_h
+//     projection_constants        ritz_projection_constants_h01(Th, k)  the set
+//     projection_constant_set     ritz_projection_constant_set_h01<T, DP>
+//     kappa_squared               hypercircle_kappa_h01_squared(Th, k)  (8.21)
 //     c_h0                        l2_projection_error_constant(Th)  C_0 h,
 //                                 (8.19)(8.20), k independent
 //     c0_element                  l2_projection_element_constant(Th, e)
 //     c0_element_bound            l2_projection_element_bound(o, a, b)
+//
+// VER-1 boundary-condition ledger (owner ruling R23): the BC assumption of
+// an entry point is part of its NAME -- the BC tag sits right after the
+// concept name and before the form suffixes (_sq / _bound / _squared /
+// _measure / ...).  _h01 marks an entry that assumes the homogeneous
+// Dirichlet space H^1_0; future additions to the layer follow the same
+// convention.  BC column, spelled out for every entry point of this header
+// and its detail layer:
+//
+//     entry point                              BC assumption
+//     ritz_projection_error_constant_h01       H^1_0: the Ritz projection
+//                                              maps into V_h in H^1_0 and
+//                                              kappa is the Dirichlet dual
+//                                              bound
+//     ritz_projection_error_constant_h01_sq    H^1_0: same frame (the
+//                                              CONST-C1 squared composition
+//                                              of detail/poisson_dict_impl)
+//     hypercircle_kappa_h01_squared            H^1_0: the defining equation
+//                                              of kappa_h (see the function
+//                                              comment below) frames
+//                                              -Delta phi = psi with
+//                                              phi in H^1_0
+//     poincare_constant_h01_sq_bound           H^1_0: the supplied lambda_1
+//                                              is a DIRICHLET eigenvalue
+//                                              (Friedrichs form
+//                                              ||u|| <= C ||grad u||,
+//                                              u in H^1_0)
+//     poincare_constant_h01_bound              H^1_0: same
+//     ritz_projection_constants_h01 /          H^1_0: the set the _h01
+//     ritz_projection_constant_set_h01         entries above are thin
+//                                              projections of (renamed by
+//                                              CONST-D under R23: _set is
+//                                              part of the carrier noun,
+//                                              not a form suffix, so the
+//                                              tag sits at the end)
+//     l2_projection_error_constant(_sq)        BC-free: the L^2 projection
+//     l2_projection_element_constant           carries no boundary
+//     l2_projection_element_constants_sq       condition -- these bounds
+//     l2_projection_element_bound              are valid for Dirichlet,
+//     dictionary layer (dict/ registry,        Neumann and Robin problems
+//     coverage tables and the resolve chain)   alike
+//     cr_interpolation_constant                BC-free: element local
+//     cr_projection_error_constant_sq          BC-free: element local
+//     eigenvalue_lower_bound                   BC-free: general discrete
+//                                              lower bound formula
 //
 // l2_projection_error_constant is the constant of the projection onto the
 // piecewise constant space P^0: the target space is FIXED at P^0 and the
@@ -119,9 +164,9 @@ namespace bfem {
 namespace constants {
 
 // ---------------------------------------------------------------------------
-// ritz_projection_constant_set (CM-1R design 2): the three constants of Theorem 8.3
+// ritz_projection_constant_set_h01 (CM-1R design 2): the three constants of Theorem 8.3
 // together with the generalized spectrum they came from.  Returned by
-// ritz_projection_constants; hypercircle_kappa_squared and ritz_projection_error_constant are thin
+// ritz_projection_constants_h01; hypercircle_kappa_h01_squared and ritz_projection_error_constant_h01 are thin
 // projections of it.
 //
 // The two dense debug matrices of the CM-1 bundle (Q before symmetrisation and
@@ -130,14 +175,14 @@ namespace constants {
 // public type.  They live in detail::core_result instead (CM-1R design 2.2).
 // ---------------------------------------------------------------------------
 template <typename T, class DP>
-struct ritz_projection_constant_set {
+struct ritz_projection_constant_set_h01 {
     T c_h0;                          // C_0 h, (8.19)(8.20)
     T kappa2;                        // kappa_h^2, kappa_h is (8.21)
     T c_m;                           // C_h, Theorem 8.3 / (8.25)
     std::vector<T> lambda;           // diagonal of E from eigsymge(Q, Md, E)
     int sym_pairs_checked;           // number of (i, j), i < j, intersected
 
-    ritz_projection_constant_set()
+    ritz_projection_constant_set_h01()
         : c_h0(), kappa2(), c_m(), lambda(), sym_pairs_checked(0) {}
 };
 
@@ -170,12 +215,12 @@ struct interval_scalar_contract {
 // be exactly symmetric and must be contained in q_raw entry by entry.
 // ---------------------------------------------------------------------------
 template <typename T, class DP>
-struct core_result : public ritz_projection_constant_set<T, DP> {
+struct core_result : public ritz_projection_constant_set_h01<T, DP> {
     vcp::matrix<T, DP> q_raw;        // Q BEFORE symmetrisation (debug only)
     vcp::matrix<T, DP> q_sym;        // Q AFTER  symmetrisation (debug only)
     vcp::matrix<T, DP> md;           // X_h mass matrix (debug only)
 
-    core_result() : ritz_projection_constant_set<T, DP>(), q_raw(), q_sym(), md() {}
+    core_result() : ritz_projection_constant_set_h01<T, DP>(), q_raw(), q_sym(), md() {}
 };
 
 } // namespace detail
@@ -540,7 +585,7 @@ void projection_constants_core(const vcp::bfem::mesh<2, T>& Th, int k,
     // ---- P7: kappa_h^2 = max eigenvalue of Q f_v = lambda Md f_v ----
     // kappa_h itself is defined by (8.21); Theorem 8.2 / (8.23) is the error
     // estimate it carries.  NOTE that the book's kappa_h is NOT squared, while
-    // the quantity computed here (and returned by hypercircle_kappa_squared) is kappa_h^2.
+    // the quantity computed here (and returned by hypercircle_kappa_h01_squared) is kappa_h^2.
     //
     // eigsymge returns E diagonal with an enclosure of every generalized
     // eigenvalue; Md (the X_h mass matrix) is SPD.  Its own certification
@@ -625,10 +670,10 @@ void projection_constants_core(const vcp::bfem::mesh<2, T>& Th, int k,
 } // namespace detail
 
 // ---------------------------------------------------------------------------
-// ritz_projection_constants (design 6, CM-1R design 2)
+// ritz_projection_constants_h01 (design 6, CM-1R design 2)
 //
 // The three constants of Theorem 8.3 for the pair (Th, P^k), obtained in ONE
-// pass through the dense path.  hypercircle_kappa_squared and ritz_projection_error_constant
+// pass through the dense path.  hypercircle_kappa_h01_squared and ritz_projection_error_constant_h01
 // below are thin projections of this function; calling both of them costs two
 // dense passes, so ask for the set when both are wanted.
 //
@@ -636,20 +681,20 @@ void projection_constants_core(const vcp::bfem::mesh<2, T>& Th, int k,
 // vcp::verification_error (inclusion broken, or lss / eigsymge could not
 // certify), vcp::dimension_error (internal size mismatch).  A degenerate mesh
 // may also let vcp::bfem::degenerate_element through from the space
-// construction; see ritz_projection_error_constant below.
+// construction; see ritz_projection_error_constant_h01 below.
 // ---------------------------------------------------------------------------
 template <typename T,
           class DP = vcp::imats<typename T::base_type>,
           class SP = vcp::spimats<typename T::base_type> >
-ritz_projection_constant_set<T, DP>
-ritz_projection_constants(const vcp::bfem::mesh<2, T>& Th, int k) {
+ritz_projection_constant_set_h01<T, DP>
+ritz_projection_constants_h01(const vcp::bfem::mesh<2, T>& Th, int k) {
     detail::core_result<T, DP> r;
     detail::projection_constants_core<T, DP, SP>(Th, k, r, false);
-    return static_cast<const ritz_projection_constant_set<T, DP>&>(r);
+    return static_cast<const ritz_projection_constant_set_h01<T, DP>&>(r);
 }
 
 // ---------------------------------------------------------------------------
-// hypercircle_kappa_squared: lambda_max(Q, M), i.e. kappa_h^2 with kappa_h of (8.21).
+// hypercircle_kappa_h01_squared: lambda_max(Q, M), i.e. kappa_h^2 with kappa_h of (8.21).
 //
 // The book's kappa_h is NOT squared: this function returns kappa_h SQUARED, so
 // the quantity the book prints (for instance in table 8.2) is sqrt() of what is
@@ -658,24 +703,24 @@ ritz_projection_constants(const vcp::bfem::mesh<2, T>& Th, int k) {
 template <typename T,
           class DP = vcp::imats<typename T::base_type>,
           class SP = vcp::spimats<typename T::base_type> >
-T hypercircle_kappa_squared(const vcp::bfem::mesh<2, T>& Th, int k) {
+T hypercircle_kappa_h01_squared(const vcp::bfem::mesh<2, T>& Th, int k) {
     detail::core_result<T, DP> r;
     detail::projection_constants_core<T, DP, SP>(Th, k, r, false);
     return r.kappa2;
 }
 
 // ---------------------------------------------------------------------------
-// ritz_projection_error_constant (design 6)
+// ritz_projection_error_constant_h01 (design 6)
 //
 // Returns an enclosure of C_h (Theorem 8.3 / (8.25)) for the pair (Th, P^k).
 // The GUARANTEED UPPER BOUND IS THE RETURN VALUE'S .upper(); the lower end
 // carries NO claim beyond being a valid enclosure end of the computed
-// quantity.  In particular hypercircle_kappa_squared is reduced to the point interval
+// quantity.  In particular hypercircle_kappa_h01_squared is reduced to the point interval
 // T(kappa2u) built from the largest upper end of the spectrum, so the lower end
 // of the value returned here is NOT a lower bound of C_h (CM-1S U2, kept as is
 // by the owner's decision).
 //
-// Exceptions: as for ritz_projection_constants above.  Note that on a degenerate
+// Exceptions: as for ritz_projection_constants_h01 above.  Note that on a degenerate
 // mesh vcp::bfem::degenerate_element may propagate from the space construction;
 // it derives from std::runtime_error and is NOT part of the vcp::error
 // hierarchy, so a catch on vcp::error alone does not see it.
@@ -683,7 +728,7 @@ T hypercircle_kappa_squared(const vcp::bfem::mesh<2, T>& Th, int k) {
 template <typename T,
           class DP = vcp::imats<typename T::base_type>,
           class SP = vcp::spimats<typename T::base_type> >
-T ritz_projection_error_constant(const vcp::bfem::mesh<2, T>& Th, int k) {
+T ritz_projection_error_constant_h01(const vcp::bfem::mesh<2, T>& Th, int k) {
     detail::core_result<T, DP> r;
     detail::projection_constants_core<T, DP, SP>(Th, k, r, false);
     return r.c_m;
@@ -776,24 +821,24 @@ T eigenvalue_lower_bound(const T& lambda_h, const T& ch_sq) {
 }
 
 // ---------------------------------------------------------------------------
-// poincare_constant_sq_bound: C_P^2 <= 1 / lambda_1^{lower}, with
+// poincare_constant_h01_sq_bound: C_P^2 <= 1 / lambda_1^{lower}, with
 // lambda_1^{lower} a POSITIVE lower bound of the first Dirichlet eigenvalue
 // (for instance eigenvalue_lower_bound applied to lambda_{h,1}).  Square-root
 // free, so rational T goes through exactly.
 //
-// poincare_constant_bound: the convenience square root C_P <= 1 / sqrt(...),
+// poincare_constant_h01_bound: the convenience square root C_P <= 1 / sqrt(...),
 // for floating point / interval T.  Same lazy policy as cr1_space's
 // max_edge_length(): an ordinary non-virtual template, instantiated only when
 // called, so a rational T that has no square root still compiles as long as
 // only the _sq form is used.
 // ---------------------------------------------------------------------------
 template <typename T>
-T poincare_constant_sq_bound(const T& lambda1_lower) {
+T poincare_constant_h01_sq_bound(const T& lambda1_lower) {
     return T(1) / lambda1_lower;
 }
 
 template <typename T>
-T poincare_constant_bound(const T& lambda1_lower) {
+T poincare_constant_h01_bound(const T& lambda1_lower) {
     using std::sqrt;
     return sqrt(T(1) / lambda1_lower);
 }
@@ -802,4 +847,5 @@ T poincare_constant_bound(const T& lambda1_lower) {
 } // namespace bfem
 } // namespace vcp
 
+#include <vcp/bfem/constants/detail/poisson_dict_impl.hpp>
 #endif // VCP_BFEM_CONSTANTS_POISSON_CONSTANTS_HPP
