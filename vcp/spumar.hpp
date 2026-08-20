@@ -388,9 +388,16 @@ namespace vcp {
 			// ため、ここでは使わない。残差フィールドは
 			// set_linear_residual_fields が report-only で埋める
 			// (呼び出し側が result.residual_norm を見る責任を負う —
-			//  spmats が既にその規約)。
-			// is_finite は防御的な最終ゲートであり、現状の実装では発火
-			// しない(SPUM-CONV 設計 §3.3 の実測を参照)。
+			//  spmats が既にその規約。ただし残差が小さいことは解が正確で
+			//  あることを意味しない。悪条件系では残差 4.8e-11 で解の相対
+			//  誤差が 10% に達する例を実測している — SPUM-CONV 設計 §4.6)。
+			// is_finite は防御的な最終ゲート。Inf 残差では実際に発火して
+			// converged = false になる(実測済み)。一方 NaN 残差では
+			// 発火しない: real_norm_value (tsparse_scalar.hpp) の
+			// `v > 0 ? v : 0` が NaN を 0 に丸めるため、NaN は
+			// residual_norm に到達しない(SPUM-CONV 設計 §3.3)。
+			// この NaN 経路は本修正の前後で挙動が同じであり、根治は
+			// tsparse_scalar.hpp 側の別トラック。
 			vcp::tsparse_solvers::set_linear_residual_fields(result, *this, b);
 			result.converged = vcp::tsparse_scalar::is_finite(result.residual_norm);
 			return result;
