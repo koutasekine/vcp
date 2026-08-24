@@ -254,6 +254,136 @@ T l2_projection_error_constant_sq(const vcp::bfem::mesh<2, T>& Th, int d,
 }
 
 // ---------------------------------------------------------------------------
+// l2_projection_element_constants_sq, mesh<3, T> (CONST-C2 design section
+// two): the three dimensional twin of the pair above.  Same semantics, same
+// report, same maximum rule; the ONLY structural difference is the
+// resolution order the dictionary can offer in three dimensions.
+//
+// RESOLUTION ORDER IN 3D.  resolve_l2_projection_constant_sq's layers (2)
+// coverage_cell and (4) p0_closed_form are BOTH guarded on D == 2 -- the
+// coverage grid is a two dimensional (a, b^2) normal form, and the P^0
+// closed form l2_projection_element_bound of poisson_constants.hpp takes
+// three PLANAR vertices and has no three dimensional counterpart
+// (CONST-C2 P0 reconnaissance; design section two's read-through, owner
+// approved 2026-08-20).  So the 3D order is
+//
+//     registry_exact -> degree_envelope -> none
+//
+// and count_coverage / count_p0 stay zero on every 3D call.  In 2D the P^0
+// closed form makes "none" unreachable; in 3D it IS reachable, because the
+// generated registry holds a FINITE list of similarity classes.  A mesh
+// whose element is outside that list therefore throws, and the message
+// names the explicit escape hatch: ondemand_l2_projection_constant_sq of
+// dict/resolve.hpp computes the class on demand and returns a ledger entry
+// for dict/ondemand_3d.hpp.
+//
+// GENERATION TIME ENVELOPE against RUNTIME ENVELOPE -- do not confuse the
+// two (owner condition on the CONST-C2 census ruling, 2026-08-20).  The
+// generated registry_3d.hpp ships every one of its 51 classes at
+// d = 0 .. 8; the entries for d = 3 .. 8 carry a value that was INHERITED
+// from d' = 2 when the table was generated (their provenance comment
+// records it), but they are real, exactly keyed entries, so resolve fires
+// them as registry_exact with served_d = d.  The runtime degree_envelope
+// layer therefore only starts at the registry's permanently missing degree
+// d = 9 (engine factorial cap, see registry_3d.hpp's missing list), where
+// it inherits the d = 8 string and reports served_d = 8.  In particular a
+// min_served_d of 2 does NOT show up in a 3D census, and min_served_d is
+// not a measure of the information actually behind the value.
+//
+// Src is an implementation detail (deferred enumerator lookup, header
+// comment); leave it defaulted.
+// ---------------------------------------------------------------------------
+template <typename T, typename Src = l2_source>
+std::vector<T> l2_projection_element_constants_sq(
+        const vcp::bfem::mesh<3, T>& Th, int d,
+        mesh_resolution_report* rep = nullptr) {
+    if (Th.num_elements() <= 0)
+        vcp::throw_error<vcp::invalid_argument>(
+            "vcp::bfem::constants::l2_projection_element_constants_sq: "
+            "mesh has no element");
+
+    mesh_resolution_report r;
+    r.n_elements = Th.num_elements();
+    r.worst_source = Src::none;
+
+    std::vector<T> out;
+    out.reserve(static_cast<std::size_t>(Th.num_elements()));
+    for (int e = 0; e < Th.num_elements(); ++e) {
+        const std::array<int, 4>& el = Th.element(e);
+        T verts[4][3];
+        for (int i = 0; i < 4; ++i) {
+            const std::array<T, 3>& p = Th.vertex(el[i]);
+            verts[i][0] = p[0];
+            verts[i][1] = p[1];
+            verts[i][2] = p[2];
+        }
+        const l2_projection_resolution<3, T> res =
+            resolve_l2_projection_constant_sq<3, T>(verts, d);
+        if (!res.ok) {
+            ++r.count_none;
+            vcp::throw_error<vcp::verification_error>(
+                "vcp::bfem::constants::l2_projection_element_constants_sq: "
+                "the dictionary cannot serve element e = ", e,
+                " at degree d = ", d, " (resolution source none; in three "
+                "dimensions there is no P^0 closed-form fallback, so the "
+                "element's similarity class is simply not in the registry "
+                "-- compute it explicitly with "
+                "ondemand_l2_projection_constant_sq<3, T> and append the "
+                "returned entry to dict/ondemand_3d.hpp)");
+        }
+        switch (res.source) {
+        case Src::registry_exact:  ++r.count_registry; break;
+        case Src::coverage_cell:   ++r.count_coverage; break;
+        case Src::degree_envelope: ++r.count_envelope; break;
+        case Src::p0_closed_form:  ++r.count_p0;       break;
+        default:                   break;   // none is unreachable: thrown above
+        }
+        if (r.min_served_d < 0 || res.served_d < r.min_served_d)
+            r.min_served_d = res.served_d;
+
+        const T val = res.cd_sq_over_h_sq * res.h_sq;
+        if (out.empty() ||
+            out[static_cast<std::size_t>(r.worst_element)].upper() <
+                val.upper()) {
+            r.worst_element = e;
+            r.worst_source = res.source;
+        }
+        out.push_back(val);
+    }
+    if (rep != nullptr) *rep = r;
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// l2_projection_error_constant_sq, mesh<3, T> (CONST-C2 design section two):
+//
+//     C_{0,h}(d)^2 = max_K [ resolve(K, d).cd_sq_over_h_sq * h^2(K) ]
+//
+// over a tetrahedral mesh, served by the dictionary's 3D order
+// (registry -> degree envelope; see the comment above for why the coverage
+// and P^0 layers do not participate, and for the generation time against
+// runtime envelope distinction).  Squared for the same reason as the 2D
+// twin (ruling R17): no square root on this path, so an exact fraction
+// scalar T closes end to end.  Maximum rule unchanged: the largest upper
+// end wins, the comparison is on the upper ends, ties keep the earlier
+// element, and the selected interval is returned unchanged.
+//
+// There is deliberately NO 3D ritz_projection_error_constant_h01_sq: the
+// hypercircle kappa_h it composes with is mesh<2, T> only
+// (hypercircle_kappa_h01_squared of poisson_constants.hpp), so the
+// composition has no three dimensional meaning yet.  CONST-C2 design
+// section seven keeps that as an independent track.
+// ---------------------------------------------------------------------------
+template <typename T>
+T l2_projection_error_constant_sq(const vcp::bfem::mesh<3, T>& Th, int d,
+                                  mesh_resolution_report* rep = nullptr) {
+    mesh_resolution_report r;
+    const std::vector<T> v = l2_projection_element_constants_sq(Th, d, &r);
+    if (rep != nullptr) *rep = r;
+    return v[static_cast<std::size_t>(r.worst_element)];
+}
+
+// ---------------------------------------------------------------------------
 // ritz_projection_error_constant_h01_sq (design section one):
 //
 //     C_h(k)^2 = hypercircle_kappa_h01_squared(Th, k) + C_{0,h}(k - 1)^2

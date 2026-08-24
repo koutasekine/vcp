@@ -848,4 +848,8 @@ T poincare_constant_h01_bound(const T& lambda1_lower) {
 } // namespace vcp
 
 #include <vcp/bfem/constants/detail/poisson_dict_impl.hpp>
+// UMBRELLA (owner ruling 2026-08-20): ONE entry point -- this include also
+// brings in the Sobolev embedding constants; sobolev_constants.hpp stays
+// includable ON ITS OWN, and it reaches no poisson header (no cycle).
+#include <vcp/bfem/constants/sobolev_constants.hpp>
 #endif // VCP_BFEM_CONSTANTS_POISSON_CONSTANTS_HPP
