@@ -368,11 +368,13 @@ std::vector<T> l2_projection_element_constants_sq(
 // end wins, the comparison is on the upper ends, ties keep the earlier
 // element, and the selected interval is returned unchanged.
 //
-// There is deliberately NO 3D ritz_projection_error_constant_h01_sq: the
-// hypercircle kappa_h it composes with is mesh<2, T> only
-// (hypercircle_kappa_h01_squared of poisson_constants.hpp), so the
-// composition has no three dimensional meaning yet.  CONST-C2 design
-// section seven keeps that as an independent track.
+// CONST-C2 recorded here that there was deliberately NO 3D
+// ritz_projection_error_constant_h01_sq, because the hypercircle kappa_h it
+// composes with was mesh<2, T> only.  That independent track is CONST-F, and
+// it has since supplied the mesh<3, T> kappa
+// (hypercircle_kappa_h01_squared of poisson_constants.hpp), so the three
+// dimensional composition now exists -- it is the last function of this
+// header.
 // ---------------------------------------------------------------------------
 template <typename T>
 T l2_projection_error_constant_sq(const vcp::bfem::mesh<3, T>& Th, int d,
@@ -406,6 +408,50 @@ template <typename T,
           class DP = vcp::imats<typename T::base_type>,
           class SP = vcp::spimats<typename T::base_type> >
 T ritz_projection_error_constant_h01_sq(const vcp::bfem::mesh<2, T>& Th, int k,
+                                    mesh_resolution_report* rep = nullptr) {
+    // kappa first: it owns the k >= 1 validation of the classic dense path
+    const T kappa2 = hypercircle_kappa_h01_squared<T, DP, SP>(Th, k);
+    const T c0h_sq = l2_projection_error_constant_sq(Th, k - 1, rep);
+    return kappa2 + c0h_sq;
+}
+
+// ---------------------------------------------------------------------------
+// ritz_projection_error_constant_h01_sq, mesh<3, T> (CONST-F design
+// addendum 2, item three):
+//
+//     C_h(k)^2 = hypercircle_kappa_h01_squared(Th, k) + C_{0,h}(k - 1)^2
+//
+// the three dimensional twin of the composition above, and the completion of
+// the three dimensional C_h.  Written as the SAME expression in the same
+// order, over the mesh<3, T> overloads of both ingredients: the CONST-F
+// kappa of poisson_constants.hpp and the CONST-C2 dictionary served C_{0,h}
+// of this header.  It is the ONLY k -> d conversion point of the three
+// dimensional path, as its two dimensional twin is of the planar one (gate
+// G-E4 pins the 2D one, G-K3 pins this one).
+//
+// WHAT IS AND IS NOT DIMENSION SPECIFIC HERE.  The composition itself is not:
+// it is a Pythagorean identity of the hypercircle argument and carries no
+// dimension.  The same three dimensional form is stated verbatim as Theorem 7
+// of Liu, Nakao and Oishi, Commun Nonlinear Sci Numer Simulat 108 (2022)
+// 106223 -- Ch := sqrt(kappa_h^2 + C_{0,h}^2), with that paper's space
+// selection d = m = k - 1 matching the X_h = P^{k-1}, W_h = RT_{k-1} of this
+// implementation.  What IS dimension specific is who can serve C_{0,h}: in
+// three dimensions the dictionary is the only source (no planar closed form),
+// so an element whose similarity class the registry does not hold makes this
+// function throw, exactly as the plain C_{0,h} entry point above does, with
+// the same message naming ondemand_l2_projection_constant_sq.
+//
+// NOT AVAILABLE IN THREE DIMENSIONS, deliberately: the unsquared
+// ritz_projection_error_constant_h01 and the constant SET
+// ritz_projection_constants_h01.  Both carry the k independent P^0 quantity
+// C_0 h of poisson_constants.hpp, whose planar closed form has no three
+// dimensional counterpart; the squared, dictionary served form above is the
+// three dimensional path in full.
+// ---------------------------------------------------------------------------
+template <typename T,
+          class DP = vcp::imats<typename T::base_type>,
+          class SP = vcp::spimats<typename T::base_type> >
+T ritz_projection_error_constant_h01_sq(const vcp::bfem::mesh<3, T>& Th, int k,
                                     mesh_resolution_report* rep = nullptr) {
     // kappa first: it owns the k >= 1 validation of the classic dense path
     const T kappa2 = hypercircle_kappa_h01_squared<T, DP, SP>(Th, k);

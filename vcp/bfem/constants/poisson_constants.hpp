@@ -425,12 +425,12 @@ struct dense_materials {
 // the assignment reproduces the CM-1 `+=` accumulation onto a zeroed matrix
 // entry for entry.
 // ---------------------------------------------------------------------------
-template <typename T, class DP, class SP>
-void assemble_dense_materials(const vcp::bfem::mesh<2, T>& Th, int k,
+template <int D, typename T, class DP, class SP>
+void assemble_dense_materials(const vcp::bfem::mesh<D, T>& Th, int k,
                     dense_materials<T, DP>& out) {
-    vcp::bfem::fe_space<2, T, DP, SP> fs(Th, k);
-    vcp::bfem::rt_space<2, T, DP, SP> rs(Th, k - 1);
-    vcp::bfem::broken_space<2, T, DP, SP> bs(Th, k - 1);
+    vcp::bfem::fe_space<D, T, DP, SP> fs(Th, k);
+    vcp::bfem::rt_space<D, T, DP, SP> rs(Th, k - 1);
+    vcp::bfem::broken_space<D, T, DP, SP> bs(Th, k - 1);
 
     const int nd = fs.ndof(k);
     const int nr = rs.ndof();
@@ -492,25 +492,47 @@ void assemble_dense_materials(const vcp::bfem::mesh<2, T>& Th, int k,
 }
 
 // ---------------------------------------------------------------------------
-// projection_constants_core: the whole pipeline of design 4 (P1-P7).
+// hypercircle_kappa_core (CONST-F): steps P1-P7 of design 4 EXCEPT the two
+// quantities that are not part of kappa -- C_0 h and C_h.  This is the whole
+// of what kappa_h^2 is made of, and it is dimension generic.
+//
+// WHAT kappa_h IS (CONST-F design addendum, section one; the original design
+// got this wrong and the addendum records the correction).  kappa_h is NOT a
+// constant, and in particular it is NOT an element interpolation constant of
+// the RT flux reconstruction: it is the verified upper end of the largest
+// generalized eigenvalue of the dense pair (Q, M_d) assembled below on the
+// mesh at hand.  The same reading is stated verbatim for the three
+// dimensional case by Liu, Nakao and Oishi, Commun Nonlinear Sci Numer
+// Simulat 108 (2022) 106223, in the section defining kappa_h: "The
+// computation of kappa_h requires solving a matrix eigenvalue problem".
+// There is therefore no table to transcribe and no reference-element engine
+// to write; making kappa available in three dimensions is exactly making
+// this pipeline dimension generic.
+//
+// WHY THE SPLIT IS SAFE IN TWO DIMENSIONS.  kappa^2 does not read c_h0: the
+// value assigned at design 4 P1 never enters Q (it is consumed only by the
+// C_h composition further down).  The two dimensional caller below therefore
+// keeps computing it FIRST, in the same order, so the exception contract of
+// the design -- a degenerate element is reported before any space is built --
+// is preserved together with the arithmetic.  The three dimensional entry
+// point does not compute it at all: there is no planar C_0^{(1)} closed form
+// in three dimensions (see the CONST-C2 note in detail/poisson_dict_impl.hpp),
+// and the dictionary served C_{0,h} of that header is what the composition
+// uses there instead.
 //
 // keep_debug retains q_raw (Q BEFORE the symmetry intersection) and md, which
 // the CM-1 audit gates need; the public entry points pass false.
 // ---------------------------------------------------------------------------
-template <typename T, class DP, class SP>
-void projection_constants_core(const vcp::bfem::mesh<2, T>& Th, int k,
-                               core_result<T, DP>& out, bool keep_debug) {
+template <int D, typename T, class DP, class SP>
+void hypercircle_kappa_core(const vcp::bfem::mesh<D, T>& Th, int k,
+                            core_result<T, DP>& out, bool keep_debug) {
     interval_scalar_contract<T>::require();
     if (k < 1)
         vcp::throw_error<vcp::invalid_argument>(
             "vcp::bfem::constants: k must be >= 1 (got ", k, ")");
 
-    // C_0 h first: a degenerate element is reported as invalid_argument
-    // before any space is built (design 5.2).
-    out.c_h0 = l2_projection_error_constant(Th);
-
     dense_materials<T, DP> mat;
-    assemble_dense_materials<T, DP, SP>(Th, k, mat);
+    assemble_dense_materials<D, T, DP, SP>(Th, k, mat);
     const int ni = mat.ni;
     const int nb = mat.nb;
 
@@ -609,6 +631,31 @@ void projection_constants_core(const vcp::bfem::mesh<2, T>& Th, int k,
             "); the enclosure is not usable");
 
     out.kappa2 = T(kappa2u);
+}
+
+// ---------------------------------------------------------------------------
+// projection_constants_core: the whole pipeline of design 4 (P1-P7), two
+// dimensions.  Since CONST-F the P2-P7 part lives in hypercircle_kappa_core
+// above; what stays here is exactly the two quantities kappa does not carry,
+// in exactly the order they were computed in before the split (the exception
+// contract and the arithmetic are both unchanged; the 2D outputs are
+// bit-identical, gate G-K1).
+//
+// keep_debug is forwarded unchanged.
+// ---------------------------------------------------------------------------
+template <typename T, class DP, class SP>
+void projection_constants_core(const vcp::bfem::mesh<2, T>& Th, int k,
+                               core_result<T, DP>& out, bool keep_debug) {
+    interval_scalar_contract<T>::require();
+    if (k < 1)
+        vcp::throw_error<vcp::invalid_argument>(
+            "vcp::bfem::constants: k must be >= 1 (got ", k, ")");
+
+    // C_0 h first: a degenerate element is reported as invalid_argument
+    // before any space is built (design 5.2).
+    out.c_h0 = l2_projection_error_constant(Th);
+
+    hypercircle_kappa_core<2, T, DP, SP>(Th, k, out, keep_debug);
 
     // ---- C_h = sqrt( (C_0 h)^2 + kappa_h^2 )  ... Theorem 8.3 / (8.25) ----
     // C_0 h is the constant of the piecewise constant projection pi_{0,h},
@@ -706,6 +753,41 @@ template <typename T,
 T hypercircle_kappa_h01_squared(const vcp::bfem::mesh<2, T>& Th, int k) {
     detail::core_result<T, DP> r;
     detail::projection_constants_core<T, DP, SP>(Th, k, r, false);
+    return r.kappa2;
+}
+
+// ---------------------------------------------------------------------------
+// hypercircle_kappa_h01_squared, mesh<3, T> (CONST-F design addendum 2): the
+// three dimensional twin.  Same quantity, same certification, same squared
+// convention -- lambda_max(Q, M_d) with (Q, M_d) assembled by the SAME
+// dimension generic core the two dimensional entry point above goes through
+// (detail::hypercircle_kappa_core).  Only the spaces differ: the tetrahedral
+// V_h = P^k, W_h = RT_{k-1} of vcp/bfem/rt/rt_backend3.hpp and X_h = P^{k-1}.
+//
+// WHY THERE IS NO THREE DIMENSIONAL ritz_projection_constants_h01 OR
+// ritz_projection_error_constant_h01 BESIDE IT.  Those two carry C_0 h and
+// C_h, and C_0 h is the mesh maximum of the PLANAR C_0^{(1)} closed form
+// (l2_projection_element_bound, three coplanar vertices): it has no three
+// dimensional counterpart, as recorded by CONST-C2 in
+// detail/poisson_dict_impl.hpp.  In three dimensions the C_{0,h} side is
+// served by the dictionary instead, so the composition available there is the
+// SQUARED, dictionary served ritz_projection_error_constant_h01_sq of that
+// header -- which is where the three dimensional C_h(k)^2 is completed.
+//
+// Exceptions: vcp::invalid_argument (k < 1), vcp::verification_error
+// (inclusion broken, or lss / eigsymge could not certify),
+// vcp::dimension_error (empty W_h or X_h).  Note that the degenerate element
+// check of the two dimensional path happens inside C_0 h, which is not on this
+// path at all: a degenerate tetrahedron surfaces from the space construction
+// as vcp::bfem::degenerate_element, which derives from std::runtime_error and
+// is NOT part of the vcp::error hierarchy.
+// ---------------------------------------------------------------------------
+template <typename T,
+          class DP = vcp::imats<typename T::base_type>,
+          class SP = vcp::spimats<typename T::base_type> >
+T hypercircle_kappa_h01_squared(const vcp::bfem::mesh<3, T>& Th, int k) {
+    detail::core_result<T, DP> r;
+    detail::hypercircle_kappa_core<3, T, DP, SP>(Th, k, r, false);
     return r.kappa2;
 }
 
