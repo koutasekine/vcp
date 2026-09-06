@@ -110,46 +110,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0190734499904" },
         // class 3d-c00 key=[1/1 1/1 1/1 1/1 1/1 1/1]
         //   rep-vertices: (1,0,0) (0,1,0) (0,0,1) (1,1,1)  prov=seed:T2
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c00-d2_kemeko.txt, alpha-achieved=3.52 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c00-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c00-d3_kemeko.txt, alpha-achieved=2.08 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          3, "0.0190734499904" },
+          3, "0.0167331234754" },
         // class 3d-c00 key=[1/1 1/1 1/1 1/1 1/1 1/1]
         //   rep-vertices: (1,0,0) (0,1,0) (0,0,1) (1,1,1)  prov=seed:T2
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c00-d2_kemeko.txt, alpha-achieved=4.12 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c00-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c00-d4_kemeko.txt, alpha-achieved=3.01 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          4, "0.0190734499904" },
+          4, "0.0150602948864" },
         // class 3d-c00 key=[1/1 1/1 1/1 1/1 1/1 1/1]
         //   rep-vertices: (1,0,0) (0,1,0) (0,0,1) (1,1,1)  prov=seed:T2
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c00-d2_kemeko.txt, alpha-achieved=6.7 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c00-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c00-d5_kemeko.txt, alpha-achieved=3.65 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          5, "0.0190734499904" },
+          5, "0.0144000836178" },
         // class 3d-c00 key=[1/1 1/1 1/1 1/1 1/1 1/1]
         //   rep-vertices: (1,0,0) (0,1,0) (0,0,1) (1,1,1)  prov=seed:T2
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c00-d2_kemeko.txt, alpha-achieved=7.77 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c00-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c00-d5_kemeko.txt, alpha-achieved=3.65 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c00-d5))
         { { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          6, "0.0190734499904" },
+          6, "0.0144000836178" },
         // class 3d-c00 key=[1/1 1/1 1/1 1/1 1/1 1/1]
         //   rep-vertices: (1,0,0) (0,1,0) (0,0,1) (1,1,1)  prov=seed:T2
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c00-d2_kemeko.txt, alpha-achieved=8.52 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c00-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c00-d5_kemeko.txt, alpha-achieved=3.65 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c00-d5))
         { { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          7, "0.0190734499904" },
+          7, "0.0144000836178" },
         // class 3d-c00 key=[1/1 1/1 1/1 1/1 1/1 1/1]
         //   rep-vertices: (1,0,0) (0,1,0) (0,0,1) (1,1,1)  prov=seed:T2
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c00-d2_kemeko.txt, alpha-achieved=9.31 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c00-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c00-d5_kemeko.txt, alpha-achieved=3.65 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c00-d5))
         { { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          8, "0.0190734499904" },
+          8, "0.0144000836178" },
         // class 3d-c01 key=[1/1 1/1 1/1 1/1 1/1 2/1]
         //   rep-vertices: (1,1,0) (1,0,1) (2,1,1) (1,1,2)  prov=bey-layer>bey1
         // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=3,
@@ -173,46 +173,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0159083613079" },
         // class 3d-c01 key=[1/1 1/1 1/1 1/1 1/1 2/1]
         //   rep-vertices: (1,1,0) (1,0,1) (2,1,1) (1,1,2)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c01-d2_konbu.txt, alpha-achieved=3.73 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c01-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c01-d3_kemeko.txt, alpha-achieved=2.61 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 1LL, 1LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          3, "0.0159083613079" },
+          3, "0.0140717715995" },
         // class 3d-c01 key=[1/1 1/1 1/1 1/1 1/1 2/1]
         //   rep-vertices: (1,1,0) (1,0,1) (2,1,1) (1,1,2)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c01-d2_konbu.txt, alpha-achieved=4.75 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c01-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c01-d4_kemeko.txt, alpha-achieved=3.47 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 1LL, 1LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          4, "0.0159083613079" },
+          4, "0.0131050877958" },
         // class 3d-c01 key=[1/1 1/1 1/1 1/1 1/1 2/1]
         //   rep-vertices: (1,1,0) (1,0,1) (2,1,1) (1,1,2)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c01-d2_konbu.txt, alpha-achieved=6.41 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c01-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c01-d5_kemeko.txt, alpha-achieved=4.36 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 1LL, 1LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          5, "0.0159083613079" },
+          5, "0.0125065748925" },
         // class 3d-c01 key=[1/1 1/1 1/1 1/1 1/1 2/1]
         //   rep-vertices: (1,1,0) (1,0,1) (2,1,1) (1,1,2)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c01-d2_konbu.txt, alpha-achieved=7.45 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c01-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c01-d5_kemeko.txt, alpha-achieved=4.36 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c01-d5))
         { { 1LL, 1LL, 1LL, 1LL, 1LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          6, "0.0159083613079" },
+          6, "0.0125065748925" },
         // class 3d-c01 key=[1/1 1/1 1/1 1/1 1/1 2/1]
         //   rep-vertices: (1,1,0) (1,0,1) (2,1,1) (1,1,2)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c01-d2_konbu.txt, alpha-achieved=8.16 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c01-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c01-d5_kemeko.txt, alpha-achieved=4.36 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c01-d5))
         { { 1LL, 1LL, 1LL, 1LL, 1LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          7, "0.0159083613079" },
+          7, "0.0125065748925" },
         // class 3d-c01 key=[1/1 1/1 1/1 1/1 1/1 2/1]
         //   rep-vertices: (1,1,0) (1,0,1) (2,1,1) (1,1,2)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c01-d2_konbu.txt, alpha-achieved=8.94 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c01-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c01-d5_kemeko.txt, alpha-achieved=4.36 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c01-d5))
         { { 1LL, 1LL, 1LL, 1LL, 1LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          8, "0.0159083613079" },
+          8, "0.0125065748925" },
         // class 3d-c02 key=[1/1 1/1 1/1 16/9 16/9 32/9]
         //   rep-vertices: (1,2,2) (0,4,0) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=3,
@@ -236,46 +236,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0146732324788" },
         // class 3d-c02 key=[1/1 1/1 1/1 16/9 16/9 32/9]
         //   rep-vertices: (1,2,2) (0,4,0) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c02-d2_pote.txt, alpha-achieved=4 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c02-d2))
+        // source: CONST-B2R gen on kanna 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c02-d3_kanna.txt, alpha-achieved=2.89 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 16LL, 16LL, 32LL },
           { 1LL, 1LL, 1LL, 9LL, 9LL, 9LL },
-          3, "0.0146732324788" },
+          3, "0.0130258319985" },
         // class 3d-c02 key=[1/1 1/1 1/1 16/9 16/9 32/9]
         //   rep-vertices: (1,2,2) (0,4,0) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c02-d2_pote.txt, alpha-achieved=5.3 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c02-d2))
+        // source: CONST-B2R gen on kanna 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c02-d4_kanna.txt, alpha-achieved=3.74 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 16LL, 16LL, 32LL },
           { 1LL, 1LL, 1LL, 9LL, 9LL, 9LL },
-          4, "0.0146732324788" },
+          4, "0.0122714586183" },
         // class 3d-c02 key=[1/1 1/1 1/1 16/9 16/9 32/9]
         //   rep-vertices: (1,2,2) (0,4,0) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c02-d2_pote.txt, alpha-achieved=5.98 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c02-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c02-d5_kemeko.txt, alpha-achieved=4.56 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 16LL, 16LL, 32LL },
           { 1LL, 1LL, 1LL, 9LL, 9LL, 9LL },
-          5, "0.0146732324788" },
+          5, "0.0118039213374" },
         // class 3d-c02 key=[1/1 1/1 1/1 16/9 16/9 32/9]
         //   rep-vertices: (1,2,2) (0,4,0) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c02-d2_pote.txt, alpha-achieved=6.95 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c02-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c02-d5_kemeko.txt, alpha-achieved=4.56 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c02-d5))
         { { 1LL, 1LL, 1LL, 16LL, 16LL, 32LL },
           { 1LL, 1LL, 1LL, 9LL, 9LL, 9LL },
-          6, "0.0146732324788" },
+          6, "0.0118039213374" },
         // class 3d-c02 key=[1/1 1/1 1/1 16/9 16/9 32/9]
         //   rep-vertices: (1,2,2) (0,4,0) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c02-d2_pote.txt, alpha-achieved=7.63 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c02-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c02-d5_kemeko.txt, alpha-achieved=4.56 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c02-d5))
         { { 1LL, 1LL, 1LL, 16LL, 16LL, 32LL },
           { 1LL, 1LL, 1LL, 9LL, 9LL, 9LL },
-          7, "0.0146732324788" },
+          7, "0.0118039213374" },
         // class 3d-c02 key=[1/1 1/1 1/1 16/9 16/9 32/9]
         //   rep-vertices: (1,2,2) (0,4,0) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c02-d2_pote.txt, alpha-achieved=8.36 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c02-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c02-d5_kemeko.txt, alpha-achieved=4.56 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c02-d5))
         { { 1LL, 1LL, 1LL, 16LL, 16LL, 32LL },
           { 1LL, 1LL, 1LL, 9LL, 9LL, 9LL },
-          8, "0.0146732324788" },
+          8, "0.0118039213374" },
         // class 3d-c03 key=[1/1 1/1 1/1 2/1 2/1 2/1]
         //   rep-vertices: (0,0,0) (1,0,0) (0,1,0) (0,0,1)  prov=seed:T1
         // source: CONST-B2bp gen on SekineMainCorei7-11700 2026-08-17, gates G-R3/G-R5, L=3,
@@ -299,46 +299,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0170969629248" },
         // class 3d-c03 key=[1/1 1/1 1/1 2/1 2/1 2/1]
         //   rep-vertices: (0,0,0) (1,0,0) (0,1,0) (0,0,1)  prov=seed:T1
-        // source: CONST-B2bp gen on SekineMainCorei7-11700 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_p0_prices_SekineMainCorei7-11700.txt, alpha-achieved=4.06 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c03-d2))
+        // source: CONST-B2R gen on kanna 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c03-d3_kanna.txt, alpha-achieved=2.17 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 2LL, 2LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          3, "0.0170969629248" },
+          3, "0.0148618369987" },
         // class 3d-c03 key=[1/1 1/1 1/1 2/1 2/1 2/1]
         //   rep-vertices: (0,0,0) (1,0,0) (0,1,0) (0,0,1)  prov=seed:T1
-        // source: CONST-B2bp gen on SekineMainCorei7-11700 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_p0_prices_SekineMainCorei7-11700.txt, alpha-achieved=5.11 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c03-d2))
+        // source: CONST-B2R gen on kanna 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c03-d4_kanna.txt, alpha-achieved=3.01 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 2LL, 2LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          4, "0.0170969629248" },
+          4, "0.0135535519858" },
         // class 3d-c03 key=[1/1 1/1 1/1 2/1 2/1 2/1]
         //   rep-vertices: (0,0,0) (1,0,0) (0,1,0) (0,0,1)  prov=seed:T1
-        // source: CONST-B2bp gen on SekineMainCorei7-11700 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_p0_prices_SekineMainCorei7-11700.txt, alpha-achieved=5.47 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c03-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c03-d5_kemeko.txt, alpha-achieved=3.73 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 2LL, 2LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          5, "0.0170969629248" },
+          5, "0.0129046544985" },
         // class 3d-c03 key=[1/1 1/1 1/1 2/1 2/1 2/1]
         //   rep-vertices: (0,0,0) (1,0,0) (0,1,0) (0,0,1)  prov=seed:T1
-        // source: CONST-B2bp gen on SekineMainCorei7-11700 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_p0_prices_SekineMainCorei7-11700.txt, alpha-achieved=5.97 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c03-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c03-d5_kemeko.txt, alpha-achieved=3.73 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c03-d5))
         { { 1LL, 1LL, 1LL, 2LL, 2LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          6, "0.0170969629248" },
+          6, "0.0129046544985" },
         // class 3d-c03 key=[1/1 1/1 1/1 2/1 2/1 2/1]
         //   rep-vertices: (0,0,0) (1,0,0) (0,1,0) (0,0,1)  prov=seed:T1
-        // source: CONST-B2bp gen on SekineMainCorei7-11700 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_p0_prices_SekineMainCorei7-11700.txt, alpha-achieved=7.93 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c03-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c03-d5_kemeko.txt, alpha-achieved=3.73 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c03-d5))
         { { 1LL, 1LL, 1LL, 2LL, 2LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          7, "0.0170969629248" },
+          7, "0.0129046544985" },
         // class 3d-c03 key=[1/1 1/1 1/1 2/1 2/1 2/1]
         //   rep-vertices: (0,0,0) (1,0,0) (0,1,0) (0,0,1)  prov=seed:T1
-        // source: CONST-B2bp gen on SekineMainCorei7-11700 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_p0_prices_SekineMainCorei7-11700.txt, alpha-achieved=8.69 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c03-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c03-d5_kemeko.txt, alpha-achieved=3.73 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c03-d5))
         { { 1LL, 1LL, 1LL, 2LL, 2LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          8, "0.0170969629248" },
+          8, "0.0129046544985" },
         // class 3d-c04 key=[1/1 1/1 1/1 8/3 8/3 8/3]
         //   rep-vertices: (2,0,0) (0,2,0) (0,0,2) (1,1,1)  prov=seed:T5
         // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=3,
@@ -362,46 +362,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0165138565373" },
         // class 3d-c04 key=[1/1 1/1 1/1 8/3 8/3 8/3]
         //   rep-vertices: (2,0,0) (0,2,0) (0,0,2) (1,1,1)  prov=seed:T5
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c04-d2_kemeko.txt, alpha-achieved=4.16 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c04-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c04-d3_luzin.txt, alpha-achieved=2.22 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 8LL, 8LL, 8LL },
           { 1LL, 1LL, 1LL, 3LL, 3LL, 3LL },
-          3, "0.0165138565373" },
+          3, "0.0143452268545" },
         // class 3d-c04 key=[1/1 1/1 1/1 8/3 8/3 8/3]
         //   rep-vertices: (2,0,0) (0,2,0) (0,0,2) (1,1,1)  prov=seed:T5
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c04-d2_kemeko.txt, alpha-achieved=5.31 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c04-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c04-d4_luzin.txt, alpha-achieved=3.05 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 8LL, 8LL, 8LL },
           { 1LL, 1LL, 1LL, 3LL, 3LL, 3LL },
-          4, "0.0165138565373" },
+          4, "0.0131345260535" },
         // class 3d-c04 key=[1/1 1/1 1/1 8/3 8/3 8/3]
         //   rep-vertices: (2,0,0) (0,2,0) (0,0,2) (1,1,1)  prov=seed:T5
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c04-d2_kemeko.txt, alpha-achieved=5.93 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c04-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c04-d5_luzin.txt, alpha-achieved=3.76 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 8LL, 8LL, 8LL },
           { 1LL, 1LL, 1LL, 3LL, 3LL, 3LL },
-          5, "0.0165138565373" },
+          5, "0.0125260847407" },
         // class 3d-c04 key=[1/1 1/1 1/1 8/3 8/3 8/3]
         //   rep-vertices: (2,0,0) (0,2,0) (0,0,2) (1,1,1)  prov=seed:T5
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c04-d2_kemeko.txt, alpha-achieved=6.9 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c04-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c04-d5_luzin.txt, alpha-achieved=3.76 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c04-d5))
         { { 1LL, 1LL, 1LL, 8LL, 8LL, 8LL },
           { 1LL, 1LL, 1LL, 3LL, 3LL, 3LL },
-          6, "0.0165138565373" },
+          6, "0.0125260847407" },
         // class 3d-c04 key=[1/1 1/1 1/1 8/3 8/3 8/3]
         //   rep-vertices: (2,0,0) (0,2,0) (0,0,2) (1,1,1)  prov=seed:T5
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c04-d2_kemeko.txt, alpha-achieved=7.57 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c04-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c04-d5_luzin.txt, alpha-achieved=3.76 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c04-d5))
         { { 1LL, 1LL, 1LL, 8LL, 8LL, 8LL },
           { 1LL, 1LL, 1LL, 3LL, 3LL, 3LL },
-          7, "0.0165138565373" },
+          7, "0.0125260847407" },
         // class 3d-c04 key=[1/1 1/1 1/1 8/3 8/3 8/3]
         //   rep-vertices: (2,0,0) (0,2,0) (0,0,2) (1,1,1)  prov=seed:T5
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c04-d2_kemeko.txt, alpha-achieved=8.3 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c04-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c04-d5_luzin.txt, alpha-achieved=3.76 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c04-d5))
         { { 1LL, 1LL, 1LL, 8LL, 8LL, 8LL },
           { 1LL, 1LL, 1LL, 3LL, 3LL, 3LL },
-          8, "0.0165138565373" },
+          8, "0.0125260847407" },
         // class 3d-c05 key=[1/1 1/1 1/1 32/11 32/11 32/11]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,1,1)  prov=seed:T4
         // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=3,
@@ -425,46 +425,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0163514629474" },
         // class 3d-c05 key=[1/1 1/1 1/1 32/11 32/11 32/11]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,1,1)  prov=seed:T4
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c05-d2_konbu.txt, alpha-achieved=4.18 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c05-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c05-d3_luzin.txt, alpha-achieved=2.24 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 1LL, 11LL, 11LL, 11LL },
-          3, "0.0163514629474" },
+          3, "0.0142042811683" },
         // class 3d-c05 key=[1/1 1/1 1/1 32/11 32/11 32/11]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,1,1)  prov=seed:T4
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c05-d2_konbu.txt, alpha-achieved=5.36 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c05-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c05-d4_luzin.txt, alpha-achieved=3.07 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 1LL, 11LL, 11LL, 11LL },
-          4, "0.0163514629474" },
+          4, "0.0130215047426" },
         // class 3d-c05 key=[1/1 1/1 1/1 32/11 32/11 32/11]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,1,1)  prov=seed:T4
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c05-d2_konbu.txt, alpha-achieved=5.85 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c05-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c05-d5_luzin.txt, alpha-achieved=3.77 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 1LL, 11LL, 11LL, 11LL },
-          5, "0.0163514629474" },
+          5, "0.0124273296802" },
         // class 3d-c05 key=[1/1 1/1 1/1 32/11 32/11 32/11]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,1,1)  prov=seed:T4
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c05-d2_konbu.txt, alpha-achieved=6.8 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c05-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c05-d5_luzin.txt, alpha-achieved=3.77 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c05-d5))
         { { 1LL, 1LL, 1LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 1LL, 11LL, 11LL, 11LL },
-          6, "0.0163514629474" },
+          6, "0.0124273296802" },
         // class 3d-c05 key=[1/1 1/1 1/1 32/11 32/11 32/11]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,1,1)  prov=seed:T4
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c05-d2_konbu.txt, alpha-achieved=7.47 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c05-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c05-d5_luzin.txt, alpha-achieved=3.77 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c05-d5))
         { { 1LL, 1LL, 1LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 1LL, 11LL, 11LL, 11LL },
-          7, "0.0163514629474" },
+          7, "0.0124273296802" },
         // class 3d-c05 key=[1/1 1/1 1/1 32/11 32/11 32/11]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,1,1)  prov=seed:T4
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c05-d2_konbu.txt, alpha-achieved=8.19 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c05-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c05-d5_luzin.txt, alpha-achieved=3.77 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c05-d5))
         { { 1LL, 1LL, 1LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 1LL, 11LL, 11LL, 11LL },
-          8, "0.0163514629474" },
+          8, "0.0124273296802" },
         // class 3d-c06 key=[1/1 1/1 1/1 128/43 128/43 128/43]
         //   rep-vertices: (8,0,0) (0,8,0) (0,0,8) (3,3,3)  prov=seed:T5>alf
         // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=3,
@@ -488,46 +488,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0163093416522" },
         // class 3d-c06 key=[1/1 1/1 1/1 128/43 128/43 128/43]
         //   rep-vertices: (8,0,0) (0,8,0) (0,0,8) (3,3,3)  prov=seed:T5>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c06-d2_pote.txt, alpha-achieved=4.19 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c06-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c06-d3_konbu.txt, alpha-achieved=2.25 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 128LL, 128LL, 128LL },
           { 1LL, 1LL, 1LL, 43LL, 43LL, 43LL },
-          3, "0.0163093416522" },
+          3, "0.0141680074347" },
         // class 3d-c06 key=[1/1 1/1 1/1 128/43 128/43 128/43]
         //   rep-vertices: (8,0,0) (0,8,0) (0,0,8) (3,3,3)  prov=seed:T5>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c06-d2_pote.txt, alpha-achieved=5.37 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c06-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c06-d4_konbu.txt, alpha-achieved=3.07 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 128LL, 128LL, 128LL },
           { 1LL, 1LL, 1LL, 43LL, 43LL, 43LL },
-          4, "0.0163093416522" },
+          4, "0.0129924474021" },
         // class 3d-c06 key=[1/1 1/1 1/1 128/43 128/43 128/43]
         //   rep-vertices: (8,0,0) (0,8,0) (0,0,8) (3,3,3)  prov=seed:T5>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c06-d2_pote.txt, alpha-achieved=5.83 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c06-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c06-d5_konbu.txt, alpha-achieved=3.77 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 128LL, 128LL, 128LL },
           { 1LL, 1LL, 1LL, 43LL, 43LL, 43LL },
-          5, "0.0163093416522" },
+          5, "0.0124022368730" },
         // class 3d-c06 key=[1/1 1/1 1/1 128/43 128/43 128/43]
         //   rep-vertices: (8,0,0) (0,8,0) (0,0,8) (3,3,3)  prov=seed:T5>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c06-d2_pote.txt, alpha-achieved=6.78 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c06-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c06-d5_konbu.txt, alpha-achieved=3.77 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c06-d5))
         { { 1LL, 1LL, 1LL, 128LL, 128LL, 128LL },
           { 1LL, 1LL, 1LL, 43LL, 43LL, 43LL },
-          6, "0.0163093416522" },
+          6, "0.0124022368730" },
         // class 3d-c06 key=[1/1 1/1 1/1 128/43 128/43 128/43]
         //   rep-vertices: (8,0,0) (0,8,0) (0,0,8) (3,3,3)  prov=seed:T5>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c06-d2_pote.txt, alpha-achieved=7.44 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c06-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c06-d5_konbu.txt, alpha-achieved=3.77 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c06-d5))
         { { 1LL, 1LL, 1LL, 128LL, 128LL, 128LL },
           { 1LL, 1LL, 1LL, 43LL, 43LL, 43LL },
-          7, "0.0163093416522" },
+          7, "0.0124022368730" },
         // class 3d-c06 key=[1/1 1/1 1/1 128/43 128/43 128/43]
         //   rep-vertices: (8,0,0) (0,8,0) (0,0,8) (3,3,3)  prov=seed:T5>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c06-d2_pote.txt, alpha-achieved=8.16 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c06-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c06-d5_konbu.txt, alpha-achieved=3.77 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c06-d5))
         { { 1LL, 1LL, 1LL, 128LL, 128LL, 128LL },
           { 1LL, 1LL, 1LL, 43LL, 43LL, 43LL },
-          8, "0.0163093416522" },
+          8, "0.0124022368730" },
         // class 3d-c07 key=[1/1 1/1 1/1 512/171 512/171 512/171]
         //   rep-vertices: (16,0,0) (0,16,0) (0,0,16) (5,5,5)  prov=seed:T4>alf
         // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=3,
@@ -551,46 +551,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0162987015207" },
         // class 3d-c07 key=[1/1 1/1 1/1 512/171 512/171 512/171]
         //   rep-vertices: (16,0,0) (0,16,0) (0,0,16) (5,5,5)  prov=seed:T4>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c07-d2_hinata.txt, alpha-achieved=4.19 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c07-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c07-d3_kemeko.txt, alpha-achieved=2.25 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 512LL, 512LL, 512LL },
           { 1LL, 1LL, 1LL, 171LL, 171LL, 171LL },
-          3, "0.0162987015207" },
+          3, "0.0141588661818" },
         // class 3d-c07 key=[1/1 1/1 1/1 512/171 512/171 512/171]
         //   rep-vertices: (16,0,0) (0,16,0) (0,0,16) (5,5,5)  prov=seed:T4>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c07-d2_hinata.txt, alpha-achieved=5.37 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c07-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c07-d4_kemeko.txt, alpha-achieved=3.08 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 512LL, 512LL, 512LL },
           { 1LL, 1LL, 1LL, 171LL, 171LL, 171LL },
-          4, "0.0162987015207" },
+          4, "0.0129851246782" },
         // class 3d-c07 key=[1/1 1/1 1/1 512/171 512/171 512/171]
         //   rep-vertices: (16,0,0) (0,16,0) (0,0,16) (5,5,5)  prov=seed:T4>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c07-d2_hinata.txt, alpha-achieved=5.83 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c07-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c07-d5_kemeko.txt, alpha-achieved=3.77 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 1LL, 512LL, 512LL, 512LL },
           { 1LL, 1LL, 1LL, 171LL, 171LL, 171LL },
-          5, "0.0162987015207" },
+          5, "0.0123959341554" },
         // class 3d-c07 key=[1/1 1/1 1/1 512/171 512/171 512/171]
         //   rep-vertices: (16,0,0) (0,16,0) (0,0,16) (5,5,5)  prov=seed:T4>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c07-d2_hinata.txt, alpha-achieved=6.77 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c07-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c07-d5_kemeko.txt, alpha-achieved=3.77 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c07-d5))
         { { 1LL, 1LL, 1LL, 512LL, 512LL, 512LL },
           { 1LL, 1LL, 1LL, 171LL, 171LL, 171LL },
-          6, "0.0162987015207" },
+          6, "0.0123959341554" },
         // class 3d-c07 key=[1/1 1/1 1/1 512/171 512/171 512/171]
         //   rep-vertices: (16,0,0) (0,16,0) (0,0,16) (5,5,5)  prov=seed:T4>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c07-d2_hinata.txt, alpha-achieved=7.44 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c07-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c07-d5_kemeko.txt, alpha-achieved=3.77 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c07-d5))
         { { 1LL, 1LL, 1LL, 512LL, 512LL, 512LL },
           { 1LL, 1LL, 1LL, 171LL, 171LL, 171LL },
-          7, "0.0162987015207" },
+          7, "0.0123959341554" },
         // class 3d-c07 key=[1/1 1/1 1/1 512/171 512/171 512/171]
         //   rep-vertices: (16,0,0) (0,16,0) (0,0,16) (5,5,5)  prov=seed:T4>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c07-d2_hinata.txt, alpha-achieved=8.16 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c07-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c07-d5_kemeko.txt, alpha-achieved=3.77 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c07-d5))
         { { 1LL, 1LL, 1LL, 512LL, 512LL, 512LL },
           { 1LL, 1LL, 1LL, 171LL, 171LL, 171LL },
-          8, "0.0162987015207" },
+          8, "0.0123959341554" },
         // class 3d-c08 key=[1/1 1/1 9/5 16/5 16/5 16/5]
         //   rep-vertices: (5,3,4) (4,0,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=3,
@@ -614,46 +614,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0179890370892" },
         // class 3d-c08 key=[1/1 1/1 9/5 16/5 16/5 16/5]
         //   rep-vertices: (5,3,4) (4,0,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c08-d2_kemeko.txt, alpha-achieved=4.07 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c08-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c08-d3_konbu.txt, alpha-achieved=2.36 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 9LL, 16LL, 16LL, 16LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          3, "0.0179890370892" },
+          3, "0.0154858194486" },
         // class 3d-c08 key=[1/1 1/1 9/5 16/5 16/5 16/5]
         //   rep-vertices: (5,3,4) (4,0,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c08-d2_kemeko.txt, alpha-achieved=5.04 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c08-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c08-d4_konbu.txt, alpha-achieved=3.26 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 9LL, 16LL, 16LL, 16LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          4, "0.0179890370892" },
+          4, "0.0142159863676" },
         // class 3d-c08 key=[1/1 1/1 9/5 16/5 16/5 16/5]
         //   rep-vertices: (5,3,4) (4,0,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c08-d2_kemeko.txt, alpha-achieved=6.18 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c08-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c08-d5_kemeko.txt, alpha-achieved=4.13 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 9LL, 16LL, 16LL, 16LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          5, "0.0179890370892" },
+          5, "0.0135188399689" },
         // class 3d-c08 key=[1/1 1/1 9/5 16/5 16/5 16/5]
         //   rep-vertices: (5,3,4) (4,0,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c08-d2_kemeko.txt, alpha-achieved=7.18 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c08-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c08-d5_kemeko.txt, alpha-achieved=4.13 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c08-d5))
         { { 1LL, 1LL, 9LL, 16LL, 16LL, 16LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          6, "0.0179890370892" },
+          6, "0.0135188399689" },
         // class 3d-c08 key=[1/1 1/1 9/5 16/5 16/5 16/5]
         //   rep-vertices: (5,3,4) (4,0,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c08-d2_kemeko.txt, alpha-achieved=7.88 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c08-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c08-d5_kemeko.txt, alpha-achieved=4.13 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c08-d5))
         { { 1LL, 1LL, 9LL, 16LL, 16LL, 16LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          7, "0.0179890370892" },
+          7, "0.0135188399689" },
         // class 3d-c08 key=[1/1 1/1 9/5 16/5 16/5 16/5]
         //   rep-vertices: (5,3,4) (4,0,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c08-d2_kemeko.txt, alpha-achieved=8.63 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c08-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c08-d5_kemeko.txt, alpha-achieved=4.13 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c08-d5))
         { { 1LL, 1LL, 9LL, 16LL, 16LL, 16LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          8, "0.0179890370892" },
+          8, "0.0135188399689" },
         // class 3d-c09 key=[1/1 1/1 17/9 16/9 32/9 16/3]
         //   rep-vertices: (4,0,0) (1,2,2) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=3,
@@ -677,46 +677,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0161812768801" },
         // class 3d-c09 key=[1/1 1/1 17/9 16/9 32/9 16/3]
         //   rep-vertices: (4,0,0) (1,2,2) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c09-d2_konbu.txt, alpha-achieved=4.33 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c09-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c09-d3_luzin.txt, alpha-achieved=2.59 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 17LL, 16LL, 32LL, 16LL },
           { 1LL, 1LL, 9LL, 9LL, 9LL, 3LL },
-          3, "0.0161812768801" },
+          3, "0.0141695147857" },
         // class 3d-c09 key=[1/1 1/1 17/9 16/9 32/9 16/3]
         //   rep-vertices: (4,0,0) (1,2,2) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c09-d2_konbu.txt, alpha-achieved=6.02 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c09-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c09-d4_luzin.txt, alpha-achieved=3.55 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 17LL, 16LL, 32LL, 16LL },
           { 1LL, 1LL, 9LL, 9LL, 9LL, 3LL },
-          4, "0.0161812768801" },
+          4, "0.0131018604044" },
         // class 3d-c09 key=[1/1 1/1 17/9 16/9 32/9 16/3]
         //   rep-vertices: (4,0,0) (1,2,2) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c09-d2_konbu.txt, alpha-achieved=5.82 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c09-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c09-d5_luzin.txt, alpha-achieved=4.29 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 17LL, 16LL, 32LL, 16LL },
           { 1LL, 1LL, 9LL, 9LL, 9LL, 3LL },
-          5, "0.0161812768801" },
+          5, "0.0126039932122" },
         // class 3d-c09 key=[1/1 1/1 17/9 16/9 32/9 16/3]
         //   rep-vertices: (4,0,0) (1,2,2) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c09-d2_konbu.txt, alpha-achieved=6.76 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c09-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c09-d5_luzin.txt, alpha-achieved=4.29 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c09-d5))
         { { 1LL, 1LL, 17LL, 16LL, 32LL, 16LL },
           { 1LL, 1LL, 9LL, 9LL, 9LL, 3LL },
-          6, "0.0161812768801" },
+          6, "0.0126039932122" },
         // class 3d-c09 key=[1/1 1/1 17/9 16/9 32/9 16/3]
         //   rep-vertices: (4,0,0) (1,2,2) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c09-d2_konbu.txt, alpha-achieved=7.42 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c09-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c09-d5_luzin.txt, alpha-achieved=4.29 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c09-d5))
         { { 1LL, 1LL, 17LL, 16LL, 32LL, 16LL },
           { 1LL, 1LL, 9LL, 9LL, 9LL, 3LL },
-          7, "0.0161812768801" },
+          7, "0.0126039932122" },
         // class 3d-c09 key=[1/1 1/1 17/9 16/9 32/9 16/3]
         //   rep-vertices: (4,0,0) (1,2,2) (0,0,4) (0,4,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c09-d2_konbu.txt, alpha-achieved=8.14 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c09-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c09-d5_luzin.txt, alpha-achieved=4.29 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c09-d5))
         { { 1LL, 1LL, 17LL, 16LL, 32LL, 16LL },
           { 1LL, 1LL, 9LL, 9LL, 9LL, 3LL },
-          8, "0.0161812768801" },
+          8, "0.0126039932122" },
         // class 3d-c10 key=[1/1 1/1 17/9 32/9 32/9 32/9]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,2,2)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=3,
@@ -740,46 +740,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0178306368918" },
         // class 3d-c10 key=[1/1 1/1 17/9 32/9 32/9 32/9]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,2,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c10-d2_pote.txt, alpha-achieved=4.1 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c10-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c10-d3_pote.txt, alpha-achieved=2.39 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 17LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 9LL, 9LL, 9LL, 9LL },
-          3, "0.0178306368918" },
+          3, "0.0153418239566" },
         // class 3d-c10 key=[1/1 1/1 17/9 32/9 32/9 32/9]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,2,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c10-d2_pote.txt, alpha-achieved=5.09 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c10-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c10-d4_pote.txt, alpha-achieved=3.29 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 17LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 9LL, 9LL, 9LL, 9LL },
-          4, "0.0178306368918" },
+          4, "0.0140982912996" },
         // class 3d-c10 key=[1/1 1/1 17/9 32/9 32/9 32/9]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,2,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c10-d2_pote.txt, alpha-achieved=6.12 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c10-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c10-d5_pote.txt, alpha-achieved=4.16 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 17LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 9LL, 9LL, 9LL, 9LL },
-          5, "0.0178306368918" },
+          5, "0.0134082058327" },
         // class 3d-c10 key=[1/1 1/1 17/9 32/9 32/9 32/9]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,2,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c10-d2_pote.txt, alpha-achieved=7.11 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c10-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c10-d5_pote.txt, alpha-achieved=4.16 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c10-d5))
         { { 1LL, 1LL, 17LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 9LL, 9LL, 9LL, 9LL },
-          6, "0.0178306368918" },
+          6, "0.0134082058327" },
         // class 3d-c10 key=[1/1 1/1 17/9 32/9 32/9 32/9]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,2,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c10-d2_pote.txt, alpha-achieved=7.8 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c10-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c10-d5_pote.txt, alpha-achieved=4.16 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c10-d5))
         { { 1LL, 1LL, 17LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 9LL, 9LL, 9LL, 9LL },
-          7, "0.0178306368918" },
+          7, "0.0134082058327" },
         // class 3d-c10 key=[1/1 1/1 17/9 32/9 32/9 32/9]
         //   rep-vertices: (4,0,0) (0,4,0) (0,0,4) (1,2,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c10-d2_pote.txt, alpha-achieved=8.55 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c10-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c10-d5_pote.txt, alpha-achieved=4.16 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c10-d5))
         { { 1LL, 1LL, 17LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 9LL, 9LL, 9LL, 9LL },
-          8, "0.0178306368918" },
+          8, "0.0134082058327" },
         // class 3d-c11 key=[1/1 1/1 67/35 128/35 128/35 128/35]
         //   rep-vertices: (7,7,5) (12,4,4) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=3,
@@ -803,46 +803,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0177897864648" },
         // class 3d-c11 key=[1/1 1/1 67/35 128/35 128/35 128/35]
         //   rep-vertices: (7,7,5) (12,4,4) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c11-d2_hinata.txt, alpha-achieved=4.1 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c11-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c11-d3_luzin.txt, alpha-achieved=2.39 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 67LL, 128LL, 128LL, 128LL },
           { 1LL, 1LL, 35LL, 35LL, 35LL, 35LL },
-          3, "0.0177897864648" },
+          3, "0.0153048777754" },
         // class 3d-c11 key=[1/1 1/1 67/35 128/35 128/35 128/35]
         //   rep-vertices: (7,7,5) (12,4,4) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c11-d2_hinata.txt, alpha-achieved=5.11 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c11-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c11-d4_luzin.txt, alpha-achieved=3.3 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 67LL, 128LL, 128LL, 128LL },
           { 1LL, 1LL, 35LL, 35LL, 35LL, 35LL },
-          4, "0.0177897864648" },
+          4, "0.0140680797862" },
         // class 3d-c11 key=[1/1 1/1 67/35 128/35 128/35 128/35]
         //   rep-vertices: (7,7,5) (12,4,4) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c11-d2_hinata.txt, alpha-achieved=6.11 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c11-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c11-d5_luzin.txt, alpha-achieved=4.17 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 67LL, 128LL, 128LL, 128LL },
           { 1LL, 1LL, 35LL, 35LL, 35LL, 35LL },
-          5, "0.0177897864648" },
+          5, "0.0133801672566" },
         // class 3d-c11 key=[1/1 1/1 67/35 128/35 128/35 128/35]
         //   rep-vertices: (7,7,5) (12,4,4) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c11-d2_hinata.txt, alpha-achieved=7.09 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c11-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c11-d5_luzin.txt, alpha-achieved=4.17 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c11-d5))
         { { 1LL, 1LL, 67LL, 128LL, 128LL, 128LL },
           { 1LL, 1LL, 35LL, 35LL, 35LL, 35LL },
-          6, "0.0177897864648" },
+          6, "0.0133801672566" },
         // class 3d-c11 key=[1/1 1/1 67/35 128/35 128/35 128/35]
         //   rep-vertices: (7,7,5) (12,4,4) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c11-d2_hinata.txt, alpha-achieved=7.78 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c11-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c11-d5_luzin.txt, alpha-achieved=4.17 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c11-d5))
         { { 1LL, 1LL, 67LL, 128LL, 128LL, 128LL },
           { 1LL, 1LL, 35LL, 35LL, 35LL, 35LL },
-          7, "0.0177897864648" },
+          7, "0.0133801672566" },
         // class 3d-c11 key=[1/1 1/1 67/35 128/35 128/35 128/35]
         //   rep-vertices: (7,7,5) (12,4,4) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c11-d2_hinata.txt, alpha-achieved=8.53 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c11-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c11-d5_luzin.txt, alpha-achieved=4.17 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c11-d5))
         { { 1LL, 1LL, 67LL, 128LL, 128LL, 128LL },
           { 1LL, 1LL, 35LL, 35LL, 35LL, 35LL },
-          8, "0.0177897864648" },
+          8, "0.0133801672566" },
         // class 3d-c12 key=[1/1 1/1 267/139 512/139 512/139 512/139]
         //   rep-vertices: (11,11,7) (20,4,4) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=3,
@@ -866,46 +866,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0177794826515" },
         // class 3d-c12 key=[1/1 1/1 267/139 512/139 512/139 512/139]
         //   rep-vertices: (11,11,7) (20,4,4) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c12-d2_kemeko.txt, alpha-achieved=4.1 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c12-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c12-d3_kemeko.txt, alpha-achieved=2.39 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 267LL, 512LL, 512LL, 512LL },
           { 1LL, 1LL, 139LL, 139LL, 139LL, 139LL },
-          3, "0.0177794826515" },
+          3, "0.0152955746575" },
         // class 3d-c12 key=[1/1 1/1 267/139 512/139 512/139 512/139]
         //   rep-vertices: (11,11,7) (20,4,4) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c12-d2_kemeko.txt, alpha-achieved=5.11 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c12-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c12-d4_kemeko.txt, alpha-achieved=3.3 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 267LL, 512LL, 512LL, 512LL },
           { 1LL, 1LL, 139LL, 139LL, 139LL, 139LL },
-          4, "0.0177794826515" },
+          4, "0.0140604683189" },
         // class 3d-c12 key=[1/1 1/1 267/139 512/139 512/139 512/139]
         //   rep-vertices: (11,11,7) (20,4,4) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c12-d2_kemeko.txt, alpha-achieved=6.1 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c12-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c12-d5_kemeko.txt, alpha-achieved=4.17 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 267LL, 512LL, 512LL, 512LL },
           { 1LL, 1LL, 139LL, 139LL, 139LL, 139LL },
-          5, "0.0177794826515" },
+          5, "0.0133731301499" },
         // class 3d-c12 key=[1/1 1/1 267/139 512/139 512/139 512/139]
         //   rep-vertices: (11,11,7) (20,4,4) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c12-d2_kemeko.txt, alpha-achieved=7.09 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c12-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c12-d5_kemeko.txt, alpha-achieved=4.17 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c12-d5))
         { { 1LL, 1LL, 267LL, 512LL, 512LL, 512LL },
           { 1LL, 1LL, 139LL, 139LL, 139LL, 139LL },
-          6, "0.0177794826515" },
+          6, "0.0133731301499" },
         // class 3d-c12 key=[1/1 1/1 267/139 512/139 512/139 512/139]
         //   rep-vertices: (11,11,7) (20,4,4) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c12-d2_kemeko.txt, alpha-achieved=7.78 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c12-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c12-d5_kemeko.txt, alpha-achieved=4.17 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c12-d5))
         { { 1LL, 1LL, 267LL, 512LL, 512LL, 512LL },
           { 1LL, 1LL, 139LL, 139LL, 139LL, 139LL },
-          7, "0.0177794826515" },
+          7, "0.0133731301499" },
         // class 3d-c12 key=[1/1 1/1 267/139 512/139 512/139 512/139]
         //   rep-vertices: (11,11,7) (20,4,4) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c12-d2_kemeko.txt, alpha-achieved=8.52 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c12-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c12-d5_kemeko.txt, alpha-achieved=4.17 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c12-d5))
         { { 1LL, 1LL, 267LL, 512LL, 512LL, 512LL },
           { 1LL, 1LL, 139LL, 139LL, 139LL, 139LL },
-          8, "0.0177794826515" },
+          8, "0.0133731301499" },
         // class 3d-c13 key=[1/1 1/1 2/1 2/1 1/1 3/1]
         //   rep-vertices: (0,0,0) (1,0,0) (1,1,0) (1,1,1)  prov=seed:Kuhn0
         // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=3,
@@ -929,46 +929,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0190721057216" },
         // class 3d-c13 key=[1/1 1/1 2/1 2/1 1/1 3/1]
         //   rep-vertices: (0,0,0) (1,0,0) (1,1,0) (1,1,1)  prov=seed:Kuhn0
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c13-d2_konbu.txt, alpha-achieved=3.78 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c13-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c13-d3_luzin.txt, alpha-achieved=3.01 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 2LL, 2LL, 1LL, 3LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          3, "0.0190721057216" },
+          3, "0.0170751413674" },
         // class 3d-c13 key=[1/1 1/1 2/1 2/1 1/1 3/1]
         //   rep-vertices: (0,0,0) (1,0,0) (1,1,0) (1,1,1)  prov=seed:Kuhn0
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c13-d2_konbu.txt, alpha-achieved=4.65 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c13-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c13-d4_luzin.txt, alpha-achieved=3.94 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 2LL, 2LL, 1LL, 3LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          4, "0.0190721057216" },
+          4, "0.0160626067855" },
         // class 3d-c13 key=[1/1 1/1 2/1 2/1 1/1 3/1]
         //   rep-vertices: (0,0,0) (1,0,0) (1,1,0) (1,1,1)  prov=seed:Kuhn0
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c13-d2_konbu.txt, alpha-achieved=6.48 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c13-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c13-d5_luzin.txt, alpha-achieved=4.91 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 2LL, 2LL, 1LL, 3LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          5, "0.0190721057216" },
+          5, "0.0154220337751" },
         // class 3d-c13 key=[1/1 1/1 2/1 2/1 1/1 3/1]
         //   rep-vertices: (0,0,0) (1,0,0) (1,1,0) (1,1,1)  prov=seed:Kuhn0
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c13-d2_konbu.txt, alpha-achieved=7.52 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c13-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c13-d5_luzin.txt, alpha-achieved=4.91 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c13-d5))
         { { 1LL, 1LL, 2LL, 2LL, 1LL, 3LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          6, "0.0190721057216" },
+          6, "0.0154220337751" },
         // class 3d-c13 key=[1/1 1/1 2/1 2/1 1/1 3/1]
         //   rep-vertices: (0,0,0) (1,0,0) (1,1,0) (1,1,1)  prov=seed:Kuhn0
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c13-d2_konbu.txt, alpha-achieved=8.24 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c13-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c13-d5_luzin.txt, alpha-achieved=4.91 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c13-d5))
         { { 1LL, 1LL, 2LL, 2LL, 1LL, 3LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          7, "0.0190721057216" },
+          7, "0.0154220337751" },
         // class 3d-c13 key=[1/1 1/1 2/1 2/1 1/1 3/1]
         //   rep-vertices: (0,0,0) (1,0,0) (1,1,0) (1,1,1)  prov=seed:Kuhn0
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c13-d2_konbu.txt, alpha-achieved=9.01 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c13-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c13-d5_luzin.txt, alpha-achieved=4.91 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c13-d5))
         { { 1LL, 1LL, 2LL, 2LL, 1LL, 3LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          8, "0.0190721057216" },
+          8, "0.0154220337751" },
         // class 3d-c14 key=[1/1 1/1 7/3 8/3 8/3 16/3]
         //   rep-vertices: (3,2,1) (4,0,0) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
         // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=3,
@@ -992,46 +992,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0161592094715" },
         // class 3d-c14 key=[1/1 1/1 7/3 8/3 8/3 16/3]
         //   rep-vertices: (3,2,1) (4,0,0) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c14-d2_pote.txt, alpha-achieved=4.5 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c14-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c14-d3_pote.txt, alpha-achieved=2.98 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 7LL, 8LL, 8LL, 16LL },
           { 1LL, 1LL, 3LL, 3LL, 3LL, 3LL },
-          3, "0.0161592094715" },
+          3, "0.0141587219439" },
         // class 3d-c14 key=[1/1 1/1 7/3 8/3 8/3 16/3]
         //   rep-vertices: (3,2,1) (4,0,0) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c14-d2_pote.txt, alpha-achieved=5.44 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c14-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c14-d4_pote.txt, alpha-achieved=3.98 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 7LL, 8LL, 8LL, 16LL },
           { 1LL, 1LL, 3LL, 3LL, 3LL, 3LL },
-          4, "0.0161592094715" },
+          4, "0.0132602363892" },
         // class 3d-c14 key=[1/1 1/1 7/3 8/3 8/3 16/3]
         //   rep-vertices: (3,2,1) (4,0,0) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c14-d2_pote.txt, alpha-achieved=6.07 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c14-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c14-d5_pote.txt, alpha-achieved=5.06 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 7LL, 8LL, 8LL, 16LL },
           { 1LL, 1LL, 3LL, 3LL, 3LL, 3LL },
-          5, "0.0161592094715" },
+          5, "0.0126932340213" },
         // class 3d-c14 key=[1/1 1/1 7/3 8/3 8/3 16/3]
         //   rep-vertices: (3,2,1) (4,0,0) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c14-d2_pote.txt, alpha-achieved=7.05 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c14-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c14-d5_pote.txt, alpha-achieved=5.06 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c14-d5))
         { { 1LL, 1LL, 7LL, 8LL, 8LL, 16LL },
           { 1LL, 1LL, 3LL, 3LL, 3LL, 3LL },
-          6, "0.0161592094715" },
+          6, "0.0126932340213" },
         // class 3d-c14 key=[1/1 1/1 7/3 8/3 8/3 16/3]
         //   rep-vertices: (3,2,1) (4,0,0) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c14-d2_pote.txt, alpha-achieved=7.73 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c14-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c14-d5_pote.txt, alpha-achieved=5.06 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c14-d5))
         { { 1LL, 1LL, 7LL, 8LL, 8LL, 16LL },
           { 1LL, 1LL, 3LL, 3LL, 3LL, 3LL },
-          7, "0.0161592094715" },
+          7, "0.0126932340213" },
         // class 3d-c14 key=[1/1 1/1 7/3 8/3 8/3 16/3]
         //   rep-vertices: (3,2,1) (4,0,0) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c14-d2_pote.txt, alpha-achieved=8.47 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c14-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c14-d5_pote.txt, alpha-achieved=5.06 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c14-d5))
         { { 1LL, 1LL, 7LL, 8LL, 8LL, 16LL },
           { 1LL, 1LL, 3LL, 3LL, 3LL, 3LL },
-          8, "0.0161592094715" },
+          8, "0.0126932340213" },
         // class 3d-c15 key=[1/1 1/1 13/5 12/5 12/5 32/5]
         //   rep-vertices: (4,2,3) (4,0,4) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1055,46 +1055,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0107034479495" },
         // class 3d-c15 key=[1/1 1/1 13/5 12/5 12/5 32/5]
         //   rep-vertices: (4,2,3) (4,0,4) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c15-d2_hinata.txt, alpha-achieved=3.7 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c15-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c15-d3_luzin.txt, alpha-achieved=2.06 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 13LL, 12LL, 12LL, 32LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          3, "0.0107034479495" },
+          3, "0.00891502645204" },
         // class 3d-c15 key=[1/1 1/1 13/5 12/5 12/5 32/5]
         //   rep-vertices: (4,2,3) (4,0,4) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c15-d2_hinata.txt, alpha-achieved=4.67 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c15-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c15-d4_luzin.txt, alpha-achieved=2.9 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 13LL, 12LL, 12LL, 32LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          4, "0.0107034479495" },
+          4, "0.00807556348140" },
         // class 3d-c15 key=[1/1 1/1 13/5 12/5 12/5 32/5]
         //   rep-vertices: (4,2,3) (4,0,4) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c15-d2_hinata.txt, alpha-achieved=9.26 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c15-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c15-d5_luzin.txt, alpha-achieved=3.76 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 13LL, 12LL, 12LL, 32LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          5, "0.0107034479495" },
+          5, "0.00760498793835" },
         // class 3d-c15 key=[1/1 1/1 13/5 12/5 12/5 32/5]
         //   rep-vertices: (4,2,3) (4,0,4) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c15-d2_hinata.txt, alpha-achieved=11 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c15-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c15-d5_luzin.txt, alpha-achieved=3.76 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c15-d5))
         { { 1LL, 1LL, 13LL, 12LL, 12LL, 32LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          6, "0.0107034479495" },
+          6, "0.00760498793835" },
         // class 3d-c15 key=[1/1 1/1 13/5 12/5 12/5 32/5]
         //   rep-vertices: (4,2,3) (4,0,4) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c15-d2_hinata.txt, alpha-achieved=12 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c15-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c15-d5_luzin.txt, alpha-achieved=3.76 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c15-d5))
         { { 1LL, 1LL, 13LL, 12LL, 12LL, 32LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          7, "0.0107034479495" },
+          7, "0.00760498793835" },
         // class 3d-c15 key=[1/1 1/1 13/5 12/5 12/5 32/5]
         //   rep-vertices: (4,2,3) (4,0,4) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c15-d2_hinata.txt, alpha-achieved=13.8 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c15-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c15-d5_luzin.txt, alpha-achieved=3.76 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c15-d5))
         { { 1LL, 1LL, 13LL, 12LL, 12LL, 32LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          8, "0.0107034479495" },
+          8, "0.00760498793835" },
         // class 3d-c16 key=[1/1 1/1 8/3 8/3 1/1 11/3]
         //   rep-vertices: (2,2,0) (2,0,2) (3,1,1) (1,1,3)  prov=bey-layer>bey1
         // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1118,46 +1118,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0132585485409" },
         // class 3d-c16 key=[1/1 1/1 8/3 8/3 1/1 11/3]
         //   rep-vertices: (2,2,0) (2,0,2) (3,1,1) (1,1,3)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c16-d2_kemeko.txt, alpha-achieved=3.59 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c16-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c16-d3_luzin.txt, alpha-achieved=1.83 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 8LL, 8LL, 1LL, 11LL },
           { 1LL, 1LL, 3LL, 3LL, 1LL, 3LL },
-          3, "0.0132585485409" },
+          3, "0.0111264055967" },
         // class 3d-c16 key=[1/1 1/1 8/3 8/3 1/1 11/3]
         //   rep-vertices: (2,2,0) (2,0,2) (3,1,1) (1,1,3)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c16-d2_kemeko.txt, alpha-achieved=4.22 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c16-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c16-d4_luzin.txt, alpha-achieved=2.52 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 8LL, 8LL, 1LL, 11LL },
           { 1LL, 1LL, 3LL, 3LL, 1LL, 3LL },
-          4, "0.0132585485409" },
+          4, "0.0100494861770" },
         // class 3d-c16 key=[1/1 1/1 8/3 8/3 1/1 11/3]
         //   rep-vertices: (2,2,0) (2,0,2) (3,1,1) (1,1,3)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c16-d2_kemeko.txt, alpha-achieved=6.92 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c16-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c16-d5_luzin.txt, alpha-achieved=3.14 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 8LL, 8LL, 1LL, 11LL },
           { 1LL, 1LL, 3LL, 3LL, 1LL, 3LL },
-          5, "0.0132585485409" },
+          5, "0.00948591051130" },
         // class 3d-c16 key=[1/1 1/1 8/3 8/3 1/1 11/3]
         //   rep-vertices: (2,2,0) (2,0,2) (3,1,1) (1,1,3)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c16-d2_kemeko.txt, alpha-achieved=8.12 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c16-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c16-d5_luzin.txt, alpha-achieved=3.14 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c16-d5))
         { { 1LL, 1LL, 8LL, 8LL, 1LL, 11LL },
           { 1LL, 1LL, 3LL, 3LL, 1LL, 3LL },
-          6, "0.0132585485409" },
+          6, "0.00948591051130" },
         // class 3d-c16 key=[1/1 1/1 8/3 8/3 1/1 11/3]
         //   rep-vertices: (2,2,0) (2,0,2) (3,1,1) (1,1,3)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c16-d2_kemeko.txt, alpha-achieved=8.95 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c16-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c16-d5_luzin.txt, alpha-achieved=3.14 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c16-d5))
         { { 1LL, 1LL, 8LL, 8LL, 1LL, 11LL },
           { 1LL, 1LL, 3LL, 3LL, 1LL, 3LL },
-          7, "0.0132585485409" },
+          7, "0.00948591051130" },
         // class 3d-c16 key=[1/1 1/1 8/3 8/3 1/1 11/3]
         //   rep-vertices: (2,2,0) (2,0,2) (3,1,1) (1,1,3)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c16-d2_kemeko.txt, alpha-achieved=10 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c16-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c16-d5_luzin.txt, alpha-achieved=3.14 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c16-d5))
         { { 1LL, 1LL, 8LL, 8LL, 1LL, 11LL },
           { 1LL, 1LL, 3LL, 3LL, 1LL, 3LL },
-          8, "0.0132585485409" },
+          8, "0.00948591051130" },
         // class 3d-c17 key=[1/1 1/1 51/19 44/19 44/19 128/19]
         //   rep-vertices: (7,3,5) (8,0,8) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1181,46 +1181,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0105155822509" },
         // class 3d-c17 key=[1/1 1/1 51/19 44/19 44/19 128/19]
         //   rep-vertices: (7,3,5) (8,0,8) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c17-d2_konbu.txt, alpha-achieved=3.61 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c17-d2))
+        // source: CONST-B2R gen on kanna 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c17-d3_kanna.txt, alpha-achieved=2.14 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 51LL, 44LL, 44LL, 128LL },
           { 1LL, 1LL, 19LL, 19LL, 19LL, 19LL },
-          3, "0.0105155822509" },
+          3, "0.00878393444553" },
         // class 3d-c17 key=[1/1 1/1 51/19 44/19 44/19 128/19]
         //   rep-vertices: (7,3,5) (8,0,8) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c17-d2_konbu.txt, alpha-achieved=4.52 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c17-d2))
+        // source: CONST-B2R gen on kanna 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c17-d4_kanna.txt, alpha-achieved=3.02 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 51LL, 44LL, 44LL, 128LL },
           { 1LL, 1LL, 19LL, 19LL, 19LL, 19LL },
-          4, "0.0105155822509" },
+          4, "0.00797300095082" },
         // class 3d-c17 key=[1/1 1/1 51/19 44/19 44/19 128/19]
         //   rep-vertices: (7,3,5) (8,0,8) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c17-d2_konbu.txt, alpha-achieved=9.28 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c17-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c17-d5_kemeko.txt, alpha-achieved=3.94 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 51LL, 44LL, 44LL, 128LL },
           { 1LL, 1LL, 19LL, 19LL, 19LL, 19LL },
-          5, "0.0105155822509" },
+          5, "0.00750702644319" },
         // class 3d-c17 key=[1/1 1/1 51/19 44/19 44/19 128/19]
         //   rep-vertices: (7,3,5) (8,0,8) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c17-d2_konbu.txt, alpha-achieved=11 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c17-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c17-d5_kemeko.txt, alpha-achieved=3.94 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c17-d5))
         { { 1LL, 1LL, 51LL, 44LL, 44LL, 128LL },
           { 1LL, 1LL, 19LL, 19LL, 19LL, 19LL },
-          6, "0.0105155822509" },
+          6, "0.00750702644319" },
         // class 3d-c17 key=[1/1 1/1 51/19 44/19 44/19 128/19]
         //   rep-vertices: (7,3,5) (8,0,8) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c17-d2_konbu.txt, alpha-achieved=12 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c17-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c17-d5_kemeko.txt, alpha-achieved=3.94 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c17-d5))
         { { 1LL, 1LL, 51LL, 44LL, 44LL, 128LL },
           { 1LL, 1LL, 19LL, 19LL, 19LL, 19LL },
-          7, "0.0105155822509" },
+          7, "0.00750702644319" },
         // class 3d-c17 key=[1/1 1/1 51/19 44/19 44/19 128/19]
         //   rep-vertices: (7,3,5) (8,0,8) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c17-d2_konbu.txt, alpha-achieved=13.8 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c17-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c17-d5_kemeko.txt, alpha-achieved=3.94 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c17-d5))
         { { 1LL, 1LL, 51LL, 44LL, 44LL, 128LL },
           { 1LL, 1LL, 19LL, 19LL, 19LL, 19LL },
-          8, "0.0105155822509" },
+          8, "0.00750702644319" },
         // class 3d-c18 key=[1/1 1/1 32/11 32/11 1/1 43/11]
         //   rep-vertices: (4,4,0) (4,0,4) (5,1,1) (1,1,5)  prov=bey-layer>bey1
         // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1244,46 +1244,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0133648023461" },
         // class 3d-c18 key=[1/1 1/1 32/11 32/11 1/1 43/11]
         //   rep-vertices: (4,4,0) (4,0,4) (5,1,1) (1,1,5)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c18-d2_pote.txt, alpha-achieved=3.56 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c18-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c18-d3_pote.txt, alpha-achieved=1.87 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 32LL, 32LL, 1LL, 43LL },
           { 1LL, 1LL, 11LL, 11LL, 1LL, 11LL },
-          3, "0.0133648023461" },
+          3, "0.0112172662335" },
         // class 3d-c18 key=[1/1 1/1 32/11 32/11 1/1 43/11]
         //   rep-vertices: (4,4,0) (4,0,4) (5,1,1) (1,1,5)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c18-d2_pote.txt, alpha-achieved=4.1 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c18-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c18-d4_pote.txt, alpha-achieved=2.57 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 32LL, 32LL, 1LL, 43LL },
           { 1LL, 1LL, 11LL, 11LL, 1LL, 11LL },
-          4, "0.0133648023461" },
+          4, "0.0101487321742" },
         // class 3d-c18 key=[1/1 1/1 32/11 32/11 1/1 43/11]
         //   rep-vertices: (4,4,0) (4,0,4) (5,1,1) (1,1,5)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c18-d2_pote.txt, alpha-achieved=6.94 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c18-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c18-d5_pote.txt, alpha-achieved=3.22 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 32LL, 32LL, 1LL, 43LL },
           { 1LL, 1LL, 11LL, 11LL, 1LL, 11LL },
-          5, "0.0133648023461" },
+          5, "0.00958137460602" },
         // class 3d-c18 key=[1/1 1/1 32/11 32/11 1/1 43/11]
         //   rep-vertices: (4,4,0) (4,0,4) (5,1,1) (1,1,5)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c18-d2_pote.txt, alpha-achieved=8.15 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c18-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c18-d5_pote.txt, alpha-achieved=3.22 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c18-d5))
         { { 1LL, 1LL, 32LL, 32LL, 1LL, 43LL },
           { 1LL, 1LL, 11LL, 11LL, 1LL, 11LL },
-          6, "0.0133648023461" },
+          6, "0.00958137460602" },
         // class 3d-c18 key=[1/1 1/1 32/11 32/11 1/1 43/11]
         //   rep-vertices: (4,4,0) (4,0,4) (5,1,1) (1,1,5)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c18-d2_pote.txt, alpha-achieved=8.98 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c18-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c18-d5_pote.txt, alpha-achieved=3.22 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c18-d5))
         { { 1LL, 1LL, 32LL, 32LL, 1LL, 43LL },
           { 1LL, 1LL, 11LL, 11LL, 1LL, 11LL },
-          7, "0.0133648023461" },
+          7, "0.00958137460602" },
         // class 3d-c18 key=[1/1 1/1 32/11 32/11 1/1 43/11]
         //   rep-vertices: (4,4,0) (4,0,4) (5,1,1) (1,1,5)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c18-d2_pote.txt, alpha-achieved=10.1 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c18-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c18-d5_pote.txt, alpha-achieved=3.22 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c18-d5))
         { { 1LL, 1LL, 32LL, 32LL, 1LL, 43LL },
           { 1LL, 1LL, 11LL, 11LL, 1LL, 11LL },
-          8, "0.0133648023461" },
+          8, "0.00958137460602" },
         // class 3d-c19 key=[1/1 1/1 3/1 2/1 2/1 2/1]
         //   rep-vertices: (1,0,0) (0,1,0) (0,0,1) (0,1,1)  prov=bey-layer>bey1
         // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1307,46 +1307,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0171882283973" },
         // class 3d-c19 key=[1/1 1/1 3/1 2/1 2/1 2/1]
         //   rep-vertices: (1,0,0) (0,1,0) (0,0,1) (0,1,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c19-d2_hinata.txt, alpha-achieved=4.08 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c19-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c19-d3_luzin.txt, alpha-achieved=2.37 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 3LL, 2LL, 2LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          3, "0.0171882283973" },
+          3, "0.0149978136411" },
         // class 3d-c19 key=[1/1 1/1 3/1 2/1 2/1 2/1]
         //   rep-vertices: (1,0,0) (0,1,0) (0,0,1) (0,1,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c19-d2_hinata.txt, alpha-achieved=5.21 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c19-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c19-d4_luzin.txt, alpha-achieved=3.3 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 3LL, 2LL, 2LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          4, "0.0171882283973" },
+          4, "0.0137493913790" },
         // class 3d-c19 key=[1/1 1/1 3/1 2/1 2/1 2/1]
         //   rep-vertices: (1,0,0) (0,1,0) (0,0,1) (0,1,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c19-d2_hinata.txt, alpha-achieved=6.5 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c19-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c19-d5_luzin.txt, alpha-achieved=4 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 3LL, 2LL, 2LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          5, "0.0171882283973" },
+          5, "0.0131909829160" },
         // class 3d-c19 key=[1/1 1/1 3/1 2/1 2/1 2/1]
         //   rep-vertices: (1,0,0) (0,1,0) (0,0,1) (0,1,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c19-d2_hinata.txt, alpha-achieved=7.54 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c19-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c19-d5_luzin.txt, alpha-achieved=4 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c19-d5))
         { { 1LL, 1LL, 3LL, 2LL, 2LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          6, "0.0171882283973" },
+          6, "0.0131909829160" },
         // class 3d-c19 key=[1/1 1/1 3/1 2/1 2/1 2/1]
         //   rep-vertices: (1,0,0) (0,1,0) (0,0,1) (0,1,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c19-d2_hinata.txt, alpha-achieved=8.27 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c19-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c19-d5_luzin.txt, alpha-achieved=4 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c19-d5))
         { { 1LL, 1LL, 3LL, 2LL, 2LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          7, "0.0171882283973" },
+          7, "0.0131909829160" },
         // class 3d-c19 key=[1/1 1/1 3/1 2/1 2/1 2/1]
         //   rep-vertices: (1,0,0) (0,1,0) (0,0,1) (0,1,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c19-d2_hinata.txt, alpha-achieved=9.05 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c19-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c19-d5_luzin.txt, alpha-achieved=4 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c19-d5))
         { { 1LL, 1LL, 3LL, 2LL, 2LL, 2LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          8, "0.0171882283973" },
+          8, "0.0131909829160" },
         // class 3d-c20 key=[1/1 1/1 3/1 2/1 2/1 6/1]
         //   rep-vertices: (1,0,0) (1,1,0) (1,1,1) (2,2,1)  prov=bey-layer>bey1
         // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1370,46 +1370,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0162703678622" },
         // class 3d-c20 key=[1/1 1/1 3/1 2/1 2/1 6/1]
         //   rep-vertices: (1,0,0) (1,1,0) (1,1,1) (2,2,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c20-d2_kemeko.txt, alpha-achieved=4.19 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c20-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c20-d3_luzin.txt, alpha-achieved=3.07 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 3LL, 2LL, 2LL, 6LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          3, "0.0162703678622" },
+          3, "0.0144925910615" },
         // class 3d-c20 key=[1/1 1/1 3/1 2/1 2/1 6/1]
         //   rep-vertices: (1,0,0) (1,1,0) (1,1,1) (2,2,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c20-d2_kemeko.txt, alpha-achieved=5.56 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c20-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c20-d4_luzin.txt, alpha-achieved=4.11 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 3LL, 2LL, 2LL, 6LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          4, "0.0162703678622" },
+          4, "0.0135876353357" },
         // class 3d-c20 key=[1/1 1/1 3/1 2/1 2/1 6/1]
         //   rep-vertices: (1,0,0) (1,1,0) (1,1,1) (2,2,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c20-d2_kemeko.txt, alpha-achieved=6.08 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c20-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c20-d5_luzin.txt, alpha-achieved=4.93 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 3LL, 2LL, 2LL, 6LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          5, "0.0162703678622" },
+          5, "0.0131461733784" },
         // class 3d-c20 key=[1/1 1/1 3/1 2/1 2/1 6/1]
         //   rep-vertices: (1,0,0) (1,1,0) (1,1,1) (2,2,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c20-d2_kemeko.txt, alpha-achieved=7.06 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c20-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c20-d5_luzin.txt, alpha-achieved=4.93 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c20-d5))
         { { 1LL, 1LL, 3LL, 2LL, 2LL, 6LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          6, "0.0162703678622" },
+          6, "0.0131461733784" },
         // class 3d-c20 key=[1/1 1/1 3/1 2/1 2/1 6/1]
         //   rep-vertices: (1,0,0) (1,1,0) (1,1,1) (2,2,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c20-d2_kemeko.txt, alpha-achieved=7.74 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c20-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c20-d5_luzin.txt, alpha-achieved=4.93 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c20-d5))
         { { 1LL, 1LL, 3LL, 2LL, 2LL, 6LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          7, "0.0162703678622" },
+          7, "0.0131461733784" },
         // class 3d-c20 key=[1/1 1/1 3/1 2/1 2/1 6/1]
         //   rep-vertices: (1,0,0) (1,1,0) (1,1,1) (2,2,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c20-d2_kemeko.txt, alpha-achieved=8.48 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c20-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c20-d5_luzin.txt, alpha-achieved=4.93 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c20-d5))
         { { 1LL, 1LL, 3LL, 2LL, 2LL, 6LL },
           { 1LL, 1LL, 1LL, 1LL, 1LL, 1LL },
-          8, "0.0162703678622" },
+          8, "0.0131461733784" },
         // class 3d-c21 key=[1/1 1/1 11/3 8/3 8/3 8/3]
         //   rep-vertices: (2,2,0) (3,1,1) (1,3,1) (1,1,3)  prov=bey-layer>bey1
         // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1433,46 +1433,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0177636990766" },
         // class 3d-c21 key=[1/1 1/1 11/3 8/3 8/3 8/3]
         //   rep-vertices: (2,2,0) (3,1,1) (1,3,1) (1,1,3)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c21-d2_konbu.txt, alpha-achieved=4.14 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c21-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c21-d3_luzin.txt, alpha-achieved=2.27 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 11LL, 8LL, 8LL, 8LL },
           { 1LL, 1LL, 3LL, 3LL, 3LL, 3LL },
-          3, "0.0177636990766" },
+          3, "0.0153949478485" },
         // class 3d-c21 key=[1/1 1/1 11/3 8/3 8/3 8/3]
         //   rep-vertices: (2,2,0) (3,1,1) (1,3,1) (1,1,3)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c21-d2_konbu.txt, alpha-achieved=5.34 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c21-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c21-d4_luzin.txt, alpha-achieved=3.16 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 11LL, 8LL, 8LL, 8LL },
           { 1LL, 1LL, 3LL, 3LL, 3LL, 3LL },
-          4, "0.0177636990766" },
+          4, "0.0140753901550" },
         // class 3d-c21 key=[1/1 1/1 11/3 8/3 8/3 8/3]
         //   rep-vertices: (2,2,0) (3,1,1) (1,3,1) (1,1,3)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c21-d2_konbu.txt, alpha-achieved=6.48 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c21-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c21-d5_luzin.txt, alpha-achieved=3.84 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 11LL, 8LL, 8LL, 8LL },
           { 1LL, 1LL, 3LL, 3LL, 3LL, 3LL },
-          5, "0.0177636990766" },
+          5, "0.0134686127168" },
         // class 3d-c21 key=[1/1 1/1 11/3 8/3 8/3 8/3]
         //   rep-vertices: (2,2,0) (3,1,1) (1,3,1) (1,1,3)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c21-d2_konbu.txt, alpha-achieved=7.52 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c21-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c21-d5_luzin.txt, alpha-achieved=3.84 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c21-d5))
         { { 1LL, 1LL, 11LL, 8LL, 8LL, 8LL },
           { 1LL, 1LL, 3LL, 3LL, 3LL, 3LL },
-          6, "0.0177636990766" },
+          6, "0.0134686127168" },
         // class 3d-c21 key=[1/1 1/1 11/3 8/3 8/3 8/3]
         //   rep-vertices: (2,2,0) (3,1,1) (1,3,1) (1,1,3)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c21-d2_konbu.txt, alpha-achieved=8.24 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c21-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c21-d5_luzin.txt, alpha-achieved=3.84 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c21-d5))
         { { 1LL, 1LL, 11LL, 8LL, 8LL, 8LL },
           { 1LL, 1LL, 3LL, 3LL, 3LL, 3LL },
-          7, "0.0177636990766" },
+          7, "0.0134686127168" },
         // class 3d-c21 key=[1/1 1/1 11/3 8/3 8/3 8/3]
         //   rep-vertices: (2,2,0) (3,1,1) (1,3,1) (1,1,3)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c21-d2_konbu.txt, alpha-achieved=9.02 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c21-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c21-d5_luzin.txt, alpha-achieved=3.84 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c21-d5))
         { { 1LL, 1LL, 11LL, 8LL, 8LL, 8LL },
           { 1LL, 1LL, 3LL, 3LL, 3LL, 3LL },
-          8, "0.0177636990766" },
+          8, "0.0134686127168" },
         // class 3d-c22 key=[1/1 1/1 43/11 32/11 32/11 32/11]
         //   rep-vertices: (4,4,0) (5,1,1) (1,5,1) (1,1,5)  prov=bey-layer>bey1
         // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1496,46 +1496,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0179253349903" },
         // class 3d-c22 key=[1/1 1/1 43/11 32/11 32/11 32/11]
         //   rep-vertices: (4,4,0) (5,1,1) (1,5,1) (1,1,5)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c22-d2_pote.txt, alpha-achieved=4.15 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c22-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c22-d3_pote.txt, alpha-achieved=2.24 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 43LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 11LL, 11LL, 11LL, 11LL },
-          3, "0.0179253349903" },
+          3, "0.0155059929088" },
         // class 3d-c22 key=[1/1 1/1 43/11 32/11 32/11 32/11]
         //   rep-vertices: (4,4,0) (5,1,1) (1,5,1) (1,1,5)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c22-d2_pote.txt, alpha-achieved=5.38 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c22-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c22-d4_pote.txt, alpha-achieved=3.12 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 43LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 11LL, 11LL, 11LL, 11LL },
-          4, "0.0179253349903" },
+          4, "0.0141686390927" },
         // class 3d-c22 key=[1/1 1/1 43/11 32/11 32/11 32/11]
         //   rep-vertices: (4,4,0) (5,1,1) (1,5,1) (1,1,5)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c22-d2_pote.txt, alpha-achieved=6.47 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c22-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c22-d5_pote.txt, alpha-achieved=3.8 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 43LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 11LL, 11LL, 11LL, 11LL },
-          5, "0.0179253349903" },
+          5, "0.0135461118840" },
         // class 3d-c22 key=[1/1 1/1 43/11 32/11 32/11 32/11]
         //   rep-vertices: (4,4,0) (5,1,1) (1,5,1) (1,1,5)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c22-d2_pote.txt, alpha-achieved=7.51 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c22-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c22-d5_pote.txt, alpha-achieved=3.8 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c22-d5))
         { { 1LL, 1LL, 43LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 11LL, 11LL, 11LL, 11LL },
-          6, "0.0179253349903" },
+          6, "0.0135461118840" },
         // class 3d-c22 key=[1/1 1/1 43/11 32/11 32/11 32/11]
         //   rep-vertices: (4,4,0) (5,1,1) (1,5,1) (1,1,5)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c22-d2_pote.txt, alpha-achieved=8.23 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c22-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c22-d5_pote.txt, alpha-achieved=3.8 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c22-d5))
         { { 1LL, 1LL, 43LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 11LL, 11LL, 11LL, 11LL },
-          7, "0.0179253349903" },
+          7, "0.0135461118840" },
         // class 3d-c22 key=[1/1 1/1 43/11 32/11 32/11 32/11]
         //   rep-vertices: (4,4,0) (5,1,1) (1,5,1) (1,1,5)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c22-d2_pote.txt, alpha-achieved=9.01 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c22-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c22-d5_pote.txt, alpha-achieved=3.8 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c22-d5))
         { { 1LL, 1LL, 43LL, 32LL, 32LL, 32LL },
           { 1LL, 1LL, 11LL, 11LL, 11LL, 11LL },
-          8, "0.0179253349903" },
+          8, "0.0135461118840" },
         // class 3d-c23 key=[1/1 1/1 21/5 16/5 16/5 32/5]
         //   rep-vertices: (4,0,0) (4,4,0) (4,4,4) (5,4,2)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1559,46 +1559,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0181676351610" },
         // class 3d-c23 key=[1/1 1/1 21/5 16/5 16/5 32/5]
         //   rep-vertices: (4,0,0) (4,4,0) (4,4,4) (5,4,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c23-d2_hinata.txt, alpha-achieved=4.43 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c23-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c23-d3_kemeko.txt, alpha-achieved=2.75 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 21LL, 16LL, 16LL, 32LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          3, "0.0181676351610" },
+          3, "0.0159023441418" },
         // class 3d-c23 key=[1/1 1/1 21/5 16/5 16/5 32/5]
         //   rep-vertices: (4,0,0) (4,4,0) (4,4,4) (5,4,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c23-d2_hinata.txt, alpha-achieved=5.68 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c23-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c23-d4_kemeko.txt, alpha-achieved=3.71 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 21LL, 16LL, 16LL, 32LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          4, "0.0181676351610" },
+          4, "0.0147993739321" },
         // class 3d-c23 key=[1/1 1/1 21/5 16/5 16/5 32/5]
         //   rep-vertices: (4,0,0) (4,4,0) (4,4,4) (5,4,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c23-d2_hinata.txt, alpha-achieved=6.18 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c23-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c23-d5_kemeko.txt, alpha-achieved=4.66 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 21LL, 16LL, 16LL, 32LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          5, "0.0181676351610" },
+          5, "0.0141619482137" },
         // class 3d-c23 key=[1/1 1/1 21/5 16/5 16/5 32/5]
         //   rep-vertices: (4,0,0) (4,4,0) (4,4,4) (5,4,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c23-d2_hinata.txt, alpha-achieved=7.17 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c23-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c23-d5_kemeko.txt, alpha-achieved=4.66 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c23-d5))
         { { 1LL, 1LL, 21LL, 16LL, 16LL, 32LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          6, "0.0181676351610" },
+          6, "0.0141619482137" },
         // class 3d-c23 key=[1/1 1/1 21/5 16/5 16/5 32/5]
         //   rep-vertices: (4,0,0) (4,4,0) (4,4,4) (5,4,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c23-d2_hinata.txt, alpha-achieved=7.87 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c23-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c23-d5_kemeko.txt, alpha-achieved=4.66 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c23-d5))
         { { 1LL, 1LL, 21LL, 16LL, 16LL, 32LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          7, "0.0181676351610" },
+          7, "0.0141619482137" },
         // class 3d-c23 key=[1/1 1/1 21/5 16/5 16/5 32/5]
         //   rep-vertices: (4,0,0) (4,4,0) (4,4,4) (5,4,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c23-d2_hinata.txt, alpha-achieved=8.62 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c23-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c23-d5_kemeko.txt, alpha-achieved=4.66 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c23-d5))
         { { 1LL, 1LL, 21LL, 16LL, 16LL, 32LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          8, "0.0181676351610" },
+          8, "0.0141619482137" },
         // class 3d-c24 key=[1/1 1/1 29/5 16/5 32/5 48/5]
         //   rep-vertices: (5,4,2) (4,4,0) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1622,46 +1622,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0169657688758" },
         // class 3d-c24 key=[1/1 1/1 29/5 16/5 32/5 48/5]
         //   rep-vertices: (5,4,2) (4,4,0) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c24-d2_kemeko.txt, alpha-achieved=4.52 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c24-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c24-d3_kemeko.txt, alpha-achieved=2.25 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 29LL, 16LL, 32LL, 48LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          3, "0.0169657688758" },
+          3, "0.0144874144512" },
         // class 3d-c24 key=[1/1 1/1 29/5 16/5 32/5 48/5]
         //   rep-vertices: (5,4,2) (4,4,0) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c24-d2_kemeko.txt, alpha-achieved=6.22 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c24-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c24-d4_kemeko.txt, alpha-achieved=3.07 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 29LL, 16LL, 32LL, 48LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          4, "0.0169657688758" },
+          4, "0.0132998433896" },
         // class 3d-c24 key=[1/1 1/1 29/5 16/5 32/5 48/5]
         //   rep-vertices: (5,4,2) (4,4,0) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c24-d2_kemeko.txt, alpha-achieved=5.65 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c24-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c24-d5_kemeko.txt, alpha-achieved=3.93 (alpha unmet, beta unmet)
         { { 1LL, 1LL, 29LL, 16LL, 32LL, 48LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          5, "0.0169657688758" },
+          5, "0.0125891638671" },
         // class 3d-c24 key=[1/1 1/1 29/5 16/5 32/5 48/5]
         //   rep-vertices: (5,4,2) (4,4,0) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c24-d2_kemeko.txt, alpha-achieved=6.57 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c24-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c24-d5_kemeko.txt, alpha-achieved=3.93 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c24-d5))
         { { 1LL, 1LL, 29LL, 16LL, 32LL, 48LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          6, "0.0169657688758" },
+          6, "0.0125891638671" },
         // class 3d-c24 key=[1/1 1/1 29/5 16/5 32/5 48/5]
         //   rep-vertices: (5,4,2) (4,4,0) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c24-d2_kemeko.txt, alpha-achieved=7.22 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c24-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c24-d5_kemeko.txt, alpha-achieved=3.93 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c24-d5))
         { { 1LL, 1LL, 29LL, 16LL, 32LL, 48LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          7, "0.0169657688758" },
+          7, "0.0125891638671" },
         // class 3d-c24 key=[1/1 1/1 29/5 16/5 32/5 48/5]
         //   rep-vertices: (5,4,2) (4,4,0) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c24-d2_kemeko.txt, alpha-achieved=7.93 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c24-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c24-d5_kemeko.txt, alpha-achieved=3.93 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c24-d5))
         { { 1LL, 1LL, 29LL, 16LL, 32LL, 48LL },
           { 1LL, 1LL, 5LL, 5LL, 5LL, 5LL },
-          8, "0.0169657688758" },
+          8, "0.0125891638671" },
         // class 3d-c25 key=[1/1 35/27 35/27 16/9 16/9 128/27]
         //   rep-vertices: (8,8,0) (12,4,4) (4,12,4) (7,7,5)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1685,46 +1685,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0140216908086" },
         // class 3d-c25 key=[1/1 35/27 35/27 16/9 16/9 128/27]
         //   rep-vertices: (8,8,0) (12,4,4) (4,12,4) (7,7,5)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c25-d2_konbu.txt, alpha-achieved=3.98 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c25-d2))
+        // source: CONST-B2R gen on hinata 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c25-d3_hinata.txt, alpha-achieved=3.09 (alpha unmet, beta unmet)
         { { 1LL, 35LL, 35LL, 16LL, 16LL, 128LL },
           { 1LL, 27LL, 27LL, 9LL, 9LL, 27LL },
-          3, "0.0140216908086" },
+          3, "0.0126068248636" },
         // class 3d-c25 key=[1/1 35/27 35/27 16/9 16/9 128/27]
         //   rep-vertices: (8,8,0) (12,4,4) (4,12,4) (7,7,5)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c25-d2_konbu.txt, alpha-achieved=5.28 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c25-d2))
+        // source: CONST-B2R gen on hinata 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c25-d4_hinata.txt, alpha-achieved=4 (alpha unmet, beta unmet)
         { { 1LL, 35LL, 35LL, 16LL, 16LL, 128LL },
           { 1LL, 27LL, 27LL, 9LL, 9LL, 27LL },
-          4, "0.0140216908086" },
+          4, "0.0119012777083" },
         // class 3d-c25 key=[1/1 35/27 35/27 16/9 16/9 128/27]
         //   rep-vertices: (8,8,0) (12,4,4) (4,12,4) (7,7,5)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c25-d2_konbu.txt, alpha-achieved=5.82 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c25-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c25-d5_kemeko.txt, alpha-achieved=4.73 (alpha unmet, beta unmet)
         { { 1LL, 35LL, 35LL, 16LL, 16LL, 128LL },
           { 1LL, 27LL, 27LL, 9LL, 9LL, 27LL },
-          5, "0.0140216908086" },
+          5, "0.0115325916809" },
         // class 3d-c25 key=[1/1 35/27 35/27 16/9 16/9 128/27]
         //   rep-vertices: (8,8,0) (12,4,4) (4,12,4) (7,7,5)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c25-d2_konbu.txt, alpha-achieved=6.76 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c25-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c25-d5_kemeko.txt, alpha-achieved=4.73 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c25-d5))
         { { 1LL, 35LL, 35LL, 16LL, 16LL, 128LL },
           { 1LL, 27LL, 27LL, 9LL, 9LL, 27LL },
-          6, "0.0140216908086" },
+          6, "0.0115325916809" },
         // class 3d-c25 key=[1/1 35/27 35/27 16/9 16/9 128/27]
         //   rep-vertices: (8,8,0) (12,4,4) (4,12,4) (7,7,5)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c25-d2_konbu.txt, alpha-achieved=7.43 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c25-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c25-d5_kemeko.txt, alpha-achieved=4.73 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c25-d5))
         { { 1LL, 35LL, 35LL, 16LL, 16LL, 128LL },
           { 1LL, 27LL, 27LL, 9LL, 9LL, 27LL },
-          7, "0.0140216908086" },
+          7, "0.0115325916809" },
         // class 3d-c25 key=[1/1 35/27 35/27 16/9 16/9 128/27]
         //   rep-vertices: (8,8,0) (12,4,4) (4,12,4) (7,7,5)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c25-d2_konbu.txt, alpha-achieved=8.15 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c25-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c25-d5_kemeko.txt, alpha-achieved=4.73 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c25-d5))
         { { 1LL, 35LL, 35LL, 16LL, 16LL, 128LL },
           { 1LL, 27LL, 27LL, 9LL, 9LL, 27LL },
-          8, "0.0140216908086" },
+          8, "0.0115325916809" },
         // class 3d-c26 key=[1/1 35/27 67/27 16/9 176/27 128/27]
         //   rep-vertices: (8,8,0) (7,7,5) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1748,46 +1748,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0145392655600" },
         // class 3d-c26 key=[1/1 35/27 67/27 16/9 176/27 128/27]
         //   rep-vertices: (8,8,0) (7,7,5) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c26-d2_pote.txt, alpha-achieved=4.28 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c26-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c26-d3_konbu.txt, alpha-achieved=2.17 (alpha unmet, beta unmet)
         { { 1LL, 35LL, 67LL, 16LL, 176LL, 128LL },
           { 1LL, 27LL, 27LL, 9LL, 27LL, 27LL },
-          3, "0.0145392655600" },
+          3, "0.0123724525407" },
         // class 3d-c26 key=[1/1 35/27 67/27 16/9 176/27 128/27]
         //   rep-vertices: (8,8,0) (7,7,5) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c26-d2_pote.txt, alpha-achieved=6.06 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c26-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c26-d4_konbu.txt, alpha-achieved=3.01 (alpha unmet, beta unmet)
         { { 1LL, 35LL, 67LL, 16LL, 176LL, 128LL },
           { 1LL, 27LL, 27LL, 9LL, 27LL, 27LL },
-          4, "0.0145392655600" },
+          4, "0.0112741187393" },
         // class 3d-c26 key=[1/1 35/27 67/27 16/9 176/27 128/27]
         //   rep-vertices: (8,8,0) (7,7,5) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c26-d2_pote.txt, alpha-achieved=5.4 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c26-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c26-d5_konbu.txt, alpha-achieved=3.76 (alpha unmet, beta unmet)
         { { 1LL, 35LL, 67LL, 16LL, 176LL, 128LL },
           { 1LL, 27LL, 27LL, 9LL, 27LL, 27LL },
-          5, "0.0145392655600" },
+          5, "0.0107149761943" },
         // class 3d-c26 key=[1/1 35/27 67/27 16/9 176/27 128/27]
         //   rep-vertices: (8,8,0) (7,7,5) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c26-d2_pote.txt, alpha-achieved=6.29 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c26-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c26-d5_konbu.txt, alpha-achieved=3.76 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c26-d5))
         { { 1LL, 35LL, 67LL, 16LL, 176LL, 128LL },
           { 1LL, 27LL, 27LL, 9LL, 27LL, 27LL },
-          6, "0.0145392655600" },
+          6, "0.0107149761943" },
         // class 3d-c26 key=[1/1 35/27 67/27 16/9 176/27 128/27]
         //   rep-vertices: (8,8,0) (7,7,5) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c26-d2_pote.txt, alpha-achieved=6.92 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c26-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c26-d5_konbu.txt, alpha-achieved=3.76 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c26-d5))
         { { 1LL, 35LL, 67LL, 16LL, 176LL, 128LL },
           { 1LL, 27LL, 27LL, 9LL, 27LL, 27LL },
-          7, "0.0145392655600" },
+          7, "0.0107149761943" },
         // class 3d-c26 key=[1/1 35/27 67/27 16/9 176/27 128/27]
         //   rep-vertices: (8,8,0) (7,7,5) (4,12,4) (4,4,12)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c26-d2_pote.txt, alpha-achieved=7.62 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c26-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c26-d5_konbu.txt, alpha-achieved=3.76 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c26-d5))
         { { 1LL, 35LL, 67LL, 16LL, 176LL, 128LL },
           { 1LL, 27LL, 27LL, 9LL, 27LL, 27LL },
-          8, "0.0145392655600" },
+          8, "0.0107149761943" },
         // class 3d-c27 key=[1/1 139/99 139/99 16/9 16/9 512/99]
         //   rep-vertices: (16,16,0) (20,4,4) (4,20,4) (11,11,7)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1811,46 +1811,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0138927843202" },
         // class 3d-c27 key=[1/1 139/99 139/99 16/9 16/9 512/99]
         //   rep-vertices: (16,16,0) (20,4,4) (4,20,4) (11,11,7)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c27-d2_hinata.txt, alpha-achieved=3.97 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c27-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c27-d3_kemeko.txt, alpha-achieved=3.15 (alpha unmet, beta unmet)
         { { 1LL, 139LL, 139LL, 16LL, 16LL, 512LL },
           { 1LL, 99LL, 99LL, 9LL, 9LL, 99LL },
-          3, "0.0138927843202" },
+          3, "0.0124932882951" },
         // class 3d-c27 key=[1/1 139/99 139/99 16/9 16/9 512/99]
         //   rep-vertices: (16,16,0) (20,4,4) (4,20,4) (11,11,7)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c27-d2_hinata.txt, alpha-achieved=5.26 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c27-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c27-d4_kemeko.txt, alpha-achieved=4.09 (alpha unmet, beta unmet)
         { { 1LL, 139LL, 139LL, 16LL, 16LL, 512LL },
           { 1LL, 99LL, 99LL, 9LL, 9LL, 99LL },
-          4, "0.0138927843202" },
+          4, "0.0117992506069" },
         // class 3d-c27 key=[1/1 139/99 139/99 16/9 16/9 512/99]
         //   rep-vertices: (16,16,0) (20,4,4) (4,20,4) (11,11,7)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c27-d2_hinata.txt, alpha-achieved=5.77 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c27-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c27-d5_kemeko.txt, alpha-achieved=4.78 (alpha unmet, beta unmet)
         { { 1LL, 139LL, 139LL, 16LL, 16LL, 512LL },
           { 1LL, 99LL, 99LL, 9LL, 9LL, 99LL },
-          5, "0.0138927843202" },
+          5, "0.0114638166710" },
         // class 3d-c27 key=[1/1 139/99 139/99 16/9 16/9 512/99]
         //   rep-vertices: (16,16,0) (20,4,4) (4,20,4) (11,11,7)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c27-d2_hinata.txt, alpha-achieved=6.71 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c27-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c27-d5_kemeko.txt, alpha-achieved=4.78 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c27-d5))
         { { 1LL, 139LL, 139LL, 16LL, 16LL, 512LL },
           { 1LL, 99LL, 99LL, 9LL, 9LL, 99LL },
-          6, "0.0138927843202" },
+          6, "0.0114638166710" },
         // class 3d-c27 key=[1/1 139/99 139/99 16/9 16/9 512/99]
         //   rep-vertices: (16,16,0) (20,4,4) (4,20,4) (11,11,7)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c27-d2_hinata.txt, alpha-achieved=7.37 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c27-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c27-d5_kemeko.txt, alpha-achieved=4.78 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c27-d5))
         { { 1LL, 139LL, 139LL, 16LL, 16LL, 512LL },
           { 1LL, 99LL, 99LL, 9LL, 9LL, 99LL },
-          7, "0.0138927843202" },
+          7, "0.0114638166710" },
         // class 3d-c27 key=[1/1 139/99 139/99 16/9 16/9 512/99]
         //   rep-vertices: (16,16,0) (20,4,4) (4,20,4) (11,11,7)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c27-d2_hinata.txt, alpha-achieved=8.09 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c27-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c27-d5_kemeko.txt, alpha-achieved=4.78 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c27-d5))
         { { 1LL, 139LL, 139LL, 16LL, 16LL, 512LL },
           { 1LL, 99LL, 99LL, 9LL, 9LL, 99LL },
-          8, "0.0138927843202" },
+          8, "0.0114638166710" },
         // class 3d-c28 key=[1/1 139/99 89/33 16/9 688/99 512/99]
         //   rep-vertices: (16,16,0) (11,11,7) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1874,46 +1874,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0145635945420" },
         // class 3d-c28 key=[1/1 139/99 89/33 16/9 688/99 512/99]
         //   rep-vertices: (16,16,0) (11,11,7) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c28-d2_kemeko.txt, alpha-achieved=4.3 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c28-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c28-d3_kemeko.txt, alpha-achieved=2.12 (alpha unmet, beta unmet)
         { { 1LL, 139LL, 89LL, 16LL, 688LL, 512LL },
           { 1LL, 99LL, 33LL, 9LL, 99LL, 99LL },
-          3, "0.0145635945420" },
+          3, "0.0123583665105" },
         // class 3d-c28 key=[1/1 139/99 89/33 16/9 688/99 512/99]
         //   rep-vertices: (16,16,0) (11,11,7) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c28-d2_kemeko.txt, alpha-achieved=6.09 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c28-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c28-d4_kemeko.txt, alpha-achieved=2.95 (alpha unmet, beta unmet)
         { { 1LL, 139LL, 89LL, 16LL, 688LL, 512LL },
           { 1LL, 99LL, 33LL, 9LL, 99LL, 99LL },
-          4, "0.0145635945420" },
+          4, "0.0112425138109" },
         // class 3d-c28 key=[1/1 139/99 89/33 16/9 688/99 512/99]
         //   rep-vertices: (16,16,0) (11,11,7) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c28-d2_kemeko.txt, alpha-achieved=5.42 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c28-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c28-d5_kemeko.txt, alpha-achieved=3.69 (alpha unmet, beta unmet)
         { { 1LL, 139LL, 89LL, 16LL, 688LL, 512LL },
           { 1LL, 99LL, 33LL, 9LL, 99LL, 99LL },
-          5, "0.0145635945420" },
+          5, "0.0106707027606" },
         // class 3d-c28 key=[1/1 139/99 89/33 16/9 688/99 512/99]
         //   rep-vertices: (16,16,0) (11,11,7) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c28-d2_kemeko.txt, alpha-achieved=6.32 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c28-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c28-d5_kemeko.txt, alpha-achieved=3.69 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c28-d5))
         { { 1LL, 139LL, 89LL, 16LL, 688LL, 512LL },
           { 1LL, 99LL, 33LL, 9LL, 99LL, 99LL },
-          6, "0.0145635945420" },
+          6, "0.0106707027606" },
         // class 3d-c28 key=[1/1 139/99 89/33 16/9 688/99 512/99]
         //   rep-vertices: (16,16,0) (11,11,7) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c28-d2_kemeko.txt, alpha-achieved=6.95 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c28-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c28-d5_kemeko.txt, alpha-achieved=3.69 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c28-d5))
         { { 1LL, 139LL, 89LL, 16LL, 688LL, 512LL },
           { 1LL, 99LL, 33LL, 9LL, 99LL, 99LL },
-          7, "0.0145635945420" },
+          7, "0.0106707027606" },
         // class 3d-c28 key=[1/1 139/99 89/33 16/9 688/99 512/99]
         //   rep-vertices: (16,16,0) (11,11,7) (4,20,4) (4,4,20)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c28-d2_kemeko.txt, alpha-achieved=7.66 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c28-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c28-d5_kemeko.txt, alpha-achieved=3.69 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c28-d5))
         { { 1LL, 139LL, 89LL, 16LL, 688LL, 512LL },
           { 1LL, 99LL, 33LL, 9LL, 99LL, 99LL },
-          8, "0.0145635945420" },
+          8, "0.0106707027606" },
         // class 3d-c29 key=[1/1 83/59 219/59 176/59 256/59 560/59]
         //   rep-vertices: (16,0,0) (4,4,4) (11,7,3) (4,20,4)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=3,
@@ -1937,46 +1937,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0141735317117" },
         // class 3d-c29 key=[1/1 83/59 219/59 176/59 256/59 560/59]
         //   rep-vertices: (16,0,0) (4,4,4) (11,7,3) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c29-d2_konbu.txt, alpha-achieved=4.36 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c29-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c29-d3_kemeko.txt, alpha-achieved=2.52 (alpha unmet, beta unmet)
         { { 1LL, 83LL, 219LL, 176LL, 256LL, 560LL },
           { 1LL, 59LL, 59LL, 59LL, 59LL, 59LL },
-          3, "0.0141735317117" },
+          3, "0.0123351431981" },
         // class 3d-c29 key=[1/1 83/59 219/59 176/59 256/59 560/59]
         //   rep-vertices: (16,0,0) (4,4,4) (11,7,3) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c29-d2_konbu.txt, alpha-achieved=6.06 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c29-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c29-d4_kemeko.txt, alpha-achieved=3.48 (alpha unmet, beta unmet)
         { { 1LL, 83LL, 219LL, 176LL, 256LL, 560LL },
           { 1LL, 59LL, 59LL, 59LL, 59LL, 59LL },
-          4, "0.0141735317117" },
+          4, "0.0113674547057" },
         // class 3d-c29 key=[1/1 83/59 219/59 176/59 256/59 560/59]
         //   rep-vertices: (16,0,0) (4,4,4) (11,7,3) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c29-d2_konbu.txt, alpha-achieved=5.21 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c29-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c29-d5_kemeko.txt, alpha-achieved=4.21 (alpha unmet, beta unmet)
         { { 1LL, 83LL, 219LL, 176LL, 256LL, 560LL },
           { 1LL, 59LL, 59LL, 59LL, 59LL, 59LL },
-          5, "0.0141735317117" },
+          5, "0.0109261637457" },
         // class 3d-c29 key=[1/1 83/59 219/59 176/59 256/59 560/59]
         //   rep-vertices: (16,0,0) (4,4,4) (11,7,3) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c29-d2_konbu.txt, alpha-achieved=6.06 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c29-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c29-d5_kemeko.txt, alpha-achieved=4.21 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c29-d5))
         { { 1LL, 83LL, 219LL, 176LL, 256LL, 560LL },
           { 1LL, 59LL, 59LL, 59LL, 59LL, 59LL },
-          6, "0.0141735317117" },
+          6, "0.0109261637457" },
         // class 3d-c29 key=[1/1 83/59 219/59 176/59 256/59 560/59]
         //   rep-vertices: (16,0,0) (4,4,4) (11,7,3) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c29-d2_konbu.txt, alpha-achieved=6.66 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c29-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c29-d5_kemeko.txt, alpha-achieved=4.21 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c29-d5))
         { { 1LL, 83LL, 219LL, 176LL, 256LL, 560LL },
           { 1LL, 59LL, 59LL, 59LL, 59LL, 59LL },
-          7, "0.0141735317117" },
+          7, "0.0109261637457" },
         // class 3d-c29 key=[1/1 83/59 219/59 176/59 256/59 560/59]
         //   rep-vertices: (16,0,0) (4,4,4) (11,7,3) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c29-d2_konbu.txt, alpha-achieved=7.33 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c29-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c29-d5_kemeko.txt, alpha-achieved=4.21 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c29-d5))
         { { 1LL, 83LL, 219LL, 176LL, 256LL, 560LL },
           { 1LL, 59LL, 59LL, 59LL, 59LL, 59LL },
-          8, "0.0141735317117" },
+          8, "0.0109261637457" },
         // class 3d-c30 key=[1/1 91/59 219/59 256/59 256/59 512/59]
         //   rep-vertices: (11,7,3) (4,4,4) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2000,46 +2000,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0114093204317" },
         // class 3d-c30 key=[1/1 91/59 219/59 256/59 256/59 512/59]
         //   rep-vertices: (11,7,3) (4,4,4) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c30-d2_pote.txt, alpha-achieved=3.97 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c30-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c30-d3_pote.txt, alpha-achieved=1.81 (alpha unmet, beta unmet)
         { { 1LL, 91LL, 219LL, 256LL, 256LL, 512LL },
           { 1LL, 59LL, 59LL, 59LL, 59LL, 59LL },
-          3, "0.0114093204317" },
+          3, "0.00940590473065" },
         // class 3d-c30 key=[1/1 91/59 219/59 256/59 256/59 512/59]
         //   rep-vertices: (11,7,3) (4,4,4) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c30-d2_pote.txt, alpha-achieved=4.99 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c30-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c30-d4_pote.txt, alpha-achieved=2.52 (alpha unmet, beta unmet)
         { { 1LL, 91LL, 219LL, 256LL, 256LL, 512LL },
           { 1LL, 59LL, 59LL, 59LL, 59LL, 59LL },
-          4, "0.0114093204317" },
+          4, "0.00845451388768" },
         // class 3d-c30 key=[1/1 91/59 219/59 256/59 256/59 512/59]
         //   rep-vertices: (11,7,3) (4,4,4) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c30-d2_pote.txt, alpha-achieved=9.04 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c30-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c30-d5_pote.txt, alpha-achieved=3.21 (alpha unmet, beta unmet)
         { { 1LL, 91LL, 219LL, 256LL, 256LL, 512LL },
           { 1LL, 59LL, 59LL, 59LL, 59LL, 59LL },
-          5, "0.0114093204317" },
+          5, "0.00794090509680" },
         // class 3d-c30 key=[1/1 91/59 219/59 256/59 256/59 512/59]
         //   rep-vertices: (11,7,3) (4,4,4) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c30-d2_pote.txt, alpha-achieved=10.8 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c30-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c30-d5_pote.txt, alpha-achieved=3.21 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c30-d5))
         { { 1LL, 91LL, 219LL, 256LL, 256LL, 512LL },
           { 1LL, 59LL, 59LL, 59LL, 59LL, 59LL },
-          6, "0.0114093204317" },
+          6, "0.00794090509680" },
         // class 3d-c30 key=[1/1 91/59 219/59 256/59 256/59 512/59]
         //   rep-vertices: (11,7,3) (4,4,4) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c30-d2_pote.txt, alpha-achieved=11.8 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c30-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c30-d5_pote.txt, alpha-achieved=3.21 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c30-d5))
         { { 1LL, 91LL, 219LL, 256LL, 256LL, 512LL },
           { 1LL, 59LL, 59LL, 59LL, 59LL, 59LL },
-          7, "0.0114093204317" },
+          7, "0.00794090509680" },
         // class 3d-c30 key=[1/1 91/59 219/59 256/59 256/59 512/59]
         //   rep-vertices: (11,7,3) (4,4,4) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c30-d2_pote.txt, alpha-achieved=13.4 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c30-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c30-d5_pote.txt, alpha-achieved=3.21 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c30-d5))
         { { 1LL, 91LL, 219LL, 256LL, 256LL, 512LL },
           { 1LL, 59LL, 59LL, 59LL, 59LL, 59LL },
-          8, "0.0114093204317" },
+          8, "0.00794090509680" },
         // class 3d-c31 key=[1/1 19/12 32/3 9/4 35/3 17/4]
         //   rep-vertices: (8,0,0) (0,8,0) (3,5,1) (2,10,2)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2063,46 +2063,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0149834434653" },
         // class 3d-c31 key=[1/1 19/12 32/3 9/4 35/3 17/4]
         //   rep-vertices: (8,0,0) (0,8,0) (3,5,1) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c31-d2_hinata.txt, alpha-achieved=4.46 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c31-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c31-d3_konbu.txt, alpha-achieved=2.08 (alpha unmet, beta unmet)
         { { 1LL, 19LL, 32LL, 9LL, 35LL, 17LL },
           { 1LL, 12LL, 3LL, 4LL, 3LL, 4LL },
-          3, "0.0149834434653" },
+          3, "0.0125271189458" },
         // class 3d-c31 key=[1/1 19/12 32/3 9/4 35/3 17/4]
         //   rep-vertices: (8,0,0) (0,8,0) (3,5,1) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c31-d2_hinata.txt, alpha-achieved=6.04 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c31-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c31-d4_konbu.txt, alpha-achieved=2.94 (alpha unmet, beta unmet)
         { { 1LL, 19LL, 32LL, 9LL, 35LL, 17LL },
           { 1LL, 12LL, 3LL, 4LL, 3LL, 4LL },
-          4, "0.0149834434653" },
+          4, "0.0113409310769" },
         // class 3d-c31 key=[1/1 19/12 32/3 9/4 35/3 17/4]
         //   rep-vertices: (8,0,0) (0,8,0) (3,5,1) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c31-d2_hinata.txt, alpha-achieved=6.13 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c31-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c31-d5_kemeko.txt, alpha-achieved=3.79 (alpha unmet, beta unmet)
         { { 1LL, 19LL, 32LL, 9LL, 35LL, 17LL },
           { 1LL, 12LL, 3LL, 4LL, 3LL, 4LL },
-          5, "0.0149834434653" },
+          5, "0.0106928859223" },
         // class 3d-c31 key=[1/1 19/12 32/3 9/4 35/3 17/4]
         //   rep-vertices: (8,0,0) (0,8,0) (3,5,1) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c31-d2_hinata.txt, alpha-achieved=7.19 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c31-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c31-d5_kemeko.txt, alpha-achieved=3.79 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c31-d5))
         { { 1LL, 19LL, 32LL, 9LL, 35LL, 17LL },
           { 1LL, 12LL, 3LL, 4LL, 3LL, 4LL },
-          6, "0.0149834434653" },
+          6, "0.0106928859223" },
         // class 3d-c31 key=[1/1 19/12 32/3 9/4 35/3 17/4]
         //   rep-vertices: (8,0,0) (0,8,0) (3,5,1) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c31-d2_hinata.txt, alpha-achieved=7.93 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c31-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c31-d5_kemeko.txt, alpha-achieved=3.79 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c31-d5))
         { { 1LL, 19LL, 32LL, 9LL, 35LL, 17LL },
           { 1LL, 12LL, 3LL, 4LL, 3LL, 4LL },
-          7, "0.0149834434653" },
+          7, "0.0106928859223" },
         // class 3d-c31 key=[1/1 19/12 32/3 9/4 35/3 17/4]
         //   rep-vertices: (8,0,0) (0,8,0) (3,5,1) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c31-d2_hinata.txt, alpha-achieved=8.85 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c31-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c31-d5_kemeko.txt, alpha-achieved=3.79 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c31-d5))
         { { 1LL, 19LL, 32LL, 9LL, 35LL, 17LL },
           { 1LL, 12LL, 3LL, 4LL, 3LL, 4LL },
-          8, "0.0149834434653" },
+          8, "0.0106928859223" },
         // class 3d-c32 key=[1/1 19/11 27/11 4/1 64/11 12/11]
         //   rep-vertices: (3,5,1) (0,8,0) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2126,46 +2126,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0123809494859" },
         // class 3d-c32 key=[1/1 19/11 27/11 4/1 64/11 12/11]
         //   rep-vertices: (3,5,1) (0,8,0) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c32-d2_kemeko.txt, alpha-achieved=3.44 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c32-d2))
+        // source: CONST-B2R gen on hinata 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c32-d3_hinata.txt, alpha-achieved=2.26 (alpha unmet, beta unmet)
         { { 1LL, 19LL, 27LL, 4LL, 64LL, 12LL },
           { 1LL, 11LL, 11LL, 1LL, 11LL, 11LL },
-          3, "0.0123809494859" },
+          3, "0.0104003157838" },
         // class 3d-c32 key=[1/1 19/11 27/11 4/1 64/11 12/11]
         //   rep-vertices: (3,5,1) (0,8,0) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c32-d2_kemeko.txt, alpha-achieved=3.92 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c32-d2))
+        // source: CONST-B2R gen on hinata 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c32-d4_hinata.txt, alpha-achieved=3.14 (alpha unmet, beta unmet)
         { { 1LL, 19LL, 27LL, 4LL, 64LL, 12LL },
           { 1LL, 11LL, 11LL, 1LL, 11LL, 11LL },
-          4, "0.0123809494859" },
+          4, "0.00950119119219" },
         // class 3d-c32 key=[1/1 19/11 27/11 4/1 64/11 12/11]
         //   rep-vertices: (3,5,1) (0,8,0) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c32-d2_kemeko.txt, alpha-achieved=8.28 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c32-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c32-d5_kemeko.txt, alpha-achieved=4.02 (alpha unmet, beta unmet)
         { { 1LL, 19LL, 27LL, 4LL, 64LL, 12LL },
           { 1LL, 11LL, 11LL, 1LL, 11LL, 11LL },
-          5, "0.0123809494859" },
+          5, "0.00900136338626" },
         // class 3d-c32 key=[1/1 19/11 27/11 4/1 64/11 12/11]
         //   rep-vertices: (3,5,1) (0,8,0) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c32-d2_kemeko.txt, alpha-achieved=9.8 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c32-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c32-d5_kemeko.txt, alpha-achieved=4.02 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c32-d5))
         { { 1LL, 19LL, 27LL, 4LL, 64LL, 12LL },
           { 1LL, 11LL, 11LL, 1LL, 11LL, 11LL },
-          6, "0.0123809494859" },
+          6, "0.00900136338626" },
         // class 3d-c32 key=[1/1 19/11 27/11 4/1 64/11 12/11]
         //   rep-vertices: (3,5,1) (0,8,0) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c32-d2_kemeko.txt, alpha-achieved=10.8 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c32-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c32-d5_kemeko.txt, alpha-achieved=4.02 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c32-d5))
         { { 1LL, 19LL, 27LL, 4LL, 64LL, 12LL },
           { 1LL, 11LL, 11LL, 1LL, 11LL, 11LL },
-          7, "0.0123809494859" },
+          7, "0.00900136338626" },
         // class 3d-c32 key=[1/1 19/11 27/11 4/1 64/11 12/11]
         //   rep-vertices: (3,5,1) (0,8,0) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c32-d2_kemeko.txt, alpha-achieved=12.3 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c32-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c32-d5_kemeko.txt, alpha-achieved=4.02 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c32-d5))
         { { 1LL, 19LL, 27LL, 4LL, 64LL, 12LL },
           { 1LL, 11LL, 11LL, 1LL, 11LL, 11LL },
-          8, "0.0123809494859" },
+          8, "0.00900136338626" },
         // class 3d-c33 key=[1/1 19/11 51/11 4/1 4/1 128/11]
         //   rep-vertices: (8,0,0) (0,8,0) (2,2,2) (3,5,1)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2189,46 +2189,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0106133306860" },
         // class 3d-c33 key=[1/1 19/11 51/11 4/1 4/1 128/11]
         //   rep-vertices: (8,0,0) (0,8,0) (2,2,2) (3,5,1)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c33-d2_konbu.txt, alpha-achieved=3.71 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c33-d2))
+        // source: CONST-B2R gen on hinata 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c33-d3_hinata.txt, alpha-achieved=2.09 (alpha unmet, beta unmet)
         { { 1LL, 19LL, 51LL, 4LL, 4LL, 128LL },
           { 1LL, 11LL, 11LL, 1LL, 1LL, 11LL },
-          3, "0.0106133306860" },
+          3, "0.00884942947320" },
         // class 3d-c33 key=[1/1 19/11 51/11 4/1 4/1 128/11]
         //   rep-vertices: (8,0,0) (0,8,0) (2,2,2) (3,5,1)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c33-d2_konbu.txt, alpha-achieved=4.71 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c33-d2))
+        // source: CONST-B2R gen on hinata 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c33-d4_hinata.txt, alpha-achieved=2.94 (alpha unmet, beta unmet)
         { { 1LL, 19LL, 51LL, 4LL, 4LL, 128LL },
           { 1LL, 11LL, 11LL, 1LL, 1LL, 11LL },
-          4, "0.0106133306860" },
+          4, "0.00802420707904" },
         // class 3d-c33 key=[1/1 19/11 51/11 4/1 4/1 128/11]
         //   rep-vertices: (8,0,0) (0,8,0) (2,2,2) (3,5,1)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c33-d2_konbu.txt, alpha-achieved=9.26 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c33-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c33-d5_kemeko.txt, alpha-achieved=3.82 (alpha unmet, beta unmet)
         { { 1LL, 19LL, 51LL, 4LL, 4LL, 128LL },
           { 1LL, 11LL, 11LL, 1LL, 1LL, 11LL },
-          5, "0.0106133306860" },
+          5, "0.00755600374136" },
         // class 3d-c33 key=[1/1 19/11 51/11 4/1 4/1 128/11]
         //   rep-vertices: (8,0,0) (0,8,0) (2,2,2) (3,5,1)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c33-d2_konbu.txt, alpha-achieved=11 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c33-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c33-d5_kemeko.txt, alpha-achieved=3.82 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c33-d5))
         { { 1LL, 19LL, 51LL, 4LL, 4LL, 128LL },
           { 1LL, 11LL, 11LL, 1LL, 1LL, 11LL },
-          6, "0.0106133306860" },
+          6, "0.00755600374136" },
         // class 3d-c33 key=[1/1 19/11 51/11 4/1 4/1 128/11]
         //   rep-vertices: (8,0,0) (0,8,0) (2,2,2) (3,5,1)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c33-d2_konbu.txt, alpha-achieved=12 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c33-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c33-d5_kemeko.txt, alpha-achieved=3.82 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c33-d5))
         { { 1LL, 19LL, 51LL, 4LL, 4LL, 128LL },
           { 1LL, 11LL, 11LL, 1LL, 1LL, 11LL },
-          7, "0.0106133306860" },
+          7, "0.00755600374136" },
         // class 3d-c33 key=[1/1 19/11 51/11 4/1 4/1 128/11]
         //   rep-vertices: (8,0,0) (0,8,0) (2,2,2) (3,5,1)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c33-d2_konbu.txt, alpha-achieved=13.8 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c33-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c33-d5_kemeko.txt, alpha-achieved=3.82 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c33-d5))
         { { 1LL, 19LL, 51LL, 4LL, 4LL, 128LL },
           { 1LL, 11LL, 11LL, 1LL, 1LL, 11LL },
-          8, "0.0106133306860" },
+          8, "0.00755600374136" },
         // class 3d-c34 key=[1/1 83/48 11/3 91/48 16/3 59/48]
         //   rep-vertices: (16,0,0) (4,4,4) (20,4,4) (11,7,3)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2252,46 +2252,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0125952839049" },
         // class 3d-c34 key=[1/1 83/48 11/3 91/48 16/3 59/48]
         //   rep-vertices: (16,0,0) (4,4,4) (20,4,4) (11,7,3)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c34-d2_pote.txt, alpha-achieved=4.04 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c34-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c34-d3_pote.txt, alpha-achieved=2.08 (alpha unmet, beta unmet)
         { { 1LL, 83LL, 11LL, 91LL, 16LL, 59LL },
           { 1LL, 48LL, 3LL, 48LL, 3LL, 48LL },
-          3, "0.0125952839049" },
+          3, "0.0106753193371" },
         // class 3d-c34 key=[1/1 83/48 11/3 91/48 16/3 59/48]
         //   rep-vertices: (16,0,0) (4,4,4) (20,4,4) (11,7,3)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c34-d2_pote.txt, alpha-achieved=5.33 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c34-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c34-d4_pote.txt, alpha-achieved=2.88 (alpha unmet, beta unmet)
         { { 1LL, 83LL, 11LL, 91LL, 16LL, 59LL },
           { 1LL, 48LL, 3LL, 48LL, 3LL, 48LL },
-          4, "0.0125952839049" },
+          4, "0.00971173314784" },
         // class 3d-c34 key=[1/1 83/48 11/3 91/48 16/3 59/48]
         //   rep-vertices: (16,0,0) (4,4,4) (20,4,4) (11,7,3)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c34-d2_pote.txt, alpha-achieved=6.42 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c34-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c34-d5_pote.txt, alpha-achieved=3.56 (alpha unmet, beta unmet)
         { { 1LL, 83LL, 11LL, 91LL, 16LL, 59LL },
           { 1LL, 48LL, 3LL, 48LL, 3LL, 48LL },
-          5, "0.0125952839049" },
+          5, "0.00923025905328" },
         // class 3d-c34 key=[1/1 83/48 11/3 91/48 16/3 59/48]
         //   rep-vertices: (16,0,0) (4,4,4) (20,4,4) (11,7,3)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c34-d2_pote.txt, alpha-achieved=7.51 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c34-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c34-d5_pote.txt, alpha-achieved=3.56 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c34-d5))
         { { 1LL, 83LL, 11LL, 91LL, 16LL, 59LL },
           { 1LL, 48LL, 3LL, 48LL, 3LL, 48LL },
-          6, "0.0125952839049" },
+          6, "0.00923025905328" },
         // class 3d-c34 key=[1/1 83/48 11/3 91/48 16/3 59/48]
         //   rep-vertices: (16,0,0) (4,4,4) (20,4,4) (11,7,3)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c34-d2_pote.txt, alpha-achieved=8.28 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c34-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c34-d5_pote.txt, alpha-achieved=3.56 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c34-d5))
         { { 1LL, 83LL, 11LL, 91LL, 16LL, 59LL },
           { 1LL, 48LL, 3LL, 48LL, 3LL, 48LL },
-          7, "0.0125952839049" },
+          7, "0.00923025905328" },
         // class 3d-c34 key=[1/1 83/48 11/3 91/48 16/3 59/48]
         //   rep-vertices: (16,0,0) (4,4,4) (20,4,4) (11,7,3)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c34-d2_pote.txt, alpha-achieved=9.18 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c34-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c34-d5_pote.txt, alpha-achieved=3.56 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c34-d5))
         { { 1LL, 83LL, 11LL, 91LL, 16LL, 59LL },
           { 1LL, 48LL, 3LL, 48LL, 3LL, 48LL },
-          8, "0.0125952839049" },
+          8, "0.00923025905328" },
         // class 3d-c35 key=[1/1 83/48 35/3 91/48 32/3 73/16]
         //   rep-vertices: (16,0,0) (11,7,3) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2315,46 +2315,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0151683055341" },
         // class 3d-c35 key=[1/1 83/48 35/3 91/48 32/3 73/16]
         //   rep-vertices: (16,0,0) (11,7,3) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c35-d2_hinata.txt, alpha-achieved=4.42 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c35-d2))
+        // source: CONST-B2R gen on karin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c35-d3_karin.txt, alpha-achieved=2.01 (alpha unmet, beta unmet)
         { { 1LL, 83LL, 35LL, 91LL, 32LL, 73LL },
           { 1LL, 48LL, 3LL, 48LL, 3LL, 16LL },
-          3, "0.0151683055341" },
+          3, "0.0126724932423" },
         // class 3d-c35 key=[1/1 83/48 35/3 91/48 32/3 73/16]
         //   rep-vertices: (16,0,0) (11,7,3) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c35-d2_hinata.txt, alpha-achieved=6.06 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c35-d2))
+        // source: CONST-B2R gen on karin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c35-d4_karin.txt, alpha-achieved=2.83 (alpha unmet, beta unmet)
         { { 1LL, 83LL, 35LL, 91LL, 32LL, 73LL },
           { 1LL, 48LL, 3LL, 48LL, 3LL, 16LL },
-          4, "0.0151683055341" },
+          4, "0.0114570092002" },
         // class 3d-c35 key=[1/1 83/48 35/3 91/48 32/3 73/16]
         //   rep-vertices: (16,0,0) (11,7,3) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c35-d2_hinata.txt, alpha-achieved=5.96 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c35-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c35-d5_kemeko.txt, alpha-achieved=3.63 (alpha unmet, beta unmet)
         { { 1LL, 83LL, 35LL, 91LL, 32LL, 73LL },
           { 1LL, 48LL, 3LL, 48LL, 3LL, 16LL },
-          5, "0.0151683055341" },
+          5, "0.0107928916874" },
         // class 3d-c35 key=[1/1 83/48 35/3 91/48 32/3 73/16]
         //   rep-vertices: (16,0,0) (11,7,3) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c35-d2_hinata.txt, alpha-achieved=6.99 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c35-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c35-d5_kemeko.txt, alpha-achieved=3.63 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c35-d5))
         { { 1LL, 83LL, 35LL, 91LL, 32LL, 73LL },
           { 1LL, 48LL, 3LL, 48LL, 3LL, 16LL },
-          6, "0.0151683055341" },
+          6, "0.0107928916874" },
         // class 3d-c35 key=[1/1 83/48 35/3 91/48 32/3 73/16]
         //   rep-vertices: (16,0,0) (11,7,3) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c35-d2_hinata.txt, alpha-achieved=7.71 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c35-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c35-d5_kemeko.txt, alpha-achieved=3.63 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c35-d5))
         { { 1LL, 83LL, 35LL, 91LL, 32LL, 73LL },
           { 1LL, 48LL, 3LL, 48LL, 3LL, 16LL },
-          7, "0.0151683055341" },
+          7, "0.0107928916874" },
         // class 3d-c35 key=[1/1 83/48 35/3 91/48 32/3 73/16]
         //   rep-vertices: (16,0,0) (11,7,3) (20,4,4) (4,20,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c35-d2_hinata.txt, alpha-achieved=8.58 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c35-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c35-d5_kemeko.txt, alpha-achieved=3.63 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c35-d5))
         { { 1LL, 83LL, 35LL, 91LL, 32LL, 73LL },
           { 1LL, 48LL, 3LL, 48LL, 3LL, 16LL },
-          8, "0.0151683055341" },
+          8, "0.0107928916874" },
         // class 3d-c36 key=[1/1 9/5 9/5 16/5 16/5 32/5]
         //   rep-vertices: (4,4,0) (5,3,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2378,46 +2378,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0145049012308" },
         // class 3d-c36 key=[1/1 9/5 9/5 16/5 16/5 32/5]
         //   rep-vertices: (4,4,0) (5,3,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c36-d2_kemeko.txt, alpha-achieved=4.07 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c36-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c36-d3_konbu.txt, alpha-achieved=2.78 (alpha unmet, beta unmet)
         { { 1LL, 9LL, 9LL, 16LL, 16LL, 32LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          3, "0.0145049012308" },
+          3, "0.0127759992101" },
         // class 3d-c36 key=[1/1 9/5 9/5 16/5 16/5 32/5]
         //   rep-vertices: (4,4,0) (5,3,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c36-d2_kemeko.txt, alpha-achieved=5.5 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c36-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c36-d4_konbu.txt, alpha-achieved=3.6 (alpha unmet, beta unmet)
         { { 1LL, 9LL, 9LL, 16LL, 16LL, 32LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          4, "0.0145049012308" },
+          4, "0.0120049361050" },
         // class 3d-c36 key=[1/1 9/5 9/5 16/5 16/5 32/5]
         //   rep-vertices: (4,4,0) (5,3,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c36-d2_kemeko.txt, alpha-achieved=5.64 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c36-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c36-d5_kemeko.txt, alpha-achieved=4.43 (alpha unmet, beta unmet)
         { { 1LL, 9LL, 9LL, 16LL, 16LL, 32LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          5, "0.0145049012308" },
+          5, "0.0115202575868" },
         // class 3d-c36 key=[1/1 9/5 9/5 16/5 16/5 32/5]
         //   rep-vertices: (4,4,0) (5,3,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c36-d2_kemeko.txt, alpha-achieved=6.56 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c36-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c36-d5_kemeko.txt, alpha-achieved=4.43 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c36-d5))
         { { 1LL, 9LL, 9LL, 16LL, 16LL, 32LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          6, "0.0145049012308" },
+          6, "0.0115202575868" },
         // class 3d-c36 key=[1/1 9/5 9/5 16/5 16/5 32/5]
         //   rep-vertices: (4,4,0) (5,3,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c36-d2_kemeko.txt, alpha-achieved=7.21 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c36-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c36-d5_kemeko.txt, alpha-achieved=4.43 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c36-d5))
         { { 1LL, 9LL, 9LL, 16LL, 16LL, 32LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          7, "0.0145049012308" },
+          7, "0.0115202575868" },
         // class 3d-c36 key=[1/1 9/5 9/5 16/5 16/5 32/5]
         //   rep-vertices: (4,4,0) (5,3,4) (8,4,4) (4,4,8)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c36-d2_kemeko.txt, alpha-achieved=7.92 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c36-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c36-d5_kemeko.txt, alpha-achieved=4.43 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c36-d5))
         { { 1LL, 9LL, 9LL, 16LL, 16LL, 32LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          8, "0.0145049012308" },
+          8, "0.0115202575868" },
         // class 3d-c37 key=[1/1 44/19 128/19 51/19 51/19 172/19]
         //   rep-vertices: (8,8,0) (7,3,5) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2441,46 +2441,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0129861774450" },
         // class 3d-c37 key=[1/1 44/19 128/19 51/19 51/19 172/19]
         //   rep-vertices: (8,8,0) (7,3,5) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c37-d2_konbu.txt, alpha-achieved=4.25 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c37-d2))
+        // source: CONST-B2R gen on hinata 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c37-d3_hinata.txt, alpha-achieved=2.04 (alpha unmet, beta unmet)
         { { 1LL, 44LL, 128LL, 51LL, 51LL, 172LL },
           { 1LL, 19LL, 19LL, 19LL, 19LL, 19LL },
-          3, "0.0129861774450" },
+          3, "0.0109001026700" },
         // class 3d-c37 key=[1/1 44/19 128/19 51/19 51/19 172/19]
         //   rep-vertices: (8,8,0) (7,3,5) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c37-d2_konbu.txt, alpha-achieved=5.84 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c37-d2))
+        // source: CONST-B2R gen on hinata 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c37-d4_hinata.txt, alpha-achieved=2.84 (alpha unmet, beta unmet)
         { { 1LL, 44LL, 128LL, 51LL, 51LL, 172LL },
           { 1LL, 19LL, 19LL, 19LL, 19LL, 19LL },
-          4, "0.0129861774450" },
+          4, "0.00988468470212" },
         // class 3d-c37 key=[1/1 44/19 128/19 51/19 51/19 172/19]
         //   rep-vertices: (8,8,0) (7,3,5) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c37-d2_konbu.txt, alpha-achieved=6.24 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c37-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c37-d5_kemeko.txt, alpha-achieved=3.55 (alpha unmet, beta unmet)
         { { 1LL, 44LL, 128LL, 51LL, 51LL, 172LL },
           { 1LL, 19LL, 19LL, 19LL, 19LL, 19LL },
-          5, "0.0129861774450" },
+          5, "0.00936583926073" },
         // class 3d-c37 key=[1/1 44/19 128/19 51/19 51/19 172/19]
         //   rep-vertices: (8,8,0) (7,3,5) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c37-d2_konbu.txt, alpha-achieved=7.3 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c37-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c37-d5_kemeko.txt, alpha-achieved=3.55 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c37-d5))
         { { 1LL, 44LL, 128LL, 51LL, 51LL, 172LL },
           { 1LL, 19LL, 19LL, 19LL, 19LL, 19LL },
-          6, "0.0129861774450" },
+          6, "0.00936583926073" },
         // class 3d-c37 key=[1/1 44/19 128/19 51/19 51/19 172/19]
         //   rep-vertices: (8,8,0) (7,3,5) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c37-d2_konbu.txt, alpha-achieved=8.04 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c37-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c37-d5_kemeko.txt, alpha-achieved=3.55 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c37-d5))
         { { 1LL, 44LL, 128LL, 51LL, 51LL, 172LL },
           { 1LL, 19LL, 19LL, 19LL, 19LL, 19LL },
-          7, "0.0129861774450" },
+          7, "0.00936583926073" },
         // class 3d-c37 key=[1/1 44/19 128/19 51/19 51/19 172/19]
         //   rep-vertices: (8,8,0) (7,3,5) (10,2,2) (2,2,10)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c37-d2_konbu.txt, alpha-achieved=8.91 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c37-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c37-d5_kemeko.txt, alpha-achieved=3.55 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c37-d5))
         { { 1LL, 44LL, 128LL, 51LL, 51LL, 172LL },
           { 1LL, 19LL, 19LL, 19LL, 19LL, 19LL },
-          8, "0.0129861774450" },
+          8, "0.00936583926073" },
         // class 3d-c38 key=[1/1 7/3 7/3 8/3 16/3 8/1]
         //   rep-vertices: (0,0,0) (3,2,1) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
         // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2504,46 +2504,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0166071773881" },
         // class 3d-c38 key=[1/1 7/3 7/3 8/3 16/3 8/1]
         //   rep-vertices: (0,0,0) (3,2,1) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c38-d2_pote.txt, alpha-achieved=4.28 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c38-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c38-d3_pote.txt, alpha-achieved=2.82 (alpha unmet, beta unmet)
         { { 1LL, 7LL, 7LL, 8LL, 16LL, 8LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 1LL },
-          3, "0.0166071773881" },
+          3, "0.0146726343891" },
         // class 3d-c38 key=[1/1 7/3 7/3 8/3 16/3 8/1]
         //   rep-vertices: (0,0,0) (3,2,1) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c38-d2_pote.txt, alpha-achieved=5.79 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c38-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c38-d4_pote.txt, alpha-achieved=3.78 (alpha unmet, beta unmet)
         { { 1LL, 7LL, 7LL, 8LL, 16LL, 8LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 1LL },
-          4, "0.0166071773881" },
+          4, "0.0137024994512" },
         // class 3d-c38 key=[1/1 7/3 7/3 8/3 16/3 8/1]
         //   rep-vertices: (0,0,0) (3,2,1) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c38-d2_pote.txt, alpha-achieved=5.94 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c38-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c38-d5_pote.txt, alpha-achieved=4.6 (alpha unmet, beta unmet)
         { { 1LL, 7LL, 7LL, 8LL, 16LL, 8LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 1LL },
-          5, "0.0166071773881" },
+          5, "0.0131903494815" },
         // class 3d-c38 key=[1/1 7/3 7/3 8/3 16/3 8/1]
         //   rep-vertices: (0,0,0) (3,2,1) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c38-d2_pote.txt, alpha-achieved=6.9 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c38-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c38-d5_pote.txt, alpha-achieved=4.6 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c38-d5))
         { { 1LL, 7LL, 7LL, 8LL, 16LL, 8LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 1LL },
-          6, "0.0166071773881" },
+          6, "0.0131903494815" },
         // class 3d-c38 key=[1/1 7/3 7/3 8/3 16/3 8/1]
         //   rep-vertices: (0,0,0) (3,2,1) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c38-d2_pote.txt, alpha-achieved=7.57 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c38-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c38-d5_pote.txt, alpha-achieved=4.6 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c38-d5))
         { { 1LL, 7LL, 7LL, 8LL, 16LL, 8LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 1LL },
-          7, "0.0166071773881" },
+          7, "0.0131903494815" },
         // class 3d-c38 key=[1/1 7/3 7/3 8/3 16/3 8/1]
         //   rep-vertices: (0,0,0) (3,2,1) (4,4,0) (4,4,4)  prov=seed:Kuhn0>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c38-d2_pote.txt, alpha-achieved=8.29 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c38-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c38-d5_pote.txt, alpha-achieved=4.6 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c38-d5))
         { { 1LL, 7LL, 7LL, 8LL, 16LL, 8LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 1LL },
-          8, "0.0166071773881" },
+          8, "0.0131903494815" },
         // class 3d-c39 key=[1/1 12/5 32/5 13/5 13/5 44/5]
         //   rep-vertices: (4,4,0) (4,2,3) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2567,46 +2567,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0128758218787" },
         // class 3d-c39 key=[1/1 12/5 32/5 13/5 13/5 44/5]
         //   rep-vertices: (4,4,0) (4,2,3) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c39-d2_hinata.txt, alpha-achieved=4.22 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c39-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c39-d3_luzin.txt, alpha-achieved=2.03 (alpha unmet, beta unmet)
         { { 1LL, 12LL, 32LL, 13LL, 13LL, 44LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          3, "0.0128758218787" },
+          3, "0.0108176667859" },
         // class 3d-c39 key=[1/1 12/5 32/5 13/5 13/5 44/5]
         //   rep-vertices: (4,4,0) (4,2,3) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c39-d2_hinata.txt, alpha-achieved=5.82 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c39-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c39-d4_luzin.txt, alpha-achieved=2.82 (alpha unmet, beta unmet)
         { { 1LL, 12LL, 32LL, 13LL, 13LL, 44LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          4, "0.0128758218787" },
+          4, "0.00981452573518" },
         // class 3d-c39 key=[1/1 12/5 32/5 13/5 13/5 44/5]
         //   rep-vertices: (4,4,0) (4,2,3) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c39-d2_hinata.txt, alpha-achieved=6.18 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c39-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c39-d5_luzin.txt, alpha-achieved=3.52 (alpha unmet, beta unmet)
         { { 1LL, 12LL, 32LL, 13LL, 13LL, 44LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          5, "0.0128758218787" },
+          5, "0.00930255397581" },
         // class 3d-c39 key=[1/1 12/5 32/5 13/5 13/5 44/5]
         //   rep-vertices: (4,4,0) (4,2,3) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c39-d2_hinata.txt, alpha-achieved=7.22 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c39-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c39-d5_luzin.txt, alpha-achieved=3.52 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c39-d5))
         { { 1LL, 12LL, 32LL, 13LL, 13LL, 44LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          6, "0.0128758218787" },
+          6, "0.00930255397581" },
         // class 3d-c39 key=[1/1 12/5 32/5 13/5 13/5 44/5]
         //   rep-vertices: (4,4,0) (4,2,3) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c39-d2_hinata.txt, alpha-achieved=7.95 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c39-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c39-d5_luzin.txt, alpha-achieved=3.52 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c39-d5))
         { { 1LL, 12LL, 32LL, 13LL, 13LL, 44LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          7, "0.0128758218787" },
+          7, "0.00930255397581" },
         // class 3d-c39 key=[1/1 12/5 32/5 13/5 13/5 44/5]
         //   rep-vertices: (4,4,0) (4,2,3) (6,2,2) (2,2,6)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c39-d2_hinata.txt, alpha-achieved=8.81 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c39-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c39-d5_luzin.txt, alpha-achieved=3.52 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c39-d5))
         { { 1LL, 12LL, 32LL, 13LL, 13LL, 44LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          8, "0.0128758218787" },
+          8, "0.00930255397581" },
         // class 3d-c40 key=[1/1 27/11 51/11 64/11 4/1 140/11]
         //   rep-vertices: (8,0,0) (3,5,1) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2630,46 +2630,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0124672907118" },
         // class 3d-c40 key=[1/1 27/11 51/11 64/11 4/1 140/11]
         //   rep-vertices: (8,0,0) (3,5,1) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c40-d2_kemeko.txt, alpha-achieved=4.11 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c40-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c40-d3_konbu.txt, alpha-achieved=2.54 (alpha unmet, beta unmet)
         { { 1LL, 27LL, 51LL, 64LL, 4LL, 140LL },
           { 1LL, 11LL, 11LL, 11LL, 1LL, 11LL },
-          3, "0.0124672907118" },
+          3, "0.0108659881429" },
         // class 3d-c40 key=[1/1 27/11 51/11 64/11 4/1 140/11]
         //   rep-vertices: (8,0,0) (3,5,1) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c40-d2_kemeko.txt, alpha-achieved=5.57 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c40-d2))
+        // source: CONST-B2R gen on konbu 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c40-d4_konbu.txt, alpha-achieved=3.37 (alpha unmet, beta unmet)
         { { 1LL, 27LL, 51LL, 64LL, 4LL, 140LL },
           { 1LL, 11LL, 11LL, 11LL, 1LL, 11LL },
-          4, "0.0124672907118" },
+          4, "0.0101125177365" },
         // class 3d-c40 key=[1/1 27/11 51/11 64/11 4/1 140/11]
         //   rep-vertices: (8,0,0) (3,5,1) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c40-d2_kemeko.txt, alpha-achieved=5.91 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c40-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c40-d5_kemeko.txt, alpha-achieved=4.09 (alpha unmet, beta unmet)
         { { 1LL, 27LL, 51LL, 64LL, 4LL, 140LL },
           { 1LL, 11LL, 11LL, 11LL, 1LL, 11LL },
-          5, "0.0124672907118" },
+          5, "0.00970551661216" },
         // class 3d-c40 key=[1/1 27/11 51/11 64/11 4/1 140/11]
         //   rep-vertices: (8,0,0) (3,5,1) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c40-d2_kemeko.txt, alpha-achieved=6.89 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c40-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c40-d5_kemeko.txt, alpha-achieved=4.09 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c40-d5))
         { { 1LL, 27LL, 51LL, 64LL, 4LL, 140LL },
           { 1LL, 11LL, 11LL, 11LL, 1LL, 11LL },
-          6, "0.0124672907118" },
+          6, "0.00970551661216" },
         // class 3d-c40 key=[1/1 27/11 51/11 64/11 4/1 140/11]
         //   rep-vertices: (8,0,0) (3,5,1) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c40-d2_kemeko.txt, alpha-achieved=7.59 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c40-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c40-d5_kemeko.txt, alpha-achieved=4.09 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c40-d5))
         { { 1LL, 27LL, 51LL, 64LL, 4LL, 140LL },
           { 1LL, 11LL, 11LL, 11LL, 1LL, 11LL },
-          7, "0.0124672907118" },
+          7, "0.00970551661216" },
         // class 3d-c40 key=[1/1 27/11 51/11 64/11 4/1 140/11]
         //   rep-vertices: (8,0,0) (3,5,1) (2,2,2) (2,10,2)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c40-d2_kemeko.txt, alpha-achieved=8.37 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c40-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c40-d5_kemeko.txt, alpha-achieved=4.09 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c40-d5))
         { { 1LL, 27LL, 51LL, 64LL, 4LL, 140LL },
           { 1LL, 11LL, 11LL, 11LL, 1LL, 11LL },
-          8, "0.0124672907118" },
+          8, "0.00970551661216" },
         // class 3d-c41 key=[1/1 49/17 49/17 256/51 256/51 512/51]
         //   rep-vertices: (0,0,0) (16,0,0) (0,16,0) (5,5,1)  prov=seed:T3>alf
         // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2693,46 +2693,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0144584144901" },
         // class 3d-c41 key=[1/1 49/17 49/17 256/51 256/51 512/51]
         //   rep-vertices: (0,0,0) (16,0,0) (0,16,0) (5,5,1)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c41-d2_konbu.txt, alpha-achieved=4.09 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c41-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c41-d3_kemeko.txt, alpha-achieved=2.72 (alpha unmet, beta unmet)
         { { 1LL, 49LL, 49LL, 256LL, 256LL, 512LL },
           { 1LL, 17LL, 17LL, 51LL, 51LL, 51LL },
-          3, "0.0144584144901" },
+          3, "0.0126799827512" },
         // class 3d-c41 key=[1/1 49/17 49/17 256/51 256/51 512/51]
         //   rep-vertices: (0,0,0) (16,0,0) (0,16,0) (5,5,1)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c41-d2_konbu.txt, alpha-achieved=5.56 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c41-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c41-d4_kemeko.txt, alpha-achieved=3.53 (alpha unmet, beta unmet)
         { { 1LL, 49LL, 49LL, 256LL, 256LL, 512LL },
           { 1LL, 17LL, 17LL, 51LL, 51LL, 51LL },
-          4, "0.0144584144901" },
+          4, "0.0118953528464" },
         // class 3d-c41 key=[1/1 49/17 49/17 256/51 256/51 512/51]
         //   rep-vertices: (0,0,0) (16,0,0) (0,16,0) (5,5,1)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c41-d2_konbu.txt, alpha-achieved=5.47 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c41-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c41-d5_kemeko.txt, alpha-achieved=4.35 (alpha unmet, beta unmet)
         { { 1LL, 49LL, 49LL, 256LL, 256LL, 512LL },
           { 1LL, 17LL, 17LL, 51LL, 51LL, 51LL },
-          5, "0.0144584144901" },
+          5, "0.0113978697886" },
         // class 3d-c41 key=[1/1 49/17 49/17 256/51 256/51 512/51]
         //   rep-vertices: (0,0,0) (16,0,0) (0,16,0) (5,5,1)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c41-d2_konbu.txt, alpha-achieved=6.36 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c41-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c41-d5_kemeko.txt, alpha-achieved=4.35 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c41-d5))
         { { 1LL, 49LL, 49LL, 256LL, 256LL, 512LL },
           { 1LL, 17LL, 17LL, 51LL, 51LL, 51LL },
-          6, "0.0144584144901" },
+          6, "0.0113978697886" },
         // class 3d-c41 key=[1/1 49/17 49/17 256/51 256/51 512/51]
         //   rep-vertices: (0,0,0) (16,0,0) (0,16,0) (5,5,1)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c41-d2_konbu.txt, alpha-achieved=6.99 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c41-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c41-d5_kemeko.txt, alpha-achieved=4.35 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c41-d5))
         { { 1LL, 49LL, 49LL, 256LL, 256LL, 512LL },
           { 1LL, 17LL, 17LL, 51LL, 51LL, 51LL },
-          7, "0.0144584144901" },
+          7, "0.0113978697886" },
         // class 3d-c41 key=[1/1 49/17 49/17 256/51 256/51 512/51]
         //   rep-vertices: (0,0,0) (16,0,0) (0,16,0) (5,5,1)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c41-d2_konbu.txt, alpha-achieved=7.68 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c41-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c41-d5_kemeko.txt, alpha-achieved=4.35 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c41-d5))
         { { 1LL, 49LL, 49LL, 256LL, 256LL, 512LL },
           { 1LL, 17LL, 17LL, 51LL, 51LL, 51LL },
-          8, "0.0144584144901" },
+          8, "0.0113978697886" },
         // class 3d-c42 key=[1/1 16/5 48/5 21/5 29/5 96/5]
         //   rep-vertices: (4,0,0) (4,4,0) (5,4,2) (8,8,4)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2756,46 +2756,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0155490577961" },
         // class 3d-c42 key=[1/1 16/5 48/5 21/5 29/5 96/5]
         //   rep-vertices: (4,0,0) (4,4,0) (5,4,2) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c42-d2_pote.txt, alpha-achieved=4.37 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c42-d2))
+        // source: CONST-B2R gen on kanna 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c42-d3_kanna.txt, alpha-achieved=2.97 (alpha unmet, beta unmet)
         { { 1LL, 16LL, 48LL, 21LL, 29LL, 96LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          3, "0.0155490577961" },
+          3, "0.0137519645826" },
         // class 3d-c42 key=[1/1 16/5 48/5 21/5 29/5 96/5]
         //   rep-vertices: (4,0,0) (4,4,0) (5,4,2) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c42-d2_pote.txt, alpha-achieved=5.93 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c42-d2))
+        // source: CONST-B2R gen on kanna 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c42-d4_kanna.txt, alpha-achieved=4.03 (alpha unmet, beta unmet)
         { { 1LL, 16LL, 48LL, 21LL, 29LL, 96LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          4, "0.0155490577961" },
+          4, "0.0128456120346" },
         // class 3d-c42 key=[1/1 16/5 48/5 21/5 29/5 96/5]
         //   rep-vertices: (4,0,0) (4,4,0) (5,4,2) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c42-d2_pote.txt, alpha-achieved=5.71 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c42-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c42-d5_kemeko.txt, alpha-achieved=4.8 (alpha unmet, beta unmet)
         { { 1LL, 16LL, 48LL, 21LL, 29LL, 96LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          5, "0.0155490577961" },
+          5, "0.0124346074472" },
         // class 3d-c42 key=[1/1 16/5 48/5 21/5 29/5 96/5]
         //   rep-vertices: (4,0,0) (4,4,0) (5,4,2) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c42-d2_pote.txt, alpha-achieved=6.63 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c42-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c42-d5_kemeko.txt, alpha-achieved=4.8 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c42-d5))
         { { 1LL, 16LL, 48LL, 21LL, 29LL, 96LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          6, "0.0155490577961" },
+          6, "0.0124346074472" },
         // class 3d-c42 key=[1/1 16/5 48/5 21/5 29/5 96/5]
         //   rep-vertices: (4,0,0) (4,4,0) (5,4,2) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c42-d2_pote.txt, alpha-achieved=7.28 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c42-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c42-d5_kemeko.txt, alpha-achieved=4.8 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c42-d5))
         { { 1LL, 16LL, 48LL, 21LL, 29LL, 96LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          7, "0.0155490577961" },
+          7, "0.0124346074472" },
         // class 3d-c42 key=[1/1 16/5 48/5 21/5 29/5 96/5]
         //   rep-vertices: (4,0,0) (4,4,0) (5,4,2) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c42-d2_pote.txt, alpha-achieved=7.99 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c42-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c42-d5_kemeko.txt, alpha-achieved=4.8 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c42-d5))
         { { 1LL, 16LL, 48LL, 21LL, 29LL, 96LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          8, "0.0155490577961" },
+          8, "0.0124346074472" },
         // class 3d-c43 key=[1/1 11/3 11/3 16/3 16/3 32/3]
         //   rep-vertices: (0,0,0) (4,0,0) (0,4,0) (1,1,1)  prov=seed:T3
         // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2819,46 +2819,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0147346130114" },
         // class 3d-c43 key=[1/1 11/3 11/3 16/3 16/3 32/3]
         //   rep-vertices: (0,0,0) (4,0,0) (0,4,0) (1,1,1)  prov=seed:T3
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c43-d2_hinata.txt, alpha-achieved=4.05 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c43-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c43-d3_kemeko.txt, alpha-achieved=2.57 (alpha unmet, beta unmet)
         { { 1LL, 11LL, 11LL, 16LL, 16LL, 32LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          3, "0.0147346130114" },
+          3, "0.0128628848093" },
         // class 3d-c43 key=[1/1 11/3 11/3 16/3 16/3 32/3]
         //   rep-vertices: (0,0,0) (4,0,0) (0,4,0) (1,1,1)  prov=seed:T3
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c43-d2_hinata.txt, alpha-achieved=5.54 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c43-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c43-d4_kemeko.txt, alpha-achieved=3.36 (alpha unmet, beta unmet)
         { { 1LL, 11LL, 11LL, 16LL, 16LL, 32LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          4, "0.0147346130114" },
+          4, "0.0120077924163" },
         // class 3d-c43 key=[1/1 11/3 11/3 16/3 16/3 32/3]
         //   rep-vertices: (0,0,0) (4,0,0) (0,4,0) (1,1,1)  prov=seed:T3
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c43-d2_hinata.txt, alpha-achieved=5.46 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c43-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c43-d5_kemeko.txt, alpha-achieved=4.2 (alpha unmet, beta unmet)
         { { 1LL, 11LL, 11LL, 16LL, 16LL, 32LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          5, "0.0147346130114" },
+          5, "0.0114574110791" },
         // class 3d-c43 key=[1/1 11/3 11/3 16/3 16/3 32/3]
         //   rep-vertices: (0,0,0) (4,0,0) (0,4,0) (1,1,1)  prov=seed:T3
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c43-d2_hinata.txt, alpha-achieved=6.35 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c43-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c43-d5_kemeko.txt, alpha-achieved=4.2 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c43-d5))
         { { 1LL, 11LL, 11LL, 16LL, 16LL, 32LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          6, "0.0147346130114" },
+          6, "0.0114574110791" },
         // class 3d-c43 key=[1/1 11/3 11/3 16/3 16/3 32/3]
         //   rep-vertices: (0,0,0) (4,0,0) (0,4,0) (1,1,1)  prov=seed:T3
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c43-d2_hinata.txt, alpha-achieved=6.98 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c43-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c43-d5_kemeko.txt, alpha-achieved=4.2 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c43-d5))
         { { 1LL, 11LL, 11LL, 16LL, 16LL, 32LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          7, "0.0147346130114" },
+          7, "0.0114574110791" },
         // class 3d-c43 key=[1/1 11/3 11/3 16/3 16/3 32/3]
         //   rep-vertices: (0,0,0) (4,0,0) (0,4,0) (1,1,1)  prov=seed:T3
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c43-d2_hinata.txt, alpha-achieved=7.67 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c43-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c43-d5_kemeko.txt, alpha-achieved=4.2 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c43-d5))
         { { 1LL, 11LL, 11LL, 16LL, 16LL, 32LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          8, "0.0147346130114" },
+          8, "0.0114574110791" },
         // class 3d-c44 key=[1/1 11/3 32/3 16/3 35/3 11/3]
         //   rep-vertices: (4,0,0) (0,4,0) (1,1,1) (1,5,1)  prov=bey-layer>bey1
         // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2882,46 +2882,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0148508432372" },
         // class 3d-c44 key=[1/1 11/3 32/3 16/3 35/3 11/3]
         //   rep-vertices: (4,0,0) (0,4,0) (1,1,1) (1,5,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c44-d2_kemeko.txt, alpha-achieved=4.14 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c44-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c44-d3_kemeko.txt, alpha-achieved=2.09 (alpha unmet, beta unmet)
         { { 1LL, 11LL, 32LL, 16LL, 35LL, 11LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          3, "0.0148508432372" },
+          3, "0.0125191005874" },
         // class 3d-c44 key=[1/1 11/3 32/3 16/3 35/3 11/3]
         //   rep-vertices: (4,0,0) (0,4,0) (1,1,1) (1,5,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c44-d2_kemeko.txt, alpha-achieved=5.06 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c44-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c44-d4_kemeko.txt, alpha-achieved=2.92 (alpha unmet, beta unmet)
         { { 1LL, 11LL, 32LL, 16LL, 35LL, 11LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          4, "0.0148508432372" },
+          4, "0.0113593235328" },
         // class 3d-c44 key=[1/1 11/3 32/3 16/3 35/3 11/3]
         //   rep-vertices: (4,0,0) (0,4,0) (1,1,1) (1,5,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c44-d2_kemeko.txt, alpha-achieved=6.61 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c44-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c44-d5_kemeko.txt, alpha-achieved=3.68 (alpha unmet, beta unmet)
         { { 1LL, 11LL, 32LL, 16LL, 35LL, 11LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          5, "0.0148508432372" },
+          5, "0.0107597676242" },
         // class 3d-c44 key=[1/1 11/3 32/3 16/3 35/3 11/3]
         //   rep-vertices: (4,0,0) (0,4,0) (1,1,1) (1,5,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c44-d2_kemeko.txt, alpha-achieved=7.77 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c44-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c44-d5_kemeko.txt, alpha-achieved=3.68 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c44-d5))
         { { 1LL, 11LL, 32LL, 16LL, 35LL, 11LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          6, "0.0148508432372" },
+          6, "0.0107597676242" },
         // class 3d-c44 key=[1/1 11/3 32/3 16/3 35/3 11/3]
         //   rep-vertices: (4,0,0) (0,4,0) (1,1,1) (1,5,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c44-d2_kemeko.txt, alpha-achieved=8.56 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c44-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c44-d5_kemeko.txt, alpha-achieved=3.68 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c44-d5))
         { { 1LL, 11LL, 32LL, 16LL, 35LL, 11LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          7, "0.0148508432372" },
+          7, "0.0107597676242" },
         // class 3d-c44 key=[1/1 11/3 32/3 16/3 35/3 11/3]
         //   rep-vertices: (4,0,0) (0,4,0) (1,1,1) (1,5,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c44-d2_kemeko.txt, alpha-achieved=9.61 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c44-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c44-d5_kemeko.txt, alpha-achieved=3.68 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c44-d5))
         { { 1LL, 11LL, 32LL, 16LL, 35LL, 11LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          8, "0.0148508432372" },
+          8, "0.0107597676242" },
         // class 3d-c45 key=[1/1 11/3 35/3 16/3 32/3 16/3]
         //   rep-vertices: (4,0,0) (1,1,1) (5,1,1) (1,5,1)  prov=bey-layer>bey1
         // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=3,
@@ -2945,46 +2945,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0154045216202" },
         // class 3d-c45 key=[1/1 11/3 35/3 16/3 32/3 16/3]
         //   rep-vertices: (4,0,0) (1,1,1) (5,1,1) (1,5,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c45-d2_konbu.txt, alpha-achieved=4.2 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c45-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c45-d3_luzin.txt, alpha-achieved=1.88 (alpha unmet, beta unmet)
         { { 1LL, 11LL, 35LL, 16LL, 32LL, 16LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          3, "0.0154045216202" },
+          3, "0.0129567900019" },
         // class 3d-c45 key=[1/1 11/3 35/3 16/3 32/3 16/3]
         //   rep-vertices: (4,0,0) (1,1,1) (5,1,1) (1,5,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c45-d2_konbu.txt, alpha-achieved=5.62 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c45-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c45-d4_luzin.txt, alpha-achieved=2.64 (alpha unmet, beta unmet)
         { { 1LL, 11LL, 35LL, 16LL, 32LL, 16LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          4, "0.0154045216202" },
+          4, "0.0116698820260" },
         // class 3d-c45 key=[1/1 11/3 35/3 16/3 32/3 16/3]
         //   rep-vertices: (4,0,0) (1,1,1) (5,1,1) (1,5,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c45-d2_konbu.txt, alpha-achieved=6 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c45-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c45-d5_luzin.txt, alpha-achieved=3.32 (alpha unmet, beta unmet)
         { { 1LL, 11LL, 35LL, 16LL, 32LL, 16LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          5, "0.0154045216202" },
+          5, "0.0110131418867" },
         // class 3d-c45 key=[1/1 11/3 35/3 16/3 32/3 16/3]
         //   rep-vertices: (4,0,0) (1,1,1) (5,1,1) (1,5,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c45-d2_konbu.txt, alpha-achieved=7.03 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c45-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c45-d5_luzin.txt, alpha-achieved=3.32 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c45-d5))
         { { 1LL, 11LL, 35LL, 16LL, 32LL, 16LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          6, "0.0154045216202" },
+          6, "0.0110131418867" },
         // class 3d-c45 key=[1/1 11/3 35/3 16/3 32/3 16/3]
         //   rep-vertices: (4,0,0) (1,1,1) (5,1,1) (1,5,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c45-d2_konbu.txt, alpha-achieved=7.74 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c45-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c45-d5_luzin.txt, alpha-achieved=3.32 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c45-d5))
         { { 1LL, 11LL, 35LL, 16LL, 32LL, 16LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          7, "0.0154045216202" },
+          7, "0.0110131418867" },
         // class 3d-c45 key=[1/1 11/3 35/3 16/3 32/3 16/3]
         //   rep-vertices: (4,0,0) (1,1,1) (5,1,1) (1,5,1)  prov=bey-layer>bey1
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c45-d2_konbu.txt, alpha-achieved=8.6 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c45-d2))
+        // source: CONST-B2R gen on luzin 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c45-d5_luzin.txt, alpha-achieved=3.32 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c45-d5))
         { { 1LL, 11LL, 35LL, 16LL, 32LL, 16LL },
           { 1LL, 3LL, 3LL, 3LL, 3LL, 3LL },
-          8, "0.0154045216202" },
+          8, "0.0110131418867" },
         // class 3d-c46 key=[1/1 21/5 29/5 32/5 32/5 96/5]
         //   rep-vertices: (4,0,0) (5,4,2) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
         // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=3,
@@ -3008,46 +3008,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0140452360138" },
         // class 3d-c46 key=[1/1 21/5 29/5 32/5 32/5 96/5]
         //   rep-vertices: (4,0,0) (5,4,2) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c46-d2_pote.txt, alpha-achieved=4.04 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c46-d2))
+        // source: CONST-B2R gen on kanna 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c46-d3_kanna.txt, alpha-achieved=3.16 (alpha unmet, beta unmet)
         { { 1LL, 21LL, 29LL, 32LL, 32LL, 96LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          3, "0.0140452360138" },
+          3, "0.0125608992488" },
         // class 3d-c46 key=[1/1 21/5 29/5 32/5 32/5 96/5]
         //   rep-vertices: (4,0,0) (5,4,2) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c46-d2_pote.txt, alpha-achieved=5.37 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c46-d2))
+        // source: CONST-B2R gen on kanna 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c46-d4_kanna.txt, alpha-achieved=4.11 (alpha unmet, beta unmet)
         { { 1LL, 21LL, 29LL, 32LL, 32LL, 96LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          4, "0.0140452360138" },
+          4, "0.0118615680902" },
         // class 3d-c46 key=[1/1 21/5 29/5 32/5 32/5 96/5]
         //   rep-vertices: (4,0,0) (5,4,2) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c46-d2_pote.txt, alpha-achieved=5.5 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c46-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c46-d5_kemeko.txt, alpha-achieved=4.8 (alpha unmet, beta unmet)
         { { 1LL, 21LL, 29LL, 32LL, 32LL, 96LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          5, "0.0140452360138" },
+          5, "0.0115271526592" },
         // class 3d-c46 key=[1/1 21/5 29/5 32/5 32/5 96/5]
         //   rep-vertices: (4,0,0) (5,4,2) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c46-d2_pote.txt, alpha-achieved=6.4 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c46-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c46-d5_kemeko.txt, alpha-achieved=4.8 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c46-d5))
         { { 1LL, 21LL, 29LL, 32LL, 32LL, 96LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          6, "0.0140452360138" },
+          6, "0.0115271526592" },
         // class 3d-c46 key=[1/1 21/5 29/5 32/5 32/5 96/5]
         //   rep-vertices: (4,0,0) (5,4,2) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c46-d2_pote.txt, alpha-achieved=7.03 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c46-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c46-d5_kemeko.txt, alpha-achieved=4.8 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c46-d5))
         { { 1LL, 21LL, 29LL, 32LL, 32LL, 96LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          7, "0.0140452360138" },
+          7, "0.0115271526592" },
         // class 3d-c46 key=[1/1 21/5 29/5 32/5 32/5 96/5]
         //   rep-vertices: (4,0,0) (5,4,2) (4,4,4) (8,8,4)  prov=bey-layer>bey1>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c46-d2_pote.txt, alpha-achieved=7.72 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c46-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c46-d5_kemeko.txt, alpha-achieved=4.8 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c46-d5))
         { { 1LL, 21LL, 29LL, 32LL, 32LL, 96LL },
           { 1LL, 5LL, 5LL, 5LL, 5LL, 5LL },
-          8, "0.0140452360138" },
+          8, "0.0115271526592" },
         // class 3d-c47 key=[1/1 48/11 16/1 51/11 147/11 256/11]
         //   rep-vertices: (0,0,0) (5,5,1) (0,16,0) (4,4,4)  prov=seed:T3>alf
         // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=3,
@@ -3071,46 +3071,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0154952279812" },
         // class 3d-c47 key=[1/1 48/11 16/1 51/11 147/11 256/11]
         //   rep-vertices: (0,0,0) (5,5,1) (0,16,0) (4,4,4)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c47-d2_hinata.txt, alpha-achieved=4.56 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c47-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c47-d3_pote.txt, alpha-achieved=1.94 (alpha unmet, beta unmet)
         { { 1LL, 48LL, 16LL, 51LL, 147LL, 256LL },
           { 1LL, 11LL, 1LL, 11LL, 11LL, 11LL },
-          3, "0.0154952279812" },
+          3, "0.0130029511690" },
         // class 3d-c47 key=[1/1 48/11 16/1 51/11 147/11 256/11]
         //   rep-vertices: (0,0,0) (5,5,1) (0,16,0) (4,4,4)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c47-d2_hinata.txt, alpha-achieved=6.28 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c47-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c47-d4_pote.txt, alpha-achieved=2.66 (alpha unmet, beta unmet)
         { { 1LL, 48LL, 16LL, 51LL, 147LL, 256LL },
           { 1LL, 11LL, 1LL, 11LL, 11LL, 11LL },
-          4, "0.0154952279812" },
+          4, "0.0117941852954" },
         // class 3d-c47 key=[1/1 48/11 16/1 51/11 147/11 256/11]
         //   rep-vertices: (0,0,0) (5,5,1) (0,16,0) (4,4,4)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c47-d2_hinata.txt, alpha-achieved=5.15 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c47-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c47-d5_pote.txt, alpha-achieved=3.42 (alpha unmet, beta unmet)
         { { 1LL, 48LL, 16LL, 51LL, 147LL, 256LL },
           { 1LL, 11LL, 1LL, 11LL, 11LL, 11LL },
-          5, "0.0154952279812" },
+          5, "0.0110814425508" },
         // class 3d-c47 key=[1/1 48/11 16/1 51/11 147/11 256/11]
         //   rep-vertices: (0,0,0) (5,5,1) (0,16,0) (4,4,4)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c47-d2_hinata.txt, alpha-achieved=6.01 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c47-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c47-d5_pote.txt, alpha-achieved=3.42 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c47-d5))
         { { 1LL, 48LL, 16LL, 51LL, 147LL, 256LL },
           { 1LL, 11LL, 1LL, 11LL, 11LL, 11LL },
-          6, "0.0154952279812" },
+          6, "0.0110814425508" },
         // class 3d-c47 key=[1/1 48/11 16/1 51/11 147/11 256/11]
         //   rep-vertices: (0,0,0) (5,5,1) (0,16,0) (4,4,4)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c47-d2_hinata.txt, alpha-achieved=6.61 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c47-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c47-d5_pote.txt, alpha-achieved=3.42 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c47-d5))
         { { 1LL, 48LL, 16LL, 51LL, 147LL, 256LL },
           { 1LL, 11LL, 1LL, 11LL, 11LL, 11LL },
-          7, "0.0154952279812" },
+          7, "0.0110814425508" },
         // class 3d-c47 key=[1/1 48/11 16/1 51/11 147/11 256/11]
         //   rep-vertices: (0,0,0) (5,5,1) (0,16,0) (4,4,4)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on hinata 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c47-d2_hinata.txt, alpha-achieved=7.29 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c47-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c47-d5_pote.txt, alpha-achieved=3.42 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c47-d5))
         { { 1LL, 48LL, 16LL, 51LL, 147LL, 256LL },
           { 1LL, 11LL, 1LL, 11LL, 11LL, 11LL },
-          8, "0.0154952279812" },
+          8, "0.0110814425508" },
         // class 3d-c48 key=[1/1 147/11 147/11 16/1 16/1 512/11]
         //   rep-vertices: (5,5,1) (16,0,0) (0,16,0) (4,4,4)  prov=seed:T3>alf
         // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=3,
@@ -3134,46 +3134,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0136758483319" },
         // class 3d-c48 key=[1/1 147/11 147/11 16/1 16/1 512/11]
         //   rep-vertices: (5,5,1) (16,0,0) (0,16,0) (4,4,4)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c48-d2_kemeko.txt, alpha-achieved=4.06 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c48-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c48-d3_kemeko.txt, alpha-achieved=2.95 (alpha unmet, beta unmet)
         { { 1LL, 147LL, 147LL, 16LL, 16LL, 512LL },
           { 1LL, 11LL, 11LL, 1LL, 1LL, 11LL },
-          3, "0.0136758483319" },
+          3, "0.0121718076661" },
         // class 3d-c48 key=[1/1 147/11 147/11 16/1 16/1 512/11]
         //   rep-vertices: (5,5,1) (16,0,0) (0,16,0) (4,4,4)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c48-d2_kemeko.txt, alpha-achieved=5.46 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c48-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c48-d4_kemeko.txt, alpha-achieved=3.81 (alpha unmet, beta unmet)
         { { 1LL, 147LL, 147LL, 16LL, 16LL, 512LL },
           { 1LL, 11LL, 11LL, 1LL, 1LL, 11LL },
-          4, "0.0136758483319" },
+          4, "0.0114787315718" },
         // class 3d-c48 key=[1/1 147/11 147/11 16/1 16/1 512/11]
         //   rep-vertices: (5,5,1) (16,0,0) (0,16,0) (4,4,4)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c48-d2_kemeko.txt, alpha-achieved=5.22 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c48-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c48-d5_kemeko.txt, alpha-achieved=4.56 (alpha unmet, beta unmet)
         { { 1LL, 147LL, 147LL, 16LL, 16LL, 512LL },
           { 1LL, 11LL, 11LL, 1LL, 1LL, 11LL },
-          5, "0.0136758483319" },
+          5, "0.0110850320742" },
         // class 3d-c48 key=[1/1 147/11 147/11 16/1 16/1 512/11]
         //   rep-vertices: (5,5,1) (16,0,0) (0,16,0) (4,4,4)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c48-d2_kemeko.txt, alpha-achieved=6.08 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c48-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c48-d5_kemeko.txt, alpha-achieved=4.56 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c48-d5))
         { { 1LL, 147LL, 147LL, 16LL, 16LL, 512LL },
           { 1LL, 11LL, 11LL, 1LL, 1LL, 11LL },
-          6, "0.0136758483319" },
+          6, "0.0110850320742" },
         // class 3d-c48 key=[1/1 147/11 147/11 16/1 16/1 512/11]
         //   rep-vertices: (5,5,1) (16,0,0) (0,16,0) (4,4,4)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c48-d2_kemeko.txt, alpha-achieved=6.68 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c48-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c48-d5_kemeko.txt, alpha-achieved=4.56 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c48-d5))
         { { 1LL, 147LL, 147LL, 16LL, 16LL, 512LL },
           { 1LL, 11LL, 11LL, 1LL, 1LL, 11LL },
-          7, "0.0136758483319" },
+          7, "0.0110850320742" },
         // class 3d-c48 key=[1/1 147/11 147/11 16/1 16/1 512/11]
         //   rep-vertices: (5,5,1) (16,0,0) (0,16,0) (4,4,4)  prov=seed:T3>alf
-        // source: CONST-B2bp gen on kemeko 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c48-d2_kemeko.txt, alpha-achieved=7.35 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c48-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c48-d5_kemeko.txt, alpha-achieved=4.56 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c48-d5))
         { { 1LL, 147LL, 147LL, 16LL, 16LL, 512LL },
           { 1LL, 11LL, 11LL, 1LL, 1LL, 11LL },
-          8, "0.0136758483319" },
+          8, "0.0110850320742" },
         // class 3d-c49 key=[1/1 43/3 43/3 16/1 16/1 128/3]
         //   rep-vertices: (3,3,3) (0,8,0) (0,0,8) (4,4,4)  prov=seed:T5>alf
         // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=3,
@@ -3197,46 +3197,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0141165164679" },
         // class 3d-c49 key=[1/1 43/3 43/3 16/1 16/1 128/3]
         //   rep-vertices: (3,3,3) (0,8,0) (0,0,8) (4,4,4)  prov=seed:T5>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c49-d2_konbu.txt, alpha-achieved=4.02 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c49-d2))
+        // source: CONST-B2R gen on hinata 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c49-d3_hinata.txt, alpha-achieved=2.79 (alpha unmet, beta unmet)
         { { 1LL, 43LL, 43LL, 16LL, 16LL, 128LL },
           { 1LL, 3LL, 3LL, 1LL, 1LL, 3LL },
-          3, "0.0141165164679" },
+          3, "0.0123608894864" },
         // class 3d-c49 key=[1/1 43/3 43/3 16/1 16/1 128/3]
         //   rep-vertices: (3,3,3) (0,8,0) (0,0,8) (4,4,4)  prov=seed:T5>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c49-d2_konbu.txt, alpha-achieved=5.47 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c49-d2))
+        // source: CONST-B2R gen on hinata 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c49-d4_hinata.txt, alpha-achieved=3.56 (alpha unmet, beta unmet)
         { { 1LL, 43LL, 43LL, 16LL, 16LL, 128LL },
           { 1LL, 3LL, 3LL, 1LL, 1LL, 3LL },
-          4, "0.0141165164679" },
+          4, "0.0116523692491" },
         // class 3d-c49 key=[1/1 43/3 43/3 16/1 16/1 128/3]
         //   rep-vertices: (3,3,3) (0,8,0) (0,0,8) (4,4,4)  prov=seed:T5>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c49-d2_konbu.txt, alpha-achieved=5.23 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c49-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c49-d5_kemeko.txt, alpha-achieved=4.38 (alpha unmet, beta unmet)
         { { 1LL, 43LL, 43LL, 16LL, 16LL, 128LL },
           { 1LL, 3LL, 3LL, 1LL, 1LL, 3LL },
-          5, "0.0141165164679" },
+          5, "0.0111752681769" },
         // class 3d-c49 key=[1/1 43/3 43/3 16/1 16/1 128/3]
         //   rep-vertices: (3,3,3) (0,8,0) (0,0,8) (4,4,4)  prov=seed:T5>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c49-d2_konbu.txt, alpha-achieved=6.09 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c49-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c49-d5_kemeko.txt, alpha-achieved=4.38 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c49-d5))
         { { 1LL, 43LL, 43LL, 16LL, 16LL, 128LL },
           { 1LL, 3LL, 3LL, 1LL, 1LL, 3LL },
-          6, "0.0141165164679" },
+          6, "0.0111752681769" },
         // class 3d-c49 key=[1/1 43/3 43/3 16/1 16/1 128/3]
         //   rep-vertices: (3,3,3) (0,8,0) (0,0,8) (4,4,4)  prov=seed:T5>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c49-d2_konbu.txt, alpha-achieved=6.69 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c49-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c49-d5_kemeko.txt, alpha-achieved=4.38 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c49-d5))
         { { 1LL, 43LL, 43LL, 16LL, 16LL, 128LL },
           { 1LL, 3LL, 3LL, 1LL, 1LL, 3LL },
-          7, "0.0141165164679" },
+          7, "0.0111752681769" },
         // class 3d-c49 key=[1/1 43/3 43/3 16/1 16/1 128/3]
         //   rep-vertices: (3,3,3) (0,8,0) (0,0,8) (4,4,4)  prov=seed:T5>alf
-        // source: CONST-B2bp gen on konbu 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c49-d2_konbu.txt, alpha-achieved=7.36 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c49-d2))
+        // source: CONST-B2R gen on kemeko 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c49-d5_kemeko.txt, alpha-achieved=4.38 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c49-d5))
         { { 1LL, 43LL, 43LL, 16LL, 16LL, 128LL },
           { 1LL, 3LL, 3LL, 1LL, 1LL, 3LL },
-          8, "0.0141165164679" },
+          8, "0.0111752681769" },
         // class 3d-c50 key=[1/1 57/1 57/1 176/3 176/3 512/3]
         //   rep-vertices: (5,5,5) (0,16,0) (0,0,16) (4,4,4)  prov=seed:T4>alf
         // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=3,
@@ -3260,46 +3260,46 @@ inline const l2_projection_registry_entry_3d* l2_projection_registry_3d_entries(
           2, "0.0139277118682" },
         // class 3d-c50 key=[1/1 57/1 57/1 176/3 176/3 512/3]
         //   rep-vertices: (5,5,5) (0,16,0) (0,0,16) (4,4,4)  prov=seed:T4>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c50-d2_pote.txt, alpha-achieved=4.01 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c50-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c50-d3_pote.txt, alpha-achieved=2.84 (alpha unmet, beta unmet)
         { { 1LL, 57LL, 57LL, 176LL, 176LL, 512LL },
           { 1LL, 1LL, 1LL, 3LL, 3LL, 3LL },
-          3, "0.0139277118682" },
+          3, "0.0122436647261" },
         // class 3d-c50 key=[1/1 57/1 57/1 176/3 176/3 512/3]
         //   rep-vertices: (5,5,5) (0,16,0) (0,0,16) (4,4,4)  prov=seed:T4>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=2,
-        //   log-ref: constb2bp_3d-c50-d2_pote.txt, alpha-achieved=5.44 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c50-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c50-d4_pote.txt, alpha-achieved=3.63 (alpha unmet, beta unmet)
         { { 1LL, 57LL, 57LL, 176LL, 176LL, 512LL },
           { 1LL, 1LL, 1LL, 3LL, 3LL, 3LL },
-          4, "0.0139277118682" },
+          4, "0.0115505850629" },
         // class 3d-c50 key=[1/1 57/1 57/1 176/3 176/3 512/3]
         //   rep-vertices: (5,5,5) (0,16,0) (0,0,16) (4,4,4)  prov=seed:T4>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c50-d2_pote.txt, alpha-achieved=5.17 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c50-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c50-d5_pote.txt, alpha-achieved=4.43 (alpha unmet, beta unmet)
         { { 1LL, 57LL, 57LL, 176LL, 176LL, 512LL },
           { 1LL, 1LL, 1LL, 3LL, 3LL, 3LL },
-          5, "0.0139277118682" },
+          5, "0.0111018943761" },
         // class 3d-c50 key=[1/1 57/1 57/1 176/3 176/3 512/3]
         //   rep-vertices: (5,5,5) (0,16,0) (0,0,16) (4,4,4)  prov=seed:T4>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c50-d2_pote.txt, alpha-achieved=6.01 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c50-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c50-d5_pote.txt, alpha-achieved=4.43 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c50-d5))
         { { 1LL, 57LL, 57LL, 176LL, 176LL, 512LL },
           { 1LL, 1LL, 1LL, 3LL, 3LL, 3LL },
-          6, "0.0139277118682" },
+          6, "0.0111018943761" },
         // class 3d-c50 key=[1/1 57/1 57/1 176/3 176/3 512/3]
         //   rep-vertices: (5,5,5) (0,16,0) (0,0,16) (4,4,4)  prov=seed:T4>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c50-d2_pote.txt, alpha-achieved=6.61 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c50-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c50-d5_pote.txt, alpha-achieved=4.43 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c50-d5))
         { { 1LL, 57LL, 57LL, 176LL, 176LL, 512LL },
           { 1LL, 1LL, 1LL, 3LL, 3LL, 3LL },
-          7, "0.0139277118682" },
+          7, "0.0111018943761" },
         // class 3d-c50 key=[1/1 57/1 57/1 176/3 176/3 512/3]
         //   rep-vertices: (5,5,5) (0,16,0) (0,0,16) (4,4,4)  prov=seed:T4>alf
-        // source: CONST-B2bp gen on pote 2026-08-17, gates G-R3/G-R5, L=1,
-        //   log-ref: constb2bp_3d-c50-d2_pote.txt, alpha-achieved=7.27 (alpha unmet, beta unmet, envelope: inherited from d'=2 (3d-c50-d2))
+        // source: CONST-B2R gen on pote 2026-08-29, gates G-R3'/G-R5', L=3,
+        //   log-ref: constb2r_3d-c50-d5_pote.txt, alpha-achieved=4.43 (alpha unmet, beta unmet, envelope: inherited from d'=5 (3d-c50-d5))
         { { 1LL, 57LL, 57LL, 176LL, 176LL, 512LL },
           { 1LL, 1LL, 1LL, 3LL, 3LL, 3LL },
-          8, "0.0139277118682" },
+          8, "0.0111018943761" },
     };
     count = static_cast<int>(sizeof entries / sizeof entries[0]);
     return entries;
