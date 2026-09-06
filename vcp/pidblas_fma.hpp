@@ -46,14 +46,14 @@ namespace vcp {
 		void mulmm(const vcp::mats< kv::interval< double > >& B, vcp::mats< kv::interval< double > >& c)const override {
 			if (type == 'S' && (B.type == 'C' || B.type == 'R' || B.type == 'M')) {
 				c = B;
-				for (int i = 0; i < B.n; i++) {
+				for (vcp::index_t i = 0; i < B.n; i++) {
 					c.v[i] *= this->v[0];
 				}
 				return;
 			}
 			else if ((type == 'C' || type == 'R' || type == 'M') && B.type == 'S') {
 				c = *this;
-				for (int i = 0; i < this->n; i++) {
+				for (vcp::index_t i = 0; i < this->n; i++) {
 					c.v[i] *= B.v[0];
 				}
 				return;

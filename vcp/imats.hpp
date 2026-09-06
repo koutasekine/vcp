@@ -55,14 +55,14 @@ namespace vcp {
 				c.n = c.row * c.column;
 				c.v.resize(c.n);
 				c.type = B.type;
-				for (int i = 0; i < B.n; i++) {
+				for (vcp::index_t i = 0; i < B.n; i++) {
 					c.v[i] = B.v[i]*this->v[0];
 				}
 				return;
 			}
 			else if ((this->type == 'C' || this->type == 'R' || this->type == 'M') && B.type == 'S') {
 				c = *this;
-				for (int i = 0; i < this->n; i++) {
+				for (vcp::index_t i = 0; i < this->n; i++) {
 					c.v[i] *= B.v[0];
 				}
 				return;
@@ -76,7 +76,7 @@ namespace vcp {
 			else if (this->type == 'R' && B.type == 'C' && this->column == B.row) {
 				c.type = 'S';
 				c.v[0] = this->v[0] * B.v[0];
-				for (int i = 1; i < this->n; i++) {
+				for (vcp::index_t i = 1; i < this->n; i++) {
 					c.v[0] = this->v[i] * B.v[i] + c.v[0];
 				}
 				return;
@@ -84,8 +84,8 @@ namespace vcp {
 			else if (this->type == 'C' && B.type == 'R') {
 				c.type = 'M';
 				int k = 0;
-				for (int j = 0; j < B.n; j++) {
-					for (int i = 0; i < this->n; i++) {
+				for (vcp::index_t j = 0; j < B.n; j++) {
+					for (vcp::index_t i = 0; i < this->n; i++) {
 						c.v[k] = this->v[i] * B.v[j];
 						k++;
 					}
@@ -115,7 +115,7 @@ namespace vcp {
 			else if (this->type == 'M' && B.type == 'M' && this->column == B.row) {
 				c.type = 'M';
 
-				for (int i = 0; i < c.n; i++) {
+				for (vcp::index_t i = 0; i < c.n; i++) {
 					c.v[i] = kv::interval< _T >(0);
 				}
 
@@ -142,7 +142,7 @@ namespace vcp {
 				c.n = c.row * c.column;
 				c.v.resize(c.n);
 				c.type = this->type;
-				for (int i = 0; i < this->n; i++) {
+				for (vcp::index_t i = 0; i < this->n; i++) {
 					c.v[i] = this->v[i] * B.v[0];
 				}
 				return;
@@ -153,7 +153,7 @@ namespace vcp {
 				c.n = c.row * c.column;
 				c.v.resize(c.n);
 				c.type = B.type;
-				for (int i = 0; i < B.n; i++) {
+				for (vcp::index_t i = 0; i < B.n; i++) {
 					c.v[i] = this->v[0] * B.v[i];
 				}
 				return;
@@ -167,7 +167,7 @@ namespace vcp {
 			else if (B.type == 'R' && this->type == 'C' && B.column == this->row) {
 				c.type = 'S';
 				c.v[0] = B.v[0] * this->v[0];
-				for (int i = 1; i < B.n; i++) {
+				for (vcp::index_t i = 1; i < B.n; i++) {
 					c.v[0] = B.v[i] * this->v[i] + c.v[0];
 				}
 				return;
@@ -175,8 +175,8 @@ namespace vcp {
 			else if (B.type == 'C' && this->type == 'R') {
 				c.type = 'M';
 				int k = 0;
-				for (int j = 0; j < this->n; j++) {
-					for (int i = 0; i < B.n; i++) {
+				for (vcp::index_t j = 0; j < this->n; j++) {
+					for (vcp::index_t i = 0; i < B.n; i++) {
 						c.v[k] = B.v[i] * this->v[j];
 						k++;
 					}
@@ -205,7 +205,7 @@ namespace vcp {
 			}
 			else if (B.type == 'M' && this->type == 'M' && B.column == this->row) {
 				c.type = 'M';
-				for (int i = 0; i < c.n; i++) {
+				for (vcp::index_t i = 0; i < c.n; i++) {
 					c.v[i] = kv::interval< _T >(0);
 				}
 				for (int k = 0; k < this->column; k++) {
@@ -233,7 +233,7 @@ namespace vcp {
 				return;
 			}
 			else {
-				for (int i = 0; i < this->n; i++) {
+				for (vcp::index_t i = 0; i < this->n; i++) {
 					this->v[i] += B.v[i];
 				}
 				return;
@@ -253,7 +253,7 @@ namespace vcp {
 				using std::pow;
 				this->type = 'S';
 				this->v[0] = kv::interval< _T >(0);
-				for (int i = 0; i < C.n; i++) {
+				for (vcp::index_t i = 0; i < C.n; i++) {
 					this->v[0] += pow(kv::interval< _T >(C.v[i]), 2);
 				}
 			}

@@ -66,7 +66,7 @@ namespace vcp {
 				A.v[0] += B.v[0];
 				return;
 			}
-			for (int i = 0; i < A.n; i++) {
+			for (vcp::index_t i = 0; i < A.n; i++) {
 				A.v[i] += B.v[i];
 			}
 		}
@@ -78,7 +78,7 @@ namespace vcp {
 				A.v[0] -= B.v[0];
 				return;
 			}
-			for (int i = 0; i < A.n; i++) {
+			for (vcp::index_t i = 0; i < A.n; i++) {
 				A.v[i] -= B.v[i];
 			}
 		}
@@ -94,14 +94,14 @@ namespace vcp {
 				c.n = c.row * c.column;
 				c.v.resize(c.n);
 				c.type = B.type;
-				for (int i = 0; i < B.n; i++) {
+				for (vcp::index_t i = 0; i < B.n; i++) {
 					c.v[i] = B.v[i] * this->v[0];
 				}
 				return;
 			}
 			else if ((this->type == 'C' || this->type == 'R' || this->type == 'M') && B.type == 'S') {
 				c = *this;
-				for (int i = 0; i < this->n; i++) {
+				for (vcp::index_t i = 0; i < this->n; i++) {
 					c.v[i] *= B.v[0];
 				}
 				return;
@@ -133,7 +133,7 @@ namespace vcp {
 			}
 			kv::hwround::roundnear();
 			c.zeros(uC.row, uC.column);
-			for (int i = 0; i < c.n; i++) {
+			for (vcp::index_t i = 0; i < c.n; i++) {
 				c.v[i].lower() = lC.v[i];
 				c.v[i].upper() = uC.v[i];
 			}
@@ -146,7 +146,7 @@ namespace vcp {
 				c.n = c.row * c.column;
 				c.v.resize(c.n);
 				c.type = this->type;
-				for (int i = 0; i < this->n; i++) {
+				for (vcp::index_t i = 0; i < this->n; i++) {
 					c.v[i] = this->v[i] * B.v[0];
 				}
 				return;
@@ -157,7 +157,7 @@ namespace vcp {
 				c.n = c.row * c.column;
 				c.v.resize(c.n);
 				c.type = B.type;
-				for (int i = 0; i < B.n; i++) {
+				for (vcp::index_t i = 0; i < B.n; i++) {
 					c.v[i] = this->v[0] * B.v[i];
 				}
 				return;
@@ -189,7 +189,7 @@ namespace vcp {
 			}
 			kv::hwround::roundnear();
 			c.zeros(uC.row, uC.column);
-			for (int i = 0; i < c.n; i++) {
+			for (vcp::index_t i = 0; i < c.n; i++) {
 				c.v[i].lower() = lC.v[i];
 				c.v[i].upper() = uC.v[i];
 			}
@@ -240,14 +240,14 @@ namespace vcp {
 			kv::hwround::roundnear();
 			if (type == 'S' && (B.type == 'C' || B.type == 'R' || B.type == 'M')) {
 				c = B;
-				for (int i = 0; i < B.n; i++) {
+				for (vcp::index_t i = 0; i < B.n; i++) {
 					c.v[i] *= v[0];
 				}
 				return;
 			}
 			else if ((type == 'C' || type == 'R' || type == 'M') && B.type == 'S') {
 				c = *this;
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					c.v[i] *= B.v[0];
 				}
 				return;
@@ -287,7 +287,7 @@ namespace vcp {
 			}
 			kv::hwround::roundnear();
 			c.zeros(uC.row, uC.column);
-			for (int i = 0; i < c.n; i++) {
+			for (vcp::index_t i = 0; i < c.n; i++) {
 				c.v[i].lower() = lC.v[i];
 				c.v[i].upper() = uC.v[i];
 			}
@@ -341,7 +341,7 @@ namespace vcp {
 				}
 				kv::hwround::roundnear();
 				c.zeros(uC.row, uC.column);
-				for (int i = 0; i < c.n; i++) {
+				for (vcp::index_t i = 0; i < c.n; i++) {
 					c.v[i].lower() = lC.v[i];
 					c.v[i].upper() = uC.v[i];
 				}

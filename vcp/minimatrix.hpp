@@ -56,9 +56,9 @@
 namespace vcp{
 	template <typename _T> class minimats {
 	public:
-		int row;
-		int column;
-		int n;
+		vcp::index_t row;
+		vcp::index_t column;
+		vcp::index_t n;
 		char type;      //'N':NULL  'S':Scala  'R' Row Vector 'C':Column Vector 'M':Matrix
 		std::vector< _T > v;
 
@@ -89,7 +89,7 @@ namespace vcp{
 				#pragma omp parallel for
 #endif
 #endif	
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					v[i] += B.v[i];
 				}
 				return;
@@ -107,7 +107,7 @@ namespace vcp{
 				#pragma omp parallel for
 #endif
 #endif	
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					v[i] = a + v[i];
 				}
 				return;
@@ -125,7 +125,7 @@ namespace vcp{
 				#pragma omp parallel for
 #endif
 #endif
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					v[i] = v[i] + a;
 				}
 				return;
@@ -150,7 +150,7 @@ namespace vcp{
 				#pragma omp parallel for
 #endif
 #endif
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					v[i] = v[i] - B.v[i];
 				}
 				return;
@@ -171,7 +171,7 @@ namespace vcp{
 				#pragma omp parallel for
 #endif
 #endif
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					v[i] = B.v[i] - v[i];
 				}
 				return;
@@ -189,7 +189,7 @@ namespace vcp{
 				#pragma omp parallel for
 #endif
 #endif
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					v[i] = a - v[i];
 				}
 				return;
@@ -207,7 +207,7 @@ namespace vcp{
 				#pragma omp parallel for
 #endif
 #endif
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					v[i] = v[i] - a;
 				}
 				return;
@@ -225,7 +225,7 @@ namespace vcp{
 				#pragma omp parallel for
 #endif
 #endif
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					v[i] = -v[i];
 				}
 				return;
@@ -236,14 +236,14 @@ namespace vcp{
 		virtual void mulmm(const minimats< _T >& B, minimats< _T >& c)const {
 			if (type == 'S' && (B.type == 'C' || B.type == 'R' || B.type == 'M')) {
 				c = B;
-				for (int i = 0; i < B.n; i++) {
+				for (vcp::index_t i = 0; i < B.n; i++) {
 					c.v[i] *= v[0];
 				}
 				return;
 			}
 			else if ((type == 'C' || type == 'R' || type == 'M') && B.type == 'S') {
 				c = *this;
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					c.v[i] *= B.v[0];
 				}
 				return;
@@ -260,7 +260,7 @@ namespace vcp{
 			else if (type == 'R' && B.type == 'C' && column == B.row) {
 				c.type = 'S';
 				c.v[0] = v[0] * B.v[0];
-				for (int i = 1; i < n; i++) {
+				for (vcp::index_t i = 1; i < n; i++) {
 					c.v[0] = v[i] * B.v[i] + c.v[0];
 				}
 				return;
@@ -268,8 +268,8 @@ namespace vcp{
 			else if (type == 'C' && B.type == 'R') {
 				c.type = 'M';
 				int k = 0;
-				for (int j = 0; j < B.n; j++) {
-					for (int i = 0; i < n; i++) {
+				for (vcp::index_t j = 0; j < B.n; j++) {
+					for (vcp::index_t i = 0; i < n; i++) {
 						c.v[k] = v[i] * B.v[j];
 						k++;
 					}
@@ -299,7 +299,7 @@ namespace vcp{
 			else if (type == 'M' && B.type == 'M' && column == B.row) {
 				c.type = 'M';
 
-				for (int i = 0; i < c.n; i++) {
+				for (vcp::index_t i = 0; i < c.n; i++) {
 					c.v[i] = _T(0);
 				}
 #ifdef _OPENMP
@@ -336,7 +336,7 @@ namespace vcp{
 				#pragma omp parallel for
 #endif
 #endif
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					v[i] = a * v[i];
 				}
 				return;
@@ -354,7 +354,7 @@ namespace vcp{
 				#pragma omp parallel for
 #endif
 #endif
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					v[i] = v[i] * a;
 				}
 				return;
@@ -373,7 +373,7 @@ namespace vcp{
 				#pragma omp parallel for
 #endif
 #endif
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					v[i] = a / v[i];
 				}
 				return;
@@ -391,7 +391,7 @@ namespace vcp{
 				#pragma omp parallel for
 #endif
 #endif
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					v[i] = v[i] / a;
 				}
 				return;
@@ -405,14 +405,14 @@ namespace vcp{
 			}
 			else if (type == 'R' || type == 'C') {
 				B.zeros(n);
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					B.v[i + B.row*i] = v[i];
 				}
 				return;
 			}
 			else if (type == 'M') {
 				using std::min;
-				int nn = min(column, row);
+				vcp::index_t nn = min(column, row);
 				B.zeros(nn, 1);
 				for (int i = 0; i < nn; i++) {
 					B.v[i] = v[i + row*i];
@@ -466,7 +466,7 @@ namespace vcp{
 					"horzcat: row size mismatch: ", An, " != ", Bn);
 			}
 			C.zeros(An, Am);
-			for (int i = 0; i < n; i++) {
+			for (vcp::index_t i = 0; i < n; i++) {
 				C.v[i] = v[i];
 			}
 			C.resize(An, Am + Bm);
@@ -490,7 +490,7 @@ namespace vcp{
 					"vercat: column size mismatch: ", Am, " != ", Bm);
 			}
 			C.zeros(An, Am);
-			for (int i = 0; i < n; i++) {
+			for (vcp::index_t i = 0; i < n; i++) {
 				C.v[i] = v[i];
 			}
 			C.resize(An + Bn, Am);
@@ -767,7 +767,7 @@ namespace vcp{
 		
 		int length()const {
 			using std::max;
-			return max(column, row);
+			return static_cast<int>(max(column, row));
 		}
 
 		
@@ -788,7 +788,7 @@ namespace vcp{
 			}
 			else if (type == 'M') {
 				for (int j = 0; j <= row - 1; j++) {
-					for (int i = j; i <= row*(column - 1) + j; i = i + row) {
+					for (vcp::index_t i = j; i <= row*(column - 1) + j; i = i + row) {
 						os << v[i] << "  ";
 					}
 					os << "\n";
@@ -807,7 +807,7 @@ namespace vcp{
 		void zeros(const int i) {
 			row = i;
 			column = i;
-			n = i*i;
+			n = static_cast<vcp::index_t>(i) * i;
 			if (i == 1) {
 				type = 'S';
 			}
@@ -820,7 +820,7 @@ namespace vcp{
 			#pragma omp parallel for
 #endif
 #endif
-			for (int j = 0; j < n; j++) {
+			for (vcp::index_t j = 0; j < n; j++) {
 				v[j] = _T(0);
 			}
 		}
@@ -857,7 +857,7 @@ namespace vcp{
 		void ones(const int i) {
 			row = i;
 			column = i;
-			n = i*i;
+			n = static_cast<vcp::index_t>(i) * i;
 			if (i == 1) {
 				type = 'S';
 			}
@@ -870,7 +870,7 @@ namespace vcp{
 			#pragma omp parallel for
 #endif
 #endif
-			for (int j = 0; j < n; j++) {
+			for (vcp::index_t j = 0; j < n; j++) {
 				v[j] = _T(1);
 			}
 		}
@@ -905,7 +905,7 @@ namespace vcp{
 		}
 
 		void resize(const int i, const int j) {
-			int nn = i*j;
+			vcp::index_t nn = static_cast<vcp::index_t>(i) * j;
 			int orow, ocolumn, on;
 			_T a0 = _T(0);
 			orow = row;
@@ -1222,9 +1222,15 @@ namespace vcp{
 			return A;
 		}
 
-		int elementsize()const { return this->n; }
-		int columnsize()const { return this->column; }
-		int rowsize()const { return this->row; }
+		int elementsize()const {
+			if (this->n > static_cast<vcp::index_t>(2147483647)) {
+				vcp::throw_error<vcp::dimension_error>(
+					"elementsize(): n exceeds INT_MAX; use within-INT_MAX matrices or await 64-bit accessor (n = ", this->n, ")");
+			}
+			return static_cast<int>(this->n);
+		}
+		int columnsize()const { return static_cast<int>(this->column); }
+		int rowsize()const { return static_cast<int>(this->row); }
 		char matstype()const {
 			return this->type;
 		}

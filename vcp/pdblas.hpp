@@ -41,14 +41,14 @@ namespace vcp {
 		void mulmm(const pdblas& B, pdblas& c) const{
 			if (this->type == 'S' && (B.type == 'C' || B.type == 'R' || B.type == 'M')) {
 				c = B;
-				for (int i = 0; i < B.n; i++) {
+				for (vcp::index_t i = 0; i < B.n; i++) {
 					c.v[i] *= this->v[0];
 				}
 				return;
 			}
 			else if ((this->type == 'C' || this->type == 'R' || this->type == 'M') && B.type == 'S') {
 				c = *this;
-				for (int i = 0; i < this->n; i++) {
+				for (vcp::index_t i = 0; i < this->n; i++) {
 					c.v[i] *= B.v[0];
 				}
 				return;
@@ -59,11 +59,11 @@ namespace vcp {
 			c.v.resize(c.n);
 			int inca = 1, incb = 1, incc = 1;
 			char trans[] = "N";
-			int Arow = this->row;
-			int Acolumn = this->column;
-			int NA = this->row * this->column;
-			int Brow = B.row;
-			int Bcolumn = B.column;
+			int Arow = static_cast<int>(this->row);
+			int Acolumn = static_cast<int>(this->column);
+			int NA = static_cast<int>(this->row * this->column);
+			int Brow = static_cast<int>(B.row);
+			int Bcolumn = static_cast<int>(B.column);
 			double alpha = 1.0, beta = 0.0;
 			if (this->type == 'S' && B.type == 'S') {
 				c.type = 'S';
@@ -117,17 +117,17 @@ namespace vcp {
 				using std::pow;
 				c.type = 'S';
 				int inca = 1, incb = 1;
-				int NA = this->row * this->column;
+				int NA = static_cast<int>(this->row * this->column);
 				c.v[0] = ddot_(&NA, &this->v.front(), &inca, &this->v.front(), &incb);
 			}
 			else if (this->type == 'M' || this->type == 'R') {
 				c.type = 'M';
 				char uplo[] = "U";
 				char transT[] = "T";
-				int n = this->column;
-				int k = this->row;
-				int lda = this->row;
-				int ldc = this->column;
+				int n = static_cast<int>(this->column);
+				int k = static_cast<int>(this->row);
+				int lda = static_cast<int>(this->row);
+				int ldc = static_cast<int>(this->column);
 				double alpha = 1.0, beta = 0.0;
 				dsyrk_(uplo, transT, &n, &k, &alpha, &this->v.front(), &lda, &beta, &c.v.front(), &ldc);
 
@@ -149,9 +149,9 @@ namespace vcp {
 					"), b=(", b.row, ", ", b.column, ")");
 			}
 
-			int Asize = this->row;
-			int Bsize = b.column;
-			int lda = this->row, ldb = b.row;
+			int Asize = static_cast<int>(this->row);
+			int Bsize = static_cast<int>(b.column);
+			int lda = static_cast<int>(this->row), ldb = static_cast<int>(b.row);
 			std::vector<int> ipiv(this->row);
 			int info;
 
@@ -171,20 +171,22 @@ namespace vcp {
 			std::vector<int> ipiv(this->row);
 			double lw;
 			int lwork = -1;
-			int lda = this->row;
+			int lda = static_cast<int>(this->row);
+			int M = static_cast<int>(this->row);
+			int Ncol = static_cast<int>(this->column);
 			int info;
 			
-			dgetrf_(&this->row, &this->column, &this->v.front(), &lda, ipiv.data(), &info);
+			dgetrf_(&M, &Ncol, &this->v.front(), &lda, ipiv.data(), &info);
 			if (info != 0) {
 				throw vcp::lapack_error("dgetrf", info, "inv: dgetrf failed");
 			}
-			dgetri_(&this->row, &this->v.front(), &lda, ipiv.data(), &lw, &lwork, &info);
+			dgetri_(&M, &this->v.front(), &lda, ipiv.data(), &lw, &lwork, &info);
 			if (info != 0) {
 				throw vcp::lapack_error("dgetri", info, "inv: dgetri workspace query failed");
 			}
 			lwork = int(lw);
 			std::vector<double> work(lwork);
-			dgetri_(&this->row, &this->v.front(), &lda, ipiv.data(), work.data(), &lwork, &info);
+			dgetri_(&M, &this->v.front(), &lda, ipiv.data(), work.data(), &lwork, &info);
 			if (info != 0) {
 				throw vcp::lapack_error("dgetri", info, "inv: dgetri failed");
 			}
@@ -195,8 +197,8 @@ namespace vcp {
 				vcp::throw_error<vcp::domain_error>("Cholesky: matrix must be symmetric");
 			}
 			char uplo[] = "U";
-			int N = this->row;
-			int lda = this->row;
+			int N = static_cast<int>(this->row);
+			int lda = static_cast<int>(this->row);
 			int info;
 			dpotrf_(uplo, &N, &this->v.front(), &lda, &info);
 			if (info != 0) {
@@ -220,7 +222,7 @@ namespace vcp {
 
 			double lw;
 			int m1 = -1;
-			int an = this->row;
+			int an = static_cast<int>(this->row);
 			int lwork, info;
 
 			pdblas E;
@@ -251,7 +253,7 @@ namespace vcp {
 			char U[] = "U";
 			double lw;
 			int m1 = -1;
-			int an = this->row;
+			int an = static_cast<int>(this->row);
 			int lwork, info;
 
 			pdblas E;
@@ -290,10 +292,10 @@ namespace vcp {
 			int itype = 1;
 			char jbobz[] = "N";
 			char uplo[] = "U";
-			int n = this->row;
+			int n = static_cast<int>(this->row);
 			
-			int lda = this->row;
-			int ldb = B.row;
+			int lda = static_cast<int>(this->row);
+			int ldb = static_cast<int>(B.row);
 			double lw;
 			int m1 = -1;			
 			int lwork, info;
@@ -333,10 +335,10 @@ namespace vcp {
 				int itype = 1;
 				char jbobz[] = "V";
 				char uplo[] = "U";
-				int n = this->row;
+				int n = static_cast<int>(this->row);
 
-				int lda = this->row;
-				int ldb = B.row;
+				int lda = static_cast<int>(this->row);
+				int ldb = static_cast<int>(B.row);
 				double lw;
 				int m1 = -1;
 				int lwork, info;

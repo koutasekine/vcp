@@ -299,9 +299,15 @@ namespace vcp {
 		matrix_block< _T, _P > operator () (const int i, const std::initializer_list<int>& list2);
 		matrix_block< _T, _P > operator () (const std::initializer_list<int>& list1, const int j);
 
-		int elementsize()const { return this->n; }
-		int columnsize()const { return this->column; }
-		int rowsize()const { return this->row; }
+		int elementsize()const {
+			if (this->n > static_cast<vcp::index_t>(2147483647)) {
+				vcp::throw_error<vcp::dimension_error>(
+					"elementsize(): n exceeds INT_MAX; use within-INT_MAX matrices or await 64-bit accessor (n = ", this->n, ")");
+			}
+			return static_cast<int>(this->n);
+		}
+		int columnsize()const { return static_cast<int>(this->column); }
+		int rowsize()const { return static_cast<int>(this->row); }
 		char matstype()const {
 			return this->type;
 		}
@@ -1034,9 +1040,9 @@ namespace vcp {
 
 	template <> class matrix< bool >{
 	protected:
-		int row;
-		int column;
-		int n;
+		vcp::index_t row;
+		vcp::index_t column;
+		vcp::index_t n;
 		char type;      //'N':NULL  'S':Scala  'R' Row Vector 'C':Column Vector 'M':Matrix
 		std::vector< bool > v;
 
@@ -1050,7 +1056,7 @@ namespace vcp {
 				return;
 			}
 			else {
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					this->v[i] = this->v[i] && B.v[i];
 				}
 				return;
@@ -1066,7 +1072,7 @@ namespace vcp {
 				return;
 			}
 			else {
-				for (int i = 0; i < n; i++) {
+				for (vcp::index_t i = 0; i < n; i++) {
 					this->v[i] = this->v[i] || B.v[i];
 				}
 				return;
@@ -1074,7 +1080,7 @@ namespace vcp {
 		}
 		int length()const {
 			using std::max;
-			return max(column, row);
+			return static_cast<int>(max(column, row));
 		}
 		std::ostream& display(std::ostream& os)const {
 			if (type == 'S') {
@@ -1093,7 +1099,7 @@ namespace vcp {
 			}
 			else if (type == 'M') {
 				for (int j = 0; j <= row - 1; j++) {
-					for (int i = j; i <= row*(column - 1) + j; i = i + row) {
+					for (vcp::index_t i = j; i <= row*(column - 1) + j; i = i + row) {
 						os << v[i] << "  ";
 					}
 					os << "\n";
@@ -1106,7 +1112,7 @@ namespace vcp {
 		}
 	
 		bool all() const {
-			for (int i = 0; i < this->n; i++) {
+			for (vcp::index_t i = 0; i < this->n; i++) {
 				if (!this->v[i]) {
 					return false;
 				}
@@ -1114,7 +1120,7 @@ namespace vcp {
 			return true;
 		}
 		bool any() const {
-			for (int i = 0; i < this->n; i++) {
+			for (vcp::index_t i = 0; i < this->n; i++) {
 				if (this->v[i]) {
 					return true;
 				}
@@ -1122,7 +1128,7 @@ namespace vcp {
 			return false;
 		}
 		bool none() const {
-			for (int i = 0; i < this->n; i++) {
+			for (vcp::index_t i = 0; i < this->n; i++) {
 				if (this->v[i]) {
 					return false;
 				}
@@ -1181,9 +1187,15 @@ namespace vcp {
 			}
 		}
 
-		int elementsize()const { return this->n; }
-		int columnsize()const { return this->column; }
-		int rowsize()const { return this->row; }
+		int elementsize()const {
+			if (this->n > static_cast<vcp::index_t>(2147483647)) {
+				vcp::throw_error<vcp::dimension_error>(
+					"elementsize(): n exceeds INT_MAX; use within-INT_MAX matrices or await 64-bit accessor (n = ", this->n, ")");
+			}
+			return static_cast<int>(this->n);
+		}
+		int columnsize()const { return static_cast<int>(this->column); }
+		int rowsize()const { return static_cast<int>(this->row); }
 		char matstype()const {
 			return this->type;
 		}
@@ -1197,7 +1209,7 @@ namespace vcp {
 		void alltrue(const int i) {
 			row = i;
 			column = i;
-			n = i*i;
+			n = static_cast<vcp::index_t>(i) * i;
 			if (i == 1) {
 				type = 'S';
 			}
@@ -1205,7 +1217,7 @@ namespace vcp {
 				type = 'M';
 			}
 			v.resize(n);
-			for (int j = 0; j < n; j++) {
+			for (vcp::index_t j = 0; j < n; j++) {
 				v[j] = true;
 			}
 		}
@@ -1242,7 +1254,7 @@ namespace vcp {
 		void allfalse(const int i) {
 			row = i;
 			column = i;
-			n = i*i;
+			n = static_cast<vcp::index_t>(i) * i;
 			if (i == 1) {
 				type = 'S';
 			}
@@ -1250,7 +1262,7 @@ namespace vcp {
 				type = 'M';
 			}
 			v.resize(n);
-			for (int j = 0; j < n; j++) {
+			for (vcp::index_t j = 0; j < n; j++) {
 				v[j] = false;
 			}
 		}
@@ -1289,7 +1301,7 @@ namespace vcp {
 		}
 
 		void resize(const int i, const int j) {
-			int nn = i*j;
+			vcp::index_t nn = static_cast<vcp::index_t>(i) * j;
 			int orow, ocolumn, on;
 			orow = row;
 			ocolumn = column;

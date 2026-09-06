@@ -204,7 +204,7 @@ namespace vcp {
 			B.n = A.n;
 			B.type = A.type;
 			B.v.resize(A.n);
-			for (int i = 0; i < A.n; i++) {
+			for (vcp::index_t i = 0; i < A.n; i++) {
 				B.v[i] = A.v[i].a1;
 			}
 		}
@@ -313,14 +313,14 @@ namespace vcp {
 		void mulmm(const pddblas& B, pddblas& c) const {
 			if (this->type == 'S' && (B.type == 'C' || B.type == 'R' || B.type == 'M')) {
 				c = B;
-				for (int i = 0; i < B.n; i++) {
+				for (vcp::index_t i = 0; i < B.n; i++) {
 					c.v[i] *= this->v[0];
 				}
 				return;
 			}
 			else if ((this->type == 'C' || this->type == 'R' || this->type == 'M') && B.type == 'S') {
 				c = *this;
-				for (int i = 0; i < this->n; i++) {
+				for (vcp::index_t i = 0; i < this->n; i++) {
 					c.v[i] *= B.v[0];
 				}
 				return;
@@ -354,9 +354,9 @@ namespace vcp {
 				return;
 			}
 
-			const int m = this->row;
-			const int k = this->column;
-			const int nc = B.column;
+			const int m = static_cast<int>(this->row);
+			const int k = static_cast<int>(this->column);
+			const int nc = static_cast<int>(B.column);
 			std::vector< vcp::pdblas > DA, DB;
 			pddblas_assist::split_row(this->v, m, k, DA);
 			pddblas_assist::split_col(B.v, k, nc, DB);
@@ -378,8 +378,8 @@ namespace vcp {
 				return;
 			}
 			else if (this->type == 'C' || this->type == 'R' || this->type == 'M') {
-				const int m = this->row;
-				const int nc = this->column;
+				const int m = static_cast<int>(this->row);
+				const int nc = static_cast<int>(this->column);
 				std::vector< vcp::pdblas > DA;
 				pddblas_assist::split_col(this->v, m, nc, DA);
 				std::vector< kv::dd > Cv(nc * nc, kv::dd(0.0));
@@ -412,8 +412,8 @@ namespace vcp {
 					"), b=(", b.row, ", ", b.column, ")");
 			}
 			using std::fabs;
-			const int an = this->row;
-			const int nrhs = b.column;
+			const int an = static_cast<int>(this->row);
+			const int nrhs = static_cast<int>(b.column);
 			const int nb = an * nrhs;
 
 			// LU factorization of double(A), reused in every iteration
@@ -486,7 +486,7 @@ namespace vcp {
 			if (!this->is_symmetric()) {
 				vcp::throw_error<vcp::domain_error>("Cholesky: matrix must be symmetric");
 			}
-			const int an = this->row;
+			const int an = static_cast<int>(this->row);
 			const int nn = an * an;
 
 			vcp::pdblas Ud;
@@ -567,7 +567,7 @@ namespace vcp {
 			if (!this->is_symmetric()) {
 				vcp::throw_error<vcp::domain_error>("eigsym: matrix must be symmetric");
 			}
-			const int an = this->row;
+			const int an = static_cast<int>(this->row);
 			const int nn = an * an;
 
 			// initial guess by LAPACK dsyev (double)
@@ -619,7 +619,7 @@ namespace vcp {
 					"eigsymge: dimension mismatch: A=(", this->row, ", ", this->column,
 					"), B=(", B.row, ", ", B.column, ")");
 			}
-			const int an = this->row;
+			const int an = static_cast<int>(this->row);
 			const int nn = an * an;
 
 			// initial guess by LAPACK dsygv (double), eigenvectors with V^T B V = I
