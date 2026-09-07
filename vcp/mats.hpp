@@ -2530,11 +2530,10 @@ namespace vcp{
 
 		void resize(const int i, const int j) {
 			vcp::index_t nn = static_cast<vcp::index_t>(i) * j;
-			int orow, ocolumn, on;
+			int orow, ocolumn;
 			_T a0 = _T(0);
 			orow = static_cast<int>(row);
 			ocolumn = static_cast<int>(column);
-			on = n;
 
 			if (row > i || column > j) {
 				vcp::throw_error<vcp::dimension_error>(

@@ -370,12 +370,14 @@ namespace vcp {
 			const std::uint64_t columns,
 			const std::string& filename
 		) {
-			const std::uint64_t elements = checked_element_count(rows, columns, filename);
+			// MATS-N64-C: the element count may exceed INT_MAX (vcp::matrix holds n in
+			// 64 bit); only the individual dimensions are bounded by int, and the uint64
+			// multiplication overflow is still rejected by checked_element_count.
+			(void)checked_element_count(rows, columns, filename);
 			if (rows > static_cast<std::uint64_t>((std::numeric_limits<int>::max)())
-				|| columns > static_cast<std::uint64_t>((std::numeric_limits<int>::max)())
-				|| elements > static_cast<std::uint64_t>((std::numeric_limits<int>::max)())) {
+				|| columns > static_cast<std::uint64_t>((std::numeric_limits<int>::max)())) {
 				vcp::throw_error<vcp::io_error>(
-					"portable matrix I/O: matrix is too large for vcp::matrix in ", filename,
+					"portable matrix I/O: matrix dimension exceeds INT_MAX (too large for vcp::matrix) in ", filename,
 					": ", rows, " x ", columns);
 			}
 		}

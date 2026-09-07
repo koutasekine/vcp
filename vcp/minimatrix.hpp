@@ -906,11 +906,10 @@ namespace vcp{
 
 		void resize(const int i, const int j) {
 			vcp::index_t nn = static_cast<vcp::index_t>(i) * j;
-			int orow, ocolumn, on;
+			int orow, ocolumn;
 			_T a0 = _T(0);
 			orow = static_cast<int>(row);
 			ocolumn = static_cast<int>(column);
-			on = n;
 
 			if (row > i || column > j) {
 				vcp::throw_error<vcp::dimension_error>(
@@ -993,14 +992,15 @@ namespace vcp{
 				return this->v[i + this->row*j];
 			}
 		}
-	/*
-		_T& operator [] (const int i) {
-			return this->v[i];
+		// MATS-N64-C: 64-bit flat (linear) element access. Same semantics as the
+		// one-argument operator() (no range check, v[k] directly, no 'R' special
+		// case), but the index type is vcp::index_t so that k > INT_MAX is reachable.
+		_T& operator [] (const vcp::index_t k) {
+			return this->v[static_cast<std::size_t>(k)];
 		}
-		_T operator [] (const int i) const {
-			return this->v[i];
+		_T operator [] (const vcp::index_t k) const {
+			return this->v[static_cast<std::size_t>(k)];
 		}
-		*/
 		
 //***************** Operator Overload *****************//
 		friend matrix< _T, vcp::minimats< _T > > operator+(const matrix< _T, vcp::minimats< _T > >& A, const matrix< _T, vcp::minimats< _T > >& B) {
