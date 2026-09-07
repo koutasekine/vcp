@@ -41,8 +41,8 @@
 namespace vcp {
 	namespace pidblas_assist{
 		void midrad(const vcp::mats< kv::interval< double > >& A, vcp::pdblas& B, vcp::pdblas& C) {
-			B.zeros(A.row, A.column);
-			C.zeros(A.row, A.column);
+			B.zeros(static_cast<int>(A.row), static_cast<int>(A.column));
+			C.zeros(static_cast<int>(A.row), static_cast<int>(A.column));
 			for (int i = 0; i < A.row; i++) {
 				for (int j = 0; j < A.column; j++) {
 					midrad(A.v[i + A.row*j], B.v[i + A.row*j], C.v[i + A.row*j]);
@@ -50,8 +50,8 @@ namespace vcp {
 			}
 		}
 		void midrad(const vcp::imats< double, vcp::pdblas >& A, vcp::pdblas& B, vcp::pdblas& C) {
-			B.zeros(A.row, A.column);
-			C.zeros(A.row, A.column);
+			B.zeros(static_cast<int>(A.row), static_cast<int>(A.column));
+			C.zeros(static_cast<int>(A.row), static_cast<int>(A.column));
 			for (int i = 0; i < A.row; i++) {
 				for (int j = 0; j < A.column; j++) {
 					midrad(A.v[i + A.row*j], B.v[i + A.row*j], C.v[i + A.row*j]);
@@ -132,7 +132,7 @@ namespace vcp {
 				pidblas_assist::subsmmA_sequential(lC, temp);
 			}
 			kv::hwround::roundnear();
-			c.zeros(uC.row, uC.column);
+			c.zeros(static_cast<int>(uC.row), static_cast<int>(uC.column));
 			for (vcp::index_t i = 0; i < c.n; i++) {
 				c.v[i].lower() = lC.v[i];
 				c.v[i].upper() = uC.v[i];
@@ -188,7 +188,7 @@ namespace vcp {
 				pidblas_assist::subsmmA_sequential(lC, temp);
 			}
 			kv::hwround::roundnear();
-			c.zeros(uC.row, uC.column);
+			c.zeros(static_cast<int>(uC.row), static_cast<int>(uC.column));
 			for (vcp::index_t i = 0; i < c.n; i++) {
 				c.v[i].lower() = lC.v[i];
 				c.v[i].upper() = uC.v[i];
@@ -196,7 +196,7 @@ namespace vcp {
 		}
 		//IC = transpose(A)*A with verification 
 		void vmulmm(const vcp::pdblas& C) override {
-			this->zeros(C.column);
+			this->zeros(static_cast<int>(C.column));
 			vcp::pdblas tmp;
 			const vcp::hwround_guard guard;
 			kv::hwround::roundup();
@@ -286,7 +286,7 @@ namespace vcp {
 				pidblas_assist::subsmmA_sequential(lC, temp);
 			}
 			kv::hwround::roundnear();
-			c.zeros(uC.row, uC.column);
+			c.zeros(static_cast<int>(uC.row), static_cast<int>(uC.column));
 			for (vcp::index_t i = 0; i < c.n; i++) {
 				c.v[i].lower() = lC.v[i];
 				c.v[i].upper() = uC.v[i];
@@ -294,7 +294,7 @@ namespace vcp {
 		}
 		// C = transpose(A)*A : multiplication left side transpose
 		void mulltmm(vcp::mats< kv::interval< double > >& c)const override{
-			c.zeros(this->column, this->column);
+			c.zeros(static_cast<int>(this->column), static_cast<int>(this->column));
 			if (this->type == 'S') {
 				using std::pow;
 				c.v[0] = this->v[0] * this->v[0];
@@ -340,7 +340,7 @@ namespace vcp {
 					pidblas_assist::subsmmA_sequential(lC, temp);
 				}
 				kv::hwround::roundnear();
-				c.zeros(uC.row, uC.column);
+				c.zeros(static_cast<int>(uC.row), static_cast<int>(uC.column));
 				for (vcp::index_t i = 0; i < c.n; i++) {
 					c.v[i].lower() = lC.v[i];
 					c.v[i].upper() = uC.v[i];

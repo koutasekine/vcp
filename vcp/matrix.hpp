@@ -1025,8 +1025,8 @@ namespace vcp {
 		submat_check_sizes_(list1, list2);
 		int r0, rs, rn, c0, cs, cn;
 		bool rfull, cfull;
-		submat_normalize_(list1, this->row, true, r0, rs, rn, rfull);
-		submat_normalize_(list2, this->column, false, c0, cs, cn, cfull);
+		submat_normalize_(list1, static_cast<int>(this->row), true, r0, rs, rn, rfull);
+		submat_normalize_(list2, static_cast<int>(this->column), false, c0, cs, cn, cfull);
 		return matrix_block< _T, _P >(*this, r0, rs, rn, rfull, c0, cs, cn, cfull);
 	}
 	template <typename _T, class _P>
@@ -1303,8 +1303,8 @@ namespace vcp {
 		void resize(const int i, const int j) {
 			vcp::index_t nn = static_cast<vcp::index_t>(i) * j;
 			int orow, ocolumn, on;
-			orow = row;
-			ocolumn = column;
+			orow = static_cast<int>(row);
+			ocolumn = static_cast<int>(column);
 			on = n;
 
 			if (row > i || column > j) {

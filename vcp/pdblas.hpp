@@ -301,7 +301,7 @@ namespace vcp {
 			int lwork, info;
 
 			pdblas W;
-			W.zeros(this->row, 1);
+			W.zeros(static_cast<int>(this->row), 1);
 
 			dsygv_(&itype, jbobz, uplo, &n, &this->v.front(), &lda, &B.v.front(), &ldb, &W.v.front(), &lw, &m1, &info);
 			if (info != 0) {
@@ -313,7 +313,7 @@ namespace vcp {
 			if (info != 0) {
 				throw vcp::lapack_error("dsygv", info, "eigsymge: dsygv failed");
 			}
-			this->zeros(this->row, this->row);
+			this->zeros(static_cast<int>(this->row), static_cast<int>(this->row));
 
 			for (int i = 0; i < this->row; i++) {
 				this->v[i + this->row * i] = W.v[i];
@@ -344,7 +344,7 @@ namespace vcp {
 				int lwork, info;
 
 				pdblas W;
-				W.zeros(this->row, 1);
+				W.zeros(static_cast<int>(this->row), 1);
 
 				dsygv_(&itype, jbobz, uplo, &n, &this->v.front(), &lda, &B.v.front(), &ldb, &W.v.front(), &lw, &m1, &info);
 				if (info != 0) {
@@ -357,7 +357,7 @@ namespace vcp {
 					throw vcp::lapack_error("dsygv", info, "eigsymge: dsygv failed");
 				}
 				V = (*this);
-				this->zeros(this->row, this->row);
+				this->zeros(static_cast<int>(this->row), static_cast<int>(this->row));
 				for (int i = 0; i < this->row; i++) {
 					this->v[i + this->row * i] = W.v[i];
 				}

@@ -39,7 +39,7 @@ namespace vcp {
 	template <typename _T, class _P = vcp::mats2< _T > > class imats : public mats< kv::interval< _T > > {
 	protected:
 		void imid( _P& A )const{
-			A.zeros(this->row, this->column);
+			A.zeros(static_cast<int>(this->row), static_cast<int>(this->column));
 			for (int i = 0; i < A.row; i++) {
 				for (int j = 0; j < A.column; j++) {
 					A.v[i + this->row*j] = mid( this->v[i + this->row*j] );
@@ -67,7 +67,7 @@ namespace vcp {
 				}
 				return;
 			}
-			c.zeros(this->row, B.column);
+			c.zeros(static_cast<int>(this->row), static_cast<int>(B.column));
 			if (this->type == 'S' && B.type == 'S') {
 				c.type = 'S';
 				c.v[0] = this->v[0] * B.v[0];
@@ -158,7 +158,7 @@ namespace vcp {
 				}
 				return;
 			}
-			c.zeros(B.row, this->column);
+			c.zeros(static_cast<int>(B.row), static_cast<int>(this->column));
 			if (B.type == 'S' && this->type == 'S') {
 				c.type = 'S';
 				c.v[0] = B.v[0] * this->v[0];
@@ -242,7 +242,7 @@ namespace vcp {
 
 		//IC = transpose(A)*A with verification 
 		virtual void vmulmm(const _P& C ){
-			this->zeros(C.column);
+			this->zeros(static_cast<int>(C.column));
 			if (C.type == 'S') {
 				using std::pow;
 				this->type = 'S';
@@ -344,7 +344,7 @@ namespace vcp {
 			// G = || R*(A*mx - b) ||_inf/(1 - || RA - I ||_inf)
 			G.v[0] = T.v[0] / (one - G.v[0]);
 			// T = || R*(A*mx - b) ||_inf/(1 - || RA - I ||_inf)*e
-			T.zeros(x.row, x.column);
+			T.zeros(static_cast<int>(x.row), static_cast<int>(x.column));
 			for (int i = 0; i < x.row; i++) {
 				for (int j = 0; j < x.column; j++){
 					T.v[i + x.row*j] = G.v[0];
@@ -386,7 +386,7 @@ namespace vcp {
 			C.normone(T);
 			// T = sqrt(Tone*Tinf); ||A*V - V*Lambda||_2 <= sqrt(||A*V - V*Lambda||_1 * ||A*V - V*Lambda||_inf)
 			T.v[0] = sqrt(T.v[0] *Tinf.v[0]);
-			int thisrow = this->row;
+			int thisrow = static_cast<int>(this->row);
 			// (*this) = transpose(V)*V, C is Transpose matrix.
 			this->vmulmm(V);
 			_T one = _T(1);
@@ -410,7 +410,7 @@ namespace vcp {
 				T.v[i].upper() = G.v[0].upper();
 				T.v[i].lower() = -T.v[i].upper();
 			}
-			this->zeros(mA.row, mA.column);
+			this->zeros(static_cast<int>(mA.row), static_cast<int>(mA.column));
 			for (int i = 0; i < thisrow; i++) {
 				this->v[i + thisrow*i] = mA.v[i + thisrow*i] + T.v[i];
 			}
@@ -418,7 +418,7 @@ namespace vcp {
 
 		// Shinya Miyajima: Numerical enclosure for each eigenvalue in generalized eigenvalue problem, JCAM, 236, pp.2545-2552 (2012) Theorem 3
 		void eigsymge(imats< _T, _P >& B, int itep = 1) {
-			int thisrow = this->row;
+			int thisrow = static_cast<int>(this->row);
 			
 			_P app_lambda;
 			_T one = _T(1);

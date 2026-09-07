@@ -88,7 +88,7 @@ namespace vcp {
 				bool nonzero = false;
 				for (int i = 0; i < m; i++) {
 					double mu = 0.0;
-					for (int j = 0; j < k; j++) {
+					for (vcp::index_t j = 0; j < k; j++) {
 						const double a = fabs(T[i + m * j].a1);
 						if (a > mu) mu = a;
 					}
@@ -96,7 +96,7 @@ namespace vcp {
 					int e;
 					frexp(mu, &e); // 2^(e-1) <= mu < 2^e
 					const double sigma = ldexp(1.0, e + s);
-					for (int j = 0; j < k; j++) {
+					for (vcp::index_t j = 0; j < k; j++) {
 						const double q = (T[i + m * j].a1 + sigma) - sigma;
 						if (q != 0.0) {
 							S.v[i + m * j] = q;
@@ -124,7 +124,7 @@ namespace vcp {
 				vcp::pdblas S;
 				S.zeros(k, n);
 				bool nonzero = false;
-				for (int j = 0; j < n; j++) {
+				for (vcp::index_t j = 0; j < n; j++) {
 					double mu = 0.0;
 					for (int i = 0; i < k; i++) {
 						const double a = fabs(T[i + k * j].a1);
@@ -165,7 +165,7 @@ namespace vcp {
 			int lda = transA ? k : m;
 			int ldb = k, ldc = m;
 			const int limit = max_slices(k);
-			const int mn = m * n;
+			const vcp::index_t mn = static_cast<vcp::index_t>(m) * n;
 			vcp::pdblas P;
 			P.zeros(m, n);
 			for (int t = 0; t < limit; t++) {
@@ -178,7 +178,7 @@ namespace vcp {
 					#pragma omp parallel for
 #endif
 #endif
-					for (int idx = 0; idx < mn; idx++) {
+					for (vcp::index_t idx = 0; idx < mn; idx++) {
 						if (P.v[idx] != 0.0) {
 							C[idx] += kv::dd(P.v[idx]);
 						}
@@ -360,12 +360,12 @@ namespace vcp {
 			std::vector< vcp::pdblas > DA, DB;
 			pddblas_assist::split_row(this->v, m, k, DA);
 			pddblas_assist::split_col(B.v, k, nc, DB);
-			std::vector< kv::dd > Cv(m * nc, kv::dd(0.0));
+			std::vector< kv::dd > Cv(static_cast<std::size_t>(m) * nc, kv::dd(0.0));
 			pddblas_assist::ozaki_acc(DA, false, DB, m, nc, k, Cv);
 
 			c.row = m;
 			c.column = nc;
-			c.n = m * nc;
+			c.n = static_cast<vcp::index_t>(m) * nc;
 			c.type = ctype;
 			c.v = std::move(Cv);
 		}
@@ -382,18 +382,18 @@ namespace vcp {
 				const int nc = static_cast<int>(this->column);
 				std::vector< vcp::pdblas > DA;
 				pddblas_assist::split_col(this->v, m, nc, DA);
-				std::vector< kv::dd > Cv(nc * nc, kv::dd(0.0));
+				std::vector< kv::dd > Cv(static_cast<std::size_t>(nc) * nc, kv::dd(0.0));
 				pddblas_assist::ozaki_acc(DA, true, DA, nc, nc, m, Cv);
 
 				c.row = nc;
 				c.column = nc;
-				c.n = nc * nc;
+				c.n = static_cast<vcp::index_t>(nc) * nc;
 				c.type = (nc == 1) ? 'S' : 'M';
 				c.v = std::move(Cv);
 
 				// enforce exact symmetry as in pdblas
-				for (int i = 0; i < nc; i++) {
-					for (int j = i + 1; j < nc; j++) {
+				for (vcp::index_t i = 0; i < nc; i++) {
+					for (vcp::index_t j = i + 1; j < nc; j++) {
 						c.v[j + nc * i] = c.v[i + nc * j];
 					}
 				}
@@ -475,7 +475,7 @@ namespace vcp {
 					"inv: matrix must be square: ", this->row, " != ", this->column);
 			}
 			pddblas b, x;
-			b.eye(this->row);
+			b.eye(static_cast<int>(this->row));
 			this->linearsolve(b, x);
 			this->v = std::move(x.v);
 		}

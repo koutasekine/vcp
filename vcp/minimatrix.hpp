@@ -404,7 +404,7 @@ namespace vcp{
 				return;
 			}
 			else if (type == 'R' || type == 'C') {
-				B.zeros(n);
+				B.zeros(static_cast<int>(n));
 				for (vcp::index_t i = 0; i < n; i++) {
 					B.v[i + B.row*i] = v[i];
 				}
@@ -413,7 +413,7 @@ namespace vcp{
 			else if (type == 'M') {
 				using std::min;
 				vcp::index_t nn = min(column, row);
-				B.zeros(nn, 1);
+				B.zeros(static_cast<int>(nn), 1);
 				for (int i = 0; i < nn; i++) {
 					B.v[i] = v[i + row*i];
 				}
@@ -441,7 +441,7 @@ namespace vcp{
 				B.type = 'R';
 			}
 			else if (type == 'M') {
-				B.zeros(column, row);
+				B.zeros(static_cast<int>(column), static_cast<int>(row));
 				for (int i = 0; i < row; i++) {
 					for (int j = 0; j < column; j++) {
 						B.v[j + B.row*i] = v[i + row*j];
@@ -456,10 +456,10 @@ namespace vcp{
 		// matlab C = [A,B]
 		void horzcat(const minimats< _T >& B, minimats< _T >& C)const {
 			int An, Am, Bn, Bm;
-			An = row;
-			Am = column;
-			Bn = B.row;
-			Bm = B.column;
+			An = static_cast<int>(row);
+			Am = static_cast<int>(column);
+			Bn = static_cast<int>(B.row);
+			Bm = static_cast<int>(B.column);
 
 			if (An != Bn) {
 				vcp::throw_error<vcp::dimension_error>(
@@ -480,10 +480,10 @@ namespace vcp{
 		// matlab [A;B]
 		void vercat(const minimats< _T >& B, minimats< _T >& C)const {
 			int An, Am, Bn, Bm;
-			An = row;
-			Am = column;
-			Bn = B.row;
-			Bm = B.column;
+			An = static_cast<int>(row);
+			Am = static_cast<int>(column);
+			Bn = static_cast<int>(B.row);
+			Bm = static_cast<int>(B.column);
 
 			if (Am != Bm) {
 				vcp::throw_error<vcp::dimension_error>(
@@ -519,7 +519,7 @@ namespace vcp{
 					if (l2[0] < 0 || l2[0] >= this->column) {
 						vcp::throw_error<vcp::index_error>("submat: column index out of range: ", l2[0]);
 					}
-					B.zeros(this->row, 1);
+					B.zeros(static_cast<int>(this->row), 1);
 					for (int i = 0; i < this->row; i++) {
 						B.v[i] = this->v[i + this->row*l2[0]];
 					}
@@ -531,7 +531,7 @@ namespace vcp{
 							"submat: invalid column range: ", l2[0], ":", l2[1]);
 					}
 					int l2i = l2[1] - l2[0] + 1;
-					B.zeros(this->row, l2i);
+					B.zeros(static_cast<int>(this->row), l2i);
 					int k = 0;
 					for (int i = 0; i < this->row; i++) {
 						for (int j = l2[0]; j <= l2[1]; j++) {
@@ -552,7 +552,7 @@ namespace vcp{
 						k++;
 					}
 
-					B.zeros(this->row, k);
+					B.zeros(static_cast<int>(this->row), k);
 					k = 0;
 					for (int i = 0; i < this->row; i++) {
 						for (int j = l2[0]; j <= l2[2]; j += l2[1]) {
@@ -569,7 +569,7 @@ namespace vcp{
 					vcp::throw_error<vcp::index_error>("submat: row index out of range: ", l1[0]);
 				}
 				if (list2.size() == 0) {
-					B.zeros(1, this->column);
+					B.zeros(1, static_cast<int>(this->column));
 					for (int i = 0; i < this->column; i++) {
 						B.v[i] = this->v[l1[0] + this->row*i];
 					}
@@ -623,7 +623,7 @@ namespace vcp{
 				}
 				int l1i = l1[1] - l1[0] + 1;
 				if (list2.size() == 0) {
-					B.zeros(l1i, this->column);
+					B.zeros(l1i, static_cast<int>(this->column));
 					int k = 0;
 					for (int i = l1[0]; i <= l1[1]; i++) {
 						for (int j = 0; j < this->column; j++) {
@@ -698,7 +698,7 @@ namespace vcp{
 					l1i++;
 				}
 				if (list2.size() == 0) {
-					B.zeros(l1i, this->column);
+					B.zeros(l1i, static_cast<int>(this->column));
 					int k = 0;
 					for (int i = l1[0]; i <= l1[2]; i += l1[1]) {
 						for (int j = 0; j < this->column; j++) {
@@ -908,8 +908,8 @@ namespace vcp{
 			vcp::index_t nn = static_cast<vcp::index_t>(i) * j;
 			int orow, ocolumn, on;
 			_T a0 = _T(0);
-			orow = row;
-			ocolumn = column;
+			orow = static_cast<int>(row);
+			ocolumn = static_cast<int>(column);
 			on = n;
 
 			if (row > i || column > j) {

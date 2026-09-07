@@ -330,7 +330,7 @@ namespace vcp{
 		}
 		// C = transpose(A)*A : multiplication left side transpose
 		virtual void mulltmm(mats< _T >& c)const {
-			c.zeros(column);
+			c.zeros(static_cast<int>(column));
 			if (this->type == 'S') {
 				using std::pow;
 				c.type = 'S';
@@ -456,7 +456,7 @@ namespace vcp{
 			if (this->row != B.row || this->column != B.column) {
 				vcp::throw_error<vcp::dimension_error>("gt: dimension mismatch");
 			}
-			C.allfalse(this->row, this->column);
+			C.allfalse(static_cast<int>(this->row), static_cast<int>(this->column));
 			for (vcp::index_t i = 0; i < this->n; i++) {
 				C.v[i] = this->v[i] > B.v[i];
 			}
@@ -466,7 +466,7 @@ namespace vcp{
 			if (this->row != B.row || this->column != B.column) {
 				vcp::throw_error<vcp::dimension_error>("ge: dimension mismatch");
 			}
-			C.allfalse(this->row, this->column);
+			C.allfalse(static_cast<int>(this->row), static_cast<int>(this->column));
 			for (vcp::index_t i = 0; i < this->n; i++) {
 				C.v[i] = this->v[i] >= B.v[i];
 			}
@@ -476,7 +476,7 @@ namespace vcp{
 			if (this->row != B.row || this->column != B.column) {
 				vcp::throw_error<vcp::dimension_error>("lt: dimension mismatch");
 			}
-			C.allfalse(this->row, this->column);
+			C.allfalse(static_cast<int>(this->row), static_cast<int>(this->column));
 			for (vcp::index_t i = 0; i < this->n; i++) {
 				C.v[i] = this->v[i] < B.v[i];
 			}
@@ -486,7 +486,7 @@ namespace vcp{
 			if (this->row != B.row || this->column != B.column) {
 				vcp::throw_error<vcp::dimension_error>("le: dimension mismatch");
 			}
-			C.allfalse(this->row, this->column);
+			C.allfalse(static_cast<int>(this->row), static_cast<int>(this->column));
 			for (vcp::index_t i = 0; i < this->n; i++) {
 				C.v[i] = this->v[i] <= B.v[i];
 			}
@@ -496,7 +496,7 @@ namespace vcp{
 			if (this->row != B.row || this->column != B.column) {
 				vcp::throw_error<vcp::dimension_error>("eq: dimension mismatch");
 			}
-			C.allfalse(this->row, this->column);
+			C.allfalse(static_cast<int>(this->row), static_cast<int>(this->column));
 			for (vcp::index_t i = 0; i < this->n; i++) {
 				C.v[i] = this->v[i] == B.v[i];
 			}
@@ -506,7 +506,7 @@ namespace vcp{
 			if (this->row != B.row || this->column != B.column) {
 				vcp::throw_error<vcp::dimension_error>("neq: dimension mismatch");
 			}
-			C.allfalse(this->row, this->column);
+			C.allfalse(static_cast<int>(this->row), static_cast<int>(this->column));
 			for (vcp::index_t i = 0; i < this->n; i++) {
 				C.v[i] = this->v[i] != B.v[i];
 			}
@@ -678,7 +678,7 @@ namespace vcp{
 				return;
 			}
 			else if (type == 'R' || type == 'C') {
-				B.zeros(n);
+				B.zeros(static_cast<int>(n));
 				for (vcp::index_t i = 0; i < n; i++) {
 					B.v[i + B.row*i] = v[i];
 				}
@@ -686,7 +686,7 @@ namespace vcp{
 			}
 			else if (type == 'M') {
 				using std::min;
-				int nn = min(column, row);
+				int nn = static_cast<int>(min(column, row));
 				B.zeros(nn, 1);
 				for (int i = 0; i < nn; i++) {
 					B.v[i] = v[i + row*i];
@@ -715,7 +715,7 @@ namespace vcp{
 				B.type = 'R';
 			}
 			else if (type == 'M') {
-				B.zeros(column, row);
+				B.zeros(static_cast<int>(column), static_cast<int>(row));
 				for (int i = 0; i < row; i++) {
 					for (int j = 0; j < column; j++) {
 						B.v[j + B.row*i] = v[i + row*j];
@@ -730,10 +730,10 @@ namespace vcp{
 		// matlab C = [A,B]
 		void horzcat(const mats< _T >& B, mats< _T >& C)const {
 			int An, Am, Bn, Bm;
-			An = row;
-			Am = column;
-			Bn = B.row;
-			Bm = B.column;
+			An = static_cast<int>(row);
+			Am = static_cast<int>(column);
+			Bn = static_cast<int>(B.row);
+			Bm = static_cast<int>(B.column);
 
 			if (An != Bn) {
 				vcp::throw_error<vcp::dimension_error>(
@@ -754,10 +754,10 @@ namespace vcp{
 		// matlab [A;B]
 		void vercat(const mats< _T >& B, mats< _T >& C)const {
 			int An, Am, Bn, Bm;
-			An = row;
-			Am = column;
-			Bn = B.row;
-			Bm = B.column;
+			An = static_cast<int>(row);
+			Am = static_cast<int>(column);
+			Bn = static_cast<int>(B.row);
+			Bm = static_cast<int>(B.column);
 
 			if (Am != Bm) {
 				vcp::throw_error<vcp::dimension_error>(
@@ -793,7 +793,7 @@ namespace vcp{
 					if (l2[0] < 0 || l2[0] >= this->column) {
 						vcp::throw_error<vcp::index_error>("submat: column index out of range: ", l2[0]);
 					}
-					B.zeros(this->row, 1);
+					B.zeros(static_cast<int>(this->row), 1);
 					for (int i = 0; i < this->row; i++) {
 						B.v[i] = this->v[i + this->row*l2[0]];
 					}
@@ -805,7 +805,7 @@ namespace vcp{
 							"submat: invalid column range: ", l2[0], ":", l2[1]);
 					}
 					int l2i = l2[1] - l2[0] + 1;
-					B.zeros(this->row, l2i);
+					B.zeros(static_cast<int>(this->row), l2i);
 					int k = 0;
 					for (int i = 0; i < this->row; i++) {
 						for (int j = l2[0]; j <= l2[1]; j++) {
@@ -826,7 +826,7 @@ namespace vcp{
 						k++;
 					}
 
-					B.zeros(this->row, k);
+					B.zeros(static_cast<int>(this->row), k);
 					k = 0;
 					for (int i = 0; i < this->row; i++) {
 						for (int j = l2[0]; j <= l2[2]; j += l2[1]) {
@@ -843,7 +843,7 @@ namespace vcp{
 					vcp::throw_error<vcp::index_error>("submat: row index out of range: ", l1[0]);
 				}
 				if (list2.size() == 0) {
-					B.zeros(1, this->column);
+					B.zeros(1, static_cast<int>(this->column));
 					for (int i = 0; i < this->column; i++) {
 						B.v[i] = this->v[l1[0] + this->row*i];
 					}
@@ -897,7 +897,7 @@ namespace vcp{
 				}
 				int l1i = l1[1] - l1[0] + 1;
 				if (list2.size() == 0) {
-					B.zeros(l1i, this->column);
+					B.zeros(l1i, static_cast<int>(this->column));
 					int k = 0;
 					for (int i = l1[0]; i <= l1[1]; i++) {
 						for (int j = 0; j < this->column; j++) {
@@ -972,7 +972,7 @@ namespace vcp{
 					l1i++;
 				}
 				if (list2.size() == 0) {
-					B.zeros(l1i, this->column);
+					B.zeros(l1i, static_cast<int>(this->column));
 					int k = 0;
 					for (int i = l1[0]; i <= l1[2]; i += l1[1]) {
 						for (int j = 0; j < this->column; j++) {
@@ -1054,9 +1054,9 @@ namespace vcp{
 				return;
 			}
 			else if (type == 'M') {
-				B.zeros(1, column);
+				B.zeros(1, static_cast<int>(column));
 				for (int i = 0; i < column; i++) {
-					int ii = row*i;
+					vcp::index_t ii = row*i;
 					B.v[i] = v[ii];
 					for (int j = 1; j < row; j++) {
 						B.v[i] = B.v[i] + v[j + ii];
@@ -1084,10 +1084,10 @@ namespace vcp{
 				return;
 			}
 			else if (type == 'M') {
-				B.zeros(1, column);
+				B.zeros(1, static_cast<int>(column));
 				using std::max;
 				for (int i = 0; i < column; i++) {
-					int ii = row*i;
+					vcp::index_t ii = row*i;
 					B.v[i] = v[ii];
 					for (int j = 1; j < row; j++) {
 						B.v[i] = max(B.v[i], v[j + ii]);
@@ -1115,10 +1115,10 @@ namespace vcp{
 				return;
 			}
 			else if (type == 'M') {
-				B.zeros(1, column);
+				B.zeros(1, static_cast<int>(column));
 				using std::min;
 				for (int i = 0; i < column; i++) {
-					int ii = row*i;
+					vcp::index_t ii = row*i;
 					B.v[i] = v[ii];
 					for (int j = 1; j < row; j++) {
 						B.v[i] = min(B.v[i], v[j + ii]);
@@ -1148,11 +1148,11 @@ namespace vcp{
 				return;
 			}
 			else if (type == 'M') {
-				B.zeros(1, column);
+				B.zeros(1, static_cast<int>(column));
 				using std::max;
 				using std::abs;
 				for (int i = 0; i < column; i++) {
-					int ii = row*i;
+					vcp::index_t ii = row*i;
 					B.v[i] = abs(v[ii]);
 					for (int j = 1; j < row; j++) {
 						B.v[i] += abs(v[j + ii]);
@@ -1230,7 +1230,7 @@ namespace vcp{
 				return;
 			}
 			else if (type == 'M') {
-				B.zeros(row, 1);
+				B.zeros(static_cast<int>(row), 1);
 				using std::max;
 				using std::abs;
 				for (int i = 0; i < row; i++) {
@@ -1291,7 +1291,7 @@ namespace vcp{
 						v[i + row*j] = T0;
 					}
 				}
-				for (int i = column; i < row; i++) {
+				for (int i = static_cast<int>(column); i < row; i++) {
 					for (int j = 0; j < column; j++) {
 						v[i + row*j] = T0;
 					}
@@ -1327,7 +1327,7 @@ namespace vcp{
 				vcp::throw_error<vcp::dimension_error>(
 					"ludecomposition: matrix must be square: ", row, " != ", column);
 			}
-			int nn = row;
+			int nn = static_cast<int>(row);
 			ipiv.zeros(nn, 1);
 			for (int i = 0; i < nn; i++) {
 				ipiv.v[i] = i;
@@ -1365,7 +1365,7 @@ namespace vcp{
 					"luonedsolve: invalid dimensions: A=(", row, ", ", column,
 					"), b=(", b.row, ", ", b.column, ")");
 			}
-			x.zeros(row, 1);
+			x.zeros(static_cast<int>(row), 1);
 			for (int j = 0; j < row - 1; j++) {
 				for (int i = j + 1; i < row; i++) {
 					b.v[ipiv.v[i]] = b.v[ipiv.v[i]] - v[ipiv.v[i] + row*j] * b.v[ipiv.v[j]];
@@ -1373,7 +1373,7 @@ namespace vcp{
 			}
 			_T dd;
 			x.v[row - 1] = b.v[ipiv.v[row - 1]] / v[ipiv.v[row - 1] + row*(row - 1)];
-			for (int i = row - 2; i >= 0; i--) {
+			for (int i = static_cast<int>(row - 2); i >= 0; i--) {
 				dd = b.v[ipiv.v[i]];
 				for (int j = i + 1; j < row; j++) {
 					dd = dd - v[ipiv.v[i] + row*j] * x.v[j];
@@ -1390,9 +1390,9 @@ namespace vcp{
 			mats< int > ipiv;
 			this->ludecomposition(ipiv);
 			mats< _T > bb, xx;
-			x.zeros(row, b.column);
-			bb.zeros(row, 1);
-			xx.ones(row, 1);
+			x.zeros(static_cast<int>(row), static_cast<int>(b.column));
+			bb.zeros(static_cast<int>(row), 1);
+			xx.ones(static_cast<int>(row), 1);
 			for (int j = 0; j < b.column; j++) {
 				for (int i = 0; i < b.row; i++) {
 					bb.v[i] = b.v[i + row*j];
@@ -1411,10 +1411,10 @@ namespace vcp{
 			mats< int > ipiv;
 			this->ludecomposition(ipiv);
 			mats< _T > b;
-			b.eye(row);
+			b.eye(static_cast<int>(row));
 			mats< _T > bb, xx;
-			bb.zeros(row, 1);
-			xx.ones(row, 1);
+			bb.zeros(static_cast<int>(row), 1);
+			xx.ones(static_cast<int>(row), 1);
 			for (int j = 0; j < b.column; j++) {
 				for (int i = 0; i < b.row; i++) {
 					bb.v[i] = b.v[i + row*j];
@@ -1465,7 +1465,7 @@ namespace vcp{
 				vcp::throw_error<vcp::dimension_error>(
 					"TriLudecomposition: matrix must be square: ", row, " != ", column);
 			}
-			int nn = row;
+			int nn = static_cast<int>(row);
 			ipiv.zeros(nn, 1);
 			for (int i = 0; i < nn; i++) {
 				ipiv.v[i] = i;
@@ -1508,7 +1508,7 @@ namespace vcp{
 			_T s = _T(0);
 			_T c, tmp;
 			mats< _T > w, q;
-			q.zeros(row, 1);
+			q.zeros(static_cast<int>(row), 1);
 			using std::sqrt;
 			for (int i = 0; i < row - 1; i++) {
 				// make s and s2
@@ -1523,7 +1523,7 @@ namespace vcp{
 				// make c
 				c = _T(1) / (s2 + v[(i + 1) + row*i] * s);
 				// make w
-				w.zeros(row, 1);
+				w.zeros(static_cast<int>(row), 1);
 				w.v[i + 1] = v[(i + 1) + row*i] + s;
 				for (int k = i + 2; k < row; k++) {
 					w.v[k] = v[k + row*i];
@@ -1571,8 +1571,8 @@ namespace vcp{
 			_T s = _T(0);
 			_T c, tmp;
 			mats< _T > w, q, PP, Ptmp;
-			q.zeros(row, 1);
-			P.eye(row);
+			q.zeros(static_cast<int>(row), 1);
+			P.eye(static_cast<int>(row));
 			using std::sqrt;
 			for (int i = 0; i < row - 1; i++) {
 				// make s and s2
@@ -1587,19 +1587,19 @@ namespace vcp{
 				// make c
 				c = _T(1) / (s2 + v[(i + 1) + row*i] * s);
 				// make w
-				w.zeros(row, 1);
+				w.zeros(static_cast<int>(row), 1);
 				w.v[i + 1] = v[(i + 1) + row*i] + s;
 				for (int k = i + 2; k < row; k++) {
 					w.v[k] = v[k + row*i];
 				}
 				// make P = I-cw*w^T
-				PP.eye(row - i);
+				PP.eye(static_cast<int>(row - i));
 				for (int jj = 0; jj < row - i; jj++) {
 					for (int ii = 0; ii < row - i; ii++) {
 						PP.v[ii + (row - i)*jj] -= c*w.v[ii + i] * w.v[jj + i];
 					}
 				}
-				Ptmp.zeros(row - i, row);
+				Ptmp.zeros(static_cast<int>(row - i), static_cast<int>(row));
 				for (int kk = 0; kk < row; kk++) {
 					for (int jj = i; jj < row; jj++) {
 						for (int ii = i; ii < row; ii++) {
@@ -1669,13 +1669,13 @@ namespace vcp{
 				// make c
 				c = _T(1) / (s2 + v[(i + 1) + row*i] * s);
 				// make w
-				w.zeros(row, 1);
+				w.zeros(static_cast<int>(row), 1);
 				w.v[i + 1] = v[(i + 1) + row*i] + s;
 				for (int k = i + 2; k < row; k++) {
 					w.v[k] = v[k + row*i];
 				}
 				// make P = I-cw*w^T
-				P.eye(row);
+				P.eye(static_cast<int>(row));
 				for (int ii = 0; ii < row; ii++) {
 					for (int jj = 0; jj < row; jj++) {
 						P.v[ii + row*jj] -= c*w.v[ii] * w.v[jj];
@@ -1704,7 +1704,7 @@ namespace vcp{
 			using std::sqrt;
 			mats< _T > V, H, QRs;
 			mats< _T > u;
-			Q.eye(row);
+			Q.eye(static_cast<int>(row));
 			_T xynorm, xynorm2;
 			_T zero = _T(0);
 
@@ -1715,7 +1715,7 @@ namespace vcp{
 					xynorm2 += pow(v[i + row*j], 2);
 				}
 				xynorm = xynorm2 + pow(v[j + row*j], 2);
-				u.zeros(row - j, 1);
+				u.zeros(static_cast<int>(row - j), 1);
 
 				if (v[j + row*j] >= 0) {
 					u.v[0] = v[j + row*j] + sqrt(xynorm);
@@ -1728,13 +1728,13 @@ namespace vcp{
 				for (int i = 1; i < row - j; i++) {
 					u.v[i] = v[j + i + row*j] / xynorm;
 				}
-				H.eye(row - j);
+				H.eye(static_cast<int>(row - j));
 				for (int i = 0; i < row - j; i++) {
 					for (int k = 0; k < row - j; k++) {
 						H.v[i + (row - j)*k] -= 2 * u.v[i] * u.v[k];
 					}
 				}
-				QRs.zeros(row - j, row);
+				QRs.zeros(static_cast<int>(row - j), static_cast<int>(row));
 				for (int k = 0; k < row; k++) {
 					for (int i = 0; i < row - j; i++) {
 						QRs.v[i + (row - j) * k] = v[i + j + row*k];
@@ -1785,9 +1785,9 @@ namespace vcp{
 			using std::sqrt;
 			mats< _T > H, QRs;
 			mats< _T > u;
-			Q.eye(row);
+			Q.eye(static_cast<int>(row));
 			H.zeros(2, 2);
-			QRs.zeros(2, row);
+			QRs.zeros(2, static_cast<int>(row));
 			u.zeros(2, 1);
 			_T xynorm, xynorm2;
 			_T zero = _T(0);
@@ -1865,9 +1865,9 @@ namespace vcp{
 			using std::min;
 			mats< _T > H, QRs;
 			mats< _T > u;
-			Q.eye(row);
+			Q.eye(static_cast<int>(row));
 			H.zeros(2, 2);
-			QRs.zeros(2, row);
+			QRs.zeros(2, static_cast<int>(row));
 			u.zeros(2, 1);
 			_T xynorm, xynorm2;
 			_T zero = _T(0);
@@ -1950,12 +1950,12 @@ namespace vcp{
 			epsilon *= _T(static_cast<int>(n));
 			_T tr, det, e1, e2, shift;
 			E = (*this);
-			int N = row; // N is size of E      
+			int N = static_cast<int>(row); // N is size of E      
 			int ite = 0; // iteration times
 
 
 			I.eye(N);
-			evo.zeros(row, 1);
+			evo.zeros(static_cast<int>(row), 1);
 
 
 			while (N > 1) {
@@ -2099,7 +2099,7 @@ namespace vcp{
 
 //			std::cout << "sign of eigenvalues" << std::endl;
 			mats< _T > sign;
-			sign.ones(row, 1); // one : positive eigenvalue
+			sign.ones(static_cast<int>(row), 1); // one : positive eigenvalue
 			for (int i = 0; i < row; i++) {
 				if (Eigval.v[i] < 0) {
 					sign.v[i] = -one; // negative eigenvalue
@@ -2118,7 +2118,7 @@ namespace vcp{
 
 //			std::cout << "absolute mu" << std::endl;
 			mats< _T > mu;
-			mu.zeros(row, 1);
+			mu.zeros(static_cast<int>(row), 1);
 			for (int i = 0; i < row; i++) {
 				if (i == 0) {
 					mu.v[i] = rate * Eigval.v[i];
@@ -2132,7 +2132,7 @@ namespace vcp{
 
 			_T d;
 			mats< int > iarray;
-			iarray.zeros(row, 1);
+			iarray.zeros(static_cast<int>(row), 1);
 			int flag;
 			for (int j = 0; j < row; j++) {
 				d = abs(mu.v[j] - tmpeig2.v[0]);
@@ -2161,12 +2161,12 @@ namespace vcp{
 
 			// inverse iterative method
 			mats < _T > A, I, Tmp, vv, y, eig;
-			eig.zeros(row, 1);
+			eig.zeros(static_cast<int>(row), 1);
 
 
 			for (int l = 0; l < row; l++) {
 
-				I.eye(row);
+				I.eye(static_cast<int>(row));
 				A = TriA;
 
 				// A -= mu.v[l] * I;
@@ -2175,7 +2175,7 @@ namespace vcp{
 				}
 
 				Tmp = A;
-				vv.rand(row, 1); // random vector (as initial vector)
+				vv.rand(static_cast<int>(row), 1); // random vector (as initial vector)
 				_T d, dold;
 				d = zero;
 
@@ -2251,7 +2251,7 @@ namespace vcp{
 //			V = Vtmp * V;
 			Vtmp.mulmm(vv, V);
 			// eigenvalues (diagonal elements)
-			this->zeros(row);
+			this->zeros(static_cast<int>(row));
 			for (int i = 0; i < row; i++) {
 				this->v[i + row * i] = eig.v[i];
 			}
@@ -2532,8 +2532,8 @@ namespace vcp{
 			vcp::index_t nn = static_cast<vcp::index_t>(i) * j;
 			int orow, ocolumn, on;
 			_T a0 = _T(0);
-			orow = row;
-			ocolumn = column;
+			orow = static_cast<int>(row);
+			ocolumn = static_cast<int>(column);
 			on = n;
 
 			if (row > i || column > j) {

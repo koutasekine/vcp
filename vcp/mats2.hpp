@@ -60,6 +60,22 @@ namespace vcp {
 			}
 		}
 
+		// MATS-N64-B (ii): scale n contiguous elements (incx == 1) by alpha.
+		// n <= INT_MAX: exactly the former single tscal call (bit-identical path).
+		// n >  INT_MAX: 2^30-element slices; scal is element-wise (no reduction), so
+		// every element is still computed as the same single product.
+		static void scal_all(const vcp::index_t n, const _T& alpha, _T* x) {
+			if (n <= 2147483647) {
+				vcp::tscal(static_cast<int>(n), alpha, x, 1);
+				return;
+			}
+			const vcp::index_t chunk = 1073741824;
+			for (vcp::index_t off = 0; off < n; off += chunk) {
+				const vcp::index_t len = (n - off < chunk) ? (n - off) : chunk;
+				vcp::tscal(static_cast<int>(len), alpha, x + off, 1);
+			}
+		}
+
 	public:
 		using base_type::base_type;
 
@@ -74,12 +90,12 @@ namespace vcp {
 		virtual void mulmm(const mats2< _T >& B, mats2< _T >& c) const {
 			if (this->type == 'S' && (B.type == 'C' || B.type == 'R' || B.type == 'M')) {
 				c = B;
-				vcp::tscal(B.n, this->v[0], c.v.data(), 1);
+				scal_all(B.n, this->v[0], c.v.data());
 				return;
 			}
 			if ((this->type == 'C' || this->type == 'R' || this->type == 'M') && B.type == 'S') {
 				c = *this;
-				vcp::tscal(this->n, B.v[0], c.v.data(), 1);
+				scal_all(this->n, B.v[0], c.v.data());
 				return;
 			}
 			if (this->type == 'S' && B.type == 'S') {
@@ -97,31 +113,31 @@ namespace vcp {
 			if (this->type == 'R' && B.type == 'C') {
 				c.zeros(1, 1);
 				c.type = 'S';
-				c.v[0] = vcp::tdot(this->column, this->v.data(), 1, B.v.data(), 1);
+				c.v[0] = vcp::tdot(static_cast<int>(this->column), this->v.data(), 1, B.v.data(), 1);
 				return;
 			}
 			if (this->type == 'C' && B.type == 'R') {
-				c.zeros(this->row, B.column);
-				vcp::tgemm('N', 'N', this->row, B.column, 1, _T(1), this->v.data(), this->row,
-					B.v.data(), B.row, _T(0), c.v.data(), c.row);
+				c.zeros(static_cast<int>(this->row), static_cast<int>(B.column));
+				vcp::tgemm('N', 'N', static_cast<int>(this->row), static_cast<int>(B.column), 1, _T(1), this->v.data(), static_cast<int>(this->row),
+					B.v.data(), static_cast<int>(B.row), _T(0), c.v.data(), static_cast<int>(c.row));
 				return;
 			}
 			if (this->type == 'M' && B.type == 'C') {
-				c.zeros(this->row, 1);
-				vcp::tgemm('N', 'N', this->row, 1, this->column, _T(1), this->v.data(), this->row,
-					B.v.data(), B.row, _T(0), c.v.data(), c.row);
+				c.zeros(static_cast<int>(this->row), 1);
+				vcp::tgemm('N', 'N', static_cast<int>(this->row), 1, static_cast<int>(this->column), _T(1), this->v.data(), static_cast<int>(this->row),
+					B.v.data(), static_cast<int>(B.row), _T(0), c.v.data(), static_cast<int>(c.row));
 				return;
 			}
 			if (this->type == 'R' && B.type == 'M') {
-				c.zeros(1, B.column);
-				vcp::tgemm('N', 'N', 1, B.column, this->column, _T(1), this->v.data(), 1,
-					B.v.data(), B.row, _T(0), c.v.data(), 1);
+				c.zeros(1, static_cast<int>(B.column));
+				vcp::tgemm('N', 'N', 1, static_cast<int>(B.column), static_cast<int>(this->column), _T(1), this->v.data(), 1,
+					B.v.data(), static_cast<int>(B.row), _T(0), c.v.data(), 1);
 				return;
 			}
 			if (this->type == 'M' && B.type == 'M') {
-				c.zeros(this->row, B.column);
-				vcp::tgemm('N', 'N', this->row, B.column, this->column, _T(1), this->v.data(), this->row,
-					B.v.data(), B.row, _T(0), c.v.data(), c.row);
+				c.zeros(static_cast<int>(this->row), static_cast<int>(B.column));
+				vcp::tgemm('N', 'N', static_cast<int>(this->row), static_cast<int>(B.column), static_cast<int>(this->column), _T(1), this->v.data(), static_cast<int>(this->row),
+					B.v.data(), static_cast<int>(B.row), _T(0), c.v.data(), static_cast<int>(c.row));
 				return;
 			}
 			vcp::throw_error<vcp::dimension_error>(
@@ -144,9 +160,9 @@ namespace vcp {
 			if (this->type != 'M') {
 				vcp::throw_error<vcp::state_error>("mats2::mulltmm: unsupported matrix type: ", this->type);
 			}
-			c.zeros(this->column, this->column);
-			vcp::tsyrk('U', 'T', this->column, this->row, _T(1), this->v.data(), this->row,
-				_T(0), c.v.data(), c.row);
+			c.zeros(static_cast<int>(this->column), static_cast<int>(this->column));
+			vcp::tsyrk('U', 'T', static_cast<int>(this->column), static_cast<int>(this->row), _T(1), this->v.data(), static_cast<int>(this->row),
+				_T(0), c.v.data(), static_cast<int>(c.row));
 			c.copy_upper_to_lower();
 		}
 
@@ -158,8 +174,8 @@ namespace vcp {
 			}
 			x = b;
 			std::vector<int> ipiv(static_cast<std::size_t>(this->row), 0);
-			const int info = vcp::tgesv(this->row, b.column, this->v.data(), this->row,
-				ipiv.data(), x.v.data(), x.row);
+			const int info = vcp::tgesv(static_cast<int>(this->row), static_cast<int>(b.column), this->v.data(), static_cast<int>(this->row),
+				ipiv.data(), x.v.data(), static_cast<int>(x.row));
 			mats2_detail::check_lapack_info("mats2::linearsolve/tgesv", info);
 		}
 
@@ -169,9 +185,9 @@ namespace vcp {
 					"mats2::inv: matrix must be square: ", this->row, " != ", this->column);
 			}
 			std::vector<int> ipiv(static_cast<std::size_t>(this->row), 0);
-			int info = vcp::tgetrf(this->row, this->column, this->v.data(), this->row, ipiv.data());
+			int info = vcp::tgetrf(static_cast<int>(this->row), static_cast<int>(this->column), this->v.data(), static_cast<int>(this->row), ipiv.data());
 			mats2_detail::check_lapack_info("mats2::inv/tgetrf", info);
-			info = vcp::tgetri(this->row, this->v.data(), this->row, ipiv.data());
+			info = vcp::tgetri(static_cast<int>(this->row), this->v.data(), static_cast<int>(this->row), ipiv.data());
 			mats2_detail::check_lapack_info("mats2::inv/tgetri", info);
 		}
 
@@ -179,7 +195,7 @@ namespace vcp {
 			if (!this->is_symmetric()) {
 				vcp::throw_error<vcp::domain_error>("mats2::Cholesky: matrix must be symmetric");
 			}
-			const int info = vcp::tpotrf('U', this->row, this->v.data(), this->row);
+			const int info = vcp::tpotrf('U', static_cast<int>(this->row), this->v.data(), static_cast<int>(this->row));
 			mats2_detail::check_lapack_info("mats2::Cholesky/tpotrf", info);
 			this->zero_lower_triangle();
 		}
@@ -190,7 +206,7 @@ namespace vcp {
 				vcp::throw_error<vcp::domain_error>("mats2::eigsym: matrix must be symmetric");
 			}
 			std::vector< _T > w(static_cast<std::size_t>(this->row), _T(0));
-			const int info = vcp::tsyev('N', 'U', this->row, this->v.data(), this->row, w.data());
+			const int info = vcp::tsyev('N', 'U', static_cast<int>(this->row), this->v.data(), static_cast<int>(this->row), w.data());
 			mats2_detail::check_lapack_info("mats2::eigsym/tsyev", info);
 			this->set_diagonal_from_vector(w);
 		}
@@ -201,7 +217,7 @@ namespace vcp {
 				vcp::throw_error<vcp::domain_error>("mats2::eigsym: matrix must be symmetric");
 			}
 			std::vector< _T > w(static_cast<std::size_t>(this->row), _T(0));
-			const int info = vcp::tsyev('V', 'U', this->row, this->v.data(), this->row, w.data());
+			const int info = vcp::tsyev('V', 'U', static_cast<int>(this->row), this->v.data(), static_cast<int>(this->row), w.data());
 			mats2_detail::check_lapack_info("mats2::eigsym/tsyev", info);
 			V = *this;
 			this->set_diagonal_from_vector(w);
@@ -221,8 +237,8 @@ namespace vcp {
 					"), B=(", B.row, ", ", B.column, ")");
 			}
 			std::vector< _T > w(static_cast<std::size_t>(this->row), _T(0));
-			const int info = vcp::tsygv(1, 'N', 'U', this->row, this->v.data(), this->row,
-				B.v.data(), B.row, w.data());
+			const int info = vcp::tsygv(1, 'N', 'U', static_cast<int>(this->row), this->v.data(), static_cast<int>(this->row),
+				B.v.data(), static_cast<int>(B.row), w.data());
 			mats2_detail::check_lapack_info("mats2::eigsymge/tsygv", info);
 			this->set_diagonal_from_vector(w);
 		}
@@ -241,8 +257,8 @@ namespace vcp {
 					"), B=(", B.row, ", ", B.column, ")");
 			}
 			std::vector< _T > w(static_cast<std::size_t>(this->row), _T(0));
-			const int info = vcp::tsygv(1, 'V', 'U', this->row, this->v.data(), this->row,
-				B.v.data(), B.row, w.data());
+			const int info = vcp::tsygv(1, 'V', 'U', static_cast<int>(this->row), this->v.data(), static_cast<int>(this->row),
+				B.v.data(), static_cast<int>(B.row), w.data());
 			mats2_detail::check_lapack_info("mats2::eigsymge/tsygv", info);
 			V = *this;
 			this->set_diagonal_from_vector(w);

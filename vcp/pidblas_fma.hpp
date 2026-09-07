@@ -59,7 +59,7 @@ namespace vcp {
 				return;
 			}
 
-            c.zeros(this->row, B.column);
+            c.zeros(static_cast<int>(this->row), static_cast<int>(B.column));
 #ifdef _OPENMP
 #ifndef VCP_MATS_NOMP
 				#pragma omp parallel for
