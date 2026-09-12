@@ -129,19 +129,6 @@ namespace vcp {
 	//     - Default: same behaviour as pre-7.7 spmatrix::is_symmetric(tol).
 	// -----------------------------------------------------------------------
 
-	// C++11 static_assert check: verifies that P has the required typedefs.
-	// Call this in a context where P is a complete type.
-	template <class P>
-	struct spmats_policy_check {
-		typedef typename P::index_type index_type;
-		typedef typename P::value_type value_type;
-		typedef typename P::format_type format_type;
-
-		// index_type must be a signed integer type
-		static_assert(std::is_signed<index_type>::value,
-		              "spmats policy: index_type must be a signed integer type");
-	};
-
 } // namespace vcp
 
 #endif // VCP_SPMATS_POLICY_TRAITS_HPP

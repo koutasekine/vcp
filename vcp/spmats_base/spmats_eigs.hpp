@@ -1125,7 +1125,7 @@ static void si_polish_rescue_generalized_(eig_result<_T>& result,
 // 逆反復の誤差は目的固有方向に落ちる(古典理論)— 分解失敗対は磨き前を採用。
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
-static typename std::enable_if<std::is_signed<_Index>::value, void>::type
+static void
 si_polish_shifted_rescue_(eig_result<_T>& result,
                           const spmats<_T,_Index>& self,
                           const eig_options<_T>& options)
@@ -1215,15 +1215,6 @@ si_polish_shifted_rescue_(eig_result<_T>& result,
         result.message = "converged (theta-shifted inverse-iteration polish; EIG-6 F-2'; "
             "extra factorizations=" + std::to_string(polish_factorizations) + ")";
     }
-}
-
-template <typename _T, typename _Index>
-static typename std::enable_if<!std::is_signed<_Index>::value, void>::type
-si_polish_shifted_rescue_(eig_result<_T>&,
-                          const spmats<_T,_Index>&,
-                          const eig_options<_T>&)
-{
-    // unsigned Index は sparse LU 不対応(E-A1 と同じ制約)— 磨きなし(現状維持)
 }
 
 // Field-compatible package (mirrors the consumed subset of the old
@@ -2290,7 +2281,7 @@ static eig_result<_T> generalized_shift_invert_drive_(const spmats<_T,_Index>& s
 
 // --- E-A1 sparse_lu path: standard shift-invert Lanczos --------------------
 template <typename _T, typename _Index>
-static typename std::enable_if<std::is_signed<_Index>::value, eig_result<_T> >::type
+static eig_result<_T>
 shift_invert_lanczos_sparse_lu_(const spmats<_T,_Index>& self,
                                   const std::size_t k,
                                   const eig_options<_T>& options,
@@ -2334,31 +2325,9 @@ shift_invert_lanczos_sparse_lu_(const spmats<_T,_Index>& self,
     return result;
 }
 
-template <typename _T, typename _Index>
-static typename std::enable_if<!std::is_signed<_Index>::value, eig_result<_T> >::type
-shift_invert_lanczos_sparse_lu_(const spmats<_T,_Index>& self,
-                                  const std::size_t k,
-                                  const eig_options<_T>& options,
-                                  const typename vcp::tsparse_scalar::real_type<_T>::type& sigma)
-{
-    (void)self; (void)options; (void)sigma;
-    eig_result<_T> result;
-    result.requested_count = k;
-    result.method = eig_solver_method::shift_invert_lanczos;
-    result.used_method = eig_method_to_string_<_T,_Index>(eig_solver_method::shift_invert_lanczos);
-    result.used_shift_invert = true;
-    result.used_dense_fallback = false;
-    result.status = "factorization_failed";
-    result.failure_reason = "shift-invert sparse_lu solver requires a signed Index type;"
-        " set eig_options::shift_invert_solver = eig_shift_invert_solver::ilu0_gmres";
-    result.message = result.failure_reason;
-    set_result_counts_<_T,_Index>(result, k);
-    return result;
-}
-
 // --- E-A1 sparse_lu path: standard shift-invert Arnoldi --------------------
 template <typename _T, typename _Index>
-static typename std::enable_if<std::is_signed<_Index>::value, eig_result<_T> >::type
+static eig_result<_T>
 shift_invert_arnoldi_sparse_lu_(const spmats<_T,_Index>& self,
                                   const std::size_t k,
                                   const eig_options<_T>& options,
@@ -2411,32 +2380,9 @@ shift_invert_arnoldi_sparse_lu_(const spmats<_T,_Index>& self,
     return result;
 }
 
-template <typename _T, typename _Index>
-static typename std::enable_if<!std::is_signed<_Index>::value, eig_result<_T> >::type
-shift_invert_arnoldi_sparse_lu_(const spmats<_T,_Index>& self,
-                                  const std::size_t k,
-                                  const eig_options<_T>& options,
-                                  const typename vcp::tsparse_scalar::real_type<_T>::type& sigma)
-{
-    (void)self; (void)sigma;
-    eig_result<_T> result;
-    result.requested_count = k;
-    result.method = eig_solver_method::shift_invert_arnoldi;
-    result.used_method = eig_method_to_string_<_T,_Index>(eig_solver_method::shift_invert_arnoldi);
-    result.used_orthogonalization = orthogonalization_to_string_<_T,_Index>(options.orthogonalization);
-    result.used_shift_invert = true;
-    result.used_dense_fallback = false;
-    result.status = "factorization_failed";
-    result.failure_reason = "shift-invert sparse_lu solver requires a signed Index type;"
-        " set eig_options::shift_invert_solver = eig_shift_invert_solver::ilu0_gmres";
-    result.message = result.failure_reason;
-    set_result_counts_<_T,_Index>(result, k);
-    return result;
-}
-
 // --- E-A1 sparse_lu path: generalized shift-invert -------------------------
 template <typename _T, typename _Index>
-static typename std::enable_if<std::is_signed<_Index>::value, eig_result<_T> >::type
+static eig_result<_T>
 generalized_shift_invert_sparse_lu_(const spmats<_T,_Index>& self,
                                       const spmats<_T,_Index>& B,
                                       const std::size_t k,
@@ -2499,34 +2445,6 @@ generalized_shift_invert_sparse_lu_(const spmats<_T,_Index>& self,
         si_polish_rescue_generalized_<_T,_Index>(result, self, B, options, apply_polish);
         result.linear_solves = op.linear_solves();
     }
-    set_result_counts_<_T,_Index>(result, k);
-    return result;
-}
-
-template <typename _T, typename _Index>
-static typename std::enable_if<!std::is_signed<_Index>::value, eig_result<_T> >::type
-generalized_shift_invert_sparse_lu_(const spmats<_T,_Index>& self,
-                                      const spmats<_T,_Index>& B,
-                                      const std::size_t k,
-                                      const eig_options<_T>& options,
-                                      const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
-                                      const eig_solver_method actual_method,
-                                      const bool promoted_from_lanczos)
-{
-    (void)self; (void)B; (void)options; (void)sigma;
-    eig_result<_T> result;
-    result.requested_count = k;
-    result.method = actual_method;
-    result.used_method = promoted_from_lanczos
-        ? "shift_invert_arnoldi(promoted_from_lanczos)"
-        : eig_method_to_string_<_T,_Index>(actual_method);
-    result.used_shift_invert = true;
-    result.used_generalized_operator = true;
-    result.used_dense_fallback = false;
-    result.status = "factorization_failed";
-    result.failure_reason = "shift-invert sparse_lu solver requires a signed Index type;"
-        " set eig_options::shift_invert_solver = eig_shift_invert_solver::ilu0_gmres";
-    result.message = result.failure_reason;
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }

@@ -538,7 +538,7 @@ namespace spmats_fsai_detail {
 	// unchanged semantics for signed Index).
 	// -----------------------------------------------------------------------
 	template <typename _T, typename _Index>
-	inline typename std::enable_if<std::is_signed<_Index>::value, bool>::type
+	inline bool
 	fsai_ordering_perm_(const spmats<_T, _Index>& A,
 	                    const sparse_chol_ordering ord,
 	                    const _Index n,
@@ -559,16 +559,6 @@ namespace spmats_fsai_detail {
 			// unknown enum value (natural / auto_select handled by the caller)
 			return false;
 		}
-	}
-
-	template <typename _T, typename _Index>
-	inline typename std::enable_if<!std::is_signed<_Index>::value, bool>::type
-	fsai_ordering_perm_(const spmats<_T, _Index>&,
-	                    const sparse_chol_ordering,
-	                    const _Index,
-	                    std::vector<_Index>&)
-	{
-		return false;   // unreachable at runtime (entry guard rejects unsigned)
 	}
 
 } // namespace spmats_fsai_detail
@@ -618,19 +608,6 @@ fsai_result<_T, _Index> spmats<_T, _Index>::policy_fsai_with_info_impl(
 	const spmats<_T, _Index>& A = *this;   // (a)-type: subject is *this
 	fsai_result<_T, _Index> out;
 	try {
-		// FSAI x unsigned Index guard (SLU-HK1 D-B): the ordering layer is
-		// signed-Index only; report the honest runtime failure through the
-		// existing status vocabulary BEFORE any ordering work, so unsigned
-		// TUs stay buildable (see fsai_ordering_perm_ above) and never get
-		// a silent fallback.
-		if (!std::is_signed<_Index>::value) {
-			U.resize(_Index(0), _Index(0));
-			D.resize(_Index(0), _Index(0));
-			perm.clear();
-			out = fsai_result<_T, _Index>();
-			out.status = fsai_status::invalid_input;
-			return out;
-		}
 
 		const _Index n = A.rowsize();
 		const std::size_t un = static_cast<std::size_t>(n);

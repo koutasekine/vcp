@@ -66,8 +66,7 @@ namespace spmats_ldl_detail {
 	// signed Index path: spmats -> CSC -> sparse_ldl_factorize_with_info ->
 	// L / D spmats construction (design v2 SS5.2) + perm.
 	template <typename _T, typename _Index>
-	inline typename std::enable_if<std::is_signed<_Index>::value,
-	                               ldl_result<_T, _Index> >::type
+	inline ldl_result<_T, _Index>
 	dispatch_sparse_ldl_(
 	    const spmats<_T, _Index>& A,
 	    spmats<_T, _Index>& L,
@@ -146,23 +145,6 @@ namespace spmats_ldl_detail {
 		return out;
 	}
 
-	// unsigned Index path: sparse LDL cannot be used (Index must be signed);
-	// same reporting convention as dispatch_sparse_lu_.
-	template <typename _T, typename _Index>
-	inline typename std::enable_if<!std::is_signed<_Index>::value,
-	                               ldl_result<_T, _Index> >::type
-	dispatch_sparse_ldl_(
-	    const spmats<_T, _Index>& A,
-	    spmats<_T, _Index>& L,
-	    spmats<_T, _Index>& D,
-	    std::vector<_Index>& perm,
-	    const ldl_options<_T>& opt)
-	{
-		(void)A; (void)L; (void)D; (void)perm; (void)opt;
-		vcp::throw_error<vcp::state_error>(
-		    "spmats::policy_ldl_with_info: sparse LDL requires a signed Index type");
-		return ldl_result<_T, _Index>();
-	}
 
 } // namespace spmats_ldl_detail
 

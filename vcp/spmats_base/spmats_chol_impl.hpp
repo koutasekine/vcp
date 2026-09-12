@@ -49,8 +49,7 @@ namespace spmats_chol_detail {
 	// signed Index path: spmats -> CSC -> sparse_chol_factorize_with_info ->
 	// L spmats construction + perm.
 	template <typename _T, typename _Index>
-	inline typename std::enable_if<std::is_signed<_Index>::value,
-	                               chol_result<_T, _Index> >::type
+	inline chol_result<_T, _Index>
 	dispatch_sparse_chol_(
 	    const spmats<_T, _Index>& A,
 	    spmats<_T, _Index>& L,
@@ -109,22 +108,6 @@ namespace spmats_chol_detail {
 		return out;
 	}
 
-	// unsigned Index path: sparse CHOL cannot be used (Index must be
-	// signed); same reporting convention as dispatch_sparse_ldl_.
-	template <typename _T, typename _Index>
-	inline typename std::enable_if<!std::is_signed<_Index>::value,
-	                               chol_result<_T, _Index> >::type
-	dispatch_sparse_chol_(
-	    const spmats<_T, _Index>& A,
-	    spmats<_T, _Index>& L,
-	    std::vector<_Index>& perm,
-	    const chol_options<_T>& opt)
-	{
-		(void)A; (void)L; (void)perm; (void)opt;
-		vcp::throw_error<vcp::state_error>(
-		    "spmats::policy_chol_with_info: sparse CHOL requires a signed Index type");
-		return chol_result<_T, _Index>();
-	}
 
 } // namespace spmats_chol_detail
 

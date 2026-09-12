@@ -37,8 +37,7 @@ namespace spmats_lu_extract_detail {
 	// L / U spmats construction (assign_csc: extraction output is
 	// column-sorted with exact zeros already dropped) + p / q.
 	template <typename _T, typename _Index>
-	inline typename std::enable_if<std::is_signed<_Index>::value,
-	                               lu_extract_result<_T, _Index> >::type
+	inline lu_extract_result<_T, _Index>
 	dispatch_sparse_lu_extract_(
 	    const spmats<_T, _Index>& A,
 	    spmats<_T, _Index>& L,
@@ -85,24 +84,6 @@ namespace spmats_lu_extract_detail {
 		return out;
 	}
 
-	// unsigned Index path: sparse LU cannot be used (Index must be signed);
-	// same reporting convention as dispatch_sparse_lu_ / dispatch_sparse_ldl_.
-	template <typename _T, typename _Index>
-	inline typename std::enable_if<!std::is_signed<_Index>::value,
-	                               lu_extract_result<_T, _Index> >::type
-	dispatch_sparse_lu_extract_(
-	    const spmats<_T, _Index>& A,
-	    spmats<_T, _Index>& L,
-	    spmats<_T, _Index>& U,
-	    std::vector<_Index>& p,
-	    std::vector<_Index>& q,
-	    const lu_extract_options<_T>& opt)
-	{
-		(void)A; (void)L; (void)U; (void)p; (void)q; (void)opt;
-		vcp::throw_error<vcp::state_error>(
-		    "spmats::policy_lu_with_info: sparse LU requires a signed Index type");
-		return lu_extract_result<_T, _Index>();
-	}
 
 } // namespace spmats_lu_extract_detail
 

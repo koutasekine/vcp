@@ -73,8 +73,7 @@ template <typename _T, typename _Index>
 class lu_factor_handle {
 public:
 	typedef typename vcp::tsparse_scalar::real_type<_T>::type real_type;
-	typedef typename std::conditional<std::is_signed<_Index>::value, _Index,
-		typename std::make_signed<_Index>::type>::type factor_index_type;
+	typedef _Index factor_index_type;   // LSS-3: Index is signed by construction (LSS-2 D-2)
 
 	lu_factor_handle() : fac_(), A_(), opt_(), n_(_Index(0)), valid_(false) {}
 

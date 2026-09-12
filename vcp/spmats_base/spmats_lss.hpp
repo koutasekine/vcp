@@ -120,8 +120,7 @@ namespace spmats_lss_detail {
 
 	// signed Index path: calls sparse_lu_factorize_with_info
 	template <typename _T, typename _Index>
-	inline typename std::enable_if<std::is_signed<_Index>::value,
-	                               linear_solve_result<_T> >::type
+	inline linear_solve_result<_T>
 	dispatch_sparse_lu_(
 	    const spmats<_T,_Index>& A,
 	    const std::vector<_T>& b,
@@ -171,26 +170,11 @@ namespace spmats_lss_detail {
 	    return result;
 	}
 
-	// unsigned Index path: sparse_lu cannot be used (Index must be signed)
-	template <typename _T, typename _Index>
-	inline typename std::enable_if<!std::is_signed<_Index>::value,
-	                               linear_solve_result<_T> >::type
-	dispatch_sparse_lu_(
-	    const spmats<_T,_Index>& A,
-	    const std::vector<_T>& b,
-	    const linear_solve_options<_T>& opt)
-	{
-	    (void)A; (void)b; (void)opt;
-	    vcp::throw_error<vcp::state_error>(
-	        "spmats::policy_lss_with_info: sparse_lu requires a signed Index type");
-	    return linear_solve_result<_T>();
-	}
 
 	// ---------------------------------------------------------------------------
-	// resolve_auto_nonsymmetric_: SFINAE-guarded nonsymmetric branch of the
-	// LSS-1 P-1 auto_select resolution (same split pattern as
-	// dispatch_sparse_lu_ / dispatch_sparse_lu_extract_ -- the signed-only
-	// body is never instantiated for unsigned Index).
+	// resolve_auto_: LSS-2 D-1 auto_select -> sparse_lu.  Index is signed by
+	// construction (LSS-2 D-2 static_assert in spmats), so no unsigned branch
+	// exists (LSS-3 removed the dead SFINAE overloads).
 	// ---------------------------------------------------------------------------
 
 	// signed Index path: direct method.  ORD-D4b (D-4 裁定 2026-08-01):
@@ -200,21 +184,12 @@ namespace spmats_lss_detail {
 	// は、validate_symbolic_options が auto を受理し symbolic が必ず解決する
 	// 構造で保たれる。sparse_lu_options の既定自体は不変。
 	template <typename _T, typename _Index>
-	inline typename std::enable_if<std::is_signed<_Index>::value, void>::type
-	resolve_auto_nonsymmetric_(linear_solve_options<_T>& resolved)
+	inline void
+	resolve_auto_(linear_solve_options<_T>& resolved)
 	{
 	    resolved.method = linear_solver_method::sparse_lu;
 	}
 
-	// unsigned Index path: sparse_lu is impossible; no silent fallback (D-4).
-	template <typename _T, typename _Index>
-	inline typename std::enable_if<!std::is_signed<_Index>::value, void>::type
-	resolve_auto_nonsymmetric_(linear_solve_options<_T>& resolved)
-	{
-	    (void)resolved;
-	    vcp::throw_error<vcp::state_error>(
-	        "spmats::policy_lss_with_info: auto_select cannot solve a nonsymmetric system with unsigned Index (sparse_lu requires a signed Index type); specify an iterative method explicitly");
-	}
 
 } // namespace spmats_lss_detail
 
@@ -627,29 +602,26 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_lss_with_info_impl(
 		vcp::throw_error<vcp::invalid_argument>("spmats::policy_lss_with_info: tol must be positive");
 
 	// -------------------------------------------------------------------
-	// LSS-1 P-1: auto_select resolution (design §2.2).  Executed ONLY when
-	// the caller left method == auto_select; every explicitly requested
-	// method reaches the switch below through the unchanged path.
-	//   symmetric (policy_is_symmetric, default tol 1e-12; complex-symmetric
-	//   check, not Hermitian) -> conjugate_gradient (D-2; the CG-internal
-	//   check_symmetric with tol 1e-10 stays active, D-5),
-	//   nonsymmetric -> sparse_lu (signed Index; ordering は sparse_lu_symbolic
-	//   の一元解決に委譲、ORD-D4b で旧 D-3 の amd 明示設定を撤去) or
-	//   vcp::state_error for unsigned Index (D-4, no silent fallback).
+	// LSS-2 D-1: auto_select resolution.  Executed ONLY when the caller
+	// left method == auto_select; every explicitly requested method reaches
+	// the switch below through the unchanged path.
+	//   auto_select -> sparse_lu, UNCONDITIONALLY (no symmetry test).
+	// Rationale (LSS-2 design §1): the former symmetric -> conjugate_gradient
+	// rule (LSS-1 D-2) selected CG on merely symmetric matrices; CG requires
+	// SPD, and SPD is not cheaply decidable (a decisive test costs a
+	// Cholesky), so the default is the direct solve.  Users who KNOW the
+	// system is SPD and need speed on large 3D problems should request
+	// method = conjugate_gradient explicitly (LSS-2 design §1.4 measured
+	// 2-3 orders of magnitude difference on 3D Laplacians).
+	// Index is signed by construction (LSS-2 D-2 static_assert in spmats),
+	// so resolve_auto_ always takes the signed overload.
 	// The returned result.method is the RESOLVED method (each solve helper
 	// stamps its own value; auto_select is never returned).  Re-entry depth
 	// is exactly 1: resolved.method != auto_select.
-	// NOTE: auto is not a universal best pick — for a huge nonsymmetric
-	// system sparse_lu can be expensive; choose an explicit iterative
-	// method there.
 	// -------------------------------------------------------------------
 	if (opt.method == linear_solver_method::auto_select) {
 		linear_solve_options<_T> resolved = opt;
-		if (A.policy_is_symmetric(A)) {
-			resolved.method = linear_solver_method::conjugate_gradient;
-		} else {
-			spmats_lss_detail::resolve_auto_nonsymmetric_<_T, _Index>(resolved);
-		}
+		spmats_lss_detail::resolve_auto_<_T, _Index>(resolved);
 		return policy_lss_with_info_impl(b, resolved);
 	}
 
@@ -715,8 +687,7 @@ namespace spmats_lss_detail {
 	// signed Index path: factorize once and pack the handle.  On success the
 	// handle keeps a finalized CSR copy of A for the IR residual (§3.3).
 	template <typename _T, typename _Index>
-	inline typename std::enable_if<std::is_signed<_Index>::value,
-	                               lu_factor_handle<_T,_Index> >::type
+	inline lu_factor_handle<_T,_Index>
 	dispatch_lu_factorize_(
 	    const spmats<_T,_Index>& A,
 	    const sparse_lu_options<_T>& opt)
@@ -733,20 +704,6 @@ namespace spmats_lss_detail {
 	    return handle;
 	}
 
-	// unsigned Index path: sparse LU cannot be used (Index must be signed);
-	// same reporting convention as dispatch_sparse_lu_.
-	template <typename _T, typename _Index>
-	inline typename std::enable_if<!std::is_signed<_Index>::value,
-	                               lu_factor_handle<_T,_Index> >::type
-	dispatch_lu_factorize_(
-	    const spmats<_T,_Index>& A,
-	    const sparse_lu_options<_T>& opt)
-	{
-	    (void)A; (void)opt;
-	    vcp::throw_error<vcp::state_error>(
-	        "spmats::policy_lu_factorize_with_info: sparse_lu requires a signed Index type");
-	    return lu_factor_handle<_T,_Index>();
-	}
 
 } // namespace spmats_lss_detail
 

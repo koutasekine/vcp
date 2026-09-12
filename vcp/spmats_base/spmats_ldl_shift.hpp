@@ -296,8 +296,7 @@ template <typename _T, typename _Index>
 class ldl_shift_handle {
 public:
 	typedef typename vcp::tsparse_scalar::real_type<_T>::type real_type;
-	typedef typename std::conditional<std::is_signed<_Index>::value, _Index,
-		typename std::make_signed<_Index>::type>::type factor_index_type;
+	typedef _Index factor_index_type;   // LSS-3: Index is signed by construction (LSS-2 D-2)
 	typedef ldl_shift_workspace<_T, factor_index_type>       workspace_type;
 	typedef ldl_shift_inertia_result<factor_index_type>      inertia_result_type;
 
@@ -533,8 +532,7 @@ namespace spmats_ldl_shift_detail {
 	// status vocabulary.  B == 0 selects the A - sigma*I form.
 	// -----------------------------------------------------------------------
 	template <typename _T, typename _Index>
-	inline typename std::enable_if<std::is_signed<_Index>::value,
-	                               ldl_shift_handle<_T, _Index> >::type
+	inline ldl_shift_handle<_T, _Index>
 	dispatch_ldl_shift_setup_(
 	    const spmats<_T, _Index>& A,
 	    const spmats<_T, _Index>* B,
@@ -679,21 +677,6 @@ namespace spmats_ldl_shift_detail {
 		return h;
 	}
 
-	// unsigned-Index path: sparse LDL cannot be used (Index must be signed);
-	// same reporting convention as the other sparse dispatches.
-	template <typename _T, typename _Index>
-	inline typename std::enable_if<!std::is_signed<_Index>::value,
-	                               ldl_shift_handle<_T, _Index> >::type
-	dispatch_ldl_shift_setup_(
-	    const spmats<_T, _Index>& A,
-	    const spmats<_T, _Index>* B,
-	    const sparse_ldl_options<_T>& opt)
-	{
-		(void)A; (void)B; (void)opt;
-		vcp::throw_error<vcp::state_error>(
-		    "spmats::policy_ldl_shift_setup_with_info: sparse LDL requires a signed Index type");
-		return ldl_shift_handle<_T, _Index>();
-	}
 
 } // namespace spmats_ldl_shift_detail
 

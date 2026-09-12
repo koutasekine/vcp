@@ -56,12 +56,11 @@ namespace vcp {
 		gmres,
 		sparse_lu,
 		// LSS-1 P-1 (D-1): appended LAST -- existing enumerator order/values
-		// are unchanged.  Resolved in policy_lss_with_info_impl BEFORE the
-		// method switch: symmetric (policy_is_symmetric, tol 1e-12) ->
-		// conjugate_gradient, nonsymmetric -> sparse_lu (signed Index only;
-		// unsigned Index throws vcp::state_error, D-4).  The returned
-		// result.method is the RESOLVED method, never auto_select (each solve
-		// helper stamps its own method value).
+		// are unchanged.  LSS-2 D-1: resolved in policy_lss_with_info_impl
+		// BEFORE the method switch to sparse_lu UNCONDITIONALLY (the former
+		// symmetric -> conjugate_gradient rule was withdrawn: CG needs SPD,
+		// which is not cheaply decidable).  The returned result.method is the
+		// RESOLVED method, never auto_select.
 		auto_select
 	};
 
@@ -92,6 +91,7 @@ namespace vcp {
 
 		// LSS-1 P-1 (D-1): default method changed conjugate_gradient ->
 		// auto_select.  All other field defaults are unchanged.
+		// LSS-2: default stays auto_select; auto_select now means sparse_lu.
 		linear_solve_options()
 			: method(linear_solver_method::auto_select), max_iter(1000),
 			  tol(vcp::tsparse_scalar::decimal_power_negative<real_type>(12)),

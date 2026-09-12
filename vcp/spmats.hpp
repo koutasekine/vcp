@@ -54,6 +54,13 @@
 namespace vcp {
 
 	template <typename _T, typename _Index = int> class spmats {
+		// LSS-2 D-2: Index must be a signed integer type.  The sparse LU /
+		// CHOL / LDL layers use Index(-1) as a tree sentinel
+		// (tsparse_sparse_lu.hpp: "sentinel -1 used for roots") and every
+		// direct solver is signed-only; an unsigned Index would leave only
+		// the iterative solvers, which are no longer the default (D-1).
+		static_assert(std::is_integral<_Index>::value && std::is_signed<_Index>::value,
+		              "vcp::spmats: _Index must be a signed integer type");
 	public:
 		typedef _Index index_type;
 		typedef _T value_type;

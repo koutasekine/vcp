@@ -890,16 +890,6 @@ fsai_adaptive_result<_T, _Index> spmats<_T, _Index>::policy_fsai_adaptive_with_i
 	const spmats<_T, _Index>& A = *this;
 	fsai_adaptive_result<_T, _Index> out;
 	try {
-		// [SLU-HK1 STOP-4 ruling] FSAI x unsigned Index guard: same contract
-		// as the static-FSAI entry guard (spmats_fsai_impl.hpp) -- the shared
-		// SLU ordering layer is signed-Index only, so unsigned TUs must stay
-		// buildable (see fsai_ordering_perm_) and get the honest runtime
-		// failure through the existing rejection helper BEFORE any work.
-		// The fsai_adaptive track should formally adopt this sign dispatch
-		// in its own design revision.
-		if (!std::is_signed<_Index>::value) {
-			return spmats_fsai_adaptive_detail::fsai2_reject_invalid_<_T, _Index>(U, D, perm);
-		}
 
 		const _Index n = A.rowsize();
 		const std::size_t un = static_cast<std::size_t>(n);
@@ -959,14 +949,6 @@ fsai_adaptive_result<_T, _Index> spmats<_T, _Index>::policy_fsai_adaptive_with_i
 	const spmats<_T, _Index>& A = *this;
 	fsai_adaptive_result<_T, _Index> out;
 	try {
-		// [SLU-HK1 STOP-4 ruling] FSAI x unsigned Index guard: same honest
-		// rejection as the diagonal-init entry above -- keeps the unsigned
-		// contract consistent across both construction entries (this path
-		// does not reach the ordering layer, but an unsigned adaptive FSAI
-		// has never been validated by any track).
-		if (!std::is_signed<_Index>::value) {
-			return spmats_fsai_adaptive_detail::fsai2_reject_invalid_<_T, _Index>(U, D, perm);
-		}
 
 		const _Index n = A.rowsize();
 		if (n == _Index(0)) {
