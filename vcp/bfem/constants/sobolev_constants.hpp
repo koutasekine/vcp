@@ -232,6 +232,9 @@ T sobolev_embedding_constant_h01_measure(long long pnum, long long pden,
 // in rho, so the value at rho_lb is an upper bound for the value at rho.
 // The supply of rho_lb is the existing Poincare path (CR1 + CONST-A lower
 // bound formula) -- this header only receives the value (layer separation).
+// rho_lb is a SCALAR Dirichlet lower bound ONLY -- the proof of Plum (2008)
+// Lemma 2 (Jahresber. DMV 110, 1-31; its chain ending in (104)) goes through
+// the scalarization |u|, so substituting a STOKES eigenvalue bound is INVALID.
 //
 //     (a) n = 2, p in [2, infinity), nu = floor(p/2):
 //         C_p = (1/2)^{1/2 + (2 nu - 3)/p}
