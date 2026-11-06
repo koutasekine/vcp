@@ -219,26 +219,29 @@ inline T tlamch(const char cmach) {
 		}
 		return sfmin;
 	}
+	// VCP-C1 C1-1: the unary plus turns the static constexpr integer members into
+	// prvalues, so a T constructor taking a const reference (kv::dd / kv::mpfr<N>)
+	// does not odr-use them (no out-of-class definition exists in kv; -O0 link error).
 	if (option_is(cmach, 'B')) {
-		return T(lim::radix);
+		return T(+lim::radix);
 	}
 	if (option_is(cmach, 'P')) {
 		return lim::epsilon();
 	}
 	if (option_is(cmach, 'N')) {
-		return T(lim::digits);
+		return T(+lim::digits);
 	}
 	if (option_is(cmach, 'R')) {
 		return T(1);
 	}
 	if (option_is(cmach, 'M')) {
-		return T(lim::min_exponent);
+		return T(+lim::min_exponent);
 	}
 	if (option_is(cmach, 'U')) {
 		return lim::min();
 	}
 	if (option_is(cmach, 'L')) {
-		return T(lim::max_exponent);
+		return T(+lim::max_exponent);
 	}
 	if (option_is(cmach, 'O')) {
 		return lim::max();

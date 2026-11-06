@@ -48,9 +48,11 @@
 #ifndef VCP_SPUMAR_HPP
 #define VCP_SPUMAR_HPP
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -272,6 +274,193 @@ namespace vcp {
 			static_assert(std::is_same<S, double>::value || std::is_integral<S>::value,
 				"vcp::spumar is double-only: spmatrix<T, vcp::spumar> requires T == double (use spmatrix<T> / spmats<T> for other scalar types)");
 			base_type::set(i, j, static_cast<double>(a));
+		}
+
+		// -------------------------------------------------------------------
+		// SPU-M1 (design M1-3 / M1-6 / M1-7): preconditioner (M-付き) entries.
+		// The four member templates below hide the base member templates of
+		// the same signature; the M-less outers (NVI, never overridden) are
+		// re-exposed by the using-declarations.  spcmodumar inherits all of
+		// this unchanged (M1-8).
+		//   routing (M1-6): the fallback window of override #3 plus
+		//     `use_shift == false` (mode 1: OP = A x, no linear solve, so M
+		//     has no use) is delegated to the BASE preconditioner entry
+		//     spmats<double>::policy_eigs_with_info(k, opt, M) (which answers
+		//     unsupported_preconditioner_for_method for non-shift methods);
+		//     the generalized window of override #4 likewise.  Reason in
+		//     last_delegate_info.note.
+		//   OP (M1-4): everything else runs ARPACK mode 3 with
+		//     OP = (A - sigma I)^{-1} (generalized: (A - sigma B)^{-1} B)
+		//     applied by a LEFT-preconditioned GMRES (M.apply) at the RELATIVE
+		//     tolerance opt.tol/10 against the first preconditioned residual
+		//     (gmres_solve relative = true, M1-1), inner_max = min(n, 100),
+		//     restart min(n, inner_max), outer inner_max/10 + 1 (the base
+		//     values).  S is applied as a product only, never factorized.
+		//   honesty (M1-5): a non-converged inner GMRES or a throwing M.apply
+		//     cannot stop ARPACK inside OP; it is counted, the best GMRES
+		//     iterate is returned to ARPACK, and after the drive the result
+		//     is converged = false / status = "inner_solve_failed" with empty
+		//     eigenvalues / eigenvectors.  There is NO silent switch to
+		//     UMFPACK.
+		//   record (M1-7): backend = "arpack", note = "user_preconditioner:
+		//     inner gmres (relative tol/10)", used_method += "+user_preconditioner",
+		//     linear_solves = GMRES calls, inner_failure_count /
+		//     inner_residual_norm / inner_failure_reason as in the base.
+		// -------------------------------------------------------------------
+		using base_type::policy_eigs_with_info;
+		using base_type::policy_eigs;
+		using base_type::policy_generalized_eigs_with_info;
+		using base_type::policy_generalized_eigs;
+
+		template <class Prec>
+		eig_result<double> policy_eigs_with_info(
+			std::size_t k,
+			const eig_options<double>& opt, const Prec& M) const
+		{
+			if (!this->is_finalized()) this->finalize();
+			const std::size_t n = static_cast<std::size_t>(this->rowsize());
+
+			std::string fb = standard_fallback_reason_(k, opt);
+			if (fb.empty() && !opt.use_shift) {
+				fb = "use_shift == false (mode 1: OP = A x needs no linear solve; the preconditioner has no use)";
+			}
+			if (!fb.empty()) {
+				last_delegate_info.clear();
+				last_delegate_info.backend = "spmats-base-fallback";
+				last_delegate_info.note = "eigs(with preconditioner) fallback to the base preconditioner entry: " + fb;
+				return base_type::policy_eigs_with_info(k, opt, M);
+			}
+
+			last_delegate_info.clear();
+			last_delegate_info.backend = "arpack";
+			last_delegate_info.note = "user_preconditioner: inner gmres (relative tol/10)";
+
+			const bool symmetric = decide_symmetric_(opt);
+			const int mode = 3;
+			const double sigma = opt.shift;
+			const char* which = "LM";
+			const std::size_t ncv_s = ncv_for_(k, n);
+			const int ncv = static_cast<int>(ncv_s);
+			const int max_iter = max_iter_for_(opt);
+
+			eig_result<double> result;
+			result.requested_count = k;
+			result.method = opt.method;
+			result.used_method = symmetric ? "spumar/arpack(dsaupd)" : "spumar/arpack(dnaupd)";
+			result.used_method += "+user_preconditioner";
+			result.used_shift_invert = true;
+			result.used_subspace_dim = ncv_s;
+
+			const spmats<double, int> S = shifted_standard_(sigma);
+			const std::size_t inner_max = std::min(n, std::size_t(100));
+			const double inner_tol = opt.tol / 10.0;
+			bool failed = false;
+			std::size_t fail_count = 0;
+			double max_resid = 0.0;
+			std::string reason;
+			gmres_prec_solve_<Prec> solve = { &S, &M, inner_max, inner_tol,
+			                                  &failed, &fail_count, &max_resid, &reason };
+
+			std::size_t op_count = 0;
+			const spumar_detail::arpack_outcome oc = arpack_standard_core_(
+				k, opt, symmetric, mode, sigma, which, ncv, max_iter, solve, op_count);
+
+			if (failed) {
+				return inner_solve_failed_(result, fail_count, max_resid, reason, op_count);
+			}
+			result.inner_failure_count = 0;
+			result.inner_residual_norm = max_resid;
+			return assemble_arpack_result_(result, oc, *this, k, opt,
+				symmetric, mode, op_count);
+		}
+
+		template <class Prec>
+		std::vector<double> policy_eigs(
+			std::size_t k,
+			const eig_options<double>& opt, const Prec& M) const
+		{
+			const eig_result<double> result = policy_eigs_with_info(k, opt, M);
+			if (!result.converged)
+				vcp::throw_error<vcp::state_error>("spumar::policy_eigs(with preconditioner): eigensolver did not converge");
+			if (result.returned_real_count < k)
+				vcp::throw_error<vcp::state_error>("spumar::policy_eigs(with preconditioner): insufficient eigenvalues returned");
+			return result.eigenvalues;
+		}
+
+		template <class Prec>
+		eig_result<double> policy_generalized_eigs_with_info(
+			const spmats<double, int>& B,
+			std::size_t k, const eig_options<double>& opt, const Prec& M) const
+		{
+			if (!this->is_finalized()) this->finalize();
+			if (!B.is_finalized()) B.finalize();
+			const std::size_t n = static_cast<std::size_t>(this->rowsize());
+
+			const std::string fb = generalized_fallback_reason_(B, k, opt);
+			if (!fb.empty()) {
+				last_delegate_info.clear();
+				last_delegate_info.backend = "spmats-base-fallback";
+				last_delegate_info.note = "generalized eigs(with preconditioner) fallback to the base preconditioner entry: " + fb;
+				return base_type::policy_generalized_eigs_with_info(B, k, opt, M);
+			}
+
+			last_delegate_info.clear();
+			last_delegate_info.backend = "arpack";
+			last_delegate_info.note = "generalized delegation: ARPACK mode 3 (bmat='G'), OP=(A-sigma*B)^{-1}B; "
+				"user_preconditioner: inner gmres (relative tol/10)";
+
+			const bool symmetric = decide_symmetric_(opt) && B.is_symmetric();
+			const double sigma = opt.use_shift ? opt.shift : 0.0;
+			const std::size_t ncv_s = ncv_for_(k, n);
+			const int ncv = static_cast<int>(ncv_s);
+			const int max_iter = max_iter_for_(opt);
+
+			eig_result<double> result;
+			result.requested_count = k;
+			result.method = opt.method;
+			result.used_method = symmetric ? "spumar/arpack(dsaupd,gen)" : "spumar/arpack(dnaupd,gen)";
+			result.used_method += "+user_preconditioner";
+			result.used_shift_invert = true;
+			result.used_generalized_operator = true;
+			result.used_subspace_dim = ncv_s;
+
+			const spmats<double, int> S = shifted_generalized_(B, sigma);
+			const std::size_t inner_max = std::min(n, std::size_t(100));
+			const double inner_tol = opt.tol / 10.0;
+			bool failed = false;
+			std::size_t fail_count = 0;
+			double max_resid = 0.0;
+			std::string reason;
+			gmres_prec_solve_<Prec> solve = { &S, &M, inner_max, inner_tol,
+			                                  &failed, &fail_count, &max_resid, &reason };
+
+			std::size_t solve_count = 0, bmul_count = 0;
+			const spumar_detail::arpack_outcome oc = arpack_generalized_core_(
+				B, k, opt, symmetric, sigma, ncv, max_iter, solve, solve_count, bmul_count);
+
+			if (failed) {
+				result.matrix_vector_products = bmul_count;
+				return inner_solve_failed_(result, fail_count, max_resid, reason, solve_count);
+			}
+			result.inner_failure_count = 0;
+			result.inner_residual_norm = max_resid;
+			return assemble_arpack_generalized_result_(result, oc, B, k, opt,
+				solve_count, bmul_count);
+		}
+
+		template <class Prec>
+		std::vector<double> policy_generalized_eigs(
+			const spmats<double, int>& B,
+			std::size_t k, const eig_options<double>& opt, const Prec& M) const
+		{
+			const eig_result<double> result = policy_generalized_eigs_with_info(B, k, opt, M);
+			if (!result.converged)
+				vcp::throw_error<vcp::state_error>("spumar::policy_generalized_eigs(with preconditioner): eigensolver did not converge");
+			const std::size_t n = static_cast<std::size_t>(this->rowsize());
+			const std::size_t k_eff = (k < n) ? k : n;
+			if (result.returned_real_count < k_eff)
+				vcp::throw_error<vcp::state_error>("spumar::policy_generalized_eigs(with preconditioner): insufficient eigenvalues returned");
+			return result.eigenvalues;
 		}
 
 		// -------------------------------------------------------------------
@@ -640,20 +829,8 @@ namespace vcp {
 		{
 			const std::size_t n = static_cast<std::size_t>(this->rowsize());
 
-			// ---- routing (fallback reasons per P-2) ----
-			std::string fb;
-			if (opt.method == eig_solver_method::dense_fallback_explicit) {
-				fb = "dense_fallback_explicit requested";
-			} else if (n == 0 || k == 0 || this->rowsize() != this->columnsize()) {
-				fb = "degenerate/invalid sizes are the base's contract";
-			} else if (k > n - 2) {
-				fb = "k > n-2 (outside ARPACK nev bounds)";
-			} else if (!opt.use_shift &&
-			           (opt.target == eig_target::smallest_magnitude ||
-			            opt.target == eig_target::target_magnitude ||
-			            opt.target == eig_target::target_real)) {
-				fb = "target unmappable without shift-invert (SM/target_* need use_shift)";
-			}
+			// ---- routing (fallback reasons per P-2; SPU-M1: shared helper) ----
+			const std::string fb = standard_fallback_reason_(k, opt);
 			if (!fb.empty()) {
 				last_delegate_info.clear();
 				last_delegate_info.backend = "spmats-base-fallback";
@@ -665,17 +842,7 @@ namespace vcp {
 			last_delegate_info.backend = "arpack";
 
 			// ---- structure decision ----
-			bool symmetric;
-			switch (opt.structure) {
-			case matrix_structure_hint::symmetric:
-			case matrix_structure_hint::hermitian:
-				symmetric = true; break;
-			case matrix_structure_hint::general:
-				symmetric = false; break;
-			case matrix_structure_hint::auto_detect:
-			default:
-				symmetric = this->is_symmetric(); break;
-			}
+			const bool symmetric = decide_symmetric_(opt);
 
 			// ---- which / mode (P-2, P-3) ----
 			const int mode = opt.use_shift ? 3 : 1;
@@ -691,13 +858,9 @@ namespace vcp {
 			}
 
 			// ---- ncv (P-1) ----
-			std::size_t ncv_s = (muar_opt.ncv != 0)
-				? (muar_opt.ncv > k + 2 ? muar_opt.ncv : k + 2)
-				: (2 * k + 1 > 20 ? 2 * k + 1 : 20);
-			if (ncv_s > n) ncv_s = n;
+			const std::size_t ncv_s = ncv_for_(k, n);
 			const int ncv = static_cast<int>(ncv_s);
-			const int max_iter = opt.max_iter > (static_cast<std::size_t>(1) << 30)
-				? (1 << 30) : static_cast<int>(opt.max_iter);
+			const int max_iter = max_iter_for_(opt);
 
 			eig_result<double> result;
 			result.requested_count = k;
@@ -706,14 +869,13 @@ namespace vcp {
 			result.used_shift_invert = (mode == 3);
 			result.used_subspace_dim = ncv_s;
 
-			// ---- OP construction ----
+			// ---- OP construction: A - sigma I factorized once before the loop
+			//      (P-3); the solve itself is handed to the drive helper as a
+			//      Solve object (SPU-M1 M1-4; the lambda body of SPU-2 is kept) ----
 			std::size_t op_count = 0;
 			spumar_detail::umfpack_lu si_lu;
 			if (mode == 3) {
-				// A - sigma I, factorized once before the loop (P-3)
-				spmats<double, int> S(*this);
-				for (int i = 0; i < static_cast<int>(n); i++) S.add(i, i, -sigma);
-				S.finalize();
+				const spmats<double, int> S = shifted_standard_(sigma);
 				const int st = si_lu.factorize(S);
 				last_delegate_info.umfpack_symbolic_status = si_lu.symbolic_status();
 				last_delegate_info.umfpack_numeric_status = si_lu.numeric_status();
@@ -728,37 +890,11 @@ namespace vcp {
 					return result;
 				}
 			}
-			const spmats<double, int>* self = this;
-			spumar_detail::arpack_op_fn opx;
-			if (mode == 1) {
-				opx = [self, &op_count](const double* x, double* y, const double*) {
-					self->mul_vec(x, y);
-					op_count++;
-				};
-			} else {
-				const std::size_t nn = n;
-				opx = [&si_lu, &op_count, nn](const double* x, double* y, const double*) {
-					std::vector<double> b(x, x + nn), sol;
-					si_lu.solve(b, sol);
-					for (std::size_t i = 0; i < nn; i++) y[i] = sol[i];
-					op_count++;
-				};
-			}
-			spumar_detail::arpack_b_fn bx =
-				[](const double*, double*) {}; // bmat='I': never called
+			umfpack_solve_ solve = { &si_lu };
 
 			// ---- drive ----
-			spumar_detail::arpack_outcome oc = symmetric
-				? spumar_detail::arpack_drive_symmetric(static_cast<int>(n),
-					static_cast<int>(k), ncv, which, 'I', mode, sigma,
-					opt.tol, max_iter, opx, bx)
-				: spumar_detail::arpack_drive_nonsymmetric(static_cast<int>(n),
-					static_cast<int>(k), ncv, which, 'I', mode, sigma, 0.0,
-					opt.tol, max_iter, opx, bx);
-
-			last_delegate_info.arpack_info = oc.aupd_info;
-			last_delegate_info.arpack_ierr = oc.eupd_ierr;
-			last_delegate_info.arpack_iparam = oc.iparam;
+			const spumar_detail::arpack_outcome oc = arpack_standard_core_(
+				k, opt, symmetric, mode, sigma, which, ncv, max_iter, solve, op_count);
 
 			return assemble_arpack_result_(result, oc, *this, k, opt,
 				symmetric, mode, op_count);
@@ -796,17 +932,7 @@ namespace vcp {
 		{
 			const std::size_t n = static_cast<std::size_t>(this->rowsize());
 
-			std::string fb;
-			if (opt.method == eig_solver_method::dense_fallback_explicit) {
-				fb = "dense_fallback_explicit requested";
-			} else if (n == 0 || k == 0 || this->rowsize() != this->columnsize() ||
-			           B.rowsize() != this->rowsize() || B.rowsize() != B.columnsize()) {
-				fb = "degenerate/invalid sizes are the base's contract";
-			} else if (k > n - 2) {
-				fb = "k > n-2 (outside ARPACK nev bounds)";
-			} else if (!opt.use_shift && opt.target != eig_target::smallest_magnitude) {
-				fb = "target not sigma-expressible in mode 3 (delegable: use_shift or smallest_magnitude)";
-			}
+			const std::string fb = generalized_fallback_reason_(B, k, opt);
 			if (!fb.empty()) {
 				last_delegate_info.clear();
 				last_delegate_info.backend = "spmats-base-fallback";
@@ -818,28 +944,13 @@ namespace vcp {
 			last_delegate_info.backend = "arpack";
 			last_delegate_info.note = "generalized delegation: ARPACK mode 3 (bmat='G'), OP=(A-sigma*B)^{-1}B";
 
-			bool symmetric;
-			switch (opt.structure) {
-			case matrix_structure_hint::symmetric:
-			case matrix_structure_hint::hermitian:
-				symmetric = true; break;
-			case matrix_structure_hint::general:
-				symmetric = false; break;
-			case matrix_structure_hint::auto_detect:
-			default:
-				symmetric = this->is_symmetric(); break;
-			}
-			symmetric = symmetric && B.is_symmetric();
+			const bool symmetric = decide_symmetric_(opt) && B.is_symmetric();
 
 			const double sigma = opt.use_shift ? opt.shift : 0.0;
 
-			std::size_t ncv_s = (muar_opt.ncv != 0)
-				? (muar_opt.ncv > k + 2 ? muar_opt.ncv : k + 2)
-				: (2 * k + 1 > 20 ? 2 * k + 1 : 20);
-			if (ncv_s > n) ncv_s = n;
+			const std::size_t ncv_s = ncv_for_(k, n);
 			const int ncv = static_cast<int>(ncv_s);
-			const int max_iter = opt.max_iter > (static_cast<std::size_t>(1) << 30)
-				? (1 << 30) : static_cast<int>(opt.max_iter);
+			const int max_iter = max_iter_for_(opt);
 
 			eig_result<double> result;
 			result.requested_count = k;
@@ -849,24 +960,11 @@ namespace vcp {
 			result.used_generalized_operator = true;
 			result.used_subspace_dim = ncv_s;
 
-			// A - sigma B, factorized once (P-4).
+			// A - sigma B, factorized once (P-4); the solve is handed to the
+			// drive helper as a Solve object (SPU-M1 M1-4; SPU-3 lambda body kept).
 			spumar_detail::umfpack_lu si_lu;
 			{
-				spmats<double, int> S(*this);
-				if (sigma != 0.0) {
-					spmats<double, int> Bc = B.as_csr();
-					const std::vector<int>& outer = Bc.outer_index();
-					const std::vector<int>& inner = Bc.inner_index();
-					const std::vector<double>& val = Bc.values();
-					for (int i = 0; i < Bc.rowsize(); i++) {
-						for (int p = outer[static_cast<std::size_t>(i)];
-						     p < outer[static_cast<std::size_t>(i) + 1]; p++) {
-							S.add(i, inner[static_cast<std::size_t>(p)],
-								-sigma * val[static_cast<std::size_t>(p)]);
-						}
-					}
-				}
-				S.finalize();
+				const spmats<double, int> S = shifted_generalized_(B, sigma);
 				const int st = si_lu.factorize(S);
 				last_delegate_info.umfpack_symbolic_status = si_lu.symbolic_status();
 				last_delegate_info.umfpack_numeric_status = si_lu.numeric_status();
@@ -882,12 +980,239 @@ namespace vcp {
 					return result;
 				}
 			}
+			umfpack_solve_ solve = { &si_lu };
 
 			std::size_t solve_count = 0, bmul_count = 0;
+			const spumar_detail::arpack_outcome oc = arpack_generalized_core_(
+				B, k, opt, symmetric, sigma, ncv, max_iter, solve, solve_count, bmul_count);
+
+			return assemble_arpack_generalized_result_(result, oc, B, k, opt,
+				solve_count, bmul_count);
+		}
+
+	private:
+		// -------------------------------------------------------------------
+		// SPU-M1 shared pieces of overrides #3 / #4 and of the M-付き entries.
+		// Pure functions and verbatim extractions: the M-less output of the
+		// overrides is unchanged (design M1-9).
+		// -------------------------------------------------------------------
+		// routing of override #3 (fallback reasons per P-2)
+		std::string standard_fallback_reason_(const std::size_t k, const eig_options<double>& opt) const
+		{
+			const std::size_t n = static_cast<std::size_t>(this->rowsize());
+			std::string fb;
+			if (opt.method == eig_solver_method::dense_fallback_explicit) {
+				fb = "dense_fallback_explicit requested";
+			} else if (n == 0 || k == 0 || this->rowsize() != this->columnsize()) {
+				fb = "degenerate/invalid sizes are the base's contract";
+			} else if (k > n - 2) {
+				fb = "k > n-2 (outside ARPACK nev bounds)";
+			} else if (!opt.use_shift &&
+			           (opt.target == eig_target::smallest_magnitude ||
+			            opt.target == eig_target::target_magnitude ||
+			            opt.target == eig_target::target_real)) {
+				fb = "target unmappable without shift-invert (SM/target_* need use_shift)";
+			}
+			return fb;
+		}
+		// routing of override #4 (delegable window)
+		std::string generalized_fallback_reason_(const spmats<double, int>& B, const std::size_t k,
+		                                         const eig_options<double>& opt) const
+		{
+			const std::size_t n = static_cast<std::size_t>(this->rowsize());
+			std::string fb;
+			if (opt.method == eig_solver_method::dense_fallback_explicit) {
+				fb = "dense_fallback_explicit requested";
+			} else if (n == 0 || k == 0 || this->rowsize() != this->columnsize() ||
+			           B.rowsize() != this->rowsize() || B.rowsize() != B.columnsize()) {
+				fb = "degenerate/invalid sizes are the base's contract";
+			} else if (k > n - 2) {
+				fb = "k > n-2 (outside ARPACK nev bounds)";
+			} else if (!opt.use_shift && opt.target != eig_target::smallest_magnitude) {
+				fb = "target not sigma-expressible in mode 3 (delegable: use_shift or smallest_magnitude)";
+			}
+			return fb;
+		}
+		// structure decision (opt.structure; auto_detect -> this->is_symmetric())
+		bool decide_symmetric_(const eig_options<double>& opt) const
+		{
+			switch (opt.structure) {
+			case matrix_structure_hint::symmetric:
+			case matrix_structure_hint::hermitian:
+				return true;
+			case matrix_structure_hint::general:
+				return false;
+			case matrix_structure_hint::auto_detect:
+			default:
+				return this->is_symmetric();
+			}
+		}
+		// ncv (P-1): default min(n, max(2k+1, 20)); with muar_opt.ncv: min(n, max(ncv, k+2))
+		std::size_t ncv_for_(const std::size_t k, const std::size_t n) const
+		{
+			std::size_t ncv_s = (muar_opt.ncv != 0)
+				? (muar_opt.ncv > k + 2 ? muar_opt.ncv : k + 2)
+				: (2 * k + 1 > 20 ? 2 * k + 1 : 20);
+			if (ncv_s > n) ncv_s = n;
+			return ncv_s;
+		}
+		static int max_iter_for_(const eig_options<double>& opt)
+		{
+			return opt.max_iter > (static_cast<std::size_t>(1) << 30)
+				? (1 << 30) : static_cast<int>(opt.max_iter);
+		}
+		// S = A - sigma I (construction of override #3, verbatim)
+		spmats<double, int> shifted_standard_(const double sigma) const
+		{
+			const std::size_t n = static_cast<std::size_t>(this->rowsize());
+			spmats<double, int> S(*this);
+			for (int i = 0; i < static_cast<int>(n); i++) S.add(i, i, -sigma);
+			S.finalize();
+			return S;
+		}
+		// S = A - sigma B (construction of override #4, verbatim)
+		spmats<double, int> shifted_generalized_(const spmats<double, int>& B, const double sigma) const
+		{
+			spmats<double, int> S(*this);
+			if (sigma != 0.0) {
+				spmats<double, int> Bc = B.as_csr();
+				const std::vector<int>& outer = Bc.outer_index();
+				const std::vector<int>& inner = Bc.inner_index();
+				const std::vector<double>& val = Bc.values();
+				for (int i = 0; i < Bc.rowsize(); i++) {
+					for (int p = outer[static_cast<std::size_t>(i)];
+					     p < outer[static_cast<std::size_t>(i) + 1]; p++) {
+						S.add(i, inner[static_cast<std::size_t>(p)],
+							-sigma * val[static_cast<std::size_t>(p)]);
+					}
+				}
+			}
+			S.finalize();
+			return S;
+		}
+
+		// Solve contract of the drive helpers (M1-4):
+		//   bool operator()(const std::vector<double>& rhs, std::vector<double>& sol) const   (true = solved)
+		// M-less: the UMFPACK factor of S; the status is not inspected (as in SPU-2 / SPU-3).
+		struct umfpack_solve_ {
+			spumar_detail::umfpack_lu* lu;
+			bool operator()(const std::vector<double>& rhs, std::vector<double>& sol) const {
+				lu->solve(rhs, sol);
+				return true;
+			}
+		};
+		// M-付き: left-preconditioned GMRES on S x = rhs with the user's M
+		// (S applied as a product only, never factorized), relative tolerance
+		// against the first preconditioned residual (gmres_solve relative =
+		// true, M1-1).  A non-converged GMRES or a throwing / size-breaking
+		// M.apply is counted into *fail_count (first reason kept) and the best
+		// GMRES iterate is still returned (ARPACK cannot be stopped inside OP).
+		template <class Prec>
+		struct gmres_prec_solve_ {
+			const spmats<double, int>* S;
+			const Prec* M;
+			std::size_t inner_max;
+			double tol;
+			bool* failed;
+			std::size_t* fail_count;
+			double* max_resid;
+			std::string* reason;
+
+			struct AV {
+				const spmats<double, int>* S;
+				void operator()(const std::vector<double>& u, std::vector<double>& v) const { v = S->mul_vec(u); }
+			};
+			struct PV {
+				const Prec* M;
+				bool* failed;
+				std::string* msg;
+				void operator()(const std::vector<double>& r, std::vector<double>& z) const {
+					if (*failed) { z = r; return; }
+					try {
+						M->apply(r, z);
+						if (z.size() != r.size()) { *failed = true; *msg = "preconditioner output size mismatch"; z = r; }
+					} catch (const vcp::error& e) {
+						*failed = true; *msg = std::string("preconditioner failed: ") + e.what(); z = r;
+					}
+				}
+			};
+			bool operator()(const std::vector<double>& rhs, std::vector<double>& sol) const {
+				const std::size_t nn = rhs.size();
+				AV av = { S };
+				bool pf = false;
+				std::string pm;
+				PV pv = { M, &pf, &pm };
+				typedef vcp::tsparse_factorization::gmres_result<double, AV, PV> GR;
+				const GR gr = vcp::tsparse_factorization::gmres_solve<double, AV, PV>(
+					av, pv, rhs, inner_max / 10 + 1, tol, std::min(nn, inner_max), true);
+				if (gr.residual_norm > *max_resid) *max_resid = gr.residual_norm;
+				bool ok = true;
+				if (pf) { ok = false; if (reason->empty()) *reason = pm; }
+				else if (!gr.converged) { ok = false; if (reason->empty()) *reason = "inner GMRES did not converge"; }
+				if (!ok) { *failed = true; (*fail_count)++; }
+				sol = gr.x;
+				return ok;
+			}
+		};
+
+		// drive of override #3 (M1-4): OP = A x (mode 1) or solve (mode 3),
+		// bmat = 'I'; records the raw ARPACK codes.  The mode-3 OP body is the
+		// SPU-2 lambda unchanged (b = x; solve; copy; op_count++).
+		template <class Solve>
+		spumar_detail::arpack_outcome arpack_standard_core_(
+			const std::size_t k, const eig_options<double>& opt,
+			const bool symmetric, const int mode, const double sigma, const char* which,
+			const int ncv, const int max_iter, const Solve& solve, std::size_t& op_count) const
+		{
+			const std::size_t n = static_cast<std::size_t>(this->rowsize());
+			const spmats<double, int>* self = this;
+			spumar_detail::arpack_op_fn opx;
+			if (mode == 1) {
+				opx = [self, &op_count](const double* x, double* y, const double*) {
+					self->mul_vec(x, y);
+					op_count++;
+				};
+			} else {
+				const std::size_t nn = n;
+				const Solve* sp = &solve;
+				opx = [sp, &op_count, nn](const double* x, double* y, const double*) {
+					std::vector<double> b(x, x + nn), sol;
+					(*sp)(b, sol);
+					for (std::size_t i = 0; i < nn; i++) y[i] = sol[i];
+					op_count++;
+				};
+			}
+			spumar_detail::arpack_b_fn bx =
+				[](const double*, double*) {}; // bmat='I': never called
+
+			spumar_detail::arpack_outcome oc = symmetric
+				? spumar_detail::arpack_drive_symmetric(static_cast<int>(n),
+					static_cast<int>(k), ncv, which, 'I', mode, sigma,
+					opt.tol, max_iter, opx, bx)
+				: spumar_detail::arpack_drive_nonsymmetric(static_cast<int>(n),
+					static_cast<int>(k), ncv, which, 'I', mode, sigma, 0.0,
+					opt.tol, max_iter, opx, bx);
+
+			last_delegate_info.arpack_info = oc.aupd_info;
+			last_delegate_info.arpack_ierr = oc.eupd_ierr;
+			last_delegate_info.arpack_iparam = oc.iparam;
+			return oc;
+		}
+		// drive of override #4 (M1-4): OP = solve(B x) (bx_hint when ARPACK
+		// supplies it), bmat = 'G', mode 3; records the raw ARPACK codes.  The
+		// OP / B bodies are the SPU-3 lambdas unchanged.
+		template <class Solve>
+		spumar_detail::arpack_outcome arpack_generalized_core_(
+			const spmats<double, int>& B, const std::size_t k, const eig_options<double>& opt,
+			const bool symmetric, const double sigma, const int ncv, const int max_iter,
+			const Solve& solve, std::size_t& solve_count, std::size_t& bmul_count) const
+		{
+			const std::size_t n = static_cast<std::size_t>(this->rowsize());
 			const spmats<double, int>* Bp = &B;
 			const std::size_t nn = n;
+			const Solve* sp = &solve;
 			spumar_detail::arpack_op_fn opx =
-				[&si_lu, Bp, &solve_count, &bmul_count, nn](const double* x, double* y, const double* bx_hint) {
+				[sp, Bp, &solve_count, &bmul_count, nn](const double* x, double* y, const double* bx_hint) {
 					std::vector<double> rhs;
 					if (bx_hint != 0) {
 						rhs.assign(bx_hint, bx_hint + nn);
@@ -897,7 +1222,7 @@ namespace vcp {
 						bmul_count++;
 					}
 					std::vector<double> sol;
-					si_lu.solve(rhs, sol);
+					(*sp)(rhs, sol);
 					solve_count++;
 					for (std::size_t i = 0; i < nn; i++) y[i] = sol[i];
 				};
@@ -918,7 +1243,45 @@ namespace vcp {
 			last_delegate_info.arpack_info = oc.aupd_info;
 			last_delegate_info.arpack_ierr = oc.eupd_ierr;
 			last_delegate_info.arpack_iparam = oc.iparam;
+			return oc;
+		}
+		// M1-5 / M1-7: honest failure of the M-付き path, decided AFTER the drive
+		// (ARPACK's reverse communication cannot be stopped inside OP).  No
+		// eigenpairs are reported; no silent switch to UMFPACK.
+		eig_result<double> inner_solve_failed_(
+			eig_result<double>& result, const std::size_t fail_count, const double max_resid,
+			const std::string& reason, const std::size_t solve_count) const
+		{
+			std::ostringstream os;
+			os << "inner preconditioned GMRES failed in " << fail_count << " of " << solve_count
+			   << " OP solves (max inner residual " << max_resid << "): " << reason
+			   << " (no silent switch to UMFPACK; raw ARPACK codes in last_delegate_info)";
+			result.converged = false;
+			result.status = "inner_solve_failed";
+			result.failure_reason = os.str();
+			result.message = result.failure_reason;
+			result.inner_failure_reason = reason;
+			result.inner_failure_count = fail_count;
+			result.inner_residual_norm = max_resid;
+			result.eigenvalues.clear();
+			result.eigenvectors.clear();
+			result.converged_count = 0;
+			result.linear_solves = solve_count;
+			return result;
+		}
 
+		// SPU-M1 M1-4: end-of-run assembly of override #4 (generalized), moved
+		// VERBATIM out of the _impl so that the M-付き generalized entry shares
+		// it (code motion only; the M-less output is unchanged).
+		eig_result<double> assemble_arpack_generalized_result_(
+			eig_result<double>& result,
+			const spumar_detail::arpack_outcome& oc,
+			const spmats<double, int>& B,
+			const std::size_t k,
+			const eig_options<double>& opt,
+			const std::size_t solve_count,
+			const std::size_t bmul_count) const
+		{
 			result.iterations = static_cast<std::size_t>(oc.niter > 0 ? oc.niter : 0);
 			result.linear_solves = solve_count;
 			result.matrix_vector_products = bmul_count;
@@ -1019,7 +1382,6 @@ namespace vcp {
 			return result;
 		}
 
-	private:
 		// Shared result assembly for the standard eigs delegation (also the
 		// error/honest-termination mapping).  Kept private and non-virtual.
 		eig_result<double> assemble_arpack_result_(

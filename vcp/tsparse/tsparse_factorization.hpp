@@ -138,7 +138,7 @@ ilu0_data<T, Index> ilu0_factorize(
 			const T l_ik = result.lu_val[static_cast<std::size_t>(p)];
 
 			// For each j > k where a_kj != 0 AND a_ij exists (ILU(0) pattern)
-			for (Index q = result.diag_pos[k]; q < row_ptr[k + 1]; q++) {
+			for (Index q = result.diag_pos[k] + 1; q < row_ptr[k + 1]; q++) {   // VCP-C2 C2-1: j > k only (q = diag_pos[k] is j = k, col_to_pos[k] == p, and would turn the stored l_ik into l_ik (1 - u_kk))
 				const std::size_t j = static_cast<std::size_t>(col_ind[static_cast<std::size_t>(q)]);
 				const Index pos_ij = col_to_pos[j];
 				if (pos_ij == Index(-1)) continue; // no fill in ILU(0)
@@ -303,7 +303,8 @@ gmres_result<T, ApplyA, ApplyPrec> gmres_solve(
 	const std::vector<T>& b,
 	const std::size_t max_iter,
 	const typename tsparse_scalar::real_type<T>::type& tol,
-	const std::size_t restart)
+	const std::size_t restart,
+	const bool relative = false)
 {
 	typedef typename tsparse_scalar::real_type<T>::type R;
 	const std::size_t n = b.size();
@@ -314,10 +315,11 @@ gmres_result<T, ApplyA, ApplyPrec> gmres_solve(
 	result.iterations = 0;
 	result.residual_norm = tsparse_scalar::real_norm_value(b);
 
-	if (result.residual_norm <= tol) {
+	if (relative ? (result.residual_norm == R(0)) : (result.residual_norm <= tol)) {
 		result.converged = true;
 		return result;
 	}
+	R tol_eff = tol;
 
 	for (std::size_t outer = 0; outer < max_iter && !result.converged; outer++) {
 		// Compute residual r = b - A x
@@ -329,7 +331,13 @@ gmres_result<T, ApplyA, ApplyPrec> gmres_solve(
 		apply_prec(r, z);
 
 		const R beta = tsparse_scalar::real_norm_value(z);
-		if (beta <= tol) { result.converged = true; break; }
+		if (!(beta - beta == R(0))) { result.converged = false; break; }   // VCP-C2 C2-3 (i): NaN / Inf preconditioned residual is a failure, not convergence
+		if (beta == R(0) && tsparse_scalar::real_norm_value(r) > R(0)) { result.converged = false; break; }   // VCP-C2 C2-3 (ii): M crushed a non-zero residual (singular / broken M) is a failure, not convergence
+		if (relative && outer == 0) {
+			if (!(beta > R(0))) { result.converged = false; break; }   // 前処理が残差を潰した(特異な M): 失敗
+			tol_eff = tol * beta;
+		}
+		if (beta <= tol_eff) { result.converged = true; break; }
 
 		std::vector<std::vector<T> > V(m + 1, std::vector<T>(n, T(0)));
 		std::vector<std::vector<T> > H(m + 1, std::vector<T>(m, T(0)));
@@ -370,7 +378,7 @@ gmres_result<T, ApplyA, ApplyPrec> gmres_solve(
 			g[k+1] = T(-sn[k]) * gk;
 			result.iterations++;
 			result.residual_norm = tsparse_scalar::abs_value(g[k+1]);
-			if (result.residual_norm <= tol) { k++; result.converged = true; break; }
+			if (result.residual_norm <= tol_eff) { k++; result.converged = true; break; }
 		}
 		// Back substitution for H(1:k,1:k) y = g(1:k)
 		std::vector<T> y(k, T(0));

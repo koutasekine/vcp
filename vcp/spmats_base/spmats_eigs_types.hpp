@@ -304,6 +304,18 @@ namespace vcp {
 		// 1:1 で含まれる — B-38)。0 = 委譲不発火(休眠)。委譲を試行したが
 		// 不採用(all-or-nothing で元の正直結果を返却)の場合も消費分を記録する。
 		std::size_t ks_rescue_products;
+		// VCP-C1 C1-10(末尾追加・既存フィールド無変更 --- EIG-4 / EIG-6 / EIG-7 の
+		// 末尾追加と同じ規律): veigs.m の [lambda, ind_range] に対応する確定番号と、
+		// 要求順位の証明結果。index_lo[i]..index_hi[i] は eigenvalues[i] が含む
+		// 固有値の、全固有値を昇順に並べたときの確定番号の範囲(1 始まり)。長さは
+		// eigenvalues.size() と同じ(クラスターの重複分は同じ範囲を繰り返す)。
+		// 番号を確定しないポリシー・経路(spmats / spumar / spcmodumar)では空。
+		std::vector<std::size_t> index_lo, index_hi;
+		// rank_certified: 0 = 未検査(順位を検査しないポリシー・経路、または
+		// target_rank_check = off)/ 1 = 要求した順位(sa / la は端、sm / lm /
+		// target_* は最も近い・最も大きい)であることを証明済み / -1 = 証明できず
+		// (既定 record では返却はそのまま、require ではここに来ない = 無主張)。
+		int rank_certified;
 
 		eig_result()
 			: eigenvalues(), eigenvalues_imag(), complex_pair_count(0),
@@ -324,7 +336,8 @@ namespace vcp {
 			  inner_residual_norm(real_type(0)), inner_failure_reason(),
 			  factorization_diagnostics(), factorization_zero_pivots(0),
 			  lambda_gate_products(0), polish_factorizations(0),
-			  confirm_restarts(0), ks_rescue_products(0) {}
+			  confirm_restarts(0), ks_rescue_products(0),
+			  index_lo(), index_hi(), rank_certified(0) {}
 	};
 
 } // namespace vcp

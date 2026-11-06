@@ -212,6 +212,10 @@ ldl_result<_T, _Index> spmats<_T, _Index>::policy_ldl_with_info_impl(
 //      -> n_pos / n_neg
 //   4. structurally empty column                 -> 1x1 zero block (n_zero)
 //   5. self-check n_pos + n_neg + n_zero == n    (violation -> internal_error)
+//   6. a stored subdiagonal e_{k+1} right after a 2x2 block (k,k+1), i.e. a
+//      chained subdiagonal (tridiagonal, not block diagonal)
+//                                                -> not_block_diagonal
+//      (VCP-C1 C1-9; storage test like rule 2, the value is not inspected)
 // Counting (success declaration) happens ONLY on certified comparisons; an
 // undecidable case returns inconclusive_sign with its position (P1).  For
 // totally ordered scalars the inconclusive branch is unreachable.
@@ -305,6 +309,13 @@ inertia_result<_Index> spmats<_T, _Index>::policy_inertia_from_block_diagonal(
 			} else {
 				out.status = inertia_status::inconclusive_sign;
 				out.inconclusive_at = static_cast<_Index>(k);
+				return out;
+			}
+			// rule 6 (VCP-C1 C1-9): a stored e_{k+1} after the block (k,k+1) is a
+			// chained subdiagonal (tridiagonal D) -- not block diagonal.  Storage
+			// test as in rule 2; the value is not inspected.
+			if (k + 2u < un && ehas[k + 1u] != char(0)) {
+				out.status = inertia_status::not_block_diagonal;
 				return out;
 			}
 			k += 2;

@@ -3394,7 +3394,8 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
     }
 
     const std::size_t inner_max = std::min(n, std::size_t(100));
-    const scalar_real_type inner_tol = options.tol / scalar_real_type(1000);
+    const scalar_real_type inner_tol = options.tol / scalar_real_type(10);
+    // 相対(初回前処理後残差 β₀ 基準)。係数 1/10 の根拠は SPU-M1 設計書の実測。
     std::size_t linear_solve_count = 0;
     std::size_t inner_failure_count = 0;
     std::size_t inner_iteration_count = 0;
@@ -3436,7 +3437,7 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
             } pv_fn = { prec_ptr, &pf, &pm };
             typedef vcp::tsparse_factorization::gmres_result<_T, AV, PV> GR;
             GR gr = vcp::tsparse_factorization::gmres_solve<_T, AV, PV>(
-                av_fn, pv_fn, x, imax / 10 + 1, itol, std::min(nn, imax));
+                av_fn, pv_fn, x, imax / 10 + 1, itol, std::min(nn, imax), true);
             (*sc)++;
             (*ic) += gr.iterations;
             if (gr.residual_norm > *mr) *mr = gr.residual_norm;
@@ -3693,7 +3694,8 @@ static eig_result<_T> shift_invert_arnoldi_eigs_with_prec_(
     }
 
     const std::size_t inner_max = std::min(n, std::size_t(100));
-    const scalar_real_type inner_tol = options.tol / scalar_real_type(1000);
+    const scalar_real_type inner_tol = options.tol / scalar_real_type(10);
+    // 相対(初回前処理後残差 β₀ 基準)。係数 1/10 の根拠は SPU-M1 設計書の実測。
     std::size_t linear_solve_count = 0;
     std::size_t inner_failure_count = 0;
     std::size_t inner_iteration_count = 0;
@@ -3735,7 +3737,7 @@ static eig_result<_T> shift_invert_arnoldi_eigs_with_prec_(
             } pv_fn = { prec_ptr, &pf, &pm };
             typedef vcp::tsparse_factorization::gmres_result<_T, AV, PV> GR;
             GR gr = vcp::tsparse_factorization::gmres_solve<_T, AV, PV>(
-                av_fn, pv_fn, x, imax / 10 + 1, itol, std::min(nn, imax));
+                av_fn, pv_fn, x, imax / 10 + 1, itol, std::min(nn, imax), true);
             (*sc)++;
             (*ic) += gr.iterations;
             if (gr.residual_norm > *mr) *mr = gr.residual_norm;
@@ -3904,7 +3906,8 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
     spmats<_T,_Index> B_csr = B.as_csr();
 
     const std::size_t inner_max = std::min(n, std::size_t(100));
-    const scalar_real_type inner_tol = options.tol / scalar_real_type(1000);
+    const scalar_real_type inner_tol = options.tol / scalar_real_type(10);
+    // 相対(初回前処理後残差 β₀ 基準)。係数 1/10 の根拠は SPU-M1 設計書の実測。
     const std::size_t inner_restart = std::min(n, std::size_t(30));
     std::size_t linear_solve_count = 0;
     std::size_t inner_failure_count = 0;
@@ -3951,7 +3954,7 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
             const std::size_t act_restart = (irestart == 0) ? std::min(nn, std::size_t(30)) : irestart;
             const std::size_t act_max = (imax == 0) ? (act_restart + 1) : imax;
             typedef vcp::tsparse_factorization::gmres_result<_T, AV, PV> GR;
-            GR gr = vcp::tsparse_factorization::gmres_solve<_T, AV, PV>(av_fn, pv_fn, rhs, act_max, itol, act_restart);
+            GR gr = vcp::tsparse_factorization::gmres_solve<_T, AV, PV>(av_fn, pv_fn, rhs, act_max, itol, act_restart, true);
             (*sc)++;
             (*ic) += gr.iterations;
             if (gr.residual_norm > *mr) *mr = gr.residual_norm;
