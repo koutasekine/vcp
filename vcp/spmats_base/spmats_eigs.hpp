@@ -1970,7 +1970,8 @@ static eig_result<_T> shift_invert_lanczos_drive_(const spmats<_T,_Index>& self,
     // 実証済み(EIG-10 Phase 0 §5)。
     //
     // 規律:
-    //  - 1 回限り・決定的(乱数なし・ループ禁止)。
+    //  - 決定的(乱数なし)・試行は最大 3 回の段階許容(EIG-R2)。
+    //    各試行の採否は all-or-nothing。
     //  - all-or-nothing((c-1)): 委譲結果が「全ゲート合格の converged ∧
     //    返却全対実 ∧ 複製方向なし(R4 と同一ヘルパ)」の場合のみ丸ごと採用。
     //    それ以外は元の正直結果をそのまま返す(対集合の混合・部分採用禁止)。
@@ -1983,13 +1984,17 @@ static eig_result<_T> shift_invert_lanczos_drive_(const spmats<_T,_Index>& self,
     //    別建て記録((c-2) の恒等式 mv_total == si 分 + 委譲分)。KS コアは
     //    mv ≤ 残予算を厳守するため mv_total ≤ max_iter(B-1)。
     //    linear_solves はフロントが op カウンタから再同期(磨きと同じ経路)。
+    //  - EIG-R2: 委譲は最大 3 回の試行(許容 tol, tol/10, tol/100)。試行 0 は
+    //    EIG-10 と同一。各試行の採否は all-or-nothing のまま(採用でループ終了)。
+    //    ks_rescue_products は全試行の合計(mv 1:1 計上・B-1 は各試行の残予算上限)。
     // -----------------------------------------------------------------------
-    if (!result.converged
-        && result.status == "residual_check_failed"
-        && options.max_iter > result.matrix_vector_products) {
+    for (int attempt = 0; attempt < 3 && !result.converged
+         && result.status == "residual_check_failed"
+         && options.max_iter > result.matrix_vector_products; ++attempt) {
         eig_options<_T> ks_opts = options;
         ks_opts.max_iter = options.max_iter - result.matrix_vector_products;
         ks_opts.allow_complex_pairs = true;   // 過渡複素窓の通過許可(上記規律)
+        for (int e = 0; e < attempt; ++e) ks_opts.tol = ks_opts.tol / scalar_real_type(10);   // EIG-R2: 段階許容 tol·10^-attempt
         bool ks_conv = false;
         eig_result<_T> alt = shift_invert_arnoldi_drive_<_T,_Index>(
             self, k, ks_opts, sigma, apply_si, ks_conv);
@@ -2000,7 +2005,7 @@ static eig_result<_T> shift_invert_lanczos_drive_(const spmats<_T,_Index>& self,
         // mv は helper 内で 1:1 計上され下の rescue 合算に含まれる)。
         lambda_c1_acceptance_gate_<_T,_Index>(alt, options.tol, self);
         si_polish_rescue_standard_<_T,_Index>(alt, self, ks_opts, apply_si);
-        result.ks_rescue_products = alt.matrix_vector_products;
+        result.ks_rescue_products += alt.matrix_vector_products;
         result.matrix_vector_products += alt.matrix_vector_products;
         result.lambda_gate_products += alt.lambda_gate_products;
         if (alt.converged && si_polish_returned_pairs_all_real_<_T,_Index>(alt)) {
@@ -3539,7 +3544,8 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
     // 消費のみ計上 = EIG-10 mixed/interval と同じ受理済みクラス)。
     //
     // 規律((c-1) 全継承):
-    //  - 1 回限り・決定的(乱数なし・ループ禁止)。
+    //  - 決定的(乱数なし)・試行は最大 3 回の段階許容(EIG-R2)。
+    //    各試行の採否は all-or-nothing。
     //  - all-or-nothing: 委譲結果が「全ゲート合格の converged ∧ 返却全対実 ∧
     //    複製方向なし(R4 と同一ヘルパ)」の場合のみ丸ごと採用。それ以外は
     //    元の正直結果をそのまま返す(対集合の混合・部分採用禁止)。
@@ -3558,12 +3564,13 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
     //    inner_failure_count > 0」は「委譲を試みたが内側精度で正直に不採用」
     //    の意味(嘘ではない — 採用は C-1 再ゲート合格のみが通す)。
     // -----------------------------------------------------------------------
-    if (!result.converged
-        && result.status == "residual_check_failed"
-        && options.max_iter > result.matrix_vector_products) {
+    for (int attempt = 0; attempt < 3 && !result.converged
+         && result.status == "residual_check_failed"
+         && options.max_iter > result.matrix_vector_products; ++attempt) {
         eig_options<_T> ks_opts = options;
         ks_opts.max_iter = options.max_iter - result.matrix_vector_products;
         ks_opts.allow_complex_pairs = true;   // 過渡複素窓の通過許可(上記規律)
+        for (int e = 0; e < attempt; ++e) ks_opts.tol = ks_opts.tol / scalar_real_type(10);   // EIG-R2: 段階許容 tol·10^-attempt
         bool ks_conv = false;
         eig_result<_T> alt = shift_invert_arnoldi_drive_<_T,_Index>(
             self, k, ks_opts, sigma, apply_si, ks_conv);
@@ -3574,7 +3581,7 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
         // 内で 1:1 計上され下の rescue 合算に含まれる)。
         lambda_c1_acceptance_gate_<_T,_Index>(alt, options.tol, self);
         si_polish_rescue_standard_<_T,_Index>(alt, self, ks_opts, apply_si);
-        result.ks_rescue_products = alt.matrix_vector_products;
+        result.ks_rescue_products += alt.matrix_vector_products;
         result.matrix_vector_products += alt.matrix_vector_products;
         result.lambda_gate_products += alt.lambda_gate_products;
         if (alt.converged && si_polish_returned_pairs_all_real_<_T,_Index>(alt)) {

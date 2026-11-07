@@ -810,6 +810,20 @@ namespace vcp {
 				static_cast<_P&>(L), static_cast<_P&>(P), options);
 		}
 
+		// ---------------------------------------------------------------
+		// is_spd (SPM-S1) — delegates to policy_is_spd (NVI: the policy's
+		// policy_is_spd_impl decides; default spmats = approximate predicate
+		// "the policy's Cholesky completed with status success", spcmodumar =
+		// the same through its CHOLMOD chol _impl, spimats = the certified
+		// interval is_spd).  Same delegation shape as eigs -> policy_eigs; no
+		// policy-specific knowledge here.  Misuse throws (non-square ->
+		// dimension_error; non-symmetric without nosymcheck -> domain_error).
+		// ---------------------------------------------------------------
+		typedef vcp::spd_options<_T> spd_options_type;
+		bool is_spd(const spd_options_type& options = spd_options_type()) const {
+			return this->policy_is_spd(options);
+		}
+
 		// strict, permutation-vector form
 		void chol(spmatrix& L, std::vector<index_type>& p,
 		          const chol_options_type& options = chol_options_type()) const {

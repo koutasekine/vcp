@@ -132,6 +132,46 @@ chol_result<_T, _Index> spmats<_T, _Index>::policy_chol_with_info(
 }
 
 // ---------------------------------------------------------------------------
+// policy_is_spd: NVI outer (non-virtual; SPM-S1 S1-2).  Squareness entry
+// check -> finalize guarantee -> n = 0 is vacuously SPD (spimats F1-1) ->
+// symmetry entry check (default-tolerance policy_is_symmetric; skipped by
+// opt.nosymcheck) -> virtual policy_is_spd_impl.  Must never be overridden --
+// override policy_is_spd_impl instead.
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+bool spmats<_T, _Index>::policy_is_spd(const spd_options<_T>& opt) const
+{
+	const spmats<_T, _Index>& A = *this;   // subject is *this
+	if (A.rowsize() != A.columnsize())
+		vcp::throw_error<vcp::dimension_error>(
+		    "spmats::policy_is_spd: matrix must be square");
+	if (!A.is_finalized()) A.finalize();
+	if (A.rowsize() == 0) return true;
+	if (!opt.nosymcheck && !policy_is_symmetric(A))
+		vcp::throw_error<vcp::domain_error>(
+		    "spmats::policy_is_spd: matrix is not symmetric (set spd_options::nosymcheck to skip)");
+	return policy_is_spd_impl(opt);
+}
+
+// ---------------------------------------------------------------------------
+// policy_is_spd_impl: default virtual body (SPM-S1 S1-3) -- the approximate
+// predicate "the policy's Cholesky completed": only opt.ordering is copied
+// into a chol_options, policy_chol_with_info (the chol NVI, so a policy with
+// a chol backend override such as spcmodumar/CHOLMOD is used as is) runs,
+// and status == success is returned.  Not a proof of positive definiteness.
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+bool spmats<_T, _Index>::policy_is_spd_impl(const spd_options<_T>& opt) const
+{
+	spmats<_T, _Index> L;
+	std::vector<_Index> perm;
+	chol_options<_T> copt;
+	copt.ordering = opt.ordering;
+	const chol_result<_T, _Index> r = policy_chol_with_info(L, perm, copt);
+	return r.status == sparse_chol_status::success;
+}
+
+// ---------------------------------------------------------------------------
 // policy_chol_with_info_impl: virtual algorithm body (default: signed-Index
 // guard -> CSC conversion -> tsparse factorization -> L/perm assembly).
 // This is the designated replacement point for external-backend policies

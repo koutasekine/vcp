@@ -105,31 +105,8 @@ struct spimats_options {
 		  target_rank_check(target_rank_check_mode::record) {}
 };
 
-// ---------------------------------------------------------------------------
-// spd_options<_T>: is_spd のノブ。INTLAB isspd.m の mmd / nosymcheck 相当
-// (設計 §7.2。accurate は SPI-G1 D-4 で削除 --- 証明経路は 1 本)。
-// ---------------------------------------------------------------------------
-template <typename _T>
-struct spd_options {
-	// 区間版 is_spd の厳密対称入口検査(SPI-R4)を省略する(isspd.m の
-	// nosymcheck 相当)。省略時の対称性の責任は呼び出し側。
-	bool nosymcheck;
-	// isspd.m の mmd 相当: 既存 chol ordering 系へ接続(sparse_chol_ordering
-	// [tsparse_sparse_chol.hpp])。順列は is_spd 内で行列に先に適用し(値移動
-	// のみ)、Cholesky は常に基底 spmats の自前 chol(演算順が管理下)を
-	// natural で実行する。外部委譲(CHOLMOD 等)は主張の正当化を文書化して
-	// から有効化するオプションの口のみ。
-	vcp::sparse_chol_ordering ordering;
-	// 'accurate' removed (SPI-G1 D-4): there is exactly one certification route
-	// (Rump 1993 Thm 2.1 / Alg. 2.2 type a-posteriori evaluation, T-generic).
-	// Keeping the field and ignoring it would be a silent fallback of an
-	// explicitly requested mode. The double-only fast route (Rump 2006) returns
-	// in the derived policy spidmats (separate track).
-
-	spd_options()
-		: nosymcheck(false),
-		  ordering(vcp::sparse_chol_ordering::auto_select) {}
-};
+// spd_options<_T>(is_spd のノブ)は SPM-S1 で spmats_base/spmats_chol.hpp へ移動した
+// (全ポリシー共通の policy_is_spd の引数。定義は不変。spmats.hpp 経由で可視)。
 
 // ---------------------------------------------------------------------------
 // spimats_verify_info<_T>: フライトレコーダ(設計 §5.4)。
@@ -449,6 +426,18 @@ public:
 			return true;
 		}
 		return is_spd_point_impl_(A, opt);
+	}
+	// SPM-S1 (S1-4): 基底 spmats の NVI policy_is_spd の判定本体を override し、
+	// 上の証明付き区間版 is_spd(*this が対象)に委譲する。基底のスカラーは
+	// kv::interval<_T> なので引数型は spd_options<kv::interval<_T> >(2 フィールドを
+	// spd_options<_T> に写す)。spmatrix<kv::interval<_T>, spimats<_T>>::is_spd から
+	// 到達する。既存の公開 is_spd 2 本と last_verify_info の記録は不変(spmatrix 経由
+	// でも従来どおり last_verify_info に残る)。
+	virtual bool policy_is_spd_impl(const spd_options<kv::interval<_T> >& bopt) const {
+		spd_options<_T> opt;
+		opt.nosymcheck = bopt.nosymcheck;
+		opt.ordering = bopt.ordering;
+		return is_spd(static_cast<const base_type&>(*this), opt);
 	}
 
 protected:

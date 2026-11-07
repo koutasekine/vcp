@@ -1962,6 +1962,36 @@ namespace vcp {
 			const chol_options<_T>& opt) const;
 
 		// ------------------------------------------------------------------
+		// Policy methods: SPD predicate (SPM-S1, design S1-2 / S1-3)
+		//
+		// policy_is_spd: non-virtual outer, NVI pattern.  Entry: non-square
+		// -> dimension_error; finalize guarantee; n = 0 -> true (vacuously
+		// SPD, as spimats F1-1); !opt.nosymcheck && !policy_is_symmetric(A)
+		// (the default-tolerance overload) -> domain_error; then delegates to
+		// the virtual policy_is_spd_impl.  Must never be overridden; override
+		// policy_is_spd_impl instead.  The default _impl copies ONLY
+		// opt.ordering into a chol_options and returns
+		// policy_chol_with_info(L, perm, copt).status == success.  This is an
+		// APPROXIMATE predicate ("the policy's Cholesky completed with
+		// positive pivots"), NOT a proof of positive definiteness: false does
+		// not distinguish "not SPD" from "SPD but the floating-point
+		// factorization broke down".  Since the default _impl goes through
+		// the chol NVI, a policy that overrides policy_chol_with_info_impl
+		// (spcmodumar -> CHOLMOD) is judged by that backend with no further
+		// code; spimats overrides policy_is_spd_impl with its certified
+		// interval is_spd.  With spmats<kv::interval<T>> used directly as the
+		// policy the same code runs in interval arithmetic and returns the
+		// chol outcome as is (no claim is made here that a completed interval
+		// Cholesky is a sufficient condition for SPD).  Return value is bool
+		// only (no common result type).  spd_options<_T> (nosymcheck /
+		// ordering, no policy-specific knowledge) is defined in
+		// spmats_base/spmats_chol.hpp.  Definitions in
+		// spmats_base/spmats_chol_impl.hpp.
+		// ------------------------------------------------------------------
+		bool policy_is_spd(const spd_options<_T>& opt = spd_options<_T>()) const;
+		virtual bool policy_is_spd_impl(const spd_options<_T>& opt) const;
+
+		// ------------------------------------------------------------------
 		// Policy methods: inertia (LDL-4, design v2 SS7; decision 4)
 		//
 		// policy_inertia_with_info: non-virtual outer (finalize + squareness),
