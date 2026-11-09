@@ -1816,6 +1816,30 @@ namespace vcp {
 			const linear_solve_options<_T>& opt) const;
 
 		// ------------------------------------------------------------------
+		// Policy methods: multi-RHS lss (SPM-A2)
+		//
+		// policy_lss_multi_with_info: non-virtual outer (finalize, square
+		// check, every column must have rowsize() entries), then the NVI
+		// _impl.  The DEFAULT _impl is a column loop over the existing
+		// policy_lss_with_info (so every existing policy gets the API with
+		// exactly the single-RHS results).  Policies that can share one
+		// factorization across columns override the _impl (spumar: one
+		// UMFPACK LU; spimats: one LU + one ||RA-I|| for all columns).  The
+		// per-column results are the same objects the single-RHS API
+		// returns; nothing existing is changed.
+		// Definitions in spmats_base/spmats_lss.hpp.
+		// ------------------------------------------------------------------
+		std::vector<linear_solve_result<_T> > policy_lss_multi_with_info(
+			const std::vector<std::vector<_T> >& B,
+			const linear_solve_options<_T>& opt) const;
+		virtual std::vector<linear_solve_result<_T> > policy_lss_multi_with_info_impl(
+			const std::vector<std::vector<_T> >& B,
+			const linear_solve_options<_T>& opt) const;
+		std::vector<std::vector<_T> > policy_lss_multi(
+			const std::vector<std::vector<_T> >& B,
+			const linear_solve_options<_T>& opt) const;
+
+		// ------------------------------------------------------------------
 		// Policy methods: reusable LU factorization handle (LSS-1 P-4;
 		// definitions at the end of spmats_base/spmats_lss.hpp).
 		//

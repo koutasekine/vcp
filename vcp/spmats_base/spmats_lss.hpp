@@ -676,6 +676,52 @@ std::vector<_T> spmats<_T, _Index>::policy_lss(
 	return result.x;
 }
 
+// ---------------------------------------------------------------------------
+// SPM-A2: multi-RHS lss.  Outer (non-virtual) + default _impl (column loop
+// over policy_lss_with_info) + no-throw wrapper.
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+std::vector<linear_solve_result<_T> > spmats<_T, _Index>::policy_lss_multi_with_info(
+	const std::vector<std::vector<_T> >& B,
+	const linear_solve_options<_T>& opt) const
+{
+	const spmats<_T, _Index>& A = *this;
+	if (!A.is_finalized()) A.finalize();
+	if (A.rowsize() != A.columnsize())
+		vcp::throw_error<vcp::dimension_error>("spmats::policy_lss_multi_with_info: matrix must be square");
+	for (std::size_t c = 0; c < B.size(); c++)
+		if (B[c].size() != static_cast<std::size_t>(A.rowsize()))
+			vcp::throw_error<vcp::dimension_error>("spmats::policy_lss_multi_with_info: rhs column dimension mismatch");
+	return policy_lss_multi_with_info_impl(B, opt);
+}
+
+template <typename _T, typename _Index>
+std::vector<linear_solve_result<_T> > spmats<_T, _Index>::policy_lss_multi_with_info_impl(
+	const std::vector<std::vector<_T> >& B,
+	const linear_solve_options<_T>& opt) const
+{
+	std::vector<linear_solve_result<_T> > out;
+	out.reserve(B.size());
+	for (std::size_t c = 0; c < B.size(); c++)
+		out.push_back(policy_lss_with_info(B[c], opt));
+	return out;
+}
+
+template <typename _T, typename _Index>
+std::vector<std::vector<_T> > spmats<_T, _Index>::policy_lss_multi(
+	const std::vector<std::vector<_T> >& B,
+	const linear_solve_options<_T>& opt) const
+{
+	const std::vector<linear_solve_result<_T> > res = policy_lss_multi_with_info(B, opt);
+	std::vector<std::vector<_T> > X(res.size());
+	for (std::size_t c = 0; c < res.size(); c++) {
+		if (!res[c].converged)
+			vcp::throw_error<vcp::state_error>("spmats::policy_lss_multi: solver did not converge (some column)");
+		X[c] = res[c].x;
+	}
+	return X;
+}
+
 // ===========================================================================
 // LSS-1 P-4: policy_lu_factorize_with_info (reusable LU factorization handle)
 // Type: spmats_base/spmats_lu_factor.hpp.  Defined here so the handle's

@@ -9,6 +9,7 @@
 #define VCP_SPMATRIX_HPP
 
 #include <algorithm>
+#include <ostream>
 #include <cstddef>
 #include <cmath>
 #include <complex>
@@ -396,6 +397,18 @@ namespace vcp {
 
 		void sort_coo() { _P::sort_coo(); }
 		void normalize_coo() { _P::normalize_coo(); }
+		// SPM-A1 (A1-1): dense-style eye(n) -- REPLACES the current content
+		// by the n x n identity (resize -> diagonal _T(1) by add -> finalize),
+		// the same meaning as matrix::eye.
+		void eye(const int n) {
+			const index_type nn = static_cast<index_type>(n);
+			this->resize(nn, nn);
+			this->reserve(nn);
+			for (index_type i = 0; i < nn; ++i) {
+				this->add(i, i, _T(1));
+			}
+			this->finalize();
+		}
 		void finalize() { _P::finalize(); }
 		void to_csr() { _P::to_csr(); }
 		void to_csc() { _P::to_csc(); }
@@ -1383,6 +1396,371 @@ namespace vcp {
 			return A.policy_left_mul_vec(x, static_cast<const _P&>(A));
 		}
 
+	private:
+		// ---------------------------------------------------------------
+		// SPM-A1 helpers (A1-5 / A1-9).  Every public entry of this track
+		// is a thin friend below; nothing here touches the policy.
+		// ---------------------------------------------------------------
+
+		// Pattern filter on the stored entries (j <= i when lower, j >= i
+		// otherwise; the diagonal belongs to both).  Works on a CSR copy of
+		// *this (as_csr() also normalizes an unfinalized COO input) and
+		// assigns the result as CSR (columns stay sorted / unique, values
+		// stay nonzero, so the assign_csr preconditions hold).
+		spmatrix triangular_part_(const bool lower) const {
+			const spmatrix C = this->as_csr();
+			const index_type rows = C.rowsize();
+			const index_type cols = C.columnsize();
+			const std::vector<index_type>& outer = C.outer_index();
+			const std::vector<index_type>& inner = C.inner_index();
+			const std::vector<_T>& val = C.values();
+			std::vector<index_type> row_ptr(static_cast<std::size_t>(rows) + 1, 0);
+			std::vector<index_type> col_idx;
+			std::vector<_T> v;
+			col_idx.reserve(val.size());
+			v.reserve(val.size());
+			for (index_type i = 0; i < rows; ++i) {
+				for (index_type k = outer[static_cast<std::size_t>(i)];
+				     k < outer[static_cast<std::size_t>(i) + 1]; ++k) {
+					const index_type j = inner[static_cast<std::size_t>(k)];
+					if (lower ? (j <= i) : (j >= i)) {
+						col_idx.push_back(j);
+						v.push_back(val[static_cast<std::size_t>(k)]);
+					}
+				}
+				row_ptr[static_cast<std::size_t>(i) + 1] = static_cast<index_type>(col_idx.size());
+			}
+			spmatrix B;
+			B.assign_csr(rows, cols, row_ptr, col_idx, v);
+			return B;
+		}
+
+		// E (m x 1) <- eigenvalues of an eig_result, in the result's order
+		// (m = returned count; m == k when every requested value came back).
+		template <class _PD>
+		static void eig_pack_(const eig_result<_T>& r, matrix<_T, _PD>& E) {
+			const int m = static_cast<int>(r.eigenvalues.size());
+			E.zeros(m, 1);
+			for (int i = 0; i < m; ++i) {
+				E(i, 0) = r.eigenvalues[static_cast<std::size_t>(i)];
+			}
+		}
+
+		// V (n x m) <- eigenvectors of an eig_result, column c = eigenvectors[c].
+		template <class _PD>
+		static void eig_pack_vectors_(const eig_result<_T>& r, const index_type n, matrix<_T, _PD>& V) {
+			const int m = static_cast<int>(r.eigenvectors.size());
+			const std::size_t nn = static_cast<std::size_t>(n);
+			V.zeros(static_cast<int>(n), m);
+			for (int c = 0; c < m; ++c) {
+				const std::vector<_T>& x = r.eigenvectors[static_cast<std::size_t>(c)];
+				const std::size_t len = x.size() < nn ? x.size() : nn;
+				for (std::size_t i = 0; i < len; ++i) {
+					V(static_cast<int>(i), c) = x[i];
+				}
+			}
+		}
+
+	public:
+		// ---------------------------------------------------------------
+		// SPM-A1: the dense (matrix.hpp) notation as thin friends.
+		// Additions only -- each delegates to an existing member, the
+		// policies are untouched, nothing above changes.  matrix<_T,_PD>
+		// is only forward-declared in this header (SPC-3), so every form
+		// that takes a matrix is a template in _PD and is checked at
+		// instantiation, inside a TU that necessarily includes matrix.hpp.
+		// Not provided on purpose (design v1.1): inv / qr / full eigsym /
+		// eigsymge (dense in disguise), sum / comparisons / pow (zero
+		// semantics undecided).
+		// ---------------------------------------------------------------
+
+		// A1-2: C = A * B (sparse x dense).  C(i,c) += a_ij * B(j,c) over the
+		// stored entries of A (CSR copy); dimension_error when
+		// A.columnsize() != B.rowsize().
+		template <class _PD>
+		friend matrix<_T, _PD> operator*(const spmatrix& A, const matrix<_T, _PD>& B) {
+			if (static_cast<index_type>(B.rowsize()) != A.columnsize()) {
+				vcp::throw_error<vcp::dimension_error>(
+					"spmatrix: operator*(spmatrix, matrix): dimension mismatch");
+			}
+			const spmatrix C = A.as_csr();
+			const index_type rows = C.rowsize();
+			const int cols = B.columnsize();
+			const std::vector<index_type>& outer = C.outer_index();
+			const std::vector<index_type>& inner = C.inner_index();
+			const std::vector<_T>& val = C.values();
+			matrix<_T, _PD> R;
+			R.zeros(static_cast<int>(rows), cols);
+			for (index_type i = 0; i < rows; ++i) {
+				for (index_type k = outer[static_cast<std::size_t>(i)];
+				     k < outer[static_cast<std::size_t>(i) + 1]; ++k) {
+					const int j = static_cast<int>(inner[static_cast<std::size_t>(k)]);
+					const _T& a = val[static_cast<std::size_t>(k)];
+					for (int c = 0; c < cols; ++c) {
+						R(static_cast<int>(i), c) += a * B(j, c);
+					}
+				}
+			}
+			return R;
+		}
+
+		// A1-2: C = B * A (dense x sparse).  C(r,j) += B(r,i) * a_ij over the
+		// stored entries of A; dimension_error when B.columnsize() != A.rowsize().
+		template <class _PD>
+		friend matrix<_T, _PD> operator*(const matrix<_T, _PD>& B, const spmatrix& A) {
+			if (static_cast<index_type>(B.columnsize()) != A.rowsize()) {
+				vcp::throw_error<vcp::dimension_error>(
+					"spmatrix: operator*(matrix, spmatrix): dimension mismatch");
+			}
+			const spmatrix C = A.as_csr();
+			const index_type rows = C.rowsize();
+			const int brows = B.rowsize();
+			const std::vector<index_type>& outer = C.outer_index();
+			const std::vector<index_type>& inner = C.inner_index();
+			const std::vector<_T>& val = C.values();
+			matrix<_T, _PD> R;
+			R.zeros(brows, static_cast<int>(C.columnsize()));
+			for (index_type i = 0; i < rows; ++i) {
+				for (index_type k = outer[static_cast<std::size_t>(i)];
+				     k < outer[static_cast<std::size_t>(i) + 1]; ++k) {
+					const int j = static_cast<int>(inner[static_cast<std::size_t>(k)]);
+					const _T& a = val[static_cast<std::size_t>(k)];
+					for (int r = 0; r < brows; ++r) {
+						R(r, j) += B(r, static_cast<int>(i)) * a;
+					}
+				}
+			}
+			return R;
+		}
+
+		// A1-3: os << A.  Line 1: "spmatrix r x c, nnz = N"; then one line
+		// "(i,j) value" per stored entry in CSR order (value printed by the
+		// operator<< of _T -- kv notation for intervals).
+		friend std::ostream& operator<<(std::ostream& os, const spmatrix& A) {
+			const spmatrix C = A.as_csr();
+			const index_type rows = C.rowsize();
+			const std::vector<index_type>& outer = C.outer_index();
+			const std::vector<index_type>& inner = C.inner_index();
+			const std::vector<_T>& val = C.values();
+			os << "spmatrix " << rows << " x " << C.columnsize() << ", nnz = " << C.nnz() << '\n';
+			for (index_type i = 0; i < rows; ++i) {
+				for (index_type k = outer[static_cast<std::size_t>(i)];
+				     k < outer[static_cast<std::size_t>(i) + 1]; ++k) {
+					os << '(' << i << ',' << inner[static_cast<std::size_t>(k)] << ") "
+					   << val[static_cast<std::size_t>(k)] << '\n';
+				}
+			}
+			return os;
+		}
+
+		// A1-4: diag, both directions as matrix::diag (mats.hpp diag):
+		//   1 x 1            -> A itself;
+		//   n x 1 or 1 x n   -> n x n sparse diagonal matrix of the stored entries;
+		//   other r x c      -> min(r,c) x 1 sparse column of the STORED diagonal
+		//                       entries (an unstored diagonal position stays unstored).
+		friend spmatrix diag(const spmatrix& A) {
+			const spmatrix C = A.as_csr();
+			const index_type rows = C.rowsize();
+			const index_type cols = C.columnsize();
+			const std::vector<index_type>& outer = C.outer_index();
+			const std::vector<index_type>& inner = C.inner_index();
+			const std::vector<_T>& val = C.values();
+			if (rows == 1 && cols == 1) {
+				return C;
+			}
+			std::vector<index_type> row_ptr;
+			std::vector<index_type> col_idx;
+			std::vector<_T> v;
+			if (cols == 1 || rows == 1) {
+				// vector -> n x n diagonal (entry k of the vector -> (k,k))
+				const index_type n = (cols == 1) ? rows : cols;
+				row_ptr.assign(static_cast<std::size_t>(n) + 1, 0);
+				col_idx.reserve(val.size());
+				v.reserve(val.size());
+				for (index_type i = 0; i < rows; ++i) {
+					for (index_type k = outer[static_cast<std::size_t>(i)];
+					     k < outer[static_cast<std::size_t>(i) + 1]; ++k) {
+						const index_type d = (cols == 1) ? i : inner[static_cast<std::size_t>(k)];
+						col_idx.push_back(d);
+						v.push_back(val[static_cast<std::size_t>(k)]);
+						row_ptr[static_cast<std::size_t>(d) + 1] = 1;
+					}
+				}
+				for (index_type d = 0; d < n; ++d) {
+					row_ptr[static_cast<std::size_t>(d) + 1] += row_ptr[static_cast<std::size_t>(d)];
+				}
+				spmatrix D;
+				D.assign_csr(n, n, row_ptr, col_idx, v);
+				return D;
+			}
+			// matrix -> min(r,c) x 1 column of the stored diagonal
+			const index_type n = (rows < cols) ? rows : cols;
+			row_ptr.assign(static_cast<std::size_t>(n) + 1, 0);
+			for (index_type i = 0; i < n; ++i) {
+				for (index_type k = outer[static_cast<std::size_t>(i)];
+				     k < outer[static_cast<std::size_t>(i) + 1]; ++k) {
+					if (inner[static_cast<std::size_t>(k)] == i) {
+						col_idx.push_back(0);
+						v.push_back(val[static_cast<std::size_t>(k)]);
+						break;
+					}
+				}
+				row_ptr[static_cast<std::size_t>(i) + 1] = static_cast<index_type>(col_idx.size());
+			}
+			spmatrix D;
+			D.assign_csr(n, 1, row_ptr, col_idx, v);
+			return D;
+		}
+
+		// A1-5: tril / triu -- pattern filters on the stored entries
+		// (j <= i / j >= i; the diagonal is in both).
+		friend spmatrix tril(const spmatrix& A) { return A.triangular_part_(true); }
+		friend spmatrix triu(const spmatrix& A) { return A.triangular_part_(false); }
+
+		// A1-6: lss (MATLAB x = A \ b).  Meaning follows the policy
+		// (approximate policies: approximation; spimats: enclosure).  The
+		// plain vector form lss(A, b) is the namespace-scope template that
+		// already exists further below in this header (unchanged).
+		friend void lss(const spmatrix& A, const std::vector<_T>& b, std::vector<_T>& x) {
+			x = A.solve(b);
+		}
+		// A1-6: X = A \ B for a dense right-hand side, column by column
+		// (each column goes through A.solve); dimension_error when
+		// B.rowsize() != A.rowsize().
+		// SPM-A2 (A2-5): unchanged column loop; for multi-RHS performance (one shared factorization) use lss_with_info(A, matrix B, res) or lss(A, spmatrix B, X) below.
+		template <class _PD>
+		friend matrix<_T, _PD> lss(const spmatrix& A, const matrix<_T, _PD>& B) {
+			if (static_cast<index_type>(B.rowsize()) != A.rowsize()) {
+				vcp::throw_error<vcp::dimension_error>(
+					"spmatrix: lss(spmatrix, matrix): dimension mismatch");
+			}
+			const int n = B.rowsize();
+			const int cols = B.columnsize();
+			matrix<_T, _PD> X;
+			X.zeros(n, cols);
+			std::vector<_T> b(static_cast<std::size_t>(n));
+			for (int c = 0; c < cols; ++c) {
+				for (int i = 0; i < n; ++i) {
+					b[static_cast<std::size_t>(i)] = B(i, c);
+				}
+				const std::vector<_T> x = A.solve(b);
+				for (int i = 0; i < n; ++i) {
+					X(i, c) = x[static_cast<std::size_t>(i)];
+				}
+			}
+			return X;
+		}
+		template <class _PD>
+		friend void lss(const spmatrix& A, const matrix<_T, _PD>& B, matrix<_T, _PD>& X) {
+			X = lss(A, B);
+		}
+
+		// --- SPM-A2: multi-RHS lss with a sparse right-hand side ---------------
+		// B is a spmatrix (n x m); X is the dense result (n x m), because the
+		// solution of a sparse system is dense in general.  The columns go
+		// through policy_lss_multi(_with_info) (one factorization per call
+		// where the policy shares it).  lss_with_info returns one
+		// linear_solve_result per column.
+		friend std::vector<std::vector<_T> > spmatrix_columns_(const spmatrix& B) {
+			const spmatrix Bc = B.as_csr();
+			const std::vector<index_type>& op = Bc.outer_index();
+			const std::vector<index_type>& ip = Bc.inner_index();
+			const std::vector<_T>& va = Bc.values();
+			const std::size_t nr = static_cast<std::size_t>(B.rowsize());
+			std::vector<std::vector<_T> > cols(static_cast<std::size_t>(B.columnsize()), std::vector<_T>(nr, _T(0)));
+			for (std::size_t i = 0; i < nr; ++i)
+				for (index_type k = op[i]; k < op[i + 1]; ++k)
+					cols[static_cast<std::size_t>(ip[static_cast<std::size_t>(k)])][i] = va[static_cast<std::size_t>(k)];
+			return cols;
+		}
+		friend std::vector<linear_solve_result<_T> > lss_with_info(const spmatrix& A, const spmatrix& B,
+		        const linear_solve_options_type& options = linear_solve_options_type()) {
+			if (A.rowsize() != B.rowsize())
+				vcp::throw_error<vcp::dimension_error>("lss_with_info(spmatrix, spmatrix): dimension mismatch");
+			return A.policy_lss_multi_with_info(spmatrix_columns_(B), options);
+		}
+		template <class _PD>
+		friend void lss(const spmatrix& A, const spmatrix& B, matrix<_T, _PD>& X) {
+			if (A.rowsize() != B.rowsize())
+				vcp::throw_error<vcp::dimension_error>("lss(spmatrix, spmatrix): dimension mismatch");
+			const std::vector<std::vector<_T> > Xc = A.policy_lss_multi(spmatrix_columns_(B), linear_solve_options_type());
+			X.zeros(static_cast<int>(A.columnsize()), static_cast<int>(Xc.size()));
+			for (std::size_t c = 0; c < Xc.size(); ++c)
+				for (std::size_t i = 0; i < Xc[c].size(); ++i) X(static_cast<int>(i), static_cast<int>(c)) = Xc[c][i];
+		}
+		template <class _PD>
+		friend void lss_with_info(const spmatrix& A, const matrix<_T, _PD>& B, std::vector<linear_solve_result<_T> >& res,
+		        const linear_solve_options_type& options = linear_solve_options_type()) {
+			if (static_cast<index_type>(B.rowsize()) != A.rowsize())
+				vcp::throw_error<vcp::dimension_error>("lss_with_info(spmatrix, matrix): dimension mismatch");
+			const std::size_t nr = static_cast<std::size_t>(A.rowsize());
+			std::vector<std::vector<_T> > cols(static_cast<std::size_t>(B.columnsize()), std::vector<_T>(nr));
+			for (int c = 0; c < B.columnsize(); ++c) for (std::size_t i = 0; i < nr; ++i) cols[static_cast<std::size_t>(c)][i] = B(static_cast<int>(i), c);
+			res = A.policy_lss_multi_with_info(cols, options);
+		}
+
+		// A1-7: Cholesky(A) = chol with ordering = natural, so L L^T = A
+		// (the dense meaning; note that without reordering the fill-in of L
+		// can be much larger than with the default ordering).  Failure is the
+		// numerical_error of the strict chol, unchanged.
+		friend spmatrix Cholesky(const spmatrix& A) {
+			spmatrix L;
+			std::vector<index_type> p;
+			chol_options_type opt;
+			opt.ordering = sparse_chol_ordering::natural;
+			A.chol(L, p, opt);
+			return L;
+		}
+		// A1-7: Cholesky(A, p) = chol with the default ordering, so
+		// L L^T = P A P^T with P(k, p[k]) = 1 (the existing chol convention).
+		friend spmatrix Cholesky(const spmatrix& A, std::vector<index_type>& p) {
+			spmatrix L;
+			A.chol(L, p);
+			return L;
+		}
+
+		// A1-8: lu(A, L, U, p, q) = the strict A.lu(L, U, p, q): P A Q = L U
+		// with P(k, p[k]) = 1 and Q(q[k], k) = 1.  The dense lu(A, LU, ipiv)
+		// (one row permutation) is NOT provided: the two sparse permutations
+		// cannot be recovered from it.
+		friend void lu(const spmatrix& A, spmatrix& L, spmatrix& U,
+		               std::vector<index_type>& p, std::vector<index_type>& q) {
+			A.lu(L, U, p, q);
+		}
+
+		// A1-9: eigs friends -- E (k x 1) and V (n x k) are filled from the
+		// eig_result of the eigs_with_info member (same order and meaning;
+		// E / V hold the RETURNED count, k when everything came back).  k is
+		// mandatory (no full-spectrum form for sparse matrices).  The
+		// generalized forms need the same options as the member (e.g.
+		// structure = symmetric + lanczos, or shift-invert): with the default
+		// options the base policy honestly returns an empty result
+		// (status = unsupported_generalized_non_diagonal) -- existing behaviour.
+		template <class _PD>
+		friend void eigs(const spmatrix& A, matrix<_T, _PD>& E, const std::size_t k,
+		                 const eig_options_type& opt = eig_options_type()) {
+			eig_pack_(A.eigs_with_info(k, opt), E);
+		}
+		template <class _PD>
+		friend void eigs(const spmatrix& A, matrix<_T, _PD>& E, matrix<_T, _PD>& V, const std::size_t k,
+		                 const eig_options_type& opt = eig_options_type()) {
+			const eig_result<_T> r = A.eigs_with_info(k, opt);
+			eig_pack_(r, E);
+			eig_pack_vectors_(r, A.rowsize(), V);
+		}
+		template <class _PD>
+		friend void eigs(const spmatrix& A, const spmatrix& B, matrix<_T, _PD>& E, const std::size_t k,
+		                 const eig_options_type& opt = eig_options_type()) {
+			eig_pack_(A.eigs_with_info(B, k, opt), E);
+		}
+		template <class _PD>
+		friend void eigs(const spmatrix& A, const spmatrix& B, matrix<_T, _PD>& E, matrix<_T, _PD>& V,
+		                 const std::size_t k, const eig_options_type& opt = eig_options_type()) {
+			const eig_result<_T> r = A.eigs_with_info(B, k, opt);
+			eig_pack_(r, E);
+			eig_pack_vectors_(r, A.rowsize(), V);
+		}
+
 		friend spmatrix transpose(const spmatrix& A) {
 			return A.transpose();
 		}
@@ -1494,6 +1872,26 @@ namespace vcp {
 			if (rowsize() != columnsize()) vcp::throw_error<vcp::dimension_error>(routine, ": matrix must be square");
 		}
 	};
+
+	// SPM-A1 (A1-4): n x n sparse diagonal matrix from a std::vector.
+	// A namespace-scope template (NOT a friend: a friend of every
+	// spmatrix<_T,_P> instantiation would redeclare the same signature and
+	// become ambiguous).  vcp::diag(v) gives the default policy,
+	// vcp::diag<T, P>(v) a chosen one.  Zero entries are not stored
+	// (spmats invariant), hence nnz <= n.
+	template <typename _T, class _P = spmats<_T> >
+	spmatrix<_T, _P> diag(const std::vector<_T>& v) {
+		typedef typename spmatrix<_T, _P>::index_type index_type;
+		const index_type n = static_cast<index_type>(v.size());
+		spmatrix<_T, _P> D;
+		D.resize(n, n);
+		D.reserve(n);
+		for (index_type i = 0; i < n; ++i) {
+			D.add(i, i, v[static_cast<std::size_t>(i)]);
+		}
+		D.finalize();
+		return D;
+	}
 
 	// -----------------------------------------------------------------------
 	// SUB-1: block-write proxy returned by the non-const

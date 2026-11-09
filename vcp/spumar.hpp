@@ -592,6 +592,67 @@ namespace vcp {
 			return result;
 		}
 
+		// SPM-A2: multi-RHS override -- one UMFPACK factorization, one solve per
+		// column.  Per-column result fields are built exactly as in the
+		// single-RHS override above (same factorization control, same residual
+		// re-evaluation); last_delegate_info reflects the last column.
+		virtual std::vector<linear_solve_result<double> > policy_lss_multi_with_info_impl(
+			const std::vector<std::vector<double> >& B,
+			const linear_solve_options<double>& opt) const override
+		{
+			if (opt.max_iter == 0) {
+				vcp::throw_error<vcp::invalid_argument>("spumar::policy_lss_multi_with_info: max_iter must be positive");
+			}
+			if (!(opt.tol > 0.0)) {
+				vcp::throw_error<vcp::invalid_argument>("spumar::policy_lss_multi_with_info: tol must be positive");
+			}
+			const std::size_t n = static_cast<std::size_t>(this->rowsize());
+			std::vector<linear_solve_result<double> > out(B.size());
+			for (std::size_t c = 0; c < B.size(); c++) { out[c].method = opt.method; out[c].iterations = 0; }
+			if (B.empty()) return out;
+			last_delegate_info.clear();
+			last_delegate_info.backend = "umfpack";
+			last_delegate_info.note =
+				"backend=umfpack (direct LU solve, one factorization shared by all right-hand sides; SPM-A2)";
+			if (n == 0) {
+				for (std::size_t c = 0; c < B.size(); c++) { out[c].x.clear(); out[c].solution.clear(); out[c].converged = true; }
+				return out;
+			}
+			spumar_detail::umfpack_lu lu;
+			if (muar_opt.umf_irstep >= 0) {
+				lu.control[UMFPACK_IRSTEP] = static_cast<double>(muar_opt.umf_irstep);
+			}
+			if (muar_opt.umf_pivot_tol >= 0.0) {
+				lu.control[UMFPACK_PIVOT_TOLERANCE] = muar_opt.umf_pivot_tol;
+			}
+			const int fac_status = lu.factorize(*this);
+			last_delegate_info.umfpack_symbolic_status = lu.symbolic_status();
+			last_delegate_info.umfpack_numeric_status = lu.numeric_status();
+			last_delegate_info.umfpack_control.assign(lu.control, lu.control + UMFPACK_CONTROL);
+			last_delegate_info.umfpack_info.assign(lu.info, lu.info + UMFPACK_INFO);
+			if (fac_status != UMFPACK_OK) {
+				for (std::size_t c = 0; c < B.size(); c++) { out[c].x.assign(n, 0.0); out[c].solution = out[c].x; out[c].converged = false; }
+				return out;
+			}
+			for (std::size_t c = 0; c < B.size(); c++) {
+				std::vector<double> x;
+				const int solve_status = lu.solve(B[c], x);
+				last_delegate_info.umfpack_solve_status = solve_status;
+				last_delegate_info.umfpack_info.assign(lu.info, lu.info + UMFPACK_INFO);
+				if (solve_status != UMFPACK_OK) {
+					out[c].x.assign(n, 0.0); out[c].solution = out[c].x; out[c].converged = false;
+					continue;
+				}
+				out[c].x = x;
+				out[c].solution = x;
+				const double ir_taken = lu.info[UMFPACK_IR_TAKEN];
+				out[c].iterations = ir_taken > 0.0 ? static_cast<std::size_t>(ir_taken) : 0;
+				vcp::tsparse_solvers::set_linear_residual_fields(out[c], *this, B[c]);
+				out[c].converged = vcp::tsparse_scalar::is_finite(out[c].residual_norm);
+			}
+			return out;
+		}
+
 		// -------------------------------------------------------------------
 		// Override #2 (design §1.1a, SPU-1): LU factor extraction via
 		// UMFPACK get_numeric, mapped to the §C (SSC) convention
