@@ -35,6 +35,8 @@
 #include <vcp/bfem/rt/rt_space.hpp>
 #include <vcp/bfem/rt/broken_space.hpp>
 #include <vcp/bfem/rt/rt_element_op.hpp>
+#include <atomic>
+#include <exception>
 
 namespace vcp {
 namespace bfem {
@@ -98,14 +100,25 @@ vcp::spmatrix<T, SPB> assemble_div_mass(broken_space<D, T, P, SPB>& bs,
     const int nt = bs.num_elements();
     int nrun = 1;
     std::vector<detail::coo_buffer<T> > tbuf;
+    { // OMP-E1: capture exceptions thrown inside the OpenMP region
+    std::atomic<bool> omp_caught(false);
+    std::exception_ptr omp_eptr;
 #pragma omp parallel
     {
 #pragma omp single
         {
+            try {
             nrun = omp_get_num_threads();
             tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+            catch (...) {
+                bool omp_expected = false;
+                if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+            }
         }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
         const int tid = omp_get_thread_num();
         const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
         const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -120,7 +133,15 @@ vcp::spmatrix<T, SPB> assemble_div_mass(broken_space<D, T, P, SPB>& bs,
             op_l.local_div_mass(k, l, loc_l);
             detail::scatter_matrix_general2<T>(bs.dofs(), rs.dofs(), e, loc_l, nr, nc, b);
         }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
     }
+    if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+    } // OMP-E1
     buf.append_all(tbuf, nrun);
 #else
     for (int e = 0; e < bs.num_elements(); ++e) {
@@ -157,14 +178,25 @@ vcp::spmatrix<T, SPR> assemble_cross_grad(rt_space<D, T, P, SPR>& rs,
     const int nt = rs.num_elements();
     int nrun = 1;
     std::vector<detail::coo_buffer<T> > tbuf;
+    { // OMP-E1: capture exceptions thrown inside the OpenMP region
+    std::atomic<bool> omp_caught(false);
+    std::exception_ptr omp_eptr;
 #pragma omp parallel
     {
 #pragma omp single
         {
+            try {
             nrun = omp_get_num_threads();
             tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+            catch (...) {
+                bool omp_expected = false;
+                if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+            }
         }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
         const int tid = omp_get_thread_num();
         const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
         const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -179,7 +211,15 @@ vcp::spmatrix<T, SPR> assemble_cross_grad(rt_space<D, T, P, SPR>& rs,
             op_l.local_cross_grad(k, m, loc_l);
             detail::scatter_matrix_general2<T>(rs.dofs(), fdm, e, loc_l, nr, nc, b);
         }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
     }
+    if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+    } // OMP-E1
     buf.append_all(tbuf, nrun);
 #else
     for (int e = 0; e < rs.num_elements(); ++e) {
@@ -355,14 +395,25 @@ vcp::spmatrix<T, SPF> assemble_mixed_mass(fe_space<D, T, P, SPF>& fs, int m,
     const int nt = bs.num_elements();
     int nrun = 1;
     std::vector<detail::coo_buffer<T> > tbuf;
+    { // OMP-E1: capture exceptions thrown inside the OpenMP region
+    std::atomic<bool> omp_caught(false);
+    std::exception_ptr omp_eptr;
 #pragma omp parallel
     {
 #pragma omp single
         {
+            try {
             nrun = omp_get_num_threads();
             tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+            catch (...) {
+                bool omp_expected = false;
+                if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+            }
         }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
         const int tid = omp_get_thread_num();
         const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
         const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -381,7 +432,15 @@ vcp::spmatrix<T, SPF> assemble_mixed_mass(fe_space<D, T, P, SPF>& fs, int m,
                     b.push(gi, bs.dofs().global_dof(e, j), loc_l(i, j));
             }
         }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
     }
+    if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+    } // OMP-E1
     buf.append_all(tbuf, nrun);
 #else
     for (int e = 0; e < bs.num_elements(); ++e) {

@@ -56,6 +56,8 @@
 #include <functional>
 
 #include <vcp/fourier_series.hpp>
+#include <atomic>
+#include <exception>
 
 // Basis {1/2, sinx, cosx, sin2x, cos2x, ... , sinnx, cosnx}
 // phi0 = 1/2
@@ -96,15 +98,26 @@ public:
 
 		void set_func( const std::function< _T(_T) >& ff ){
 			this->func = ff;
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 			for( int i = 0; i < bks; i++ ){
+				try {
 				_T t=(_T(2)*this->pi/_T(bks))*i;
 				fx(i) = ff(t);
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 		}
 
 		void set_autodif_func( const std::function< kv::autodif< _T >(kv::autodif< _T >) >& ff ){
@@ -125,12 +138,16 @@ public:
 			using std::cos;
 
 
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif	
 			for(int m = 1; m <= order; m++){
+				try {
 				_T sum_sin = _T(0);
 				_T sum_cos = _T(0);
 				for(int i = 0; i < bks; i++){
@@ -140,7 +157,14 @@ public:
 				}
 				zh(2*m-1) = _T(2)*sum_sin/_T(this->bks);
 				zh(2*m  ) = _T(2)*sum_cos/_T(this->bks);
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 
 			return zh;
 		}
@@ -158,12 +182,16 @@ public:
 			using std::sin;
 			using std::cos;
 
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif	
 			for(int m = 1; m <= order; m++){
+				try {
 				_T sum_sin = _T(0);
 				_T sum_cos = _T(0);
 				for(int i = 0; i < bks; i++){
@@ -173,14 +201,25 @@ public:
 				}
 				Jmat( 0, 2*m-1) = sum_sin/_T(this->bks);
 				Jmat( 0, 2*m  ) = sum_cos/_T(this->bks);
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif	
 			for(int m = 1; m <= order; m++){
+				try {
 				for(int k = m; k <= order; k++){
 					_T sum_sinm_sink = _T(0);
 					_T sum_sinm_cosk = _T(0);
@@ -198,7 +237,14 @@ public:
 					Jmat(2*m  , 2*k-1 ) = _T(2)*sum_cosm_sink/_T(this->bks);
 					Jmat(2*m  , 2*k   ) = _T(2)*sum_cosm_cosk/_T(this->bks);
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 
 			for(int i = 0; i < 2*order+1; i++){
 				for(int j = i + 1; j < 2*order+1; j++){
@@ -222,12 +268,16 @@ public:
 			using std::sin;
 			using std::cos;
 
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif	
 			for(int m = 1; m <= order; m++){
+				try {
 				_T sum_sin = _T(0);
 				_T sum_cos = _T(0);
 				_T sum_sin_dly = _T(0);
@@ -243,14 +293,25 @@ public:
 				Jmat( 2*m  , 0 ) = sum_cos/_T(this->bks);
 				Jmat( 0, 2*m-1 ) = sum_sin_dly/_T(this->bks);
 				Jmat( 0, 2*m   ) = sum_cos_dly/_T(this->bks);
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif	
 			for(int m = 1; m <= order; m++){
+				try {
 				for(int k = 1; k <= order; k++){
 					_T sum_sinm_sink = _T(0);
 					_T sum_sinm_cosk = _T(0);
@@ -268,7 +329,14 @@ public:
 					Jmat(2*m  , 2*k-1 ) = _T(2)*sum_cosm_sink/_T(this->bks);
 					Jmat(2*m  , 2*k   ) = _T(2)*sum_cosm_cosk/_T(this->bks);
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 
 			return Jmat;
 		}

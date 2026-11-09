@@ -55,6 +55,8 @@
 #include <vcp/bfem/c1/c1_dofmap.hpp>
 #include <vcp/bfem/c1/c1_element_op.hpp>
 #include <vcp/bfem/detail/scalar_traits.hpp>
+#include <atomic>
+#include <exception>
 
 namespace vcp {
 namespace bfem {
@@ -157,14 +159,25 @@ public:
         const int nloc = dm.local_size();
         int nrun = 1;
         std::vector<detail::coo_buffer<T> > tbuf;
+        { // OMP-E1: capture exceptions thrown inside the OpenMP region
+        std::atomic<bool> omp_caught(false);
+        std::exception_ptr omp_eptr;
 #pragma omp parallel
         {
 #pragma omp single
             {
+                try {
                 nrun = omp_get_num_threads();
                 tbuf.resize(static_cast<std::size_t>(nrun));
+                }
+                catch (...) {
+                    bool omp_expected = false;
+                    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+                }
             }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
             const int tid = omp_get_thread_num();
             const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
             const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -180,7 +193,15 @@ public:
                 detail::scatter_matrix<T>(dm, e, loc_l, nloc, b,
                                           typename c1_dofmap::family_tag());
             }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
         }
+        if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+        } // OMP-E1
         buf_.append_all(tbuf, nrun);
 #else
         for (int e = 0; e < topo_.nt; ++e) {
@@ -203,14 +224,25 @@ public:
         const int nc = dmb.local_size();
         int nrun = 1;
         std::vector<detail::coo_buffer<T> > tbuf;
+        { // OMP-E1: capture exceptions thrown inside the OpenMP region
+        std::atomic<bool> omp_caught(false);
+        std::exception_ptr omp_eptr;
 #pragma omp parallel
         {
 #pragma omp single
             {
+                try {
                 nrun = omp_get_num_threads();
                 tbuf.resize(static_cast<std::size_t>(nrun));
+                }
+                catch (...) {
+                    bool omp_expected = false;
+                    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+                }
             }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
             const int tid = omp_get_thread_num();
             const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
             const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -225,7 +257,15 @@ public:
                 op_l.local_mass(a, b, loc_l);
                 detail::scatter_matrix_general2<T>(dma, dmb, e, loc_l, nr, nc, bl);
             }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
         }
+        if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+        } // OMP-E1
         buf_.append_all(tbuf, nrun);
 #else
         for (int e = 0; e < topo_.nt; ++e) {
@@ -250,14 +290,25 @@ public:
         const int nloc = dm.local_size();
         int nrun = 1;
         std::vector<detail::coo_buffer<T> > tbuf;
+        { // OMP-E1: capture exceptions thrown inside the OpenMP region
+        std::atomic<bool> omp_caught(false);
+        std::exception_ptr omp_eptr;
 #pragma omp parallel
         {
 #pragma omp single
             {
+                try {
                 nrun = omp_get_num_threads();
                 tbuf.resize(static_cast<std::size_t>(nrun));
+                }
+                catch (...) {
+                    bool omp_expected = false;
+                    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+                }
             }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
             const int tid = omp_get_thread_num();
             const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
             const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -278,7 +329,15 @@ public:
                 detail::scatter_matrix<T>(dm, e, loc_l, nloc, b,
                                           typename c1_dofmap::family_tag());
             }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
         }
+        if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+        } // OMP-E1
         buf_.append_all(tbuf, nrun);
 #else
         for (int e = 0; e < topo_.nt; ++e) {
@@ -384,14 +443,25 @@ public:
         const int nloc = dm.local_size();
         int nrun = 1;
         std::vector<detail::coo_buffer<T> > tbuf;
+        { // OMP-E1: capture exceptions thrown inside the OpenMP region
+        std::atomic<bool> omp_caught(false);
+        std::exception_ptr omp_eptr;
 #pragma omp parallel
         {
 #pragma omp single
             {
+                try {
                 nrun = omp_get_num_threads();
                 tbuf.resize(static_cast<std::size_t>(nrun));
+                }
+                catch (...) {
+                    bool omp_expected = false;
+                    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+                }
             }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
             const int tid = omp_get_thread_num();
             const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
             const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -407,7 +477,15 @@ public:
                 detail::scatter_matrix<T>(dm, e, loc_l, nloc, b,
                                           typename c1_dofmap::family_tag());
             }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
         }
+        if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+        } // OMP-E1
         buf_.append_all(tbuf, nrun);
 #else
         for (int e = 0; e < topo_.nt; ++e) {
@@ -428,14 +506,25 @@ public:
         const int nloc = dm.local_size();
         int nrun = 1;
         std::vector<detail::coo_buffer<T> > tbuf;
+        { // OMP-E1: capture exceptions thrown inside the OpenMP region
+        std::atomic<bool> omp_caught(false);
+        std::exception_ptr omp_eptr;
 #pragma omp parallel
         {
 #pragma omp single
             {
+                try {
                 nrun = omp_get_num_threads();
                 tbuf.resize(static_cast<std::size_t>(nrun));
+                }
+                catch (...) {
+                    bool omp_expected = false;
+                    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+                }
             }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
             const int tid = omp_get_thread_num();
             const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
             const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -451,7 +540,15 @@ public:
                 detail::scatter_matrix<T>(dm, e, loc_l, nloc, b,
                                           typename c1_dofmap::family_tag());
             }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
         }
+        if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+        } // OMP-E1
         buf_.append_all(tbuf, nrun);
 #else
         for (int e = 0; e < topo_.nt; ++e) {
@@ -480,14 +577,25 @@ public:
         const int nc = dm.local_size();
         int nrun = 1;
         std::vector<detail::coo_buffer<T> > tbuf;
+        { // OMP-E1: capture exceptions thrown inside the OpenMP region
+        std::atomic<bool> omp_caught(false);
+        std::exception_ptr omp_eptr;
 #pragma omp parallel
         {
 #pragma omp single
             {
+                try {
                 nrun = omp_get_num_threads();
                 tbuf.resize(static_cast<std::size_t>(nrun));
+                }
+                catch (...) {
+                    bool omp_expected = false;
+                    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+                }
             }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
             const int tid = omp_get_thread_num();
             const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
             const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -502,7 +610,15 @@ public:
                 op_l.local_laplacian_mixed(m, l, loc_l);
                 detail::scatter_matrix_general2<T>(bdm, dm, e, loc_l, nl, nc, b);
             }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
         }
+        if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+        } // OMP-E1
         buf_.append_all(tbuf, nrun);
 #else
         for (int e = 0; e < topo_.nt; ++e) {

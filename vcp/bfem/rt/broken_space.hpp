@@ -32,6 +32,8 @@
 #include <vcp/bfem/element_op.hpp>
 #include <vcp/bfem/bpoly.hpp>
 #include <vcp/bfem/detail/scalar_traits.hpp>
+#include <atomic>
+#include <exception>
 
 namespace vcp {
 namespace bfem {
@@ -150,14 +152,25 @@ public:
         const int nt = nt_;
         int nrun = 1;
         std::vector<detail::coo_buffer<T> > tbuf;
+        { // OMP-E1: capture exceptions thrown inside the OpenMP region
+        std::atomic<bool> omp_caught(false);
+        std::exception_ptr omp_eptr;
 #pragma omp parallel
         {
 #pragma omp single
             {
+                try {
                 nrun = omp_get_num_threads();
                 tbuf.resize(static_cast<std::size_t>(nrun));
+                }
+                catch (...) {
+                    bool omp_expected = false;
+                    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+                }
             }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
             const int tid = omp_get_thread_num();
             const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
             const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -173,7 +186,15 @@ public:
                 detail::scatter_matrix<T>(dm_, e, loc_l, nloc_, b,
                                           detail::broken_dofmap::family_tag());
             }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
         }
+        if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+        } // OMP-E1
         buf_.append_all(tbuf, nrun);
 #else
         for (int e = 0; e < nt_; ++e) {              // element order (X9)

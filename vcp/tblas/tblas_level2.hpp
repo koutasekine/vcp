@@ -55,6 +55,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <atomic>
+#include <exception>
 
 #include "tblas_common.hpp"
 
@@ -91,10 +93,14 @@ inline void tgemv(
 
 	if (ntrans) {
 		// y_i (行方向) で並列化し，各 thread が全列 j を走査する
+		{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+		std::atomic<bool> omp_caught(false);
+		std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel if (par)
 #endif
 		{
+			try {
 			const int nth = det::region_threads();
 			const int tid = det::region_thread_id();
 			const int chunk = (m + nth - 1) / nth;
@@ -117,13 +123,24 @@ inline void tgemv(
 					}
 				}
 			}
+			}
+			catch (...) {
+				bool omp_expected = false;
+				if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+			}
 		}
+		if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+		} // OMP-E1
 	}
 	else {
+		{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+		std::atomic<bool> omp_caught(false);
+		std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (par)
 #endif
 		for (int j = 0; j < n; j++) {
+			try {
 			const T* a = A + static_cast<std::size_t>(lda) * j;
 			T temp = T(0);
 			if (incx == 1) {
@@ -137,7 +154,14 @@ inline void tgemv(
 				}
 			}
 			y[ky + j * incy] = alpha * temp + y[ky + j * incy];
+			}
+			catch (...) {
+				bool omp_expected = false;
+				if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+			}
 		}
+		if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+		} // OMP-E1
 	}
 }
 
@@ -219,10 +243,14 @@ inline void tsymv(
 	const bool zero_beta = (beta == T(0));
 
 	// 出力行 i ごとの dot 形式 (行ごとに独立なので並列化できる)
+	{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+	std::atomic<bool> omp_caught(false);
+	std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(2.0 * n * n))
 #endif
 	for (int i = 0; i < n; i++) {
+		try {
 		T temp = T(0);
 		if (upper) {
 			const T* ai = A + static_cast<std::size_t>(lda) * i;
@@ -249,7 +277,14 @@ inline void tsymv(
 		else {
 			*yi = beta * *yi + alpha * temp;
 		}
+		}
+		catch (...) {
+			bool omp_expected = false;
+			if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+		}
 	}
+	if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+	} // OMP-E1
 }
 
 // y := alpha*A*x + beta*y, A: n x n 対称 band (帯域 k, band 格納)
@@ -857,10 +892,14 @@ inline void tger(
 	}
 	const int kx = det::vec_start(m, incx);
 	const int ky = det::vec_start(n, incy);
+	{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+	std::atomic<bool> omp_caught(false);
+	std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(2.0 * m * n))
 #endif
 	for (int j = 0; j < n; j++) {
+		try {
 		const T temp = alpha * y[ky + j * incy];
 		if (temp == T(0)) {
 			continue;
@@ -876,7 +915,14 @@ inline void tger(
 				a[i] = x[kx + i * incx] * temp + a[i];
 			}
 		}
+		}
+		catch (...) {
+			bool omp_expected = false;
+			if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+		}
 	}
+	if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+	} // OMP-E1
 }
 
 // A := alpha*x*x^T + A, A: n x n 対称 (uplo の三角のみ更新)
@@ -898,10 +944,14 @@ inline void tsyr(
 		return;
 	}
 	const int kx = det::vec_start(n, incx);
+	{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+	std::atomic<bool> omp_caught(false);
+	std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(1.0 * n * n))
 #endif
 	for (int j = 0; j < n; j++) {
+		try {
 		const T temp = alpha * x[kx + j * incx];
 		if (temp == T(0)) {
 			continue;
@@ -917,7 +967,14 @@ inline void tsyr(
 				a[i] = x[kx + i * incx] * temp + a[i];
 			}
 		}
+		}
+		catch (...) {
+			bool omp_expected = false;
+			if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+		}
 	}
+	if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+	} // OMP-E1
 }
 
 // A := alpha*x*x^T + A, A: n x n 対称 packed 格納
@@ -979,10 +1036,14 @@ inline void tsyr2(
 	}
 	const int kx = det::vec_start(n, incx);
 	const int ky = det::vec_start(n, incy);
+	{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+	std::atomic<bool> omp_caught(false);
+	std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(2.0 * n * n))
 #endif
 	for (int j = 0; j < n; j++) {
+		try {
 		const T temp1 = alpha * y[ky + j * incy];
 		const T temp2 = alpha * x[kx + j * incx];
 		if (temp1 == T(0) && temp2 == T(0)) {
@@ -1001,7 +1062,14 @@ inline void tsyr2(
 				a[i] = y[ky + i * incy] * temp2 + a[i];
 			}
 		}
+		}
+		catch (...) {
+			bool omp_expected = false;
+			if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+		}
 	}
+	if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+	} // OMP-E1
 }
 
 // A := alpha*x*y^T + alpha*y*x^T + A, A: n x n 対称 packed 格納

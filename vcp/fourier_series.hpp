@@ -50,6 +50,8 @@
 
 #include <vcp/error.hpp>
 #include <vcp/sincos_class.hpp>
+#include <atomic>
+#include <exception>
 
 // Basis {1, sinx, cosx, sin2x, cos2x, ... , sinnx, cosnx}
 // phi0 = 1
@@ -69,25 +71,47 @@ protected:
 		void AplusB(const fourier_series< _T >& B){
 			this->a0 += B.a0;			
 			if (this->n >= B.n){
+				{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+				std::atomic<bool> omp_caught(false);
+				std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 				for (int i = 0; i < B.n; i++){
+					try {
 					this->c[i] += B.c[i];
+					}
+					catch (...) {
+						bool omp_expected = false;
+						if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+					}
 				}
+				if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+				} // OMP-E1
 			}
 			else{
 
+				{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+				std::atomic<bool> omp_caught(false);
+				std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 				for (int i = 0; i < this->n; i++){
+					try {
 					this->c[i] += B.c[i];
+					}
+					catch (...) {
+						bool omp_expected = false;
+						if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+					}
 				}
+				if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+				} // OMP-E1
 
 				for (int i = this->n; i < B.n; i++){
 					this->c.push_back( B.c[i] );
@@ -100,25 +124,47 @@ protected:
 		void AminusB(const fourier_series< _T >& B){
 			this->a0 -= B.a0;			
 			if (this->n >= B.n){
+				{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+				std::atomic<bool> omp_caught(false);
+				std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 				for (int i = 0; i < B.n; i++){
+					try {
 					this->c[i] -= B.c[i];
+					}
+					catch (...) {
+						bool omp_expected = false;
+						if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+					}
 				}
+				if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+				} // OMP-E1
 			}
 			else{
 
+				{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+				std::atomic<bool> omp_caught(false);
+				std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 				for (int i = 0; i < this->n; i++){
+					try {
 					this->c[i] -= B.c[i];
+					}
+					catch (...) {
+						bool omp_expected = false;
+						if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+					}
 				}
+				if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+				} // OMP-E1
 
 				for (int i = this->n; i < B.n; i++){
 					this->c.push_back( -B.c[i] );
@@ -130,25 +176,47 @@ protected:
 		void minusAplusB(const fourier_series< _T >& B){
 			this->a0 = - this->a0 + B.a0;			
 			if (this->n >= B.n){
+				{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+				std::atomic<bool> omp_caught(false);
+				std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 				for (int i = 0; i < B.n; i++){
+					try {
 					this->c[i] = - this->c[i] + B.c[i];
+					}
+					catch (...) {
+						bool omp_expected = false;
+						if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+					}
 				}
+				if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+				} // OMP-E1
 			}
 			else{
 
+				{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+				std::atomic<bool> omp_caught(false);
+				std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 				for (int i = 0; i < this->n; i++){
+					try {
 					this->c[i] = - this->c[i] + B.c[i];
+					}
+					catch (...) {
+						bool omp_expected = false;
+						if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+					}
 				}
+				if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+				} // OMP-E1
 
 				for (int i = this->n; i < B.n; i++){
 					this->c.push_back( B.c[i] );
@@ -160,22 +228,44 @@ protected:
 		void mul(const fourier_series< _T >& B, fourier_series< _T >& C) const {
 			C.zeros(this->n + B.n);
 			C.a0 = this->a0*B.a0;
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif			
 			for ( int i = 0; i < this->n; i++){
+				try {
 				C.c[i] = this->c[i]*B.a0;
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif			
 			for ( int j = 0; j < B.n; j++){
+				try {
 				C.c[j] += this->a0*B.c[j];
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			
 			// sin(a) * sin(b) =-(cos(a+b) - cos(a-b))/2
 			// sin(a) * cos(b) = (sin(a+b) + sin(a-b))/2
@@ -372,14 +462,25 @@ protected:
 
 		template <typename _Tm>
         typename std::enable_if< std::is_constructible< _T, _Tm >::value, void >::type time_delay( const _Tm& tau){
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 			for (int j = 0; j < n; j++) {
+				try {
 				this->c[j].time_delay((j+1)*tau);
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
         }
 
 
@@ -435,28 +536,50 @@ public:
 			this->n = NN;
 			this->a0 = _T(0);
 			this->c.resize(NN);
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 			for (int j = 0; j < this->n; j++) {
+				try {
 				this->c[j].set_ab(_T(0), _T(0));
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 		}
 
 		void ones(const int NN) {
 			this->n = NN;
 			this->a0 = _T(1);
 			this->c.resize(n);
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 			for (int j = 0; j < n; j++) {
+				try {
 				this->c[j].set_ab(_T(1), _T(1));
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 		}
 
 		void shrink_to_fit(void) {
@@ -532,27 +655,49 @@ public:
             fourier_series< _T > B;
 			B.zeros(A.n);
 			B.a0 = -A.a0;
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif			
 			for (int i = 0; i < A.n; i++){
+				try {
 				B.c[i] = -A.c[i];
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			return B;
 		}
 		
 		friend fourier_series< _T > operator-(fourier_series< _T >&& A) {
 			A.a0 = -A.a0;
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif			
 			for (int i = 0; i < A.n; i++){
+				try {
 				A.c[i] = -A.c[i];
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			return std::move(A);
 		}
 
@@ -640,28 +785,50 @@ public:
 			fourier_series< _T > C;
 			C = B;
 			C.a0 *= Ta;
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif			
 			for (int i = 0; i < C.n; i++){
+				try {
 				C.c[i] = C.c[i]*Ta;
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			return C;
 		}
 
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator*(fourier_series< _T >&& B, const _Tm& a) {
 			_T Ta = _T(a);
 			B.a0 *= Ta;
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif			
 			for (int i = 0; i < B.n; i++){
+				try {
 				B.c[i] = B.c[i]*Ta;
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			return std::move(B);
 		}
 
@@ -670,28 +837,50 @@ public:
 			fourier_series< _T > C;
 			C = B;
 			C.a0 *= Ta;
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif			
 			for (int i = 0; i < C.n; i++){
+				try {
 				C.c[i] = Ta*C.c[i];
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			return C;
 		}
 
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator*(const _Tm& a, fourier_series< _T >&& B) {
 			_T Ta = _T(a);
 			B.a0 *= Ta;
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif			
 			for (int i = 0; i < B.n; i++){
+				try {
 				B.c[i] = Ta*B.c[i];
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			return std::move(B);
 		}
 
@@ -700,28 +889,50 @@ public:
 			fourier_series< _T > C;
 			C = B;
 			C.a0 /= Ta;
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif			
 			for (int i = 0; i < C.n; i++){
+				try {
 				C.c[i] = C.c[i]/Ta;
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			return C;
 		}
 		
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, fourier_series< _T > >::type operator/(fourier_series< _T >&& B, const _Tm& a) {
 			_T Ta = _T(a);
 			B.a0 /= Ta;
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_FOURIER_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 			for (int i = 0; i < B.n; i++){
+				try {
 				B.c[i] = B.c[i]/Ta;
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			return std::move(B);
 		}
 

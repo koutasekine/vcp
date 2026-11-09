@@ -53,6 +53,8 @@
 #include <vcp/bfem/typed_tables.hpp>
 #include <vcp/bfem/rt/broken_space.hpp>
 #include <vcp/bfem/sv/vfe_space.hpp>
+#include <atomic>
+#include <exception>
 
 namespace vcp {
 namespace bfem {
@@ -141,14 +143,25 @@ assemble_vector_stiffness(vfe_space<D, T, P, SP>& vs, int m) {
     const int nt = vs.num_elements();
     int nrun = 1;
     std::vector<detail::coo_buffer<T> > tbuf;
+    { // OMP-E1: capture exceptions thrown inside the OpenMP region
+    std::atomic<bool> omp_caught(false);
+    std::exception_ptr omp_eptr;
 #pragma omp parallel
     {
 #pragma omp single
         {
+            try {
             nrun = omp_get_num_threads();
             tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+            catch (...) {
+                bool omp_expected = false;
+                if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+            }
         }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
         const int tid = omp_get_thread_num();
         const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
         const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -168,7 +181,15 @@ assemble_vector_stiffness(vfe_space<D, T, P, SP>& vs, int m) {
                                           typename dofmap<D>::family_tag());
             }
         }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
     }
+    if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+    } // OMP-E1
     buf.append_all(tbuf, nrun);
 #else
     for (int e = 0; e < vs.num_elements(); ++e) {            // element order (X9)
@@ -211,14 +232,25 @@ assemble_div_velocity(broken_space<D, T, P, SPB>& bs,
     const int nt = vs.num_elements();
     int nrun = 1;
     std::vector<detail::coo_buffer<T> > tbuf;
+    { // OMP-E1: capture exceptions thrown inside the OpenMP region
+    std::atomic<bool> omp_caught(false);
+    std::exception_ptr omp_eptr;
 #pragma omp parallel
     {
 #pragma omp single
         {
+            try {
             nrun = omp_get_num_threads();
             tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+            catch (...) {
+                bool omp_expected = false;
+                if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+            }
         }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
         const int tid = omp_get_thread_num();
         const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
         const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -235,7 +267,15 @@ assemble_div_velocity(broken_space<D, T, P, SPB>& bs,
                                                     e, loc_l, nr, nc, b);
             }
         }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
     }
+    if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+    } // OMP-E1
     buf.append_all(tbuf, nrun);
 #else
     for (int e = 0; e < vs.num_elements(); ++e) {
@@ -275,14 +315,25 @@ assemble_advection(vfe_space<D, T, P, SP>& vs,
     const int nt = vs.num_elements();
     int nrun = 1;
     std::vector<detail::coo_buffer<T> > tbuf;
+    { // OMP-E1: capture exceptions thrown inside the OpenMP region
+    std::atomic<bool> omp_caught(false);
+    std::exception_ptr omp_eptr;
 #pragma omp parallel
     {
 #pragma omp single
         {
+            try {
             nrun = omp_get_num_threads();
             tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+            catch (...) {
+                bool omp_expected = false;
+                if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+            }
         }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
         const int tid = omp_get_thread_num();
         const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
         const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -306,7 +357,15 @@ assemble_advection(vfe_space<D, T, P, SP>& vs,
                                           typename dofmap<D>::family_tag());
             }
         }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
     }
+    if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+    } // OMP-E1
     buf.append_all(tbuf, nrun);
 #else
     for (int e = 0; e < vs.num_elements(); ++e) {
@@ -352,14 +411,25 @@ assemble_advection_derivative(vfe_space<D, T, P, SP>& vs,
     const int nt = vs.num_elements();
     int nrun = 1;
     std::vector<detail::coo_buffer<T> > tbuf;
+    { // OMP-E1: capture exceptions thrown inside the OpenMP region
+    std::atomic<bool> omp_caught(false);
+    std::exception_ptr omp_eptr;
 #pragma omp parallel
     {
 #pragma omp single
         {
+            try {
             nrun = omp_get_num_threads();
             tbuf.resize(static_cast<std::size_t>(nrun));
+            }
+            catch (...) {
+                bool omp_expected = false;
+                if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+            }
         }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
         const int tid = omp_get_thread_num();
         const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
         const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -384,7 +454,15 @@ assemble_advection_derivative(vfe_space<D, T, P, SP>& vs,
                 }
             }
         }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
     }
+    if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+    } // OMP-E1
     buf.append_all(tbuf, nrun);
 #else
     for (int e = 0; e < vs.num_elements(); ++e) {

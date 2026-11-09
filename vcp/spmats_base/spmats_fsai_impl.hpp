@@ -41,6 +41,7 @@
 
 #include <vcp/spmats_base/spmats_fsai.hpp>
 #include <vcp/spmats_base/spmats_ainv_impl.hpp>   // spmats_ainv_detail helpers (read-only reuse)
+#include <atomic>
 
 namespace vcp {
 
@@ -705,17 +706,28 @@ fsai_result<_T, _Index> spmats<_T, _Index>::policy_fsai_with_info_impl(
 			// parallel run is bit-identical to the serial one regardless of
 			// thread count and schedule.  Small problems stay serial
 			// (n >= 1024 threshold, provisional -- design v0 OPEN-F7).
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 			#pragma omp parallel if(n_ll >= 1024)
 			{
 				spmats_fsai_detail::fsai_row_workspace<_T, _Index> ws;
 				#pragma omp for schedule(dynamic)
 				for (long long i = 0; i < n_ll; ++i) {
+					try {
 					spmats_fsai_detail::fsai_process_row_<_T, _Index>(
 					    static_cast<std::size_t>(i), ap, ai, av, s_ptr, s_ind,
 					    opt, ws, u_ind, u_val, row_count, d_hat,
 					    row_lifts, row_dropped, row_restore_skipped);
+					}
+					catch (...) {
+						bool omp_expected = false;
+						if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+					}
 				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 #else
 			spmats_fsai_detail::fsai_row_workspace<_T, _Index> ws;
 			for (long long i = 0; i < n_ll; ++i) {

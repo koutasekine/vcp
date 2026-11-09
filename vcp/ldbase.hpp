@@ -53,6 +53,8 @@
 #include <vcp/matrix.hpp>
 
 #include <vcp/legendre_integral.hpp>
+#include <atomic>
+#include <exception>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -186,16 +188,27 @@ namespace vcp {
 			for (int i = 0; i < phi.size(); i++) {
 				out[i].resize(Point.size());
 			}
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 			for (int i = 0; i < phi.size(); i++) {
+				try {
 				for (int j = 0; j < Point.size(); j++) {
 					psa_value_Horner(phi[i], Point[j], out[i][j]);
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 
 		}
 
@@ -360,18 +373,29 @@ namespace vcp {
 			std::cout << ">> Matrix size of Legendre Base is (" << row_Point << "," << column_Pointlist << ")" << std::endl;
 #endif
 			this->phi_point.ones(row_Point, column_Pointlist);
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 			#pragma omp parallel for
 #endif
 #endif	
 			for (int i = 0; i < row_Point; i++) {
+				try {
 				for (int j = 0; j < column_Pointlist; j++) {
 					for (int d = 0; d < this->list.columnsize(); d++) {
 						this->phi_point(i, j) *= this->Legendre_with_GLpoint(this->list(i, d), this->Pointlist(j, d));
 					}
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 		}
 		void uhphi_point_set() {
 			int column_Pointlist = this->Pointlist.rowsize();
@@ -987,28 +1011,50 @@ namespace vcp {
 
 			matrix< _TM, _PM > A;
 			A.zeros(this->elementsize, this->elementsize);
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 			#pragma omp parallel for
 #endif
 #endif
 			for (int i = 0; i < this->elementsize; i++) {
+				try {
 				for (int j = i; j < this->elementsize; j++) {
 					for (int k = 0; k < this->Pointlist.rowsize(); k++) {
 						A(i, j) += this->weight_point(0, k) * uh_p_phi_point(0, k) * this->phi_point(i, k) * this->phi_point(j, k);
 					}
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 #pragma omp parallel for
 #endif
 #endif	
 			for (int i = 1; i < this->elementsize; i++) {
+				try {
 				for (int j = 0; j < i; j++) {
 					A(i, j) = A(j, i);
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			return A;
 		}
 		
@@ -1048,16 +1094,27 @@ namespace vcp {
 
 			matrix< _TM, _PM > A;
 			A.zeros(this->elementsize, 1);
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 			#pragma omp parallel for
 #endif
 #endif	
 			for (int i = 0; i < this->elementsize; i++) {
+				try {
 				for (int k = 0; k < this->Pointlist.rowsize(); k++) {
 					A(i, 0) += this->weight_point(0, k) * uh_p_phi_point(0, k) * this->phi_point(i, k);
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			return A;
 		}
 
@@ -1078,12 +1135,16 @@ namespace vcp {
 			int listmax = lmax(0) + 1;
 			matrix< _TM, _PM > OneDimL;
 			OneDimL.zeros(listmax, listmax);
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 			#pragma omp parallel for
 #endif
 #endif	
 			for (int i = 0; i < listmax; i++){
+				try {
 				for (int j = 0; j < listmax; j ++){
 					if (i == j){
 						OneDimL(i, j) = 1 / (_TM(2)*(2 * _TM(i) + 1)*(2 * _TM(i) + 5)*(2 * _TM(i) + 3));
@@ -1095,13 +1156,24 @@ namespace vcp {
 						OneDimL(i, j) = -1 / (4 * (2 * _TM(i) + 5)*(2 * _TM(i) + 7)*(2 * _TM(i) + 3));
 					}
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 			#pragma omp parallel for
 #endif
 #endif	
 			for (int i = 0; i < this->elementsize; i++) {
+				try {
 				for (int j = i; j < this->elementsize; j++) {
 					_TM Phi_Time = _TM(1);
 					for (int d = 0; d < this->list.columnsize(); d++) {
@@ -1109,17 +1181,35 @@ namespace vcp {
 					}
 					L(i, j) = Phi_Time;
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 			#pragma omp parallel for
 #endif
 #endif	
 			for (int i = 1; i < this->elementsize; i++) {
+				try {
 				for (int j = 0; j < i; j++) {
 					L(i, j) = L(j, i);
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			return L;
 		}
 
@@ -1134,16 +1224,27 @@ namespace vcp {
 			}
 			matrix< _TM, _PM > A;
 			A.zeros(this->elementsize, 1);
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 #pragma omp parallel for
 #endif
 #endif	
 			for (int i = 0; i < this->elementsize; i++) {
+				try {
 				for (int k = 0; k < this->Pointlist.rowsize(); k++) {
 					A(i, 0) += this->weight_point(0, k) * this->phi_point(i, k);
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			return A;
 
 		}
@@ -1164,12 +1265,16 @@ namespace vcp {
 			int listmax = lmax(0) + 1;
 			matrix< _TM, _PM > OneDimL;
 			OneDimL.zeros(listmax, listmax);
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 			#pragma omp parallel for
 #endif
 #endif	
 			for (int i = 0; i < listmax; i++) {
+				try {
 				for (int j = 0; j < listmax; j++) {
 					if (i == j) {
 						OneDimL(i, j) = 1 / (_TM(2)*(2 * _TM(i) + 1)*(2 * _TM(i) + 5)*(2 * _TM(i) + 3));
@@ -1181,18 +1286,29 @@ namespace vcp {
 						OneDimL(i, j) = -1 / (4 * (2 * _TM(i) + 5)*(2 * _TM(i) + 7)*(2 * _TM(i) + 3));
 					}
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			matrix< _TM, _PM > OneDimDL;
 			OneDimDL.zeros(listmax, listmax);
 			for (int i = 0; i < listmax; i++) {
 				OneDimDL(i,i) = 1 / (2 * _TM(i) + 3);
 			}
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 			#pragma omp parallel for
 #endif
 #endif			
 			for (int i = 0; i < this->elementsize; i++) {
+				try {
 				for (int j = i; j < this->elementsize; j++) {
 					for (int dc = 0; dc < this->list.columnsize(); dc++) {
 						_TM Phi_Time = _TM(1);
@@ -1207,18 +1323,36 @@ namespace vcp {
 						DL(i, j) += Phi_Time;
 					}
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 			#pragma omp parallel for
 #endif
 #endif	
 			for (int i = 1; i < this->elementsize; i++) {
+				try {
 				for (int j = 0; j < i; j++) {
 					DL(i, j) = DL(j, i);
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			return DL;
 		}
 
@@ -1244,12 +1378,16 @@ namespace vcp {
 			
 			list_of_Output_data.zeros(Output_data_row_size, dim);
 			
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 #pragma omp parallel for
 #endif
 #endif	
 			for (int d = 0; d < dim; d++) {
+				try {
 				int di = dim - d;
 				const int lower_block = output_powers[di - 1];
 				const int upper_block = output_powers[di];
@@ -1260,7 +1398,14 @@ namespace vcp {
 						}
 					}
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 			
 			_T mesh_size_T = 1 / _T(Div_number);
 			_TM mesh_size = 1 / _TM(Div_number);
@@ -1268,26 +1413,41 @@ namespace vcp {
 			vcp::matrix< _T > p_phi_T;
 			vcp::matrix< _TM, _PM > p_phi;
 			p_phi_T.zeros(mmax, Div_number + 1);
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 #pragma omp parallel for
 #endif
 #endif	
 			for (int i = 0; i < mmax; i++) {
+				try {
 				for (int j = 0; j < Div_number + 1; j++){
 					psa_value_Horner(phi[i],j*mesh_size_T,p_phi_T(i, j));
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 
 			convert(p_phi_T, p_phi);
 			Output_Data.zeros(Output_data_row_size,this->variablesize + dim);
 
+			{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+			std::atomic<bool> omp_caught(false);
+			std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 #pragma omp parallel for
 #endif
 #endif	
 			for (int i = 0; i < Output_data_row_size; i++) {
+				try {
 				for (int di = 0; di < dim; di++){
 					Output_Data(i, di) = list_of_Output_data(i, di)*mesh_size;
 				}
@@ -1301,7 +1461,14 @@ namespace vcp {
 						Output_Data(i, dim + v) += tmp;
 					}
 				}
+				}
+				catch (...) {
+					bool omp_expected = false;
+					if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+				}
 			}
+			if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+			} // OMP-E1
 
 			return Output_Data;
 		}
@@ -1371,6 +1538,9 @@ namespace vcp {
 				int active_workers = 0;
 				bool done = false;
 
+				{ // OMP-E1: capture exceptions thrown inside the OpenMP region (work-queue form)
+				std::atomic<bool> omp_caught(false);
+				std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 			#pragma omp parallel
@@ -1387,11 +1557,22 @@ namespace vcp {
 				{
 #endif
 #endif
+					if (omp_caught.load()) {
+						should_break = true;
+					}
+					else
 					if (!list_stack.empty()) {
+						try {
 						local_point = list_stack.top();
 						list_stack.pop();
 						active_workers++;
 						have_work = true;
+						}
+						catch (...) {
+							bool omp_expected = false;
+							if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+							should_break = true;
+						}
 					}
 					else if (active_workers == 0) {
 						done = true;
@@ -1411,6 +1592,7 @@ namespace vcp {
 					if (!have_work) {
 						continue;
 					}
+					try {
 					
 					kv::interval< _TC > tmp = this->template func<  kv::interval< _TC > >(local_point, v);
 					_TC local_delta;
@@ -1511,24 +1693,37 @@ namespace vcp {
 				{
 #endif
 #endif
+					try {
 					for (int i = 0; i < div_list_size; i++) {
 						for (int d = 0; d < dim; d++) {
 							local_point[d] = div_interval_list[div_list(i, d)][d];
 						}
 						list_stack.push(local_point);
 					}					
+					}
+					catch (...) {
+						bool omp_expected = false;
+						if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+					}
 					active_workers--;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 				}
 #endif
 #endif
+					}
+					catch (...) {
+						bool omp_expected = false;
+						if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+					}
 				}
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 			}
 #endif
 #endif	
+				if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+				} // OMP-E1
 
 			}
 			return gmin;
@@ -1599,6 +1794,9 @@ namespace vcp {
 				int active_workers = 0;
 				bool done = false;
 
+					{ // OMP-E1: capture exceptions thrown inside the OpenMP region (work-queue form)
+					std::atomic<bool> omp_caught(false);
+					std::exception_ptr omp_eptr;
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 #pragma omp parallel
@@ -1615,11 +1813,22 @@ namespace vcp {
 						{
 #endif
 #endif
+							if (omp_caught.load()) {
+								should_break = true;
+							}
+							else
 							if (!list_stack.empty()) {
+								try {
 								local_point = list_stack.top();
 								list_stack.pop();
 								active_workers++;
 								have_work = true;
+								}
+								catch (...) {
+									bool omp_expected = false;
+									if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+									should_break = true;
+								}
 							}
 							else if (active_workers == 0) {
 								done = true;
@@ -1639,6 +1848,7 @@ namespace vcp {
 						if (!have_work) {
 							continue;
 						}
+						try {
 
 						kv::interval< _TC > tmp = this->template func<  kv::interval< _TC > >(local_point, v);
 						_TC local_delta;
@@ -1738,11 +1948,17 @@ namespace vcp {
 						{
 #endif
 #endif
+							try {
 							for (int i = 0; i < div_list_size; i++) {
 								for (int d = 0; d < dim; d++) {
 									local_point[d] = div_interval_list[div_list(i, d)][d];
 								}
 								list_stack.push(local_point);
+							}
+							}
+							catch (...) {
+								bool omp_expected = false;
+								if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
 							}
 							active_workers--;
 #ifdef _OPENMP
@@ -1750,12 +1966,19 @@ namespace vcp {
 						}
 #endif
 #endif
+						}
+						catch (...) {
+							bool omp_expected = false;
+							if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+						}
 				}
 #ifdef _OPENMP
 #ifndef VCP_LEGENDRE_NOMP
 			}
 #endif
 #endif	
+					if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+					} // OMP-E1
 
 			}
 			return gmax;

@@ -62,6 +62,8 @@
 #include <cmath>
 #include <cstddef>
 #include <vector>
+#include <atomic>
+#include <exception>
 
 #include "tblas_common.hpp"
 
@@ -104,10 +106,14 @@ inline void tgemm(
 
 	if (!ta) {
 		// C(:,j) := beta*C(:,j) + sum_l (alpha*opB(l,j)) * A(:,l)
+		{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+		std::atomic<bool> omp_caught(false);
+		std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (par)
 #endif
 		for (int j = 0; j < n; j++) {
+			try {
 			T* c = C + static_cast<std::size_t>(ldc) * j;
 			if (zero_beta) {
 				for (int i = 0; i < m; i++) {
@@ -130,14 +136,25 @@ inline void tgemm(
 					c[i] = temp * a[i] + c[i];
 				}
 			}
+			}
+			catch (...) {
+				bool omp_expected = false;
+				if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+			}
 		}
+		if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+		} // OMP-E1
 	}
 	else {
 		// C(i,j) := alpha * (A(:,i)^T . opB(:,j)) + beta*C(i,j)
+		{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+		std::atomic<bool> omp_caught(false);
+		std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (par)
 #endif
 		for (int j = 0; j < n; j++) {
+			try {
 			T* c = C + static_cast<std::size_t>(ldc) * j;
 			for (int i = 0; i < m; i++) {
 				const T* ai = A + static_cast<std::size_t>(lda) * i;
@@ -160,7 +177,14 @@ inline void tgemm(
 					c[i] = beta * c[i] + alpha * temp;
 				}
 			}
+			}
+			catch (...) {
+				bool omp_expected = false;
+				if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+			}
 		}
+		if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+		} // OMP-E1
 	}
 }
 
@@ -238,10 +262,14 @@ inline void tsyrk(
 	const bool zero_beta = (beta == T(0));
 
 	// 三角部分のみ dot 形式: C(i,j) = alpha * sum_l opA(i,l)*opA(j,l) + beta*C(i,j)
+	{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+	std::atomic<bool> omp_caught(false);
+	std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(1.0 * n * n * k))
 #endif
 	for (int j = 0; j < n; j++) {
+		try {
 		T* c = C + static_cast<std::size_t>(ldc) * j;
 		const int i0 = upper ? 0 : j;
 		const int i1 = upper ? j + 1 : n;
@@ -266,7 +294,14 @@ inline void tsyrk(
 				c[i] = beta * c[i] + alpha * temp;
 			}
 		}
+		}
+		catch (...) {
+			bool omp_expected = false;
+			if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+		}
 	}
+	if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+	} // OMP-E1
 }
 
 // C := alpha*op(A)*op(B)^T + alpha*op(B)*op(A)^T + beta*C (uplo の三角のみ更新)
@@ -302,10 +337,14 @@ inline void tsyr2k(
 
 	// 三角部分のみ dot 形式:
 	// C(i,j) = alpha*sum_l opA(i,l)*opB(j,l) + alpha*sum_l opB(i,l)*opA(j,l) + beta*C(i,j)
+	{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+	std::atomic<bool> omp_caught(false);
+	std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(2.0 * n * n * k))
 #endif
 	for (int j = 0; j < n; j++) {
+		try {
 		T* c = C + static_cast<std::size_t>(ldc) * j;
 		const int i0 = upper ? 0 : j;
 		const int i1 = upper ? j + 1 : n;
@@ -339,7 +378,14 @@ inline void tsyr2k(
 				c[i] = beta * c[i] + (alpha * temp1 + alpha * temp2);
 			}
 		}
+		}
+		catch (...) {
+			bool omp_expected = false;
+			if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+		}
 	}
+	if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+	} // OMP-E1
 }
 
 // B := alpha*op(A)*B (side 'L') または B := alpha*B*op(A) (side 'R')
@@ -394,10 +440,14 @@ inline void ttrmm(
 		tgemm('N', ntrans ? 'N' : 'T', m, n, n, T(1), B, ldb, Adense.data(), n, T(0), temp.data(), m);
 	}
 	const bool one_alpha = (alpha == T(1));
+	{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+	std::atomic<bool> omp_caught(false);
+	std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(static_cast<double>(m) * n))
 #endif
 	for (int j = 0; j < n; j++) {
+		try {
 		const T* t = temp.data() + static_cast<std::size_t>(m) * j;
 		T* b = B + static_cast<std::size_t>(ldb) * j;
 		if (one_alpha) {
@@ -410,7 +460,14 @@ inline void ttrmm(
 				b[i] = alpha * t[i];
 			}
 		}
+		}
+		catch (...) {
+			bool omp_expected = false;
+			if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+		}
 	}
+	if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+	} // OMP-E1
 }
 
 // op(A)*X = alpha*B (side 'L') または X*op(A) = alpha*B (side 'R') を解き，
@@ -454,10 +511,14 @@ inline void ttrsm(
 
 	if (lside) {
 		// B の各列を独立に三角 solve する (列ごとに独立なので並列化できる)
+		{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+		std::atomic<bool> omp_caught(false);
+		std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(static_cast<double>(m) * m * n))
 #endif
 		for (int j = 0; j < n; j++) {
+			try {
 			T* b = B + static_cast<std::size_t>(ldb) * j;
 			if (!one_alpha) {
 				for (int i = 0; i < m; i++) {
@@ -524,7 +585,14 @@ inline void ttrsm(
 					}
 				}
 			}
+			}
+			catch (...) {
+				bool omp_expected = false;
+				if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+			}
 		}
+		if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+		} // OMP-E1
 	}
 	else {
 		// 列 sweep solve: X_j = (alpha*B_j - sum_{先行 i} X_i * coef(i,j)) / diag(j)
@@ -599,10 +667,14 @@ inline void tgemmtr(
 	const bool zero_beta = (beta == T(0));
 
 	// 三角部分のみ dot 形式: C(i,j) = alpha * sum_l opA(i,l)*opB(l,j) + beta*C(i,j)
+	{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+	std::atomic<bool> omp_caught(false);
+	std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (det::use_parallel(1.0 * n * n * k))
 #endif
 	for (int j = 0; j < n; j++) {
+		try {
 		T* c = C + static_cast<std::size_t>(ldc) * j;
 		const int i0 = upper ? 0 : j;
 		const int i1 = upper ? j + 1 : n;
@@ -620,7 +692,14 @@ inline void tgemmtr(
 				c[i] = beta * c[i] + alpha * temp;
 			}
 		}
+		}
+		catch (...) {
+			bool omp_expected = false;
+			if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+		}
 	}
+	if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+	} // OMP-E1
 }
 
 } // namespace vcp

@@ -41,6 +41,8 @@
 #include <vcp/btfem/time_space.hpp>
 #include <vcp/btfem/st_poly.hpp>
 #include <vcp/btfem/kron.hpp>
+#include <atomic>
+#include <exception>
 
 // VCP_BFEM_USE_OPENMP is defined by vcp/bfem/fe_space.hpp (shared switch:
 // -DVCP_BFEM_NOMP / -DVCP_NOMP disable bfem and btfem together)
@@ -517,14 +519,25 @@ private:
                             const bfem::dofmap<D>& dm, int l, int n, int nt, int N, int sdeg) {
 #if VCP_BFEM_USE_OPENMP
         int nrun = 1;
+        { // OMP-E1: capture exceptions thrown inside the OpenMP region
+        std::atomic<bool> omp_caught(false);
+        std::exception_ptr omp_eptr;
 #pragma omp parallel
         {
 #pragma omp single
             {
+                try {
                 nrun = omp_get_num_threads();
                 prepare_threads(nrun, sdeg + 1, nt / nrun, N);
+                }
+                catch (...) {
+                    bool omp_expected = false;
+                    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+                }
             }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
             const int tid = omp_get_thread_num();
             const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
             const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -539,7 +552,15 @@ private:
                                                     typename bfem::dofmap<D>::family_tag());
                 }
             }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
         }
+        if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+        } // OMP-E1
         merge_threads(nrun, sdeg + 1);
 #else
         for (int e = 0; e < nt; ++e) {
@@ -562,14 +583,25 @@ private:
         for (int d = 0; d < D; ++d) dmbs[static_cast<std::size_t>(d)] = &Vh_->dofs(b[static_cast<std::size_t>(d)].n_);
 #if VCP_BFEM_USE_OPENMP
         int nrun = 1;
+        { // OMP-E1: capture exceptions thrown inside the OpenMP region
+        std::atomic<bool> omp_caught(false);
+        std::exception_ptr omp_eptr;
 #pragma omp parallel
         {
 #pragma omp single
             {
+                try {
                 nrun = omp_get_num_threads();
                 prepare_threads(nrun, qb + 1, nt / nrun, N);
+                }
+                catch (...) {
+                    bool omp_expected = false;
+                    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+                }
             }
 #pragma omp barrier
+if (!omp_caught.load()) {
+try {
             const int tid = omp_get_thread_num();
             const int e0 = static_cast<int>((static_cast<long long>(nt) * tid) / nrun);
             const int e1 = static_cast<int>((static_cast<long long>(nt) * (tid + 1)) / nrun);
@@ -587,7 +619,15 @@ private:
                                                     typename bfem::dofmap<D>::family_tag());
                 }
             }
+}
+catch (...) {
+    bool omp_expected = false;
+    if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+}
+}
         }
+        if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+        } // OMP-E1
         merge_threads(nrun, qb + 1);
 #else
         for (int e = 0; e < nt; ++e) {

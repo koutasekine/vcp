@@ -45,6 +45,8 @@
 #include <cstddef>
 #include <cstdlib>
 #include <stdexcept>
+#include <atomic>
+#include <exception>
 
 // --- tblas-layer OpenMP guard (SLU-K1F, mirrors spmats SS6.1 / ldbase) ---
 // VCP_NOMP             : global kill switch (implies VCP_TBLAS_NOMP)
@@ -152,10 +154,14 @@ inline void scale_matrix(const int m, const int n, const T& beta, T* C, const in
 		return;
 	}
 	const bool zero = (beta == T(0));
+	{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+	std::atomic<bool> omp_caught(false);
+	std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (use_parallel(static_cast<double>(m) * n))
 #endif
 	for (int j = 0; j < n; j++) {
+		try {
 		T* c = C + static_cast<std::size_t>(ldc) * j;
 		if (zero) {
 			for (int i = 0; i < m; i++) {
@@ -167,7 +173,14 @@ inline void scale_matrix(const int m, const int n, const T& beta, T* C, const in
 				c[i] = beta * c[i];
 			}
 		}
+		}
+		catch (...) {
+			bool omp_expected = false;
+			if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+		}
 	}
+	if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+	} // OMP-E1
 }
 
 // 三角部分のみ C := beta*C (beta==0 は exact 0 埋め)
@@ -177,10 +190,14 @@ inline void scale_triangle(const bool upper, const int n, const T& beta, T* C, c
 		return;
 	}
 	const bool zero = (beta == T(0));
+	{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+	std::atomic<bool> omp_caught(false);
+	std::exception_ptr omp_eptr;
 #if VCP_TBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) if (use_parallel(0.5 * n * n))
 #endif
 	for (int j = 0; j < n; j++) {
+		try {
 		T* c = C + static_cast<std::size_t>(ldc) * j;
 		const int i0 = upper ? 0 : j;
 		const int i1 = upper ? j + 1 : n;
@@ -194,7 +211,14 @@ inline void scale_triangle(const bool upper, const int n, const T& beta, T* C, c
 				c[i] = beta * c[i];
 			}
 		}
+		}
+		catch (...) {
+			bool omp_expected = false;
+			if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+		}
 	}
+	if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+	} // OMP-E1
 }
 
 // 対称行列 (uplo の三角のみ格納) を full dense (n x n 連続) に展開する (copy のみ)
