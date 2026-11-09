@@ -409,6 +409,12 @@ namespace vcp {
 			}
 			this->finalize();
 		}
+		// SPM-A3 (S-9): A.zeros(r, c) -- dense-style alias; an r x c matrix
+		// with no stored entries (resize already discards the storage).
+		void zeros(const int r, const int c) {
+			this->resize(static_cast<index_type>(r), static_cast<index_type>(c));
+			this->finalize();
+		}
 		void finalize() { _P::finalize(); }
 		void to_csr() { _P::to_csr(); }
 		void to_csc() { _P::to_csc(); }
@@ -1865,6 +1871,63 @@ namespace vcp {
 			spmatrix c;
 			A.norminf(c);
 			return c;
+		}
+
+		//***************** SPM-A3: sum / pow / length / ltransmul (mirrors matrix.hpp 581-626, 696-699, 920-922) *****************//
+		// Same call syntax and shape contracts as the dense friends; sparse
+		// semantics (MATLAB/Octave) are documented at spmats::sum/powms/
+		// powsm/powmmA.  pow(A, s): a scalar _Sm constructible to _T is
+		// converted once, exactly as the dense template does; an int
+		// exponent is forwarded as int so that kv::pow(interval, int) (exact,
+		// pattern-preserving at zeros) is used instead of the exp/log path.
+		friend spmatrix sum(const spmatrix& A) {
+			spmatrix c;
+			A.sum(c);
+			return c;
+		}
+		friend spmatrix pow(const spmatrix& A, const spmatrix& B) {
+			spmatrix C;
+			C = A;
+			C.powmmA(static_cast<const _P&>(B));
+			return C;
+		}
+		friend spmatrix pow(const spmatrix& A, const int a) {
+			spmatrix C;
+			C = A;
+			C.powmi(a);
+			return C;
+		}
+		template <typename _Sm>
+		friend typename std::enable_if<
+			std::is_constructible<_T, _Sm>::value &&
+			!std::is_same<typename std::decay<_Sm>::type, spmatrix>::value &&
+			!std::is_same<typename std::decay<_Sm>::type, int>::value,
+			spmatrix
+		>::type pow(const spmatrix& A, const _Sm& a) {
+			const _T Ta = _T(a);
+			spmatrix C;
+			C = A;
+			C.powms(Ta);
+			return C;
+		}
+		template <typename _Sm>
+		friend typename std::enable_if<
+			std::is_constructible<_T, _Sm>::value &&
+			!std::is_same<typename std::decay<_Sm>::type, spmatrix>::value,
+			spmatrix
+		>::type pow(const _Sm& a, const spmatrix& A) {
+			const _T Ta = _T(a);
+			spmatrix C;
+			C = A;
+			C.powsm(Ta);
+			return C;
+		}
+		friend int length(const spmatrix& A) {
+			using std::max;
+			return static_cast<int>(max(A.rowsize(), A.columnsize()));
+		}
+		friend spmatrix ltransmul(const spmatrix& A) {
+			return A.transpose() * A;
 		}
 
 	private:

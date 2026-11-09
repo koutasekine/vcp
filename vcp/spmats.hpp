@@ -799,6 +799,128 @@ namespace vcp {
 		void exp()  { spfn_map_full_(spfn_exp_(), "spmats::exp"); }
 		void log()  { spfn_map_full_(spfn_log_(), "spmats::log"); }
 
+		// ------------------------------------------------------------------
+		// SPM-A3 (S-1 / S-4 / S-5): sum and elementwise pow, MATLAB sparse
+		// semantics (Octave 8.4.0 measured), shape/order contracts of
+		// mats<T>::sum / powms / powsm / powmmA (mats.hpp 516-600, 1042-1070).
+		//   sum:    1x1 -> 1x1, vector -> 1x1, m x n -> 1 x n (column sums).
+		//           Implicit zeros are exact zeros, so the fold over the
+		//           stored entries in ascending index order equals the dense
+		//           top-to-bottom fold bit for bit (x + 0 == x).
+		//   powms:  A = A.^a.  f0 = pow(_T(0), a) is evaluated ONCE; if f0 is
+		//           exactly _T(0) the map is sparsity-preserving (stored
+		//           entries only), otherwise it is applied at every position
+		//           (structurally (near-)full, SPFN 判断A, like cos/exp/log).
+		//           Whatever pow(_T(0), a) does for the scalar type (double:
+		//           0^0 = 1, 0^-1 = inf; kv::interval: pow(0, int) exact,
+		//           pow(0, non-int) via exp/log, pow(0, -1) throws) is
+		//           inherited unchanged, exactly as dense mats<T>::powms on a
+		//           zero entry.
+		//   powsm:  A = a.^A.  pow(a, _T(0)) is 1 for every scalar type, so
+		//           the result is always structurally full.
+		//   powmmA: A = A.^B (same shape, else dimension_error).  Evaluated
+		//           at every position (0^0 = 1 makes the result full);
+		//           exact-zero images are not stored (invariant).
+		// ------------------------------------------------------------------
+	private:
+		struct spfn_powms_ {
+			_T a;
+			explicit spfn_powms_(const _T& a_) : a(a_) {}
+			_T operator()(const _T& x) const { using std::pow; return pow(x, a); }
+		};
+		struct spfn_powsm_ {
+			_T a;
+			explicit spfn_powsm_(const _T& a_) : a(a_) {}
+			_T operator()(const _T& x) const { using std::pow; return pow(a, x); }
+		};
+		// pow(A, int): the exponent stays int so that kv::pow(interval, int)
+		// (exact, [0,0] at zero) is used instead of the exp/log path that
+		// _T(int) would select; for double both are the same std::pow.
+		struct spfn_powmi_ {
+			int a;
+			explicit spfn_powmi_(int a_) : a(a_) {}
+			_T operator()(const _T& x) const { using std::pow; return pow(x, a); }
+		};
+		// S-1 core: fold the stored entries of one CSC column (or of the
+		// whole vector) in ascending index order; empty -> _T(0).
+		static _T spfn_fold_sum_(const std::vector<_T>& v, index_type first, index_type last) {
+			if (first == last) return _T(0);
+			_T s = v[static_cast<std::size_t>(first)];
+			for (index_type p = first + 1; p < last; p++) {
+				s = s + v[static_cast<std::size_t>(p)];
+			}
+			return s;
+		}
+	public:
+		void sum(spmats& B) const {
+			spfn_require_nonempty_("spmats::sum");
+			if (row == 1 && column == 1) { B.resize(1, 1); B.set(0, 0, get(0, 0)); B.finalize(); return; }
+			if (row == 1 || column == 1) {
+				const spmats C = as_csr();
+				const _T s = spfn_fold_sum_(C.value, index_type(0), size_to_index(C.value.size(), "spmats::sum"));
+				B.resize(1, 1);
+				if (!(s == _T(0))) B.set(0, 0, s);
+				B.finalize();
+				return;
+			}
+			const spmats C = as_csc();
+			B.resize(1, column);
+			for (index_type j = 0; j < column; j++) {
+				const std::size_t sj = static_cast<std::size_t>(j);
+				const _T s = spfn_fold_sum_(C.value, C.outer[sj], C.outer[sj + 1]);
+				if (!(s == _T(0))) B.set(0, j, s);
+			}
+			B.finalize();
+		}
+		void powms(const _T& a) {
+			using std::pow;
+			const _T f0 = pow(_T(0), a);
+			if (f0 == _T(0)) spfn_map_stored_(spfn_powms_(a));
+			else spfn_map_full_(spfn_powms_(a), "spmats::powms");
+		}
+		void powmi(const int a) {
+			using std::pow;
+			const _T f0 = pow(_T(0), a);
+			if (f0 == _T(0)) spfn_map_stored_(spfn_powmi_(a));
+			else spfn_map_full_(spfn_powmi_(a), "spmats::powmi");
+		}
+		void powsm(const _T& a) { spfn_map_full_(spfn_powsm_(a), "spmats::powsm"); }
+		void powmmA(const spmats& B) {
+			if (row != B.row || column != B.column) {
+				vcp::throw_error<vcp::dimension_error>("spmats::powmmA: dimension mismatch");
+			}
+			if (row <= 0 || column <= 0) {
+				vcp::throw_error<vcp::state_error>("spmats::powmmA: empty matrix");
+			}
+			to_csr();
+			const spmats Bc = B.as_csr();
+			const std::size_t m  = index_to_size(row, "spmats::powmmA");
+			const std::size_t nc = index_to_size(column, "spmats::powmmA");
+			std::vector<index_type> new_outer(m + 1);
+			std::vector<index_type> new_inner;
+			std::vector<_T> new_value;
+			std::vector<_T> rowa(nc, _T(0)), rowb(nc, _T(0));
+			using std::pow;
+			index_type cnt = 0;
+			for (std::size_t i = 0; i < m; i++) {
+				new_outer[i] = cnt;
+				for (index_type p = outer[i]; p < outer[i + 1]; p++) rowa[static_cast<std::size_t>(inner[static_cast<std::size_t>(p)])] = value[static_cast<std::size_t>(p)];
+				for (index_type p = Bc.outer[i]; p < Bc.outer[i + 1]; p++) rowb[static_cast<std::size_t>(Bc.inner[static_cast<std::size_t>(p)])] = Bc.value[static_cast<std::size_t>(p)];
+				for (std::size_t j = 0; j < nc; j++) {
+					const _T v = pow(rowa[j], rowb[j]);
+					if (!(v == _T(0))) {   // drop exact zeros (invariant)
+						new_inner.push_back(static_cast<index_type>(j));
+						new_value.push_back(v);
+						cnt++;
+					}
+					rowa[j] = _T(0);
+					rowb[j] = _T(0);
+				}
+			}
+			new_outer[m] = cnt;
+			assign_csr(row, column, new_outer, new_inner, new_value);
+		}
+
 		// max/min (SPFN): same shape contract as mats<T> --
 		//   1x1        -> 1x1 (the value itself)
 		//   vector     -> 1x1 (whole-vector reduction)
