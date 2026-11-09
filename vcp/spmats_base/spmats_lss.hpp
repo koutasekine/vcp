@@ -172,6 +172,90 @@ namespace spmats_lss_detail {
 
 
 	// ---------------------------------------------------------------------------
+	// SPM-A4: dispatch_sparse_lu_multi_ -- the multi-RHS form of
+	// dispatch_sparse_lu_.  ONE sparse_lu_factorize_with_info(A, opt.sparse_lu)
+	// shared by every column; each column then runs exactly the per-column
+	// body of dispatch_sparse_lu_ (IR path or plain path, same field mapping,
+	// same residual helper on the same A), so column c is bit-identical to
+	// policy_lss_with_info(B[c], opt).  The exception net mirrors the
+	// single-RHS impl: vcp::error is rethrown; any other std::exception from
+	// the factorization turns EVERY column into the D6 fallback (the
+	// single-RHS loop would re-factorize and hit it on every column), and one
+	// from a column's solve turns THAT column into the fallback.
+	// Body copied from dispatch_sparse_lu_ (not refactored) so the
+	// single-RHS path stays byte-identical.
+	// ---------------------------------------------------------------------------
+	template <typename _T, typename _Index>
+	inline linear_solve_result<_T> sparse_lu_d6_fallback_(
+	    const std::size_t n, const linear_solver_method m)
+	{
+	    linear_solve_result<_T> result;
+	    result.method = m;
+	    result.converged = false;
+	    result.x.assign(n, _T(0));
+	    result.solution = result.x;
+	    return result;
+	}
+
+	template <typename _T, typename _Index>
+	inline std::vector<linear_solve_result<_T> >
+	dispatch_sparse_lu_multi_(
+	    const spmats<_T,_Index>& A,
+	    const std::vector<std::vector<_T> >& B,
+	    const linear_solve_options<_T>& opt)
+	{
+	    const std::size_t n = static_cast<std::size_t>(A.rowsize());
+	    std::vector<linear_solve_result<_T> > out;
+	    out.reserve(B.size());
+	    vcp::sparse_lu_factorization<_T, _Index> fac;
+	    try {
+	        fac = vcp::sparse_lu_factorize_with_info(A, opt.sparse_lu);
+	    } catch (const vcp::error&) {
+	        throw;
+	    } catch (const std::exception&) {
+	        for (std::size_t c = 0; c < B.size(); c++)
+	            out.push_back(sparse_lu_d6_fallback_<_T, _Index>(B[c].size(), opt.method));
+	        return out;
+	    }
+	    for (std::size_t c = 0; c < B.size(); c++) {
+	        const std::vector<_T>& b = B[c];
+	        try {
+	            linear_solve_result<_T> result;
+	            result.method = linear_solver_method::sparse_lu;
+	            result.iterations = 0;
+	            if (fac.info().success) {
+	                if (opt.sparse_lu.iterative_refinement) {
+	                    vcp::sparse_lu_refinement_info<_T> ir_info;
+	                    result.x = vcp::sparse_lu_solve_refined(A, fac, b, opt.sparse_lu, &ir_info);
+	                    result.iterations             = ir_info.iterations;
+	                    result.initial_residual_norm  = ir_info.initial_residual;
+	                    result.residual_norm          = ir_info.final_residual;
+	                    result.absolute_residual_norm = ir_info.final_residual;
+	                    result.relative_residual_norm = ir_info.final_relative_residual;
+	                } else {
+	                    result.x = fac.solve(b);
+	                    set_linear_residual_lss(result, A, b);
+	                    result.initial_residual_norm = result.absolute_residual_norm;
+	                }
+	                result.solution  = result.x;
+	                result.converged = true;
+	            } else {
+	                result.converged = false;
+	                result.x.assign(n, _T(0));
+	                result.solution = result.x;
+	            }
+	            out.push_back(result);
+	        } catch (const vcp::error&) {
+	            throw;
+	        } catch (const std::exception&) {
+	            out.push_back(sparse_lu_d6_fallback_<_T, _Index>(b.size(), opt.method));
+	        }
+	    }
+	    return out;
+	}
+
+
+	// ---------------------------------------------------------------------------
 	// resolve_auto_: LSS-2 D-1 auto_select -> sparse_lu.  Index is signed by
 	// construction (LSS-2 D-2 static_assert in spmats), so no unsigned branch
 	// exists (LSS-3 removed the dead SFINAE overloads).
@@ -700,6 +784,26 @@ std::vector<linear_solve_result<_T> > spmats<_T, _Index>::policy_lss_multi_with_
 	const std::vector<std::vector<_T> >& B,
 	const linear_solve_options<_T>& opt) const
 {
+	// SPM-A4: the sparse_lu path -- auto_select always resolves to it
+	// (LSS-2 D-1) -- shares one factorization over all columns
+	// (dispatch_sparse_lu_multi_); every iterative method keeps the column
+	// loop below.  The entry checks mirror policy_lss_with_info_impl in its
+	// order (square / rhs size are done by the outer; then max_iter, tol),
+	// so an invalid option throws the same exception as the column loop
+	// would on its first column.  An empty B returns an empty result
+	// without checks, exactly as the column loop does.
+	if (!B.empty()) {
+		linear_solve_options<_T> eff = opt;
+		if (eff.method == linear_solver_method::auto_select)
+			spmats_lss_detail::resolve_auto_<_T, _Index>(eff);
+		if (eff.method == linear_solver_method::sparse_lu) {
+			if (opt.max_iter == 0)
+				vcp::throw_error<vcp::invalid_argument>("spmats::policy_lss_with_info: max_iter must be positive");
+			if (opt.tol <= scalar_real_type(0))
+				vcp::throw_error<vcp::invalid_argument>("spmats::policy_lss_with_info: tol must be positive");
+			return spmats_lss_detail::dispatch_sparse_lu_multi_<_T, _Index>(*this, B, eff);
+		}
+	}
 	std::vector<linear_solve_result<_T> > out;
 	out.reserve(B.size());
 	for (std::size_t c = 0; c < B.size(); c++)

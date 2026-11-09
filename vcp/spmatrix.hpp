@@ -1630,10 +1630,14 @@ namespace vcp {
 		friend void lss(const spmatrix& A, const std::vector<_T>& b, std::vector<_T>& x) {
 			x = A.solve(b);
 		}
-		// A1-6: X = A \ B for a dense right-hand side, column by column
-		// (each column goes through A.solve); dimension_error when
+		// A1-6: X = A \ B for a dense right-hand side; dimension_error when
 		// B.rowsize() != A.rowsize().
-		// SPM-A2 (A2-5): unchanged column loop; for multi-RHS performance (one shared factorization) use lss_with_info(A, matrix B, res) or lss(A, spmatrix B, X) below.
+		// SPM-A4: the columns go through policy_lss_multi (one factorization
+		// shared by all columns where the policy shares it: spmats sparse_lu,
+		// spumar / spcmodumar UMFPACK, spimats verified core).  Column c is
+		// bit-identical to A.solve(B(:, c)); when some column does not
+		// converge, every column is computed first and then state_error is
+		// thrown (the former column loop threw at the first such column).
 		template <class _PD>
 		friend matrix<_T, _PD> lss(const spmatrix& A, const matrix<_T, _PD>& B) {
 			if (static_cast<index_type>(B.rowsize()) != A.rowsize()) {
@@ -1642,16 +1646,18 @@ namespace vcp {
 			}
 			const int n = B.rowsize();
 			const int cols = B.columnsize();
-			matrix<_T, _PD> X;
-			X.zeros(n, cols);
-			std::vector<_T> b(static_cast<std::size_t>(n));
+			std::vector<std::vector<_T> > Bc(static_cast<std::size_t>(cols), std::vector<_T>(static_cast<std::size_t>(n)));
 			for (int c = 0; c < cols; ++c) {
 				for (int i = 0; i < n; ++i) {
-					b[static_cast<std::size_t>(i)] = B(i, c);
+					Bc[static_cast<std::size_t>(c)][static_cast<std::size_t>(i)] = B(i, c);
 				}
-				const std::vector<_T> x = A.solve(b);
+			}
+			const std::vector<std::vector<_T> > Xc = A.policy_lss_multi(Bc, linear_solve_options_type());
+			matrix<_T, _PD> X;
+			X.zeros(n, cols);
+			for (int c = 0; c < cols; ++c) {
 				for (int i = 0; i < n; ++i) {
-					X(i, c) = x[static_cast<std::size_t>(i)];
+					X(i, c) = Xc[static_cast<std::size_t>(c)][static_cast<std::size_t>(i)];
 				}
 			}
 			return X;
