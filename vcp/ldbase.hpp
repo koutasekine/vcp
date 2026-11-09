@@ -307,6 +307,7 @@ namespace vcp {
 				std::cout << "even_list_set:" << std::endl;
 				std::cout << "Error: Matrix size: (" << powers[dim] << ", " << dim << " )" << std::endl;
 				std::cerr << "Length error: " << le.what() << '\n';
+				throw;   // RES-1: list is not allocated; never fill it (out-of-bounds writes)
 			}
 			int ii = 0;
 			for (int d = 0; d < dim; d++) {

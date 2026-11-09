@@ -592,6 +592,20 @@ namespace vcp {
 			B.powmmB(A);
 			return std::move(B);
 		}
+		// RES-1: an int exponent keeps the scalar type's exact pow(x, int)
+		// (kv::interval / dd / mpfr / affine / complex); see mats::powmi.
+		// Non-template, so pow(A, 2) prefers it over the _Tm template;
+		// pow(A, 2.0), pow(A, 2L) etc. still take the template (powms).
+		friend matrix< _T, _P > pow(const matrix< _T, _P >& B, const int a) {
+			matrix< _T, _P > C;
+			C = B;
+			C.powmi(a);
+			return C;
+		}
+		friend matrix< _T, _P > pow(matrix< _T, _P >&& B, const int a) {
+			B.powmi(a);
+			return std::move(B);
+		}
 		template <typename _Tm> friend typename std::enable_if<std::is_constructible< _T, _Tm >::value, matrix< _T, _P > >::type pow(const matrix< _T, _P >& B, const _Tm a) {
 			_T Ta = _T(a);
 			matrix< _T, _P > C;

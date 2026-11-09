@@ -756,6 +756,43 @@ namespace vcp{
 				return;
 			}
 		}
+		// A = pow(A,a) with an int exponent (RES-1): the exponent stays int so
+		// that the scalar type's pow(x, int) is used -- kv::interval / dd /
+		// mpfr / affine / complex all provide an exact repeated-multiplication
+		// pow(x, int), whereas _T(a) would select pow(x, _T) = exp(a log x)
+		// (wider for intervals, throws on negative entries).  For double,
+		// std::pow(double, int) promotes to std::pow(double, double), so the
+		// result is bit-identical to powms(_T(a)).
+		void powmi(const int a) {
+			if (type == 'S') {
+				using std::pow;
+				v[0] = pow(v[0], a);
+				return;
+			}
+			else {
+				{ // OMP-E1: capture exceptions thrown inside the OpenMP region
+				std::atomic<bool> omp_caught(false);
+				std::exception_ptr omp_eptr;
+#ifdef _OPENMP
+#ifndef VCP_MATS_NOMP
+				#pragma omp parallel for
+#endif
+#endif
+				for (vcp::index_t i = 0; i < n; i++) {
+					try {
+					using std::pow;
+					v[i] = pow(v[i], a);
+					}
+					catch (...) {
+						bool omp_expected = false;
+						if (omp_caught.compare_exchange_strong(omp_expected, true)) omp_eptr = std::current_exception();
+					}
+				}
+				if (omp_caught.load()) std::rethrow_exception(omp_eptr);
+				} // OMP-E1
+				return;
+			}
+		}
 		// A = pow(a,A)
 		void powsm(const _T a) {
 			if (type == 'S') {
