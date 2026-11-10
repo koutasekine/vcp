@@ -63,7 +63,7 @@ auto ir2 = A.inertia_with_info();  // 非 throwing
 | フィールド | 既定値 | 意味 |
 |---|---|---|
 | `method` | `auto_select` | 現版は `baseline_dynamic`(動的 left-looking 疎核。小規模 n ≤ 64 は dense 核へ委譲し、診断 `dense_delegated` で報告)に解決 |
-| `ordering` | `auto_select` | **契約**: auto_select はライブラリが選択する。現版は **amd** に解決。選択結果は診断 `ordering_used` で必ず報告される。**将来の版で選択は変わりうる**ため、再現性が必要な場合は明示指定すること。`natural` / `rcm` / `amd` / `nested_dissection` を明示指定可能(colamd は型レベルで不在) |
+| `ordering` | `auto_select` | **契約**: auto_select はライブラリが選択する。現版は **nested_dissection_ml** に解決。選択結果は診断 `ordering_used` で必ず報告される。**将来の版で選択は変わりうる**ため、再現性が必要な場合は明示指定すること。`natural` / `rcm` / `amd` / `nested_dissection` / `nested_dissection_ml` を明示指定可能(colamd は型レベルで不在) |
 | `check_symmetry` | `true` | 入口の対称性検査。合格宣言側が certified(対称と**保証できない**入力は `not_symmetric`)。下三角のみを与える場合は `false` にする |
 | `symmetry_tol` | 1e-12(実型) | certified に \|a_ij − a_ji\| ≤ tol で合格 |
 | `zero_pivot_tol` | 0(実型) | 0 = certified 厳密零のみ零ピボット扱い |

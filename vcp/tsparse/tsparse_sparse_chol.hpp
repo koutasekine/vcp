@@ -423,6 +423,18 @@ bool sparse_chol_compute_ordering_(
 }
 
 // ---------------------------------------------------------------------------
+// SPI-O1: the single resolution point of sparse_chol_ordering::auto_select.
+// sparse_chol_factorize_with_info (below) and spimats::is_spd both call this,
+// so the approximate and the verified layers always resolve auto_select to
+// the same concrete ordering.  The resolution may change between versions
+// (the base chol reports it in ordering_used).
+// ---------------------------------------------------------------------------
+inline sparse_chol_ordering sparse_chol_resolve_auto_ordering_()
+{
+    return sparse_chol_ordering::nested_dissection_ml;
+}
+
+// ---------------------------------------------------------------------------
 // Explicit construction of the permuted lower CSC C = P0^T A P0 (CHOL-0
 // step 6; design SS2.0-4 -- an INTENTIONAL difference from LDL, which never
 // materializes the permuted matrix: the chol symbolic analysis needs the
@@ -922,7 +934,7 @@ sparse_chol_factorize_with_info(
             // D-4 裁定 2026-08-01: 4 機実測 3D ldl 3.1-3.4x / chol 8.5-10.1x /
             // lu 2.9-3.5x、fill・メモリ半減。2D one-shot は順序コストで劣後するが
             // 主用途(handle 経由 σ 走査)では setup 償却で全次元純益。
-            res.ordering_used = sparse_chol_ordering::nested_dissection_ml;
+            res.ordering_used = sparse_chol_detail::sparse_chol_resolve_auto_ordering_();
             break;
         case sparse_chol_ordering::natural:
         case sparse_chol_ordering::rcm:

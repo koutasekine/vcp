@@ -812,12 +812,13 @@ protected:
 		//  置換)】---
 		// 順列は先に行列へ適用し(値の移動のみ・算術なし = 厳密)、chol は常に
 		// natural で実行する。M と R に同一の対称置換(SPD は合同変換 PᵀAP で
-		// 不変、ρ(R) も対称置換で不変)。auto_select は基底 chol の規約
-		// (auto → amd [確認済み tsparse_sparse_chol.hpp L81-82])に合わせる。
+		// 不変、ρ(R) も対称置換で不変)。auto_select は基底 chol と同じ解決点
+		// sparse_chol_resolve_auto_ordering_() で解決する(SPI-O1。オーナー裁定
+		// 2026-11-10。どの置換でも主張は不変で、順序は fill と速さにだけ効く)。
 		{
 			vcp::sparse_chol_ordering ord = opt.ordering;
 			if (ord == vcp::sparse_chol_ordering::auto_select) {
-				ord = vcp::sparse_chol_ordering::amd;
+				ord = vcp::sparse_chol_detail::sparse_chol_resolve_auto_ordering_();
 			}
 			if (ord != vcp::sparse_chol_ordering::natural) {
 				// 下三角(r >= c)CSC パターンを ordering 関数へ渡す [確認済み

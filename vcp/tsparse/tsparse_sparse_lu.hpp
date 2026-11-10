@@ -4289,8 +4289,9 @@ sparse_lu_factorization<T, Index>::supernode_numeric_diagnostics() const
 
 // ---------------------------------------------------------------------------
 // sparse_lu_symbolic -- SLU-1: builds the column permutation and col_etree
-// skeleton.  SLU-L1 L-1: ordering=auto_select resolves to amd; an identity
-// permutation is installed only for explicit ordering=natural.
+// skeleton.  ordering=auto_select resolves to nested_dissection_ml (D-4,
+// 2026-08-01; SLU-L1 L-1 had resolved it to amd); an identity permutation is
+// installed only for explicit ordering=natural.
 // Diagnostic variant: always returns sym.success/status
 // so that sparse_lu_numeric can propagate failure without extra throw paths.
 // ---------------------------------------------------------------------------
@@ -4325,10 +4326,10 @@ sparse_lu_symbolic(
             return sym;
         }
 
-        // Column pre-permutation slot (§2A).  SLU-L1 L-1 (D-1): auto_select now
-        // RESOLVES TO amd (measured dominant on all subject matrices, design
-        // §1; the escape hatch is an explicit ordering=natural, which keeps the
-        // identity permutation byte-identically).  Ordering Track O1
+        // Column pre-permutation slot (§2A).  auto_select resolves to
+        // nested_dissection_ml (D-4 below; SLU-L1 L-1 (D-1) had resolved it to
+        // amd).  The escape hatch is an explicit ordering=natural, which keeps
+        // the identity permutation byte-identically.  Ordering Track O1
         // (rcm), O2 (amd) on the A + A^T pattern,
         // and O3 (colamd) on the A^T A column-intersection
         // pattern install a deterministic, pattern-only fill-reducing permutation
@@ -5066,8 +5067,9 @@ sparse_lu_factorize_with_info(
         info.n = static_cast<Index>(A.rowsize());
 
         // Symbolic phase: builds an identity col_perm skeleton for explicit
-        // natural and a fill-reducing col_perm for rcm/amd/colamd (SLU-L1 L-1:
-        // auto_select resolves to amd inside sparse_lu_symbolic). static_mc64 is
+        // natural and a fill-reducing col_perm for rcm/amd/colamd/nd/ndml
+        // (auto_select resolves to nested_dissection_ml inside
+        // sparse_lu_symbolic, D-4). static_mc64 is
         // handled later in the numeric effective-matrix path.
         sparse_lu_symbolic_result<Index> sym = sparse_lu_symbolic(A, opt);
         if (!sym.success) {
