@@ -901,6 +901,89 @@ namespace vcp {
 			std::vector<_T> new_value;
 			std::vector<_T> rowa(nc, _T(0)), rowb(nc, _T(0));
 			using std::pow;
+#if VCP_SPARSE_USE_OPENMP
+			// RES-2 (OpenMP branch): the same block-partition + stitch scheme as
+			// spfn_map_full_ (work = m*nc pow evaluations).  Each block runs the
+			// identical per-row algorithm of the sequential path below into a
+			// block-local buffer; a sequential prefix sum fixes new_outer; a
+			// parallel copy stitches the blocks.  No reduction: bit-identical.
+			{
+				const std::ptrdiff_t nrows = static_cast<std::ptrdiff_t>(m);
+				const bool par_on = (m * nc >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD));
+				std::ptrdiff_t nblocks = 1;
+				if (par_on) {
+					nblocks = static_cast<std::ptrdiff_t>(omp_get_max_threads());
+					if (nblocks < 1) nblocks = 1;
+					if (nblocks > nrows) nblocks = (nrows > 0) ? nrows : 1;
+				}
+				std::vector<std::vector<index_type> > block_inner(static_cast<std::size_t>(nblocks));
+				std::vector<std::vector<_T> > block_value(static_cast<std::size_t>(nblocks));
+				std::vector<index_type> rcnt(m, index_type(0));
+				std::atomic<bool> caught(false);
+				std::exception_ptr eptr;
+#pragma omp parallel for schedule(static) if (par_on)
+				for (std::ptrdiff_t b = 0; b < nblocks; b++) {
+					try {
+						const std::ptrdiff_t r0 = b * nrows / nblocks;
+						const std::ptrdiff_t r1 = (b + 1) * nrows / nblocks;
+						std::vector<_T> ra(nc, _T(0)), rb(nc, _T(0));
+						std::vector<index_type>& li = block_inner[static_cast<std::size_t>(b)];
+						std::vector<_T>& lv = block_value[static_cast<std::size_t>(b)];
+						for (std::ptrdiff_t ii = r0; ii < r1; ii++) {
+							const std::size_t i = static_cast<std::size_t>(ii);
+							const std::size_t before = lv.size();
+							for (index_type p = outer[i]; p < outer[i + 1]; p++) ra[static_cast<std::size_t>(inner[static_cast<std::size_t>(p)])] = value[static_cast<std::size_t>(p)];
+							for (index_type p = Bc.outer[i]; p < Bc.outer[i + 1]; p++) rb[static_cast<std::size_t>(Bc.inner[static_cast<std::size_t>(p)])] = Bc.value[static_cast<std::size_t>(p)];
+							for (std::size_t j = 0; j < nc; j++) {
+								const _T v = pow(ra[j], rb[j]);
+								if (!(v == _T(0))) {   // drop exact zeros (invariant)
+									li.push_back(static_cast<index_type>(j));
+									lv.push_back(v);
+								}
+								ra[j] = _T(0);
+								rb[j] = _T(0);
+							}
+							rcnt[i] = static_cast<index_type>(lv.size() - before);
+						}
+					}
+					catch (...) {
+						bool expected = false;
+						if (caught.compare_exchange_strong(expected, true)) {
+							eptr = std::current_exception();
+						}
+					}
+				}
+				if (caught.load()) std::rethrow_exception(eptr);
+				new_outer[0] = 0;
+				std::size_t total = 0;
+				for (std::size_t i = 0; i < m; i++) {
+					total += static_cast<std::size_t>(rcnt[i]);
+					new_outer[i + 1] = size_to_index(total, "spmats::powmmA");
+				}
+				new_inner.resize(total);
+				new_value.resize(total, _T(0));
+#pragma omp parallel for schedule(static) if (par_on)
+				for (std::ptrdiff_t b = 0; b < nblocks; b++) {
+					try {
+						const std::ptrdiff_t r0 = b * nrows / nblocks;
+						const std::vector<index_type>& li = block_inner[static_cast<std::size_t>(b)];
+						const std::vector<_T>& lv = block_value[static_cast<std::size_t>(b)];
+						const std::size_t dst = static_cast<std::size_t>(new_outer[static_cast<std::size_t>(r0)]);
+						for (std::size_t k = 0; k < lv.size(); k++) {
+							new_inner[dst + k] = li[k];
+							new_value[dst + k] = lv[k];
+						}
+					}
+					catch (...) {
+						bool expected = false;
+						if (caught.compare_exchange_strong(expected, true)) {
+							eptr = std::current_exception();
+						}
+					}
+				}
+				if (caught.load()) std::rethrow_exception(eptr);
+			}
+#else
 			index_type cnt = 0;
 			for (std::size_t i = 0; i < m; i++) {
 				new_outer[i] = cnt;
@@ -918,6 +1001,7 @@ namespace vcp {
 				}
 			}
 			new_outer[m] = cnt;
+#endif
 			assign_csr(row, column, new_outer, new_inner, new_value);
 		}
 

@@ -78,8 +78,9 @@ enum class sparse_chol_method {
 };
 
 enum class sparse_chol_ordering {
-    auto_select,          // resolved to amd in this version (always reported
-                          // in ordering_used; LDL decision-1 contract, G3)
+    auto_select,          // resolved to nested_dissection_ml in this version (D-4,
+                          // 2026-08-01); may change in future versions (always
+                          // reported in ordering_used; LDL decision-1 contract, G3)
     natural,              // identity permutation; calls no ordering function
     rcm,
     amd,
