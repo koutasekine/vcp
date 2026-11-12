@@ -38,6 +38,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -348,10 +349,16 @@ inline void rmatmul_blocked_m_only_nosimd(const int m, const int n, const int k,
 	const int max_pb = std::min(blocking.kc, n);
 	std::vector<double> packed_b;
 	packed_b.reserve(static_cast<std::size_t>(max_pb) * round_up_to(std::min(blocking.nc_group, k), NR));
+	// VBL-1: 各 thread の packed A は並列領域の前でまとめて確保する(領域内の確保失敗は
+	// std::terminate になるため。ここで失敗すれば std::bad_alloc が呼び出し元へ出る)．
+	// 区画は 8 要素(64 byte)単位に揃え、0 埋めは各 thread が自分の区画に行う(first touch と初期値は従来どおり)．
+	const std::size_t packed_a_stride = (static_cast<std::size_t>(max_mb_padded) * max_pb + 7) / 8 * 8;
+	std::unique_ptr<double[]> packed_a_all(new double[packed_a_stride * static_cast<std::size_t>(blocking.threads)]);
 
 #pragma omp parallel num_threads(blocking.threads)
 	{
-		std::vector<double> packed_a(static_cast<std::size_t>(max_mb_padded) * max_pb);
+		double* const packed_a = packed_a_all.get() + packed_a_stride * static_cast<std::size_t>(omp_get_thread_num());
+		std::fill(packed_a, packed_a + packed_a_stride, 0.0);
 		const int previous_rounding = get_rounding_mode();
 		set_rounding_mode(ROUNDING);
 
@@ -370,7 +377,7 @@ inline void rmatmul_blocked_m_only_nosimd(const int m, const int n, const int k,
 
 #pragma omp for schedule(static)
 				for (int ic = 0; ic < m; ic += blocking.mc) {
-					compute_packed_ic_block<ROUNDING>(m, pb, ng, ic, pc, jcg, blocking, A, packed_b.data(), packed_a.data(), CU, init_zero);
+					compute_packed_ic_block<ROUNDING>(m, pb, ng, ic, pc, jcg, blocking, A, packed_b.data(), packed_a, CU, init_zero);
 				}
 			}
 		}
@@ -384,10 +391,16 @@ inline void rmatmul_blocked_2d_nosimd(const int m, const int n, const int k, con
 	const int max_pb = std::min(blocking.kc, n);
 	std::vector<double> packed_b;
 	packed_b.reserve(static_cast<std::size_t>(max_pb) * round_up_to(std::min(blocking.nc_group, k), NR));
+	// VBL-1: 各 thread の packed A は並列領域の前でまとめて確保する(領域内の確保失敗は
+	// std::terminate になるため。ここで失敗すれば std::bad_alloc が呼び出し元へ出る)．
+	// 区画は 8 要素(64 byte)単位に揃え、0 埋めは各 thread が自分の区画に行う(first touch と初期値は従来どおり)．
+	const std::size_t packed_a_stride = (static_cast<std::size_t>(max_mb_padded) * max_pb + 7) / 8 * 8;
+	std::unique_ptr<double[]> packed_a_all(new double[packed_a_stride * static_cast<std::size_t>(blocking.threads)]);
 
 #pragma omp parallel num_threads(blocking.threads)
 	{
-		std::vector<double> packed_a(static_cast<std::size_t>(max_mb_padded) * max_pb);
+		double* const packed_a = packed_a_all.get() + packed_a_stride * static_cast<std::size_t>(omp_get_thread_num());
+		std::fill(packed_a, packed_a + packed_a_stride, 0.0);
 		const int previous_rounding = get_rounding_mode();
 		set_rounding_mode(ROUNDING);
 
@@ -410,7 +423,7 @@ inline void rmatmul_blocked_2d_nosimd(const int m, const int n, const int k, con
 						const int nb = std::min(blocking.column_tile, ng - jc_offset);
 						compute_packed_ic_column_tile<ROUNDING>(
 							m, pb, nb, ic, pc, jcg + jc_offset,
-							blocking, A, packed_b.data() + static_cast<std::size_t>(jc_offset / NR) * pb * NR, packed_a.data(), CU, init_zero);
+							blocking, A, packed_b.data() + static_cast<std::size_t>(jc_offset / NR) * pb * NR, packed_a, CU, init_zero);
 					}
 				}
 			}

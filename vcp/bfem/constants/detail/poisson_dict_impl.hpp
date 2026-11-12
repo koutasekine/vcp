@@ -447,6 +447,13 @@ T ritz_projection_error_constant_h01_sq(const vcp::bfem::mesh<2, T>& Th, int k,
 // C_0 h of poisson_constants.hpp, whose planar closed form has no three
 // dimensional counterpart; the squared, dictionary served form above is the
 // three dimensional path in full.
+//
+// CONST-J: the SQUARED constant set does exist in three dimensions, under the
+// same name and with the same struct in two and three dimensions --
+// ritz_projection_constants_h01_sq returning
+// ritz_projection_constant_set_h01_sq, below.  It carries the dictionary
+// served (or a caller supplied) C_{0,h}^2 instead of the planar C_0 h, so
+// the reason recorded above does not apply to it.
 // ---------------------------------------------------------------------------
 template <typename T,
           class DP = vcp::imats<typename T::base_type>,
@@ -457,6 +464,158 @@ T ritz_projection_error_constant_h01_sq(const vcp::bfem::mesh<3, T>& Th, int k,
     const T kappa2 = hypercircle_kappa_h01_squared<T, DP, SP>(Th, k);
     const T c0h_sq = l2_projection_error_constant_sq(Th, k - 1, rep);
     return kappa2 + c0h_sq;
+}
+
+// ===========================================================================
+// CONST-J: the explicit C_{0,h}^2 composition and the squared constant set,
+// two and three dimensions under the same names (the Stokes side carries the
+// same two forms in stokes_constants.hpp).  Nothing below adds a formula: each
+// function calls the same ingredients as the dictionary composition above, in
+// the same order.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// ritz_projection_error_constant_h01_sq(Th, k, c0h_sq), mesh<2, T> and
+// mesh<3, T>: the EXPLICIT C_{0,h}^2 composition
+//
+//     C_h(k)^2 = hypercircle_kappa_h01_squared(Th, k) + c0h_sq
+//
+// for a caller who holds a certified upper bound of C_{0,h}(k - 1)^2 of its
+// own (a mesh family closed form, a sharper dictionary).  The supplied value
+// is the caller's responsibility; the dictionary is NOT consulted, so there is
+// no resolution report on this form.  kappa^2 is the same call, with the same
+// exceptions, as in the dictionary composition above.
+//
+// PASS A VALUE OF TYPE T as the third argument.  A literal zero or nullptr
+// there selects the dictionary composition above (its third parameter is the
+// report pointer), not this one.
+// ---------------------------------------------------------------------------
+template <typename T,
+          class DP = vcp::imats<typename T::base_type>,
+          class SP = vcp::spimats<typename T::base_type> >
+T ritz_projection_error_constant_h01_sq(const vcp::bfem::mesh<2, T>& Th, int k,
+                                        const T& c0h_sq) {
+    const T kappa2 = hypercircle_kappa_h01_squared<T, DP, SP>(Th, k);
+    return kappa2 + c0h_sq;
+}
+
+template <typename T,
+          class DP = vcp::imats<typename T::base_type>,
+          class SP = vcp::spimats<typename T::base_type> >
+T ritz_projection_error_constant_h01_sq(const vcp::bfem::mesh<3, T>& Th, int k,
+                                        const T& c0h_sq) {
+    const T kappa2 = hypercircle_kappa_h01_squared<T, DP, SP>(Th, k);
+    return kappa2 + c0h_sq;
+}
+
+// ---------------------------------------------------------------------------
+// ritz_projection_constant_set_h01_sq<T> (CONST-J): the squared constant set
+// of one hypercircle pass, the same struct in two and three dimensions.
+//
+//   kappa2             kappa_h^2 (the point interval of the largest upper end
+//                      of the spectrum, as hypercircle_kappa_h01_squared)
+//   c0h_sq             C_{0,h}(k - 1)^2: dictionary served, or the value the
+//                      caller supplied (explicit form)
+//   ch_sq              C_h(k)^2 = kappa2 + c0h_sq
+//   lambda             every enclosure of the generalized spectrum the kappa
+//                      came from
+//   sym_pairs_checked  the (i, j), i < j, pairs the symmetrisation examined
+//   resolution         the dictionary census of the c0h_sq pass; left default
+//                      constructed by the explicit form (no dictionary call)
+//
+// Unlike ritz_projection_constant_set_h01 of poisson_constants.hpp it carries
+// no C_0 h and no square root, so it exists in three dimensions too.
+// ---------------------------------------------------------------------------
+template <typename T>
+struct ritz_projection_constant_set_h01_sq {
+    T kappa2;
+    T c0h_sq;
+    T ch_sq;
+    std::vector<T> lambda;
+    int sym_pairs_checked;
+    mesh_resolution_report resolution;
+
+    ritz_projection_constant_set_h01_sq()
+        : kappa2(), c0h_sq(), ch_sq(), lambda(), sym_pairs_checked(0),
+          resolution() {}
+};
+
+// ---------------------------------------------------------------------------
+// ritz_projection_constants_h01_sq(Th, k [, c0h_sq]), mesh<2, T> and
+// mesh<3, T>: the set above in one hypercircle pass.  The kappa side calls the
+// core that hypercircle_kappa_h01_squared of the same dimension calls (in two
+// dimensions projection_constants_core, so a degenerate triangle is reported
+// by l2_projection_element_bound before any space is built, exactly as there;
+// in three dimensions hypercircle_kappa_core), and keeps its lambda and pair
+// count.  Then C_{0,h}^2: the dictionary at d = k - 1 (the k -> d conversion
+// of the dictionary composition above, restated), or the supplied value.
+// Then ch_sq = kappa2 + c0h_sq.  The exceptions are those of the matching
+// composition, in the same order.
+// ---------------------------------------------------------------------------
+template <typename T,
+          class DP = vcp::imats<typename T::base_type>,
+          class SP = vcp::spimats<typename T::base_type> >
+ritz_projection_constant_set_h01_sq<T>
+ritz_projection_constants_h01_sq(const vcp::bfem::mesh<2, T>& Th, int k) {
+    detail::core_result<T, DP> r;
+    detail::projection_constants_core<T, DP, SP>(Th, k, r, false);
+    ritz_projection_constant_set_h01_sq<T> s;
+    s.kappa2 = r.kappa2;
+    s.lambda = r.lambda;
+    s.sym_pairs_checked = r.sym_pairs_checked;
+    s.c0h_sq = l2_projection_error_constant_sq(Th, k - 1, &s.resolution);
+    s.ch_sq = s.kappa2 + s.c0h_sq;
+    return s;
+}
+
+template <typename T,
+          class DP = vcp::imats<typename T::base_type>,
+          class SP = vcp::spimats<typename T::base_type> >
+ritz_projection_constant_set_h01_sq<T>
+ritz_projection_constants_h01_sq(const vcp::bfem::mesh<2, T>& Th, int k,
+                                 const T& c0h_sq) {
+    detail::core_result<T, DP> r;
+    detail::projection_constants_core<T, DP, SP>(Th, k, r, false);
+    ritz_projection_constant_set_h01_sq<T> s;
+    s.kappa2 = r.kappa2;
+    s.lambda = r.lambda;
+    s.sym_pairs_checked = r.sym_pairs_checked;
+    s.c0h_sq = c0h_sq;
+    s.ch_sq = s.kappa2 + s.c0h_sq;
+    return s;
+}
+
+template <typename T,
+          class DP = vcp::imats<typename T::base_type>,
+          class SP = vcp::spimats<typename T::base_type> >
+ritz_projection_constant_set_h01_sq<T>
+ritz_projection_constants_h01_sq(const vcp::bfem::mesh<3, T>& Th, int k) {
+    detail::core_result<T, DP> r;
+    detail::hypercircle_kappa_core<3, T, DP, SP>(Th, k, r, false);
+    ritz_projection_constant_set_h01_sq<T> s;
+    s.kappa2 = r.kappa2;
+    s.lambda = r.lambda;
+    s.sym_pairs_checked = r.sym_pairs_checked;
+    s.c0h_sq = l2_projection_error_constant_sq(Th, k - 1, &s.resolution);
+    s.ch_sq = s.kappa2 + s.c0h_sq;
+    return s;
+}
+
+template <typename T,
+          class DP = vcp::imats<typename T::base_type>,
+          class SP = vcp::spimats<typename T::base_type> >
+ritz_projection_constant_set_h01_sq<T>
+ritz_projection_constants_h01_sq(const vcp::bfem::mesh<3, T>& Th, int k,
+                                 const T& c0h_sq) {
+    detail::core_result<T, DP> r;
+    detail::hypercircle_kappa_core<3, T, DP, SP>(Th, k, r, false);
+    ritz_projection_constant_set_h01_sq<T> s;
+    s.kappa2 = r.kappa2;
+    s.lambda = r.lambda;
+    s.sym_pairs_checked = r.sym_pairs_checked;
+    s.c0h_sq = c0h_sq;
+    s.ch_sq = s.kappa2 + s.c0h_sq;
+    return s;
 }
 
 } // namespace constants

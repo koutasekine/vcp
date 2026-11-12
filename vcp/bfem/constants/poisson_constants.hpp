@@ -48,7 +48,13 @@
 //                                              bound
 //     ritz_projection_error_constant_h01_sq    H^1_0: same frame (the
 //                                              CONST-C1 squared composition
-//                                              of detail/poisson_dict_impl)
+//                                              of detail/poisson_dict_impl);
+//                                              this includes the CONST-J
+//                                              overload (Th, k, c0h_sq) that
+//                                              takes an explicit C_{0,h}^2
+//                                              in place of the dictionary
+//                                              one (two and three
+//                                              dimensions)
 //     hypercircle_kappa_h01_squared            H^1_0: the defining equation
 //                                              of kappa_h (see the function
 //                                              comment below) frames
@@ -67,6 +73,13 @@
 //                                              part of the carrier noun,
 //                                              not a form suffix, so the
 //                                              tag sits at the end)
+//     ritz_projection_constants_h01_sq /       H^1_0: the same frame as
+//     ritz_projection_constant_set_h01_sq      ritz_projection_error_constant_h01_sq
+//                                              (CONST-J squared set of
+//                                              detail/poisson_dict_impl, two
+//                                              and three dimensions; _set
+//                                              is part of the carrier noun,
+//                                              the tag precedes _sq)
 //     l2_projection_error_constant(_sq)        BC-free: the L^2 projection
 //     l2_projection_element_constant           carries no boundary
 //     l2_projection_element_constants_sq       condition -- these bounds
@@ -77,6 +90,8 @@
 //     cr_projection_error_constant_sq          BC-free: element local
 //     eigenvalue_lower_bound                   BC-free: general discrete
 //                                              lower bound formula
+//     eigenvalue_lower_bounds_h01              H^1_0: Dirichlet Laplacian on the CR space, 2D/3D (CONST-K)
+//     eigenvalue_report                        H^1_0: the carrier of the entry above (CONST-K)
 //
 // l2_projection_error_constant is the constant of the projection onto the
 // piecewise constant space P^0: the target space is FIXED at P^0 and the
@@ -773,6 +788,9 @@ T hypercircle_kappa_h01_squared(const vcp::bfem::mesh<2, T>& Th, int k) {
 // served by the dictionary instead, so the composition available there is the
 // SQUARED, dictionary served ritz_projection_error_constant_h01_sq of that
 // header -- which is where the three dimensional C_h(k)^2 is completed.
+// CONST-J: the SQUARED set ritz_projection_constants_h01_sq (struct
+// ritz_projection_constant_set_h01_sq) of that header exists in two and three
+// dimensions under the same name; it carries C_{0,h}^2, not C_0 h.
 //
 // Exceptions: vcp::invalid_argument (k < 1), vcp::verification_error
 // (inclusion broken, or lss / eigsymge could not certify),
@@ -928,6 +946,286 @@ T poincare_constant_h01_bound(const T& lambda1_lower) {
 } // namespace constants
 } // namespace bfem
 } // namespace vcp
+
+// ===========================================================================
+// CONST-K additions (everything from here to the matching END marker).  The
+// verified lower bounds of the first nev Dirichlet Laplacian eigenvalues in
+// two and three dimensions from ONE call on a mesh, through the sparse
+// verified generalized eigensolver of spmatrix / spimats -- never densified.
+// Nothing above this block is touched.
+//
+// Authority: sandbox/docs/design/CONST-K_design_v1.0.md and the G-0 rulings
+// (sandbox/probes/results/constk/g0_rulings.md).
+//
+// Sources (design chapter 3; the citations were checked against the primary
+// sources by the design side):
+//   - the lower bound theorem: Liu, Appl. Math. Comput. 267 (2015) 341-355,
+//     Theorem 2.1 -- under its assumptions A1..A4, with the CR space of its
+//     equation (11), the facet-mean interpolation (12) that coincides with
+//     the M projection by (13), and C_h = max_K C(K),
+//         lambda_{h,k} / (1 + C_h^2 lambda_{h,k}) <= lambda_k,
+//     k = 1 .. dim V^h, lambda_{h,k} the k-th discrete eigenvalue counted
+//     with multiplicity in ascending order;
+//   - the Poisson case: section three of the same paper, a bounded
+//     polyhedral domain in one to three dimensions, convexity NOT assumed
+//     (the paper uses an L shape); the two dimensional constant (its
+//     section four) and the three dimensional one (its Theorem 3.4) are the
+//     two strings of the VCP_CONSTANTS_TABLE block above, h the longest edge;
+//   - the formula is increasing in lambda_{h,k}, so ANY number below
+//     lambda_{h,k} plugged into it still gives a lower bound of lambda_k
+//     [elementary] -- the reason why rule 2 below may use the LOWER END of
+//     an enclosure that contains lambda_{h,k}.
+//
+// The three rules of the common function (design chapter 4, section 2; the
+// G-0 reading found no disagreement with spimats, ruling M-3):
+//   rule 1  the eig_result must be converged, carry rank_certified == 1 and
+//           index_lo / index_hi of the same length as the enclosures;
+//           otherwise vcp::verification_error;
+//   rule 2  for every k = 1 .. nev, the enclosures i with
+//           index_lo[i] <= k <= index_hi[i] contain lambda_{h,k}; the one
+//           with the LARGEST lower end is used, and the bound is
+//           eigenvalue_lower_bound(T(lower end), C_h^2) (the lower end as a
+//           point: lambda_h appears twice in the formula, and an interval
+//           argument would evaluate the denominator at the upper end --
+//           G-0 supplementary ruling);
+//   rule 3  a k covered by no enclosure is vcp::verification_error (no
+//           value without a claim is returned).  The Rayleigh fallback of
+//           spimats (one enclosure, index 1..1) lands here for nev >= 2.
+// A cluster that straddles nev (the unit square: lambda_2 = lambda_3, nev =
+// 2) is covered by rule 2 as it is: neither an exception nor an automatic
+// extension of nev.
+//
+// Defaults of the policies (ruling M-8): DP = imats<B, mats2<B> > and SP =
+// spimats<B, spmats<B>, imats<B, mats2<B> > >, B = T::base_type -- the
+// eigenvalue backend guideline of spimats.hpp (the _DP of an eigenvalue use
+// is pidblas / imats<dd, pddblas> / imats<_T, mats2<_T> >; the last one
+// needs no external BLAS).  The point side mats of the older default did not
+// terminate inside the cluster refinement of spimats on the unit square
+// (CONST-K P0, p0_probes/poisson_default_sp.txt).
+//
+// Options of the sparse eigensolver (ruling M-8; decided inside the entry,
+// not exposed): target smallest_algebraic, structure symmetric, use_shift
+// true, shift T(0).  With the target alone the point approximation stage of
+// spimats does not converge on these pencils (P0 reading A13): the sparse
+// generalized solver needs either a shift-invert or a symmetric hint, and
+// the stiffness is positive definite, so the shift zero lies below the
+// spectrum.  The options steer the APPROXIMATION only; every claim comes
+// from the verification core of spimats.
+//
+// Lexical regime: that of this file -- no decimal literal (string literals
+// included) and no floating point type keyword in the code of this block;
+// the comments cite section and theorem numbers only, as the CONST-A block
+// above does, and carry no constant value.
+// ===========================================================================
+
+#include <cstddef>
+#include <string>
+#include <stdexcept>
+
+#include <vcp/mats2.hpp>
+
+namespace vcp {
+namespace bfem {
+namespace constants {
+
+// ---------------------------------------------------------------------------
+// eigenvalue_report<T>: the diagnostics of one call of
+// eigenvalue_lower_bounds_h01.  The field names are those of
+// stokes_eigenvalue_report wherever the meaning is the same (design chapter
+// 4, section 3).
+//
+//   n_elements        elements of the mesh
+//   n_scalar_dofs     facets = dofs of the scalar CR space
+//   n_reduced_scalar  interior facets = dofs after the Dirichlet reduction
+//   dim               dimension of the eigenvalue problem (= n_reduced_scalar)
+//   ch_sq             C_h^2 = cr_projection_error_constant_sq(V)
+//   lambda_h          for k = 1 .. nev, the enclosure used for k (rule 2)
+//   index_lo/index_hi for k = 1 .. nev, the certified index range of that
+//                     enclosure (1-based, ascending numbering of all
+//                     eigenvalues; a cluster repeats its range)
+//   nnz_stiffness /   stored entries of the two sparse matrices handed to the
+//   nnz_mass          eigensolver, after finalize (ruling M-2)
+// ---------------------------------------------------------------------------
+template <typename T>
+struct eigenvalue_report {
+    int n_elements;
+    int n_scalar_dofs;
+    int n_reduced_scalar;
+    int dim;
+    T ch_sq;
+    std::vector<T> lambda_h;
+    std::vector<std::size_t> index_lo;
+    std::vector<std::size_t> index_hi;
+    long long nnz_stiffness;
+    long long nnz_mass;
+
+    eigenvalue_report()
+        : n_elements(0), n_scalar_dofs(0), n_reduced_scalar(0), dim(0), ch_sq(),
+          lambda_h(), index_lo(), index_hi(), nnz_stiffness(0), nnz_mass(0) {}
+};
+
+namespace detail {
+
+// ---------------------------------------------------------------------------
+// indexed_eigenvalue_bounds<T>: what the common function returns -- the
+// bounds and, per k, the enclosure and the index range they came from.
+// ---------------------------------------------------------------------------
+template <typename T>
+struct indexed_eigenvalue_bounds {
+    std::vector<T> bounds;                   // k-th: lower end = bound of lambda_k
+    std::vector<T> lambda_h;                 // k-th: the enclosure used (rule 2)
+    std::vector<std::size_t> index_lo;       // k-th: its certified index range
+    std::vector<std::size_t> index_hi;
+};
+
+// ---------------------------------------------------------------------------
+// indexed_eigenvalue_lower_bounds(r, nev, ch_sq, who): THE common function of
+// design chapter 4, section 2 -- the only place where an index is certified
+// and a lower bound is taken out of an eig_result.  The Poisson entry below
+// and the Stokes eigenvalue entry point go through it.  Rules 1..3 are
+// stated at the head of this block.  `who` prefixes every exception text
+// (the entry point's qualified name, as the existing Stokes entry writes its
+// messages).
+//
+// Exceptions: std::invalid_argument (nev < 1), vcp::verification_error
+// (rule 1, rule 3).
+// ---------------------------------------------------------------------------
+template <typename T>
+indexed_eigenvalue_bounds<T> indexed_eigenvalue_lower_bounds(
+        const vcp::eig_result<T>& r, int nev, const T& ch_sq, const char* who) {
+    if (nev < 1)
+        throw std::invalid_argument(std::string(who) + ": nev < 1");
+    const std::size_t m = r.eigenvalues.size();
+    // rule 1
+    if (!r.converged || r.rank_certified != 1 ||
+        r.index_lo.size() != m || r.index_hi.size() != m)
+        vcp::throw_error<vcp::verification_error>(
+            who, ": the eigenvalue enclosures are not certified with their indices "
+            "(rule 1: converged = ", r.converged ? 1 : 0,
+            ", rank_certified = ", r.rank_certified,
+            ", enclosures = ", m, ", index_lo = ", r.index_lo.size(),
+            ", index_hi = ", r.index_hi.size(), ")");
+    indexed_eigenvalue_bounds<T> out;
+    out.bounds.reserve(static_cast<std::size_t>(nev));
+    out.lambda_h.reserve(static_cast<std::size_t>(nev));
+    out.index_lo.reserve(static_cast<std::size_t>(nev));
+    out.index_hi.reserve(static_cast<std::size_t>(nev));
+    for (int k = 1; k <= nev; ++k) {
+        const std::size_t kk = static_cast<std::size_t>(k);
+        // rule 2: the covering enclosure with the largest lower end
+        std::size_t best = m;
+        for (std::size_t i = 0; i < m; ++i) {
+            if (!(r.index_lo[i] <= kk && kk <= r.index_hi[i])) continue;
+            if (best == m || r.eigenvalues[best].lower() < r.eigenvalues[i].lower())
+                best = i;
+        }
+        // rule 3
+        if (best == m)
+            vcp::throw_error<vcp::verification_error>(
+                who, ": no certified enclosure covers eigenvalue number ", k,
+                " (rule 3; enclosures returned = ", m, ")");
+        const T& e = r.eigenvalues[best];
+        out.bounds.push_back(eigenvalue_lower_bound(T(e.lower()), ch_sq));
+        out.lambda_h.push_back(e);
+        out.index_lo.push_back(r.index_lo[best]);
+        out.index_hi.push_back(r.index_hi[best]);
+    }
+    return out;
+}
+
+} // namespace detail
+
+// ---------------------------------------------------------------------------
+// eigenvalue_lower_bounds_h01<D, T, DP, SP>(Th, nev, rep): verified lower
+// bounds of the first nev eigenvalues of the Dirichlet Laplacian on the mesh
+// Th, D = 2 or 3 (deduced from the mesh).  Entry k of the result is a T whose
+// LOWER end is the guaranteed lower bound of lambda_{k+1}; the upper end
+// carries no claim beyond enclosing the formula's value (the convention of
+// stokes_eigenvalue_lower_bounds_h01).
+//
+// Pipeline: cr1_space<D, T, DP, SP> -> dirichlet_reduction of the boundary
+// facets -> stiffness and mass reduced and finalized, still sparse ->
+// eigs_with_info(M, nev, options above) of spmatrix (spimats: verified
+// enclosures with certified indices) -> the common function above with C_h^2
+// = cr_projection_error_constant_sq(V).
+//
+// The domain the bound speaks about.  The bound is a bound for the
+// polyhedron that the given mesh fills.  If boundary vertices are given as
+// points that do not lie exactly on the boundary of the intended domain, the
+// bound is NOT a bound for that domain.  Vertices given as intervals that
+// contain the true positions give a correct bound for the intended domain
+// (every enclosure of this pipeline holds for every mesh inside the vertex
+// boxes).
+//
+// T: a kv interval scalar (T::base_type is required by the defaults).
+// Exceptions (design chapter 4, section 4): std::invalid_argument (empty
+// mesh, nev < 1, nev > dim); vcp::verification_error (rules 1 and 3);
+// vcp::bfem::degenerate_element (flat element, from the space).  Failures of
+// the eigensolver itself (spimats: vcp::state_error when its approximation
+// stage does not converge, vcp::verification_error when a verification step
+// cannot be certified) propagate unchanged.
+// ---------------------------------------------------------------------------
+template <int D, typename T,
+          class DP = vcp::imats<typename T::base_type,
+                                vcp::mats2<typename T::base_type> >,
+          class SP = vcp::spimats<typename T::base_type,
+                                  vcp::spmats<typename T::base_type>,
+                                  vcp::imats<typename T::base_type,
+                                             vcp::mats2<typename T::base_type> > > >
+std::vector<T> eigenvalue_lower_bounds_h01(const vcp::bfem::mesh<D, T>& Th, int nev,
+                                           eigenvalue_report<T>* rep = nullptr) {
+    static_assert(D == 2 || D == 3,
+                  "vcp::bfem::constants::eigenvalue_lower_bounds_h01: D must be 2 or 3");
+    static const char who[] = "vcp::bfem::constants::eigenvalue_lower_bounds_h01";
+    if (Th.num_elements() < 1)
+        throw std::invalid_argument(std::string(who) + ": empty mesh");
+    if (nev < 1)
+        throw std::invalid_argument(std::string(who) + ": nev < 1");
+
+    vcp::bfem::cr1_space<D, T, DP, SP> V(Th);
+    vcp::bfem::dirichlet_reduction<T, DP, SP> red(V.ndof(), V.boundary_dofs());
+    const int dim = red.reduced_size();
+    if (nev > dim)
+        throw std::invalid_argument(
+            std::string(who) + ": nev exceeds the dimension of the reduced CR space "
+            "(the lower bound theorem covers 1 <= k <= dim only)");
+
+    vcp::spmatrix<T, SP> A = red.reduce(V.stiffness());
+    vcp::spmatrix<T, SP> M = red.reduce(V.mass());
+    A.finalize();
+    M.finalize();
+
+    vcp::eig_options<T> opt;
+    opt.target = vcp::eig_target::smallest_algebraic;
+    opt.structure = vcp::matrix_structure_hint::symmetric;
+    opt.use_shift = true;
+    opt.shift = T(0);
+    const vcp::eig_result<T> r = A.eigs_with_info(M, static_cast<std::size_t>(nev), opt);
+
+    const T ch_sq = cr_projection_error_constant_sq(V);
+    const detail::indexed_eigenvalue_bounds<T> b =
+        detail::indexed_eigenvalue_lower_bounds(r, nev, ch_sq, who);
+
+    if (rep != nullptr) {
+        rep->n_elements = Th.num_elements();
+        rep->n_scalar_dofs = V.ndof();
+        rep->n_reduced_scalar = dim;
+        rep->dim = dim;
+        rep->ch_sq = ch_sq;
+        rep->lambda_h = b.lambda_h;
+        rep->index_lo = b.index_lo;
+        rep->index_hi = b.index_hi;
+        rep->nnz_stiffness = static_cast<long long>(A.nnz());
+        rep->nnz_mass = static_cast<long long>(M.nnz());
+    }
+    return b.bounds;
+}
+
+} // namespace constants
+} // namespace bfem
+} // namespace vcp
+// END of the CONST-K additions
+// ===========================================================================
 
 #include <vcp/bfem/constants/detail/poisson_dict_impl.hpp>
 // UMBRELLA (owner ruling 2026-08-20): ONE entry point -- this include also
