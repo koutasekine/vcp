@@ -114,7 +114,7 @@ void collapse_interior_to_points(std::vector<std::array<T, D> >& vertices,
     for (std::size_t i = 0; i < status.boundary_vertices.size(); ++i) {
         const int v = status.boundary_vertices[i];
         if (v < 0 || v >= nv)
-            throw meshgen_error(
+            vcp::throw_error<vcp::bfem::meshgen_error>(
                 "vcp::bfem::meshgen_collapse: boundary vertex id out of "
                 "range for the vertex list");
         on_boundary[static_cast<std::size_t>(v)] = 1;

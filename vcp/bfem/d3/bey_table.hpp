@@ -103,7 +103,7 @@ void range_refined_rec_3d(
 template <typename T>
 range_pair<T> range_refined(const bpoly<3, T>& u, int depth) {
     if (depth < 0)
-        throw std::invalid_argument("bfem::range_refined: negative depth");
+        vcp::throw_error<vcp::invalid_argument>("bfem::range_refined: negative depth");
     if (depth == 0) return range(u);
     std::array<std::array<bary_point<3, T>, 4>, 8> kids =
         detail::bey_children_3d<T>();

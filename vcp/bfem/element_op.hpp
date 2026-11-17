@@ -66,7 +66,7 @@ public:
     void local_stiffness(int n, vcp::matrix<T, P>& out) {
         require_geometry();
         if (n < 1)
-            throw std::invalid_argument("bfem::element_op::local_stiffness: n < 1");
+            vcp::throw_error<vcp::invalid_argument>("bfem::element_op::local_stiffness: n < 1");
         const typename detail::ref_stiffness_cache<D, T>::tensor& R =
             detail::ref_stiffness_cache<D, T>::get(n);
         const int N = R.N;
@@ -93,7 +93,7 @@ public:
     void local_mass(int a, int b, vcp::matrix<T, P>& out) {
         require_geometry();
         if (a < 0 || b < 0)
-            throw std::invalid_argument("bfem::element_op::local_mass: negative degree");
+            vcp::throw_error<vcp::invalid_argument>("bfem::element_op::local_mass: negative degree");
         const typed_mass_table<D, T>& M = typed_registry<D, T>::mass(a, b);
         out.zeros(M.rows(), M.cols());
         const T& mea = geom_.measure();
@@ -106,7 +106,7 @@ public:
     void local_load(const bpoly<D, T>& w, int n, vcp::matrix<T, P>& out) {
         require_geometry();
         if (n < 0)
-            throw std::invalid_argument("bfem::element_op::local_load: n < 0");
+            vcp::throw_error<vcp::invalid_argument>("bfem::element_op::local_load: n < 0");
         moment_vec(0, w, n);
         const int N = coeff_registry<D>::indices(n).size();
         out.zeros(N, 1);
@@ -126,7 +126,7 @@ public:
     void local_weighted_mass(const bpoly<D, T>& w, int n, vcp::matrix<T, P>& out) {
         require_geometry();
         if (n < 0)
-            throw std::invalid_argument("bfem::element_op::local_weighted_mass: n < 0");
+            vcp::throw_error<vcp::invalid_argument>("bfem::element_op::local_weighted_mass: n < 0");
         moment_vec(0, w, 2 * n);
         const int Nq = coeff_registry<D>::indices(2 * n).size();
         const T& mea = geom_.measure();
@@ -151,7 +151,7 @@ public:
                           vcp::matrix<T, P>& out) {
         require_geometry();
         if (n < 1)
-            throw std::invalid_argument("bfem::element_op::local_convection: n < 1");
+            vcp::throw_error<vcp::invalid_argument>("bfem::element_op::local_convection: n < 1");
         // w_k = b . grad_lambda_k (bpoly), then m_k = M^{2n-1, deg w_k} coeffs(w_k)
         for (int k = 0; k <= D; ++k) {
             scale_into(scratch_[0], b[0], geom_.grad_lambda(k, 0));
@@ -195,7 +195,7 @@ public:
         require_geometry();
         assert(&out != &u);
         if (d < 0 || d >= D)
-            throw std::invalid_argument("bfem::element_op::grad_component: bad d");
+            vcp::throw_error<vcp::invalid_argument>("bfem::element_op::grad_component: bad d");
         dlambda_into(scratch_[3], u, 0);
         scale_into(out, scratch_[3], geom_.grad_lambda(0, d));
         for (int i = 1; i <= D; ++i) {
@@ -234,7 +234,7 @@ private:
 
     void require_geometry() const {
         if (!geometry_set_)
-            throw std::logic_error("bfem::element_op: set_geometry not called");
+            vcp::throw_error<vcp::state_error>("bfem::element_op: set_geometry not called");
     }
 
     static const T& dfact_inv() {

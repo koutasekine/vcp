@@ -103,7 +103,7 @@ inline std::vector<int> ipiv_to_c(const int n, const int* ipiv) {
 
 // 例外 (引数 error) を LAPACK の INFO = -1 に変換する共通 macro
 #define VLAPACK_DLAPACK_TRY(stmt) \
-	try { stmt } catch (const std::invalid_argument&) { *info = -1; return; }
+	try { stmt } catch (const vcp::invalid_argument&) { *info = -1; return; }
 
 extern "C" {
 
@@ -113,7 +113,7 @@ inline double dlamch_(const char* cmach) {
 	try {
 		return vcp::dlamch(*cmach);
 	}
-	catch (const std::invalid_argument&) {
+	catch (const vcp::invalid_argument&) {
 		return 0.0;
 	}
 }
@@ -174,7 +174,7 @@ inline double dlange_(const char* norm, const int* m, const int* n, const double
 	try {
 		return vcp::rdlange(*norm, *m, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
 	}
-	catch (const std::invalid_argument&) {
+	catch (const vcp::invalid_argument&) {
 		return 0.0;
 	}
 }
@@ -185,7 +185,7 @@ inline double dlangb_(const char* norm, const int* n, const int* kl, const int* 
 	try {
 		return vcp::rdlangb(*norm, *n, *kl, *ku, ab, *ldab, vlapack_dlapack_detail::current_rounding_mode());
 	}
-	catch (const std::invalid_argument&) {
+	catch (const vcp::invalid_argument&) {
 		return 0.0;
 	}
 }
@@ -196,7 +196,7 @@ inline double dlansy_(const char* norm, const char* uplo, const int* n, const do
 	try {
 		return vcp::rdlansy(*norm, *uplo, *n, a, *lda, vlapack_dlapack_detail::current_rounding_mode());
 	}
-	catch (const std::invalid_argument&) {
+	catch (const vcp::invalid_argument&) {
 		return 0.0;
 	}
 }
@@ -207,7 +207,7 @@ inline double dlansb_(const char* norm, const char* uplo, const int* n, const in
 	try {
 		return vcp::rdlansb(*norm, *uplo, *n, *k, ab, *ldab, vlapack_dlapack_detail::current_rounding_mode());
 	}
-	catch (const std::invalid_argument&) {
+	catch (const vcp::invalid_argument&) {
 		return 0.0;
 	}
 }
@@ -216,7 +216,7 @@ inline double dlanst_(const char* norm, const int* n, const double* d, const dou
 	try {
 		return vcp::rdlanst(*norm, *n, d, e, vlapack_dlapack_detail::current_rounding_mode());
 	}
-	catch (const std::invalid_argument&) {
+	catch (const vcp::invalid_argument&) {
 		return 0.0;
 	}
 }

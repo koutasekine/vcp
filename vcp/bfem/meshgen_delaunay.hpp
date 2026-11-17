@@ -172,7 +172,7 @@ mesh<2, T> generate_mesh_delaunay(const polygon_domain<T>& dom, const T& h,
                                   meshgen_status<2>& status,
                                   const meshgen_options& opt = meshgen_options()) {
     if (!meshgen_detail::certainly_pos(h))
-        throw meshgen_error("vcp::bfem::meshgen: h must be certainly positive");
+        vcp::throw_error<vcp::bfem::meshgen_error>("vcp::bfem::meshgen: h must be certainly positive");
     status = meshgen_status<2>();
     meshgen_detail::delaunay_coarse<T> dc =
         meshgen_detail::delaunay_flip_coarse(dom, opt);

@@ -30,10 +30,10 @@ inline rational rational_from_string(const std::string& s) {
     if (slash == std::string::npos)
         return rational(detail::bigint::from_string(s), detail::bigint(1));
     if (s.find('/', slash + 1) != std::string::npos)
-        throw std::invalid_argument(
+        vcp::throw_error<vcp::invalid_argument>(
             "vcp::bfem::rational_from_string: more than one '/'");
     if (slash == 0 || slash + 1 == s.size())
-        throw std::invalid_argument(
+        vcp::throw_error<vcp::invalid_argument>(
             "vcp::bfem::rational_from_string: empty numerator or denominator");
     detail::bigint num = detail::bigint::from_string(s.substr(0, slash));
     detail::bigint den = detail::bigint::from_string(s.substr(slash + 1));

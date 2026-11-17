@@ -14,6 +14,7 @@
 #include <utility>
 #include <stdexcept>
 #include <cassert>
+#include <vcp/error.hpp>
 
 namespace vcp {
 namespace bfem {
@@ -28,7 +29,7 @@ public:
             for (int k = 0; k <= D; ++k) {
                 int v = elements[e][static_cast<std::size_t>(k)];
                 if (v < 0 || v >= nv)
-                    throw std::invalid_argument("bfem::mesh: element vertex index out of range");
+                    vcp::throw_error<vcp::invalid_argument>("bfem::mesh: element vertex index out of range");
             }
         }
         mesh m;

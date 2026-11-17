@@ -373,7 +373,7 @@ public:
         require_geometry();
         assert(&out != &u);
         if (d < 0 || d >= 2)
-            throw std::invalid_argument("bfem::c1_element_op::grad_component: bad d");
+            vcp::throw_error<vcp::invalid_argument>("bfem::c1_element_op::grad_component: bad d");
         dlambda_into(scr_[0], u, 0);
         scale_into(out, scr_[0], geom_.grad_lambda(0, d));
         for (int i = 1; i <= 2; ++i) {
@@ -403,7 +403,7 @@ private:
 
     void require_geometry() const {
         if (!geometry_set_)
-            throw std::logic_error("bfem::c1_element_op: set_geometry not called");
+            vcp::throw_error<vcp::state_error>("bfem::c1_element_op: set_geometry not called");
     }
     static const T& half() {
         static const T c = rational_to<T>(1, 2);

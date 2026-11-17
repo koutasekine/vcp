@@ -1099,7 +1099,7 @@ template <typename T>
 indexed_eigenvalue_bounds<T> indexed_eigenvalue_lower_bounds(
         const vcp::eig_result<T>& r, int nev, const T& ch_sq, const char* who) {
     if (nev < 1)
-        throw std::invalid_argument(std::string(who) + ": nev < 1");
+        vcp::throw_error<vcp::invalid_argument>(std::string(who) + ": nev < 1");
     const std::size_t m = r.eigenvalues.size();
     // rule 1
     if (!r.converged || r.rank_certified != 1 ||
@@ -1197,15 +1197,15 @@ std::vector<T> eigenvalue_lower_bounds_h01(const vcp::bfem::mesh<D, T>& Th, int 
                   "vcp::bfem::constants::eigenvalue_lower_bounds_h01: D must be 2 or 3");
     static const char who[] = "vcp::bfem::constants::eigenvalue_lower_bounds_h01";
     if (Th.num_elements() < 1)
-        throw std::invalid_argument(std::string(who) + ": empty mesh");
+        vcp::throw_error<vcp::invalid_argument>(std::string(who) + ": empty mesh");
     if (nev < 1)
-        throw std::invalid_argument(std::string(who) + ": nev < 1");
+        vcp::throw_error<vcp::invalid_argument>(std::string(who) + ": nev < 1");
 
     vcp::bfem::cr1_space<D, T, DP, SP> V(Th);
     vcp::bfem::dirichlet_reduction<T, DP, SP> red(V.ndof(), V.boundary_dofs());
     const int dim = red.reduced_size();
     if (nev > dim)
-        throw std::invalid_argument(
+        vcp::throw_error<vcp::invalid_argument>(
             std::string(who) + ": nev exceeds the dimension of the reduced CR space "
             "(the lower bound theorem covers 1 <= k <= dim only)");
 

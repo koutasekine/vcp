@@ -36,19 +36,13 @@
 #include <stdexcept>
 #include <cassert>
 
+#include <vcp/error.hpp>
 #include <vcp/bfem/mesh.hpp>
 #include <vcp/bfem/dofmap.hpp>            // detail::mesh_topology2
 #include <vcp/bfem/d3/topology3.hpp>      // detail::mesh_topology3
 
 namespace vcp {
 namespace bfem {
-
-// SV-4 fail-fast: the collinearity of interval coordinates is undecidable
-class sv_indeterminate_singularity : public std::runtime_error {
-public:
-    explicit sv_indeterminate_singularity(const std::string& msg)
-        : std::runtime_error(msg) {}
-};
 
 namespace detail {
 
@@ -66,7 +60,7 @@ template <typename T>
 bool sv_collinear2(const T& ux, const T& uy, const T& vx, const T& vy) {
     int s = sv_sign_tri(ux * vy - uy * vx);
     if (s == 2)
-        throw sv_indeterminate_singularity(
+        vcp::throw_error<vcp::bfem::sv_indeterminate_singularity>(
             "bfem::sv: 2D collinearity undecidable on interval input");
     return s == 0;
 }
@@ -80,7 +74,7 @@ bool sv_collinear3(const std::array<T, 3>& u, const std::array<T, 3>& v) {
     int sz = sv_sign_tri(u[0] * v[1] - u[1] * v[0]);
     if (sz == -1 || sz == 1) return false;
     if (sx == 0 && sy == 0 && sz == 0) return true;
-    throw sv_indeterminate_singularity(
+    vcp::throw_error<vcp::bfem::sv_indeterminate_singularity>(
         "bfem::sv: 3D collinearity undecidable on interval input");
 }
 

@@ -41,6 +41,7 @@
 #include <kv/mpfr.hpp>
 #include <kv/rmpfr.hpp>
 
+#include <vcp/error.hpp>
 #include <vcp/vcp_converter.hpp>
 
 #include <vcp/bfem/convert_traits.hpp>
@@ -48,11 +49,6 @@
 
 namespace vcp {
 namespace bfem {
-
-class meshgen_convert_error : public std::runtime_error {
-public:
-    explicit meshgen_convert_error(const char* msg) : std::runtime_error(msg) {}
-};
 
 namespace meshgen_convert_detail {
 
@@ -79,10 +75,10 @@ fp_decomp decompose_base2(const T& x, long long nbits_limit = 65536) {
     fp_decomp d;
     if (x == T(0)) return d;
     if (!(x == x))
-        throw meshgen_convert_error(
+        vcp::throw_error<vcp::bfem::meshgen_convert_error>(
             "vcp::bfem::meshgen_convert: NaN cannot be decomposed");
     if (!(x - x == T(0)))
-        throw meshgen_convert_error(
+        vcp::throw_error<vcp::bfem::meshgen_convert_error>(
             "vcp::bfem::meshgen_convert: non-finite value cannot be decomposed");
 
     const T zero = T(0);
@@ -109,7 +105,7 @@ fp_decomp decompose_base2(const T& x, long long nbits_limit = 65536) {
         e = e - 1;
         guard = guard + 1;
         if (guard > exp_guard)
-            throw meshgen_convert_error(
+            vcp::throw_error<vcp::bfem::meshgen_convert_error>(
                 "vcp::bfem::meshgen_convert: exponent guard exceeded (small)");
     }
     guard = 0;
@@ -118,7 +114,7 @@ fp_decomp decompose_base2(const T& x, long long nbits_limit = 65536) {
         e = e + 1;
         guard = guard + 1;
         if (guard > exp_guard)
-            throw meshgen_convert_error(
+            vcp::throw_error<vcp::bfem::meshgen_convert_error>(
                 "vcp::bfem::meshgen_convert: exponent guard exceeded (large)");
     }
     d.exp = e;
@@ -131,7 +127,7 @@ fp_decomp decompose_base2(const T& x, long long nbits_limit = 65536) {
     T r = y - one;
     while (!(r == zero)) {
         if (static_cast<long long>(d.bits.size()) >= nbits_limit)
-            throw meshgen_convert_error(
+            vcp::throw_error<vcp::bfem::meshgen_convert_error>(
                 "vcp::bfem::meshgen_convert: mantissa expansion did not "
                 "terminate within the nbits cap (non-base-2 scalar?)");
         r = r * two;

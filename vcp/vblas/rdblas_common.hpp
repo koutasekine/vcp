@@ -44,6 +44,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <stdexcept>
+#include <vcp/error.hpp>
 
 #include <omp.h>
 
@@ -55,7 +56,7 @@ namespace vblas_rdblas_detail {
 
 inline void rdblas_error(const char* message) {
 #if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
-	throw std::invalid_argument(message);
+	vcp::throw_error<vcp::invalid_argument>(message);
 #else
 	(void)message;
 	std::abort();

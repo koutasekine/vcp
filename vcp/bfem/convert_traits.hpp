@@ -57,7 +57,7 @@ struct convert_traits {
     // automatically an enclosure of num/den (external design 5.1).
     static T from_rational(const detail::bigint& num, const detail::bigint& den) {
         if (den.is_zero())
-            throw std::logic_error("bfem::convert_traits: zero denominator");
+            vcp::throw_error<vcp::domain_error>("bfem::convert_traits: zero denominator");
         return detail::horner_limbs<T>(num) / detail::horner_limbs<T>(den);
     }
 };
@@ -68,7 +68,7 @@ struct convert_traits {
 template <typename T>
 T rational_to(long long num, long long den) {
     if (den == 0)
-        throw std::invalid_argument("bfem::rational_to: zero denominator");
+        vcp::throw_error<vcp::invalid_argument>("bfem::rational_to: zero denominator");
     return convert_traits<T>::from_rational(detail::bigint(num), detail::bigint(den));
 }
 

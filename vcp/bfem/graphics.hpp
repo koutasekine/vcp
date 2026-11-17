@@ -173,12 +173,12 @@ graphics_output<D, T, P> sample_lattice(const Space& sp,
                                         const std::vector<int>& elems,
                                         int div, int ncomp, Eval& ev) {
     if (div < 1)
-        throw std::invalid_argument(
+        vcp::throw_error<vcp::invalid_argument>(
             "bfem::output_uh_for_graphics: div must be >= 1");
     const int nt = sp.num_elements();
     for (std::size_t s = 0; s < elems.size(); ++s)
         if (elems[s] < 0 || elems[s] >= nt)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::output_uh_for_graphics: element index out of range");
 
     const index_map<D> im(div);

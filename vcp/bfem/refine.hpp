@@ -219,7 +219,7 @@ void range_refined_rec(const bpoly<2, T>& u, int d,
 template <typename T>
 range_pair<T> range_refined(const bpoly<2, T>& u, int depth) {
     if (depth < 0)
-        throw std::invalid_argument("bfem::range_refined: negative depth");
+        vcp::throw_error<vcp::invalid_argument>("bfem::range_refined: negative depth");
     if (depth == 0) return range(u);
     std::array<std::array<bary_point<2, T>, 3>, 4> kids =
         detail::red_children_2d<T>();

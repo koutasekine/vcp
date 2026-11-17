@@ -152,7 +152,7 @@ public:
     // parameterization convention (see vcp/bfem/cr1/cr1_element_op.hpp)
     const std::array<int, D>& facet_vertices(int f) const {
         if (f < 0 || f >= ndof_)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::detail::cr1_dofmap::facet_vertices: facet id out of range");
         return facets_[static_cast<std::size_t>(f)];
     }

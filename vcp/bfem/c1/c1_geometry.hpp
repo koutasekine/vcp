@@ -69,7 +69,7 @@ std::vector<T> c1_edge_inv_tsq(const mesh<2, T>& msh, const mesh_topology2& tp) 
         // certification BEFORE the division (B-4): degenerate edges and
         // interval inputs straddling zero both fail here, counter untouched
         if (!(T(0) < tsq))
-            throw degenerate_element(
+            vcp::throw_error<vcp::bfem::degenerate_element>(
                 "bfem::c1: |t_e|^2 not certified positive "
                 "(degenerate edge or interval straddling zero)");
         out.push_back(T(1) / tsq);        // the single division of vcp/bfem/c1/
@@ -293,7 +293,7 @@ private:
 
     void require_built() const {
         if (!W_)
-            throw std::logic_error("bfem::c1_pullback: build not called");
+            vcp::throw_error<vcp::state_error>("bfem::c1_pullback: build not called");
     }
 
     static const T& ehalf() {                  // 1/|e_hat_0|^2 = 1/2, exact

@@ -42,7 +42,7 @@ struct rmat {
         : rows(r), cols(c),
           a(static_cast<std::size_t>(r) * static_cast<std::size_t>(c)) {
         if (r < 0 || c < 0)
-            throw std::invalid_argument("bfem::rmat: negative size");
+            vcp::throw_error<vcp::invalid_argument>("bfem::rmat: negative size");
     }
 
     rational& at(int i, int j) {
@@ -65,7 +65,7 @@ struct rmat {
 
 inline rmat mul(const rmat& A, const rmat& B) {
     if (A.cols != B.rows)
-        throw std::invalid_argument("bfem::rmat::mul: size mismatch");
+        vcp::throw_error<vcp::invalid_argument>("bfem::rmat::mul: size mismatch");
     rmat C(A.rows, B.cols);
     for (int i = 0; i < A.rows; ++i) {
         for (int k = 0; k < A.cols; ++k) {
@@ -182,13 +182,13 @@ inline int forward_eliminate(rmat& A, rmat* B, la_stats* st) {
 // ---------------------------------------------------------------------------
 inline rmat solve_exact(rmat A, rmat B, la_stats* st = 0) {
     if (A.rows != A.cols)
-        throw std::invalid_argument("bfem::solve_exact: A not square");
+        vcp::throw_error<vcp::invalid_argument>("bfem::solve_exact: A not square");
     if (B.rows != A.rows)
-        throw std::invalid_argument("bfem::solve_exact: B row mismatch");
+        vcp::throw_error<vcp::invalid_argument>("bfem::solve_exact: B row mismatch");
     const int n = A.rows;
     int piv = la_impl::forward_eliminate(A, &B, st);
     if (piv < n)
-        throw std::logic_error("bfem::solve_exact: singular matrix");
+        vcp::throw_error<vcp::domain_error>("bfem::solve_exact: singular matrix");
     // back substitution (A is now upper triangular with nonzero diagonal)
     rmat X(n, B.cols);
     for (int i = n - 1; i >= 0; --i) {
@@ -223,18 +223,18 @@ inline int rank_exact(rmat A, la_stats* st = 0) {
 // ---------------------------------------------------------------------------
 inline rmat solve_consistent(rmat A, rmat B, la_stats* st = 0) {
     if (A.rows < A.cols)
-        throw std::invalid_argument("bfem::solve_consistent: A has rows < cols");
+        vcp::throw_error<vcp::invalid_argument>("bfem::solve_consistent: A has rows < cols");
     if (B.rows != A.rows)
-        throw std::invalid_argument("bfem::solve_consistent: B row mismatch");
+        vcp::throw_error<vcp::invalid_argument>("bfem::solve_consistent: B row mismatch");
     const int c = A.cols;
     int piv = la_impl::forward_eliminate(A, &B, st);
     if (piv < c)
-        throw std::logic_error("bfem::solve_consistent: rank-deficient matrix");
+        vcp::throw_error<vcp::domain_error>("bfem::solve_consistent: rank-deficient matrix");
     // consistency: rows c..r-1 of the eliminated B must be exactly zero
     for (int r = c; r < A.rows; ++r)
         for (int j = 0; j < B.cols; ++j)
             if (!B.at(r, j).is_zero())
-                throw std::logic_error(
+                vcp::throw_error<vcp::domain_error>(
                     "bfem::solve_consistent: inconsistent right hand side "
                     "(nonzero elimination residual)");
     // back substitution on the top c x c triangle

@@ -59,7 +59,7 @@ void extrude_and_finalize(coarse_mesh<T>& cm2, const T& z0, const T& z1,
                           std::vector<std::array<T, 3> >& vertices,
                           std::vector<std::array<int, 4> >& elements) {
     if (!certainly_pos(z1 - z0))
-        throw meshgen_error(
+        vcp::throw_error<vcp::bfem::meshgen_error>(
             "vcp::bfem::meshgen: z1 must certainly exceed z0");
 
     const T hh2 = (h * h) / T(2);   // shared squared threshold (see header)
@@ -76,7 +76,7 @@ void extrude_and_finalize(coarse_mesh<T>& cm2, const T& z0, const T& z1,
     int zsteps = 0;
     while (!certainly_less(dz * dz, hh2)) {
         if (zsteps == opt.max_refine)
-            throw meshgen_limit(
+            vcp::throw_error<vcp::bfem::meshgen_limit>(
                 "vcp::bfem::meshgen: max_refine exceeded (layers)");
         dz = dz / T(2);
         ++zsteps;
@@ -186,7 +186,7 @@ void extrude_and_finalize(coarse_mesh<T>& cm2, const T& z0, const T& z1,
         std::map<std::array<int, 3>, meshgen_facet_source>::const_iterator
             src = fsrc.find(it->first);
         if (src == fsrc.end())
-            throw meshgen_degenerate(
+            vcp::throw_error<vcp::error>(
                 "vcp::bfem::meshgen: internal: boundary face without origin");
         status.boundary_facets.push_back(it->first);
         status.facet_source.push_back(src->second);
@@ -213,7 +213,7 @@ void generate_mesh_lists(const extruded_domain<T>& dom, const T& h,
                          meshgen_status<3>& status,
                          const meshgen_options& opt = meshgen_options()) {
     if (!meshgen_detail::certainly_pos(h))
-        throw meshgen_error("vcp::bfem::meshgen: h must be certainly positive");
+        vcp::throw_error<vcp::bfem::meshgen_error>("vcp::bfem::meshgen: h must be certainly positive");
     status = meshgen_status<3>();
     meshgen_detail::coarse_mesh<T> cm =
         meshgen_detail::build_coarse_mesh(dom.base, opt);
@@ -243,7 +243,7 @@ mesh<3, T> generate_mesh_delaunay(const extruded_domain<T>& dom, const T& h,
                                   meshgen_status<3>& status,
                                   const meshgen_options& opt = meshgen_options()) {
     if (!meshgen_detail::certainly_pos(h))
-        throw meshgen_error("vcp::bfem::meshgen: h must be certainly positive");
+        vcp::throw_error<vcp::bfem::meshgen_error>("vcp::bfem::meshgen: h must be certainly positive");
     status = meshgen_status<3>();
     meshgen_detail::delaunay_coarse<T> dc =
         meshgen_detail::delaunay_flip_coarse(dom.base, opt);

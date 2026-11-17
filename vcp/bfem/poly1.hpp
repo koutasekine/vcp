@@ -26,7 +26,7 @@ class poly1 {
 public:
     static poly1 from_coeffs(std::vector<T> a) {
         if (a.empty())
-            throw std::invalid_argument("bfem::poly1::from_coeffs: empty");
+            vcp::throw_error<vcp::invalid_argument>("bfem::poly1::from_coeffs: empty");
         poly1 r;
         r.a_ = std::move(a);
         return r;
@@ -38,12 +38,12 @@ public:
     static poly1 from_rational(
         const std::vector<std::pair<long long, long long> >& num_den) {
         if (num_den.empty())
-            throw std::invalid_argument("bfem::poly1::from_rational: empty");
+            vcp::throw_error<vcp::invalid_argument>("bfem::poly1::from_rational: empty");
         std::vector<T> a;
         a.reserve(num_den.size());
         for (std::size_t k = 0; k < num_den.size(); ++k) {
             if (num_den[k].second == 0)
-                throw std::invalid_argument("bfem::poly1::from_rational: zero denominator");
+                vcp::throw_error<vcp::invalid_argument>("bfem::poly1::from_rational: zero denominator");
             a.push_back(convert_traits<T>::from_rational(
                 detail::bigint(num_den[k].first), detail::bigint(num_den[k].second)));
         }

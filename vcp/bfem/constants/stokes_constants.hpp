@@ -915,10 +915,10 @@ std::vector<T> stokes_eigenvalue_lower_bounds_h01_dense(
                   "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01_dense: "
                   "two or three dimensions only");
     if (Th.num_elements() < 1)
-        throw std::invalid_argument(
+        vcp::throw_error<vcp::invalid_argument>(
             "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01_dense: empty mesh");
     if (nev < 1)
-        throw std::invalid_argument(
+        vcp::throw_error<vcp::invalid_argument>(
             "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01_dense: nev < 1");
 
     // the vector CR space and the scalar Dirichlet reduction
@@ -934,7 +934,7 @@ std::vector<T> stokes_eigenvalue_lower_bounds_h01_dense(
         detail::stokes_divfree_build_basis<D, T, DP, SP>(V, red);
     const int dim = Zb.dim;
     if (nev > dim)
-        throw std::invalid_argument(
+        vcp::throw_error<vcp::invalid_argument>(
             "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01_dense: nev exceeds "
             "dim V_{0,h} (the lower bound theorem covers 1 <= k <= dim only)");
     // the enclosures (dense path) and the common function
@@ -1227,9 +1227,9 @@ std::vector<T> stokes_eigenvalue_lower_bounds_h01_sparse_scaled(
                   "two or three dimensions only");
     static const char who[] = "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01_sparse";
     if (Th.num_elements() < 1)
-        throw std::invalid_argument(std::string(who) + ": empty mesh");
+        vcp::throw_error<vcp::invalid_argument>(std::string(who) + ": empty mesh");
     if (nev < 1)
-        throw std::invalid_argument(std::string(who) + ": nev < 1");
+        vcp::throw_error<vcp::invalid_argument>(std::string(who) + ": nev < 1");
 
     // the vector CR space and the scalar Dirichlet reduction
     vcp::bfem::vcr1_space<D, T, DP, SP> V(Th);
@@ -1242,7 +1242,7 @@ std::vector<T> stokes_eigenvalue_lower_bounds_h01_sparse_scaled(
         vcp::bfem::build_vcr1_divfree_local_basis<D, T, DP, SP>(Th, V, red, scaling, who);
     const int dim = Z.dim;
     if (nev > dim)
-        throw std::invalid_argument(
+        vcp::throw_error<vcp::invalid_argument>(
             std::string(who) + ": nev exceeds dim V_{0,h} (the lower bound theorem "
             "covers 1 <= k <= dim only)");
     long long nnz_a = 0, nnz_m = 0;

@@ -294,7 +294,7 @@ public:
           buf_(), uloc_(), vloc_(), wloc_(), cws_(), loc_() {
         bfem_scalar_traits<T>::require();   // C-1 contract (L4, additive)
         if (n < 1)
-            throw std::invalid_argument("bfem::fe_space: base degree must be >= 1");
+            vcp::throw_error<vcp::invalid_argument>("bfem::fe_space: base degree must be >= 1");
         topo_ = detail::fe_space_backend<D>::topology_type::build(msh);
         geom_.reserve(static_cast<std::size_t>(topo_.nt));
         for (int e = 0; e < topo_.nt; ++e) {
@@ -310,7 +310,7 @@ public:
     int ndof(int m) { return dofs(m).ndof(); }
     const dofmap<D>& dofs(int m) {
         if (m < 1)
-            throw std::invalid_argument("bfem::fe_space::dofs: m must be >= 1");
+            vcp::throw_error<vcp::invalid_argument>("bfem::fe_space::dofs: m must be >= 1");
         typename std::map<int, dofmap<D> >::iterator it = dmaps_.find(m);
         if (it != dmaps_.end()) return it->second;
         return dmaps_.insert(
@@ -334,7 +334,7 @@ public:
     }
     function_type function_from_coeffs(int m, vcp::matrix<T, P> c) {
         if (c.rowsize() != ndof(m) || c.columnsize() != 1)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::fe_space::function_from_coeffs: size != ndof(m) x 1");
         function_type f(m);
         f.c_ = std::move(c);
@@ -660,7 +660,7 @@ catch (...) {
     function_type elevate(const function_type& u, int m) {
         validate_fn(u);
         if (m < u.degree())
-            throw std::invalid_argument("bfem::fe_space::elevate: m < degree(u)");
+            vcp::throw_error<vcp::invalid_argument>("bfem::fe_space::elevate: m < degree(u)");
         const dofmap<D>& dmu = dofs(u.degree());
         const dofmap<D>& dmm = dofs(m);
         function_type out = zero_function(m);
@@ -698,7 +698,7 @@ catch (...) {
     T eval(const function_type& u, int e, const bary_point<D, T>& lam) {
         validate_fn(u);
         if (e < 0 || e >= topo_.nt)
-            throw std::invalid_argument("bfem::fe_space::eval: element out of range");
+            vcp::throw_error<vcp::invalid_argument>("bfem::fe_space::eval: element out of range");
         gather_fn(dofs(u.degree()), e, u, uloc_);
         return ::vcp::bfem::eval(uloc_, lam);
     }
@@ -719,7 +719,7 @@ private:
 
     void validate_fn(const function_type& u) {
         if (u.coeffs().columnsize() != 1 || u.coeffs().rowsize() != ndof(u.degree()))
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::fe_space: fe_function does not match this space");
     }
     void gather_fn(const dofmap<D>& dm, int e, const function_type& u,

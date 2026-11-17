@@ -179,7 +179,7 @@ public:
         const dofmap_type dm = dofmap_type::from_mesh(exact_mesh);
         nt_ = dm.num_elements();
         if (static_cast<int>(scalar_to_reduced.size()) != dm.ndof())
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::vcr1_divfree_basis: scalar_to_reduced.size() != number of facets");
         n_reduced_ = check_numbering_(scalar_to_reduced);
         ncols_ = D * n_reduced_;
@@ -208,19 +208,19 @@ public:
     // row e of B: int_K div phi over the reduced vector dofs (exact)
     const sparse_vec& constraint_row(int e) const {
         if (e < 0 || e >= nt_)
-            throw std::invalid_argument("bfem::vcr1_divfree_basis::constraint_row: out of range");
+            vcp::throw_error<vcp::invalid_argument>("bfem::vcr1_divfree_basis::constraint_row: out of range");
         return rows_[static_cast<std::size_t>(e)];
     }
     // column c of Z (integer entries, exact)
     const sparse_vec& basis_column(int c) const {
         if (c < 0 || c >= dim())
-            throw std::invalid_argument("bfem::vcr1_divfree_basis::basis_column: out of range");
+            vcp::throw_error<vcp::invalid_argument>("bfem::vcr1_divfree_basis::basis_column: out of range");
         return cols_[static_cast<std::size_t>(c)];
     }
     // the free column that carries the unit entry of column c
     int free_column(int c) const {
         if (c < 0 || c >= dim())
-            throw std::invalid_argument("bfem::vcr1_divfree_basis::free_column: out of range");
+            vcp::throw_error<vcp::invalid_argument>("bfem::vcr1_divfree_basis::free_column: out of range");
         return free_col_[static_cast<std::size_t>(c)];
     }
 
@@ -229,7 +229,7 @@ public:
     vcp::matrix<T, DP> reduce_pencil(const vcp::spmatrix<T, SP>& K) const {
         if (static_cast<int>(K.rowsize()) != n_reduced_ ||
             static_cast<int>(K.columnsize()) != n_reduced_)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::vcr1_divfree_basis::reduce_pencil: K must be n_r x n_r "
                 "(the scalar Dirichlet-reduced matrix)");
         const int N = dim();
@@ -291,11 +291,11 @@ private:
         for (std::size_t i = 0; i < s2r.size(); ++i) {
             const int r = s2r[i];
             if (r < -1 || r >= nr)
-                throw std::invalid_argument(
+                vcp::throw_error<vcp::invalid_argument>(
                     "bfem::vcr1_divfree_basis: scalar_to_reduced entry out of range");
             if (r >= 0) {
                 if (seen[static_cast<std::size_t>(r)])
-                    throw std::invalid_argument(
+                    vcp::throw_error<vcp::invalid_argument>(
                         "bfem::vcr1_divfree_basis: scalar_to_reduced is not injective");
                 seen[static_cast<std::size_t>(r)] = 1;
             }

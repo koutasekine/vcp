@@ -48,18 +48,12 @@
 #include <stdexcept>
 #include <cassert>
 
+#include <vcp/error.hpp>
 #include <vcp/bfem/sv/linear_reduction.hpp>   // sv_constraint_q + reduction
 #include <vcp/bfem/c1/c1_space.hpp>
 
 namespace vcp {
 namespace bfem {
-
-// SV-4 contract transplanted: interval corner classification undecidable
-class c1_indeterminate_corner : public std::runtime_error {
-public:
-    explicit c1_indeterminate_corner(const std::string& msg)
-        : std::runtime_error(msg) {}
-};
 
 namespace detail {
 
@@ -70,7 +64,7 @@ int c1_sign_certified(const T& x) {
     if (x < T(0)) return -1;
     if (T(0) < x) return 1;
     if (x <= T(0) && T(0) <= x) return 0;
-    throw c1_indeterminate_corner(
+    vcp::throw_error<vcp::bfem::c1_indeterminate_corner>(
         "bfem::c1_boundary: collinearity undecidable on interval input");
 }
 
@@ -141,7 +135,7 @@ std::vector<sv_constraint_q> c1_boundary(c1_space<D, T, P, SP>& sp, int m,
     eds.erase(std::unique(eds.begin(), eds.end()), eds.end());
     for (std::size_t s = 0; s < eds.size(); ++s)
         if (eds[s] < 0 || eds[s] >= dm.num_edges())
-            throw std::invalid_argument("bfem::c1_boundary: edge id out of range");
+            vcp::throw_error<vcp::invalid_argument>("bfem::c1_boundary: edge id out of range");
     std::vector<sv_constraint_q> out;
     // ---- edge rows ----
     for (std::size_t s = 0; s < eds.size(); ++s) {

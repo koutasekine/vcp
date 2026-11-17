@@ -18,16 +18,11 @@
 #include <stdexcept>
 #include <cassert>
 
+#include <vcp/error.hpp>
 #include <vcp/bfem/convert_traits.hpp>
 
 namespace vcp {
 namespace bfem {
-
-class degenerate_element : public std::runtime_error {
-public:
-    explicit degenerate_element(const std::string& msg)
-        : std::runtime_error(msg) {}
-};
 
 // ---------------------------------------------------------------------------
 // geometry_traits<T> (V2): decide the sign of det or throw.
@@ -40,7 +35,7 @@ struct geometry_traits {
     static int sign(const T& det) {
         if (det < T(0)) return -1;
         if (T(0) < det) return +1;
-        throw degenerate_element(
+        vcp::throw_error<vcp::bfem::degenerate_element>(
             "bfem::element_geometry: degenerate or sign-indefinite element");
     }
 };

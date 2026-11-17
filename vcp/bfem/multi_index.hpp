@@ -84,16 +84,16 @@ class index_map {
 public:
     explicit index_map(int n) : n_(n), size_(0), tab_() {
         if (n < 0)
-            throw std::invalid_argument("bfem::index_map: negative degree");
+            vcp::throw_error<vcp::invalid_argument>("bfem::index_map: negative degree");
         tab_.resize(static_cast<std::size_t>(D + 1) * static_cast<std::size_t>(n + 1));
         for (int d = 0; d <= D; ++d) {
             for (int s = 0; s <= n; ++s) {
                 const detail::bigint& v = detail::binomial_cache::binom(s + d, d);
                 if (!v.fits_int64())
-                    throw std::overflow_error("bfem::index_map: table exceeds int");
+                    vcp::throw_error<vcp::numerical_error>("bfem::index_map: table exceeds int");
                 long long x = v.to_int64();
                 if (x > 2147483647LL)
-                    throw std::overflow_error("bfem::index_map: table exceeds int");
+                    vcp::throw_error<vcp::numerical_error>("bfem::index_map: table exceeds int");
                 tab_[idx(d, s)] = static_cast<int>(x);
             }
         }

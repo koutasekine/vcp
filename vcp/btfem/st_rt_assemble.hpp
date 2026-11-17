@@ -60,7 +60,7 @@ template <int D, typename T>
 void st_sub_into(st_local<D, T>& out, const st_local<D, T>& u, const st_local<D, T>& v) {
     assert(&out != &u && &out != &v);
     if (u.qt != v.qt)
-        throw std::invalid_argument("btfem::st_sub_into: time degree mismatch");
+        vcp::throw_error<vcp::invalid_argument>("btfem::st_sub_into: time degree mismatch");
     const int n = u.n >= v.n ? u.n : v.n;
     out.prepare(u.qt, n, false);
     for (int r = 0; r <= u.qt; ++r) bfem::sub_into(out.r(r), u.r(r), v.r(r));
@@ -80,7 +80,7 @@ void st_elevate_time_into(st_local<D, T>& out, const st_local<D, T>& u, int q_to
                           st_workspace<D, T>& ws) {
     assert(&out != &u);
     if (q_to < u.qt)
-        throw std::invalid_argument("btfem::st_elevate_time_into: q_to < time degree");
+        vcp::throw_error<vcp::invalid_argument>("btfem::st_elevate_time_into: q_to < time degree");
     if (q_to == u.qt) {
         st_copy(out, u);
         return;
@@ -103,7 +103,7 @@ template <typename T>
 void st_elevate_time_rt_into(st_rt_local<T>& out, const st_rt_local<T>& u, int q_to) {
     assert(&out != &u);
     if (q_to < u.qt)
-        throw std::invalid_argument("btfem::st_elevate_time_rt_into: q_to < time degree");
+        vcp::throw_error<vcp::invalid_argument>("btfem::st_elevate_time_rt_into: q_to < time degree");
     const int dim = static_cast<int>(u.row[0].c.size());
     if (q_to == u.qt) {
         out.prepare(u.qt, u.k, dim);
@@ -136,7 +136,7 @@ inline void st_require_same_time_mesh(bool same, const char* where) {
         std::string msg("btfem::");
         msg += where;
         msg += ": spaces live on different time meshes";
-        throw std::invalid_argument(msg);
+        vcp::throw_error<vcp::invalid_argument>(msg);
     }
 }
 
@@ -161,7 +161,7 @@ st_div_field(st_rt_space<D, T, P, SPR>& srs, const typename st_rt_space<D, T, P,
     bfem::detail::rt_require_same_mesh(bs.num_elements(), bs.num_vertices(),
                                        rs.num_elements(), rs.num_vertices(), "st_div_field");
     if (bs.order() != rs.order())
-        throw std::invalid_argument("btfem::st_div_field: broken order != RT order");
+        vcp::throw_error<vcp::invalid_argument>("btfem::st_div_field: broken order != RT order");
     const int k = rs.order();
     const int nloc = bs.local_size();
     const time_space<T>& Vt = srs.time_dofs(sig.time_degree(), sig.time_bc_kind());
@@ -270,7 +270,7 @@ void st_check_ubar(pg_space<D, T, P, SPF>& pg, const st_poly<D, T, P>& u, const 
         std::string msg("btfem::");
         msg += where;
         msg += ": st_poly does not match the pg_space (shape)";
-        throw std::invalid_argument(msg);
+        vcp::throw_error<vcp::invalid_argument>(msg);
     }
 }
 
@@ -323,7 +323,7 @@ struct st_residual_source {
                 std::string msg("btfem::");
                 msg += where;
                 msg += ": components of b must share the time space (q, bc)";
-                throw std::invalid_argument(msg);
+                vcp::throw_error<vcp::invalid_argument>(msg);
             }
         }
         bkind = 2;
@@ -354,7 +354,7 @@ private:
             std::string msg("btfem::");
             msg += where;
             msg += ": ubar space degree < 1 (convection term needs grad)";
-            throw std::invalid_argument(msg);
+            vcp::throw_error<vcp::invalid_argument>(msg);
         }
     }
     void finish_degrees(int qb, int nb) {
@@ -433,7 +433,7 @@ struct st_flux_inner {
             std::string msg("btfem::");
             msg += where;
             msg += ": ubar space degree < 1";
-            throw std::invalid_argument(msg);
+            vcp::throw_error<vcp::invalid_argument>(msg);
         }
         Vts = &srs_.time_dofs(sig_.time_degree(), sig_.time_bc_kind());
         Vtu = &pg_.time_dofs(u_.time_degree(), u_.time_bc_kind());

@@ -197,7 +197,7 @@ public:
 
     static rt_dofmap3 build(const mesh_topology3& tp, int k) {
         if (k < 0)
-            throw std::invalid_argument("bfem::rt_dofmap3: k < 0");
+            vcp::throw_error<vcp::invalid_argument>("bfem::rt_dofmap3: k < 0");
         rt_dofmap3 dm;
         dm.k_ = k;
         dm.nf_ = tp.num_faces();

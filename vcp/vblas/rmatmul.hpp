@@ -34,6 +34,7 @@
 
 #include <cstdlib>
 #include <stdexcept>
+#include <vcp/error.hpp>
 
 #if defined(__AVX512F__)
 #define VBLAS_RMATMUL_HAS_AVX512 1
@@ -89,7 +90,7 @@ inline Backend selected_backend() {
 
 inline void unavailable_backend() {
 #if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
-	throw std::runtime_error("vblas rmatmul: no available implementation for this target");
+	vcp::throw_error<vcp::error>("vblas rmatmul: no available implementation for this target");
 #else
 	std::abort();
 #endif

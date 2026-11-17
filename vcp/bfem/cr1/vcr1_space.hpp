@@ -103,17 +103,17 @@ public:
     // numbering (ii)
     int vector_dof(int d, int i) const {
         if (d < 0 || d >= D || i < 0 || i >= scalar_.ndof())
-            throw std::invalid_argument("bfem::vcr1_space::vector_dof: out of range");
+            vcp::throw_error<vcp::invalid_argument>("bfem::vcr1_space::vector_dof: out of range");
         return d * scalar_.ndof() + i;
     }
     int component_of(int g) const {
         if (g < 0 || g >= ndof())
-            throw std::invalid_argument("bfem::vcr1_space::component_of: out of range");
+            vcp::throw_error<vcp::invalid_argument>("bfem::vcr1_space::component_of: out of range");
         return g / scalar_.ndof();
     }
     int scalar_dof_of(int g) const {
         if (g < 0 || g >= ndof())
-            throw std::invalid_argument("bfem::vcr1_space::scalar_dof_of: out of range");
+            vcp::throw_error<vcp::invalid_argument>("bfem::vcr1_space::scalar_dof_of: out of range");
         return g % scalar_.ndof();
     }
 

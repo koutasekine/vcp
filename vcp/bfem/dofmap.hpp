@@ -74,7 +74,7 @@ struct mesh_topology2 {
                 int a = t[static_cast<std::size_t>((k + 1) % 3)];
                 int b = t[static_cast<std::size_t>((k + 2) % 3)];
                 if (a == b)
-                    throw std::invalid_argument("bfem::topology: element with repeated vertex");
+                    vcp::throw_error<vcp::invalid_argument>("bfem::topology: element with repeated vertex");
                 rec r;
                 r.vmin = a < b ? a : b;
                 r.vmax = a < b ? b : a;
@@ -93,7 +93,7 @@ struct mesh_topology2 {
             while (j < rs.size() && rs[j].vmin == rs[i].vmin && rs[j].vmax == rs[i].vmax) ++j;
             std::size_t count = j - i;
             if (count > 2)
-                throw std::invalid_argument(
+                vcp::throw_error<vcp::invalid_argument>(
                     "bfem::topology: non-manifold input (an edge shared by 3+ elements)");
             std::array<int, 2> ev = { { rs[i].vmin, rs[i].vmax } };
             tp.edges.push_back(ev);
@@ -182,7 +182,7 @@ public:
         for (std::size_t s = 0; s < edges.size(); ++s) {
             int ed = edges[s];
             if (ed < 0 || ed >= ne_)
-                throw std::invalid_argument("bfem::dofmap::boundary_dofs: edge id out of range");
+                vcp::throw_error<vcp::invalid_argument>("bfem::dofmap::boundary_dofs: edge id out of range");
             for (int side = 0; side < 2; ++side) {
                 int v = edge_verts_[static_cast<std::size_t>(ed)][static_cast<std::size_t>(side)];
                 if (!seen[static_cast<std::size_t>(v)]) {
@@ -220,7 +220,7 @@ struct dofmap_builder {
     // numbering per external design 3.2 / internal design 3
     static dofmap<2> build(const mesh_topology2& tp, int m) {
         if (m < 1)
-            throw std::invalid_argument("bfem::dofmap: degree must be >= 1");
+            vcp::throw_error<vcp::invalid_argument>("bfem::dofmap: degree must be >= 1");
         dofmap<2> dm;
         dm.m_ = m;
         dm.nv_ = tp.nv;

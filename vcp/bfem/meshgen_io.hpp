@@ -36,16 +36,12 @@
 #include <string>
 #include <vector>
 
+#include <vcp/error.hpp>
 #include <vcp/bfem/mesh.hpp>
 #include <vcp/bfem/meshgen_convert.hpp>
 
 namespace vcp {
 namespace bfem {
-
-class meshgen_io_error : public std::runtime_error {
-public:
-    explicit meshgen_io_error(const char* msg) : std::runtime_error(msg) {}
-};
 
 template <int D>
 struct meshgen_status;   // full definition: vcp/bfem/meshgen.hpp (MG-1)
@@ -71,7 +67,7 @@ struct owriter {
     void byte(unsigned char b) {
         os.put(static_cast<char>(b));
         if (!os)
-            throw meshgen_io_error("vcp::bfem::meshgen_io: write failed");
+            vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: write failed");
         sum.feed(b);
     }
     void u32(std::uint32_t v) {
@@ -92,7 +88,7 @@ struct owriter {
         for (int i = 0; i < 8; ++i) {
             os.put(static_cast<char>((v >> (8 * i)) & 0xFFu));
             if (!os)
-                throw meshgen_io_error("vcp::bfem::meshgen_io: write failed");
+                vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: write failed");
         }
     }
     void text(const std::string& s) {
@@ -110,7 +106,7 @@ struct ireader {
     unsigned char byte() {
         int c = is.get();
         if (c < 0)
-            throw meshgen_io_error(
+            vcp::throw_error<vcp::bfem::meshgen_io_error>(
                 "vcp::bfem::meshgen_io: truncated or unreadable file");
         unsigned char b = static_cast<unsigned char>(c & 0xFF);
         sum.feed(b);
@@ -149,7 +145,7 @@ struct ireader {
         for (int i = 0; i < 8; ++i) {
             int c = is.get();
             if (c < 0)
-                throw meshgen_io_error(
+                vcp::throw_error<vcp::bfem::meshgen_io_error>(
                     "vcp::bfem::meshgen_io: truncated or unreadable file");
             v = v | (static_cast<std::uint64_t>(
                          static_cast<unsigned char>(c & 0xFF)) << (8 * i));
@@ -172,15 +168,15 @@ struct meshgen_io_traits {
     static void write_value(meshgen_io_detail::owriter& w, const T& x) {
         // NaN / non-finiteness rejection (design 5.3)
         if (!(x == x))
-            throw meshgen_io_error("vcp::bfem::meshgen_io: NaN rejected");
+            vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: NaN rejected");
         if (!(x - x == T(0)))
-            throw meshgen_io_error(
+            vcp::throw_error<vcp::bfem::meshgen_io_error>(
                 "vcp::bfem::meshgen_io: non-finite value rejected");
         meshgen_convert_detail::fp_decomp d;
         try {
             d = meshgen_convert_detail::decompose_base2<T>(x);
         } catch (const meshgen_convert_error&) {
-            throw meshgen_io_error(
+            vcp::throw_error<vcp::bfem::meshgen_io_error>(
                 "vcp::bfem::meshgen_io: mantissa decomposition did not "
                 "terminate (non-base-2 scalar for the b2fp record)");
         }
@@ -205,10 +201,10 @@ struct meshgen_io_traits {
         d.exp = r.i64();
         const std::uint32_t nbits = r.u32();
         if (!(d.sign == 0 || d.sign == 1 || d.sign == -1))
-            throw meshgen_io_error(
+            vcp::throw_error<vcp::bfem::meshgen_io_error>(
                 "vcp::bfem::meshgen_io: corrupt value record (sign)");
         if ((d.sign == 0) != (nbits == 0))
-            throw meshgen_io_error(
+            vcp::throw_error<vcp::bfem::meshgen_io_error>(
                 "vcp::bfem::meshgen_io: corrupt value record (zero form)");
         d.bits.reserve(nbits);
         std::uint32_t chunk = 0;
@@ -218,7 +214,7 @@ struct meshgen_io_traits {
                 static_cast<int>((chunk >> (i % 32)) & 1u));
         }
         if (nbits != 0 && (d.bits[0] != 1 || d.bits[nbits - 1] != 1))
-            throw meshgen_io_error(
+            vcp::throw_error<vcp::bfem::meshgen_io_error>(
                 "vcp::bfem::meshgen_io: corrupt value record (mantissa form)");
 
         if (d.sign == 0) return T(0);
@@ -246,7 +242,7 @@ struct meshgen_io_traits {
             try {
                 v = meshgen_convert_detail::decompose_base2<T>(y);
             } catch (const meshgen_convert_error&) {
-                throw meshgen_io_error(
+                vcp::throw_error<vcp::bfem::meshgen_io_error>(
                     "vcp::bfem::meshgen_io: verify_roundtrip re-decomposition "
                     "failed");
             }
@@ -255,7 +251,7 @@ struct meshgen_io_traits {
             for (std::size_t i = 0; same && i < v.bits.size(); ++i)
                 if (v.bits[i] != d.bits[i]) same = false;
             if (!same)
-                throw meshgen_io_error(
+                vcp::throw_error<vcp::bfem::meshgen_io_error>(
                     "vcp::bfem::meshgen_io: verify_roundtrip mismatch (value "
                     "not exactly representable in the loading type)");
         }
@@ -292,19 +288,19 @@ mesh<D, T> load_mesh_head(ireader& r, bool verify_roundtrip) {
     static const char* magic = "VCPMESH0";
     for (int i = 0; i < 8; ++i)
         if (r.byte() != static_cast<unsigned char>(magic[i]))
-            throw meshgen_io_error("vcp::bfem::meshgen_io: bad magic");
+            vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: bad magic");
     if (r.u32() != 1u)
-        throw meshgen_io_error("vcp::bfem::meshgen_io: unknown format version");
+        vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: unknown format version");
     if (r.u32() != static_cast<std::uint32_t>(D))
-        throw meshgen_io_error("vcp::bfem::meshgen_io: dimension mismatch");
+        vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: dimension mismatch");
     const std::uint32_t taglen = r.u32();
     if (taglen > 4096u)
-        throw meshgen_io_error("vcp::bfem::meshgen_io: corrupt type tag");
+        vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: corrupt type tag");
     std::string tg;
     for (std::uint32_t i = 0; i < taglen; ++i)
         tg.push_back(static_cast<char>(r.byte()));
     if (tg != meshgen_io_traits<T>::tag())
-        throw meshgen_io_error("vcp::bfem::meshgen_io: type tag mismatch");
+        vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: type tag mismatch");
     const std::uint64_t nv = r.u64();
     const std::uint64_t ne = r.u64();
     std::vector<std::array<T, D> > verts;
@@ -342,7 +338,7 @@ inline void load_skip_status_section(ireader& r, int D) {
 inline void verify_checksum(ireader& r) {
     const std::uint64_t expect = r.sum.h;
     if (r.raw_u64_unsummed() != expect)
-        throw meshgen_io_error("vcp::bfem::meshgen_io: checksum mismatch");
+        vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: checksum mismatch");
 }
 
 } // namespace meshgen_io_detail
@@ -371,7 +367,7 @@ void save_mesh(std::ostream& os, const mesh<D, T>& m,
         for (std::size_t i = 0; i < status->boundary_vertices.size(); ++i)
             w.i32(status->boundary_vertices[i]);
         if (status->facet_source.size() != status->boundary_facets.size())
-            throw meshgen_io_error(
+            vcp::throw_error<vcp::bfem::meshgen_io_error>(
                 "vcp::bfem::meshgen_io: facet_source/boundary_facets size "
                 "mismatch in the status to be saved");
         w.u64(static_cast<std::uint64_t>(status->boundary_facets.size()));
@@ -396,7 +392,7 @@ mesh<D, T> load_mesh(std::istream& is, bool verify_roundtrip = true) {
         meshgen_io_detail::load_mesh_head<D, T>(r, verify_roundtrip);
     const std::uint32_t flag = r.u32();
     if (flag > 1u)
-        throw meshgen_io_error("vcp::bfem::meshgen_io: corrupt status flag");
+        vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: corrupt status flag");
     if (flag == 1u) meshgen_io_detail::load_skip_status_section(r, D);
     meshgen_io_detail::verify_checksum(r);
     return m;
@@ -412,7 +408,7 @@ mesh<D, T> load_mesh(std::istream& is, meshgen_status<D>* status,
         meshgen_io_detail::load_mesh_head<D, T>(r, verify_roundtrip);
     const std::uint32_t flag = r.u32();
     if (flag > 1u)
-        throw meshgen_io_error("vcp::bfem::meshgen_io: corrupt status flag");
+        vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: corrupt status flag");
     if (flag == 1u) {
         if (status == 0) {
             meshgen_io_detail::load_skip_status_section(r, D);
@@ -448,7 +444,7 @@ template <int D, typename T>
 void save_mesh(const std::string& path, const mesh<D, T>& m) {
     std::ofstream ofs(path.c_str(), std::ios::out | std::ios::binary);
     if (!ofs)
-        throw meshgen_io_error("vcp::bfem::meshgen_io: cannot open for write");
+        vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: cannot open for write");
     save_mesh<D, T>(ofs, m);
 }
 
@@ -457,7 +453,7 @@ void save_mesh(const std::string& path, const mesh<D, T>& m,
                const meshgen_status<D>* status) {
     std::ofstream ofs(path.c_str(), std::ios::out | std::ios::binary);
     if (!ofs)
-        throw meshgen_io_error("vcp::bfem::meshgen_io: cannot open for write");
+        vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: cannot open for write");
     save_mesh<D, T>(ofs, m, status);
 }
 
@@ -466,7 +462,7 @@ mesh<D, T> load_mesh_file(const std::string& path,
                           bool verify_roundtrip = true) {
     std::ifstream ifs(path.c_str(), std::ios::in | std::ios::binary);
     if (!ifs)
-        throw meshgen_io_error("vcp::bfem::meshgen_io: cannot open for read");
+        vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: cannot open for read");
     return load_mesh<D, T>(ifs, verify_roundtrip);
 }
 
@@ -475,7 +471,7 @@ mesh<D, T> load_mesh_file(const std::string& path, meshgen_status<D>* status,
                           bool verify_roundtrip = true) {
     std::ifstream ifs(path.c_str(), std::ios::in | std::ios::binary);
     if (!ifs)
-        throw meshgen_io_error("vcp::bfem::meshgen_io: cannot open for read");
+        vcp::throw_error<vcp::bfem::meshgen_io_error>("vcp::bfem::meshgen_io: cannot open for read");
     return load_mesh<D, T>(ifs, status, verify_roundtrip);
 }
 

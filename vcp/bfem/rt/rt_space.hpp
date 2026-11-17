@@ -84,7 +84,7 @@ public:
 
     static rt_dofmap build(const mesh_topology2& tp, int k) {
         if (k < 0)
-            throw std::invalid_argument("bfem::rt_dofmap: k < 0");
+            vcp::throw_error<vcp::invalid_argument>("bfem::rt_dofmap: k < 0");
         rt_dofmap dm;
         dm.k_ = k;
         dm.ne_ = tp.num_edges();
@@ -219,7 +219,7 @@ public:
         : k_(k), topo_(), dm_(), geom_(), op_(), buf_(), sloc_(), loc_() {
         bfem_scalar_traits<T>::require();   // C-1 contract (L4, additive)
         if (k < 0)
-            throw std::invalid_argument("bfem::rt_space: k must be >= 0");
+            vcp::throw_error<vcp::invalid_argument>("bfem::rt_space: k must be >= 0");
         topo_ = BK::topology_type::build(msh);
         dm_ = BK::build_dofmap(topo_, k);
         geom_.reserve(static_cast<std::size_t>(topo_.nt));
@@ -255,7 +255,7 @@ public:
     }
     field_type field_from_coeffs(vcp::matrix<T, P> c) {
         if (c.rowsize() != ndof() || c.columnsize() != 1)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::rt_space::field_from_coeffs: size != ndof x 1");
         field_type f(k_);
         f.c_ = std::move(c);

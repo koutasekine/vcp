@@ -18,17 +18,13 @@
 #include <stdexcept>
 #include <mutex>
 
+#include <vcp/error.hpp>
 #include <vcp/bfem/convert_traits.hpp>
 #include <vcp/bfem/geometry.hpp>
 #include <vcp/bfem/detail/table_cache.hpp>
 
 namespace vcp {
 namespace btfem {
-
-class degenerate_interval : public std::runtime_error {
-public:
-    explicit degenerate_interval(const std::string& msg) : std::runtime_error(msg) {}
-};
 
 namespace detail {
 
@@ -60,17 +56,17 @@ class time_mesh {
 public:
     static time_mesh uniform(const T& t0, const T& t1, int m) {
         if (m < 1)
-            throw std::invalid_argument("btfem::time_mesh::uniform: m < 1");
+            vcp::throw_error<vcp::invalid_argument>("btfem::time_mesh::uniform: m < 1");
         T len = t1 - t0;
         int sg;
         try {
             sg = bfem::geometry_traits<T>::sign(len);
         } catch (const bfem::degenerate_element&) {
-            throw degenerate_interval(
+            vcp::throw_error<vcp::btfem::degenerate_interval>(
                 "btfem::time_mesh::uniform: interval length is zero or sign-indefinite");
         }
         if (sg != +1)
-            throw degenerate_interval("btfem::time_mesh::uniform: t1 - t0 is not positive");
+            vcp::throw_error<vcp::btfem::degenerate_interval>("btfem::time_mesh::uniform: t1 - t0 is not positive");
         time_mesh tm;
         tm.t0_ = t0;
         tm.t1_ = t1;
@@ -89,7 +85,7 @@ public:
     // tau_l = t0 + l k, l = 0..m (one multiplication, one addition)
     T node(int l) const {
         if (l < 0 || l > m_)
-            throw std::invalid_argument("btfem::time_mesh::node: l out of range");
+            vcp::throw_error<vcp::invalid_argument>("btfem::time_mesh::node: l out of range");
         return t0_ + T(l) * k_;
     }
 

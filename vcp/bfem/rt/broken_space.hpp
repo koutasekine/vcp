@@ -102,7 +102,7 @@ public:
           nloc_(0), dm_(), geom_(), op_(), buf_(), loc_(), ub_(), vb_() {
         bfem_scalar_traits<T>::require();   // C-1 contract (L4, additive)
         if (l < 0)
-            throw std::invalid_argument("bfem::broken_space: l must be >= 0");
+            vcp::throw_error<vcp::invalid_argument>("bfem::broken_space: l must be >= 0");
         nloc_ = coeff_registry<D>::indices(l).size();
         dm_ = detail::broken_dofmap(nloc_, nt_);
         geom_.reserve(static_cast<std::size_t>(nt_));
@@ -135,7 +135,7 @@ public:
     }
     field_type field_from_coeffs(vcp::matrix<T, P> c) {
         if (c.rowsize() != ndof() || c.columnsize() != 1)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::broken_space::field_from_coeffs: size != ndof x 1");
         field_type f(l_);
         f.c_ = std::move(c);
@@ -278,7 +278,7 @@ catch (...) {
     T eval(const field_type& u, int e, const bary_point<D, T>& lam) const {
         validate(u);
         if (e < 0 || e >= nt_)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::broken_space::eval: element out of range");
         gather_block(u, e, ub_);
         return ::vcp::bfem::eval(ub_, lam);
@@ -309,7 +309,7 @@ private:
     void validate(const field_type& u) const {
         if (u.order() != l_ || u.coeffs().rowsize() != ndof()
             || u.coeffs().columnsize() != 1)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::broken_space: field does not match this space");
     }
     void gather_block(const field_type& u, int e, bpoly<D, T>& dst) const {

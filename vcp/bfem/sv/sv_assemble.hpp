@@ -75,11 +75,11 @@ template <int D, typename T, typename P>
 void sv_local_grad_mixed_mass(const element_geometry<D, T>& g, int d,
                               int m, int l, vcp::matrix<T, P>& out) {
     if (m < 1)
-        throw std::invalid_argument("bfem::sv_local_grad_mixed_mass: m < 1");
+        vcp::throw_error<vcp::invalid_argument>("bfem::sv_local_grad_mixed_mass: m < 1");
     if (l < 0)
-        throw std::invalid_argument("bfem::sv_local_grad_mixed_mass: l < 0");
+        vcp::throw_error<vcp::invalid_argument>("bfem::sv_local_grad_mixed_mass: l < 0");
     if (d < 0 || d >= D)
-        throw std::invalid_argument("bfem::sv_local_grad_mixed_mass: bad d");
+        vcp::throw_error<vcp::invalid_argument>("bfem::sv_local_grad_mixed_mass: bad d");
     const typed_mass_table<D, T>& M = typed_registry<D, T>::mass(l, m - 1);
     const derivative_map<D>& dm = detail::deriv_cache<D>::get(m);
     const int Nl = M.rows();
@@ -104,7 +104,7 @@ inline void sv_require_same_mesh(int nt_a, int nv_a, int nt_b, int nv_b,
         std::string msg("bfem::");
         msg += where;
         msg += ": spaces are not built from the same mesh";
-        throw std::invalid_argument(msg);
+        vcp::throw_error<vcp::invalid_argument>(msg);
     }
 }
 
@@ -571,7 +571,7 @@ T advection_scalar(vfe_space<D, T, P, SP>& vs,
     const dofmap<D>& dmb = fs.dofs(b.degree());
     const dofmap<D>& dmu = fs.dofs(u.degree());
     if (u.coeffs().rowsize() != dmu.ndof() || u.coeffs().columnsize() != 1)
-        throw std::invalid_argument("bfem::advection_scalar: fe_function mismatch");
+        vcp::throw_error<vcp::invalid_argument>("bfem::advection_scalar: fe_function mismatch");
     const int Na = dma.ndof();
     const int Nb = dmb.ndof();
     element_op<D, T, P> op;
@@ -610,7 +610,7 @@ broken_field<D, T, P> div_field(broken_space<D, T, P, SPB>& bs,
                                     vs.num_elements(), vs.num_vertices(),
                                     "div_field");
     if (bs.order() != u.degree() - 1)
-        throw std::invalid_argument("bfem::div_field: broken order != degree - 1");
+        vcp::throw_error<vcp::invalid_argument>("bfem::div_field: broken order != degree - 1");
     fe_space<D, T, P, SPV>& fs = vs.scalar();
     const dofmap<D>& dmu = fs.dofs(u.degree());
     const int Nu = dmu.ndof();

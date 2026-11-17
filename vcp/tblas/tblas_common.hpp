@@ -47,6 +47,7 @@
 #include <stdexcept>
 #include <atomic>
 #include <exception>
+#include <vcp/error.hpp>
 
 // --- tblas-layer OpenMP guard (SLU-K1F, mirrors spmats SS6.1 / ldbase) ---
 // VCP_NOMP             : global kill switch (implies VCP_TBLAS_NOMP)
@@ -73,7 +74,7 @@ namespace tblas_detail {
 
 inline void tblas_error(const char* message) {
 #if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
-	throw std::invalid_argument(message);
+	vcp::throw_error<vcp::invalid_argument>(message);
 #else
 	(void)message;
 	std::abort();

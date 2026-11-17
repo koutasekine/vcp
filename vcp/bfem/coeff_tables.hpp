@@ -158,7 +158,7 @@ class derivative_map {
 public:
     explicit derivative_map(int n) : n_(n), size_(0), t_() {
         if (n < 0)
-            throw std::invalid_argument("bfem::derivative_map: negative degree");
+            vcp::throw_error<vcp::invalid_argument>("bfem::derivative_map: negative degree");
         const index_map<D>& im_n = coeff_registry<D>::indices(n);
         size_ = im_n.size();
         t_.assign(static_cast<std::size_t>(size_) * static_cast<std::size_t>(D + 1), -1);
@@ -228,7 +228,7 @@ public:
     static const elevation_table<D>& elevation(int n, int m) {
         check_deg(n, "elevation");
         if (m < n)
-            throw std::invalid_argument("bfem::coeff_registry::elevation: m < n");
+            vcp::throw_error<vcp::invalid_argument>("bfem::coeff_registry::elevation: m < n");
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(n, m);
@@ -276,7 +276,7 @@ private:
             std::string msg("bfem::coeff_registry::");
             msg += where;
             msg += ": negative degree";
-            throw std::invalid_argument(msg);
+            vcp::throw_error<vcp::invalid_argument>(msg);
         }
     }
 

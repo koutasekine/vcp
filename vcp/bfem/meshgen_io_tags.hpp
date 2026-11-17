@@ -43,13 +43,13 @@ struct meshgen_io_traits<rational> {
         const int s = r.i8();
         const std::uint32_t n = r.u32();
         if (!(s == 0 || s == 1 || s == -1) || ((s == 0) != (n == 0)))
-            throw meshgen_io_error(
+            vcp::throw_error<vcp::bfem::meshgen_io_error>(
                 "vcp::bfem::meshgen_io: corrupt bigint record (sign)");
         std::vector<std::uint32_t> limbs;
         limbs.reserve(n);
         for (std::uint32_t i = 0; i < n; ++i) limbs.push_back(r.u32());
         if (n != 0 && limbs[n - 1] == 0u)
-            throw meshgen_io_error(
+            vcp::throw_error<vcp::bfem::meshgen_io_error>(
                 "vcp::bfem::meshgen_io: corrupt bigint record (leading zero)");
         const detail::bigint base(4294967296ll);   // 2^32
         detail::bigint b(0);
@@ -70,14 +70,14 @@ struct meshgen_io_traits<rational> {
         detail::bigint num = read_bigint(r);
         detail::bigint den = read_bigint(r);
         if (den.is_zero() || den.negative())
-            throw meshgen_io_error(
+            vcp::throw_error<vcp::bfem::meshgen_io_error>(
                 "vcp::bfem::meshgen_io: corrupt rational record (denominator)");
         rational v(num, den);
         if (verify_roundtrip) {
             // records are written from normalized rationals; a record that
             // renormalizes to different observers is corrupt
             if (!(v.num() == num) || !(v.den() == den))
-                throw meshgen_io_error(
+                vcp::throw_error<vcp::bfem::meshgen_io_error>(
                     "vcp::bfem::meshgen_io: verify_roundtrip mismatch "
                     "(non-normalized rational record)");
         }
@@ -103,7 +103,7 @@ struct meshgen_io_traits<kv::interval<F> > {
         F lo = meshgen_io_traits<F>::read_value(r, verify_roundtrip);
         F hi = meshgen_io_traits<F>::read_value(r, verify_roundtrip);
         if (hi < lo)
-            throw meshgen_io_error(
+            vcp::throw_error<vcp::bfem::meshgen_io_error>(
                 "vcp::bfem::meshgen_io: corrupt interval record (reversed "
                 "endpoints)");
         return kv::interval<F>(lo, hi);   // F9: no rounding

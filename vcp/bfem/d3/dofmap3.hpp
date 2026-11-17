@@ -94,7 +94,7 @@ public:
         for (std::size_t s = 0; s < faces.size(); ++s) {
             int f = faces[s];
             if (f < 0 || f >= nf_)
-                throw std::invalid_argument(
+                vcp::throw_error<vcp::invalid_argument>(
                     "bfem::dofmap<3>::boundary_dofs: face id out of range");
             for (int i = 0; i < 3; ++i) {
                 int v = face_verts_[static_cast<std::size_t>(f)][static_cast<std::size_t>(i)];
@@ -145,7 +145,7 @@ struct dofmap_builder3 {
     // numbering per 3D external design section 4 / internal design section 4
     static dofmap<3> build(const mesh_topology3& tp, int m) {
         if (m < 1)
-            throw std::invalid_argument("bfem::dofmap<3>: degree must be >= 1");
+            vcp::throw_error<vcp::invalid_argument>("bfem::dofmap<3>: degree must be >= 1");
         dofmap<3> dm;
         dm.m_ = m;
         dm.nv_ = tp.nv;

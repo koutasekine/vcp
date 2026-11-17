@@ -25,6 +25,7 @@
 #include <stdexcept>
 #include <cassert>
 
+#include <vcp/error.hpp>
 #include <vcp/bfem/mesh.hpp>
 
 namespace vcp {
@@ -33,21 +34,6 @@ namespace bfem {
 // ---------------------------------------------------------------------------
 // exceptions (design section 5.5)
 // ---------------------------------------------------------------------------
-class meshgen_error : public std::invalid_argument {
-public:
-    explicit meshgen_error(const char* msg) : std::invalid_argument(msg) {}
-};
-
-class meshgen_degenerate : public std::runtime_error {
-public:
-    explicit meshgen_degenerate(const char* msg) : std::runtime_error(msg) {}
-};
-
-class meshgen_limit : public std::runtime_error {
-public:
-    explicit meshgen_limit(const char* msg) : std::runtime_error(msg) {}
-};
-
 // ---------------------------------------------------------------------------
 // domain description (design section 3.1)
 // ---------------------------------------------------------------------------
@@ -100,7 +86,7 @@ struct meshgen_traits {
     static int sign(const T& x) {
         if (x < T(0)) return -1;
         if (T(0) < x) return +1;
-        throw meshgen_degenerate(
+        vcp::throw_error<vcp::bfem::meshgen_degenerate>(
             "vcp::bfem::meshgen: zero or sign-indefinite value");
     }
 };
@@ -183,7 +169,7 @@ int ray_side(const T& y, const T& my) {
     if (certainly_less(y, my)) return -1;
     if (certainly_less(my, y)) return +1;
     if (certainly_equal(y, my)) return 0;
-    throw meshgen_degenerate("vcp::bfem::meshgen: undecidable ray side");
+    vcp::throw_error<vcp::bfem::meshgen_degenerate>("vcp::bfem::meshgen: undecidable ray side");
 }
 
 // p certainly outside the closed CCW triangle (a,b,c)?
@@ -239,13 +225,13 @@ void ear_clip(const std::vector<std::array<T, 2> >& V,
             clipped = true;
         }
         if (!clipped)
-            throw meshgen_degenerate("vcp::bfem::meshgen: no clippable ear");
+            vcp::throw_error<vcp::bfem::meshgen_degenerate>("vcp::bfem::meshgen: no clippable ear");
     }
     const std::array<T, 2>& A = V[static_cast<std::size_t>(seq[0])];
     const std::array<T, 2>& B = V[static_cast<std::size_t>(seq[1])];
     const std::array<T, 2>& C = V[static_cast<std::size_t>(seq[2])];
     if (!certainly_pos(orient2d(A, B, C)))
-        throw meshgen_degenerate("vcp::bfem::meshgen: degenerate final triangle");
+        vcp::throw_error<vcp::bfem::meshgen_degenerate>("vcp::bfem::meshgen: degenerate final triangle");
     std::array<int, 3> tri = {{seq[0], seq[1], seq[2]}};
     out.push_back(tri);
 }
@@ -289,7 +275,7 @@ void bridge_hole(const std::vector<std::array<T, 2> >& V,
         const T mxd = mx * d;
         if (certainly_less(N, mxd)) continue;      // crossing behind the ray start
         if (!certainly_less(mxd, N))
-            throw meshgen_degenerate(
+            vcp::throw_error<vcp::bfem::meshgen_degenerate>(
                 "vcp::bfem::meshgen: outer boundary touches a hole vertex");
         bool take = false;
         if (best_i < 0) {
@@ -300,7 +286,7 @@ void bridge_hole(const std::vector<std::array<T, 2> >& V,
             if (certainly_less(lhs, rhs)) take = true;
             else if (certainly_less(rhs, lhs)) take = false;
             else if (certainly_equal(lhs, rhs)) take = false;   // keep first
-            else throw meshgen_degenerate(
+            else vcp::throw_error<vcp::bfem::meshgen_degenerate>(
                 "vcp::bfem::meshgen: undecidable nearest ray crossing");
         }
         if (take) {
@@ -312,7 +298,7 @@ void bridge_hole(const std::vector<std::array<T, 2> >& V,
         }
     }
     if (best_i < 0)
-        throw meshgen_error(
+        vcp::throw_error<vcp::bfem::meshgen_error>(
             "vcp::bfem::meshgen: hole is not enclosed by the outer boundary");
 
     // --- visible vertex ----------------------------------------------------
@@ -331,7 +317,7 @@ void bridge_hole(const std::vector<std::array<T, 2> >& V,
         if (certainly_less(eux, evx)) p_pos = (best_i + 1) % n;
         else if (certainly_less(evx, eux)) p_pos = best_i;
         else if (certainly_equal(eux, evx)) p_pos = best_up_pos;
-        else throw meshgen_degenerate(
+        else vcp::throw_error<vcp::bfem::meshgen_degenerate>(
             "vcp::bfem::meshgen: undecidable crossed-edge endpoint order");
         const int p = seq[static_cast<std::size_t>(p_pos)];
         const int p_side = ray_side(V[static_cast<std::size_t>(p)][1], my);
@@ -373,9 +359,9 @@ void bridge_hole(const std::vector<std::array<T, 2> >& V,
                     if (certainly_less(d2, bw_d2)) take = true;
                     else if (certainly_less(bw_d2, d2)) take = false;
                     else if (certainly_equal(d2, bw_d2)) take = false;
-                    else throw meshgen_degenerate(
+                    else vcp::throw_error<vcp::bfem::meshgen_degenerate>(
                         "vcp::bfem::meshgen: undecidable blocker distance");
-                } else throw meshgen_degenerate(
+                } else vcp::throw_error<vcp::bfem::meshgen_degenerate>(
                     "vcp::bfem::meshgen: undecidable blocker angle");
             }
             if (take) {
@@ -413,7 +399,7 @@ coarse_mesh<T> build_coarse_mesh(const polygon_domain<T>& dom,
             (l == 0) ? dom.outer : dom.holes[static_cast<std::size_t>(l - 1)];
         const int nl = static_cast<int>(loop.size());
         if (nl < 3)
-            throw meshgen_error("vcp::bfem::meshgen: loop with fewer than 3 vertices");
+            vcp::throw_error<vcp::bfem::meshgen_error>("vcp::bfem::meshgen: loop with fewer than 3 vertices");
         std::vector<int> ids;
         for (int s = 0; s < nl; ++s) {
             ids.push_back(static_cast<int>(cm.vertices.size()));
@@ -424,7 +410,7 @@ coarse_mesh<T> build_coarse_mesh(const polygon_domain<T>& dom,
             const std::array<T, 2>& a = loop[static_cast<std::size_t>(s)];
             const std::array<T, 2>& b = loop[static_cast<std::size_t>((s + 1) % nl)];
             if (certainly_equal(a[0], b[0]) && certainly_equal(a[1], b[1]))
-                throw meshgen_error(
+                vcp::throw_error<vcp::bfem::meshgen_error>(
                     "vcp::bfem::meshgen: adjacent duplicate vertices in a loop");
         }
         loop_ids.push_back(ids);
@@ -468,7 +454,7 @@ coarse_mesh<T> build_coarse_mesh(const polygon_domain<T>& dom,
                 const bool s34 = (certainly_neg(d3) && certainly_pos(d4))
                               || (certainly_pos(d3) && certainly_neg(d4));
                 if (s12 && s34)
-                    throw meshgen_error(
+                    vcp::throw_error<vcp::bfem::meshgen_error>(
                         "vcp::bfem::meshgen: self-intersecting input boundary");
             }
         }
@@ -508,7 +494,7 @@ coarse_mesh<T> build_coarse_mesh(const polygon_domain<T>& dom,
             if (certainly_less(xb, xs)) best = s;
             else if (certainly_less(xs, xb)) continue;
             else if (certainly_equal(xs, xb)) continue;   // keep first
-            else throw meshgen_degenerate(
+            else vcp::throw_error<vcp::bfem::meshgen_degenerate>(
                 "vcp::bfem::meshgen: undecidable hole extreme vertex");
         }
         std::vector<int> r;
@@ -534,7 +520,7 @@ coarse_mesh<T> build_coarse_mesh(const polygon_domain<T>& dom,
                 if (certainly_less(xp, xl)) pick = l;
                 else if (certainly_less(xl, xp)) continue;
                 else if (certainly_equal(xl, xp)) continue;   // keep earlier
-                else throw meshgen_degenerate(
+                else vcp::throw_error<vcp::bfem::meshgen_degenerate>(
                     "vcp::bfem::meshgen: undecidable hole ordering");
             }
             used[static_cast<std::size_t>(pick)] = true;
@@ -592,7 +578,7 @@ inline void inherit_boundary_lineage_after_sweep(
         std::map<std::pair<int, int>, int>::const_iterator mit =
             mid.find(it->first);
         if (mit == mid.end())
-            throw meshgen_degenerate(
+            vcp::throw_error<vcp::error>(
                 "vcp::bfem::meshgen: internal: unsplit boundary edge");
         nb[edge_key(it->first.first, mit->second)] = it->second;
         nb[edge_key(mit->second, it->first.second)] = it->second;
@@ -640,7 +626,7 @@ inline void finalize_boundary_output(
         std::map<std::pair<int, int>, meshgen_facet_source>::const_iterator
             src = bnd.find(it->first);
         if (src == bnd.end())
-            throw meshgen_degenerate(
+            vcp::throw_error<vcp::error>(
                 "vcp::bfem::meshgen: internal: boundary edge without origin");
         std::array<int, 2> f = {{it->first.first, it->first.second}};
         status.boundary_facets.push_back(f);
@@ -726,7 +712,7 @@ void refine_and_finalize(coarse_mesh<T>& cm, const T& h2,
         }
         if (all_small) break;
         if (steps == opt.max_refine)
-            throw meshgen_limit("vcp::bfem::meshgen: max_refine exceeded");
+            vcp::throw_error<vcp::bfem::meshgen_limit>("vcp::bfem::meshgen: max_refine exceeded");
 
         red_refine_sweep(cm.vertices, tris, bnd);
         ++steps;
@@ -751,7 +737,7 @@ void generate_mesh_lists(const polygon_domain<T>& dom, const T& h,
                          meshgen_status<2>& status,
                          const meshgen_options& opt = meshgen_options()) {
     if (!meshgen_detail::certainly_pos(h))
-        throw meshgen_error("vcp::bfem::meshgen: h must be certainly positive");
+        vcp::throw_error<vcp::bfem::meshgen_error>("vcp::bfem::meshgen: h must be certainly positive");
     status = meshgen_status<2>();   // refine_steps 0, delaunay_complete true
     meshgen_detail::coarse_mesh<T> cm =
         meshgen_detail::build_coarse_mesh(dom, opt);

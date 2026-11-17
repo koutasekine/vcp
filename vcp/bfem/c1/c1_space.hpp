@@ -127,7 +127,7 @@ public:
     // family degrees m are >= the base degree (AX-C1-3: m < k is rejected)
     const c1_dofmap& dofs(int m) {
         if (m < k_)
-            throw std::invalid_argument("bfem::c1_space::dofs: m < base degree");
+            vcp::throw_error<vcp::invalid_argument>("bfem::c1_space::dofs: m < base degree");
         typename std::map<int, c1_dofmap>::iterator it = dmaps_.find(m);
         if (it != dmaps_.end()) return it->second;
         return dmaps_.insert(std::make_pair(m, c1_dofmap::build(topo_, m)))
@@ -143,7 +143,7 @@ public:
     }
     function_type function_from_coeffs(int m, vcp::matrix<T, P> c) {
         if (c.rowsize() != ndof(m) || c.columnsize() != 1)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::c1_space::function_from_coeffs: size != ndof(m) x 1");
         function_type f(m);
         f.c_ = std::move(c);
@@ -564,7 +564,7 @@ catch (...) {
     // rows: broken P_l (block numbering e N_l + r), cols: V^{C1,m}
     spmatrix_t laplacian_mixed(int m, int l) {
         if (l < 0)
-            throw std::invalid_argument("bfem::c1_space::laplacian_mixed: l < 0");
+            vcp::throw_error<vcp::invalid_argument>("bfem::c1_space::laplacian_mixed: l < 0");
         const c1_dofmap& dm = dofs(m);
         const int nl = coeff_registry<2>::indices(l).size();
         detail::broken_dofmap bdm(nl, topo_.nt);
@@ -669,10 +669,10 @@ catch (...) {
                                           broken_space<2, T, P, SPB>& bs) {
         validate_fn(u);
         if (bs.order() != u.degree() - 2)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::c1_space::laplacian_field: broken order != degree - 2");
         if (bs.num_elements() != topo_.nt || bs.num_vertices() != topo_.nv)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::c1_space::laplacian_field: different mesh");
         const c1_dofmap& dmu = dofs(u.degree());
         broken_field<2, T, P> out = bs.zero_field();
@@ -721,7 +721,7 @@ catch (...) {
         validate_fn(u);
         const int k = u.degree();
         if (m < k)
-            throw std::invalid_argument("bfem::c1_space::elevate: m < degree(u)");
+            vcp::throw_error<vcp::invalid_argument>("bfem::c1_space::elevate: m < degree(u)");
         const c1_dofmap& dmk = dofs(k);
         const c1_dofmap& dmm = dofs(m);
         function_type out = zero_function(m);
@@ -798,13 +798,13 @@ private:
             std::string msg("bfem::c1_space::");
             msg += where;
             msg += ": element out of range";
-            throw std::invalid_argument(msg);
+            vcp::throw_error<vcp::invalid_argument>(msg);
         }
     }
     void validate_fn(const function_type& u) {
         if (u.coeffs().columnsize() != 1
             || u.coeffs().rowsize() != ndof(u.degree()))
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::c1_space: c1_function does not match this space");
     }
     void set_elem(int e) {

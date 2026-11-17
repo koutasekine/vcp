@@ -174,14 +174,14 @@ public:
     field_type field_from_coeffs(int q, time_bc bc, vcp::matrix<T, P> C) {
         field_type s = make_field(q, bc);
         if (C.rowsize() != s.mt_ || C.columnsize() != s.nx_)
-            throw std::invalid_argument("btfem::st_rt_space::field_from_coeffs: size != ndof_t x ndof_rt");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_rt_space::field_from_coeffs: size != ndof_t x ndof_rt");
         s.C_ = std::move(C);
         return s;
     }
     field_type field_from_vector(int q, time_bc bc, const vcp::matrix<T, P>& v) {
         field_type s = make_field(q, bc);
         if (v.rowsize() != s.mt_ * s.nx_ || v.columnsize() != 1)
-            throw std::invalid_argument("btfem::st_rt_space::field_from_vector: size != ndof_t ndof_rt x 1");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_rt_space::field_from_vector: size != ndof_t ndof_rt x 1");
         s.C_.zeros(s.mt_, s.nx_);
         for (int a = 0; a < s.mt_; ++a)
             for (int i = 0; i < s.nx_; ++i)
@@ -206,7 +206,7 @@ public:
         validate(s);
         const int m = tm_.num_intervals();
         if (l < 0 || l > m)
-            throw std::invalid_argument("btfem::st_rt_space::section_at_node: l out of range");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_rt_space::section_at_node: l out of range");
         const time_space<T>& Vt = time_dofs(s.q_, s.bc_);
         const int gt = (l == 0) ? Vt.global_dof(1, 0) : Vt.global_dof(l, s.q_);
         if (gt < 0) return rs_->zero_field();
@@ -221,7 +221,7 @@ public:
         validate(s);
         const int m = tm_.num_intervals();
         if (l < 1 || l > m)
-            throw std::invalid_argument("btfem::st_rt_space::section_at: l out of range");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_rt_space::section_at: l out of range");
         const time_space<T>& Vt = time_dofs(s.q_, s.bc_);
         vcp::matrix<T, P> c;
         c.zeros(s.nx_, 1);
@@ -246,11 +246,11 @@ public:
     // of st_rt_assemble.hpp can use it; std::invalid_argument on violation)
     void validate(const field_type& s) const {
         if (s.space_id_ != static_cast<const void*>(rs_) || s.tmesh_id_ != static_cast<const void*>(&tm_))
-            throw std::invalid_argument("btfem::st_rt_space: st_rt_field does not belong to this space");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_rt_space: st_rt_field does not belong to this space");
         if (s.k_ != rs_->order())
-            throw std::invalid_argument("btfem::st_rt_space: st_rt_field RT order != rt_space::order()");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_rt_space: st_rt_field RT order != rt_space::order()");
         if (s.C_.rowsize() != s.mt_ || s.C_.columnsize() != s.nx_)
-            throw std::invalid_argument("btfem::st_rt_space: st_rt_field coefficient matrix size changed");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_rt_space: st_rt_field coefficient matrix size changed");
     }
 
 private:

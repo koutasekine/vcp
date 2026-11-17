@@ -142,7 +142,7 @@ template <int D, typename T>
 void st_add_into(st_local<D, T>& out, const st_local<D, T>& u, const st_local<D, T>& v) {
     assert(&out != &u && &out != &v);
     if (u.qt != v.qt)
-        throw std::invalid_argument("btfem::st_add_into: time degree mismatch");
+        vcp::throw_error<vcp::invalid_argument>("btfem::st_add_into: time degree mismatch");
     const int n = u.n >= v.n ? u.n : v.n;
     out.prepare(u.qt, n, false);
     for (int r = 0; r <= u.qt; ++r) bfem::add_into(out.r(r), u.r(r), v.r(r));

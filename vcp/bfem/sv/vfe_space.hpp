@@ -126,7 +126,7 @@ public:
           geom_() {
         bfem_scalar_traits<T>::require();   // C-1 contract (L4, additive)
         if (scalar.num_elements() != msh.num_elements())
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::vfe_space: fe_space is not built from this mesh");
         geom_.reserve(static_cast<std::size_t>(nt_));
         for (int e = 0; e < nt_; ++e) {
@@ -153,9 +153,9 @@ public:
     int global_dof(int d, int i, int m) const {
         const int N = scalar_->ndof(m);
         if (d < 0 || d >= D)
-            throw std::invalid_argument("bfem::vfe_space::global_dof: bad component");
+            vcp::throw_error<vcp::invalid_argument>("bfem::vfe_space::global_dof: bad component");
         if (i < 0 || i >= N)
-            throw std::invalid_argument("bfem::vfe_space::global_dof: bad scalar dof");
+            vcp::throw_error<vcp::invalid_argument>("bfem::vfe_space::global_dof: bad scalar dof");
         return d * N + i;
     }
 
@@ -167,7 +167,7 @@ public:
     }
     function_type function_from_coeffs(int m, vcp::matrix<T, P> c) const {
         if (c.rowsize() != ndof(m) || c.columnsize() != 1)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::vfe_space::function_from_coeffs: size != D * ndof(m) x 1");
         function_type f(m);
         f.c_ = std::move(c);
@@ -212,7 +212,7 @@ public:
     scalar_function_type component(const function_type& u, int d) const {
         validate(u);
         if (d < 0 || d >= D)
-            throw std::invalid_argument("bfem::vfe_space::component: bad component");
+            vcp::throw_error<vcp::invalid_argument>("bfem::vfe_space::component: bad component");
         const int N = scalar_->ndof(u.degree());
         vcp::matrix<T, P> c;
         c.zeros(N, 1);
@@ -223,19 +223,19 @@ public:
                        const scalar_function_type& f) const {
         validate(u);
         if (d < 0 || d >= D)
-            throw std::invalid_argument("bfem::vfe_space::set_component: bad component");
+            vcp::throw_error<vcp::invalid_argument>("bfem::vfe_space::set_component: bad component");
         if (f.degree() != u.degree())
-            throw std::invalid_argument("bfem::vfe_space::set_component: degree mismatch");
+            vcp::throw_error<vcp::invalid_argument>("bfem::vfe_space::set_component: degree mismatch");
         const int N = scalar_->ndof(u.degree());
         if (f.coeffs().rowsize() != N || f.coeffs().columnsize() != 1)
-            throw std::invalid_argument("bfem::vfe_space::set_component: size mismatch");
+            vcp::throw_error<vcp::invalid_argument>("bfem::vfe_space::set_component: size mismatch");
         for (int i = 0; i < N; ++i) u.coeffs()(d * N + i, 0) = f.coeffs()(i, 0);
     }
 
     void validate(const function_type& u) const {
         if (u.coeffs().columnsize() != 1
             || u.coeffs().rowsize() != ndof(u.degree()))
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::vfe_space: vfe_function does not match this space");
     }
 

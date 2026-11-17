@@ -71,7 +71,7 @@ template <typename X> struct constant_from_string< kv::interval<X> > {
 template <> struct constant_from_string<rational> {
     static rational get(const char* s) {
         if (s == 0)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "vcp::bfem::constants::constant_from_string<rational>: "
                 "null string");
         const std::string str(s);
@@ -80,19 +80,19 @@ template <> struct constant_from_string<rational> {
             const char c = str[i];
             if (c == '.') {
                 if (dot != std::string::npos)
-                    throw std::invalid_argument(
+                    vcp::throw_error<vcp::invalid_argument>(
                         "vcp::bfem::constants::constant_from_string<rational>: "
                         "more than one dot");
                 dot = i;
             } else if (!(c >= '0' && c <= '9')) {
-                throw std::invalid_argument(
+                vcp::throw_error<vcp::invalid_argument>(
                     "vcp::bfem::constants::constant_from_string<rational>: "
                     "character outside the fixed table grammar "
                     "(digits, one dot, digits)");
             }
         }
         if (dot == std::string::npos || dot == 0 || dot + 1 == str.size())
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "vcp::bfem::constants::constant_from_string<rational>: "
                 "the fixed table grammar is digits, one dot, digits");
 

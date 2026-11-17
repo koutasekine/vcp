@@ -85,7 +85,7 @@ public:
     static bpoly from_coeffs(int n, std::vector<T> c) {
         check_degree(n);
         if (static_cast<int>(c.size()) != coeff_registry<D>::indices(n).size())
-            throw std::invalid_argument("bfem::bpoly::from_coeffs: size != N(D, n)");
+            vcp::throw_error<vcp::invalid_argument>("bfem::bpoly::from_coeffs: size != N(D, n)");
         bpoly r;
         r.deg_ = n;
         r.c_ = std::move(c);
@@ -108,13 +108,13 @@ public:
     // ---- in-place (degree preserving only, U1) ----
     bpoly& operator+=(const bpoly& v) {
         if (v.deg_ != deg_)
-            throw std::invalid_argument("bfem::bpoly::operator+=: degree mismatch");
+            vcp::throw_error<vcp::invalid_argument>("bfem::bpoly::operator+=: degree mismatch");
         for (std::size_t i = 0; i < c_.size(); ++i) c_[i] += v.c_[i];
         return *this;
     }
     bpoly& operator-=(const bpoly& v) {
         if (v.deg_ != deg_)
-            throw std::invalid_argument("bfem::bpoly::operator-=: degree mismatch");
+            vcp::throw_error<vcp::invalid_argument>("bfem::bpoly::operator-=: degree mismatch");
         for (std::size_t i = 0; i < c_.size(); ++i) c_[i] -= v.c_[i];
         return *this;
     }
@@ -133,7 +133,7 @@ private:
 
     static int check_degree(int n) {
         if (n < 0)
-            throw std::invalid_argument("bfem::bpoly: negative degree");
+            vcp::throw_error<vcp::invalid_argument>("bfem::bpoly: negative degree");
         return n;
     }
     friend struct detail::bpoly_access;
@@ -287,7 +287,7 @@ template <int D, typename T>
 void elevate_into(bpoly<D, T>& dst, const bpoly<D, T>& u, int m) {
     assert(&dst != &u);
     if (m < u.degree())
-        throw std::invalid_argument("bfem::elevate: m < degree(u)");
+        vcp::throw_error<vcp::invalid_argument>("bfem::elevate: m < degree(u)");
     if (m == u.degree()) {
         detail::bpoly_access::prepare(dst, m, false);
         std::vector<T>& d = detail::bpoly_access::vec(dst);
@@ -319,7 +319,7 @@ template <int D, typename T>
 void dlambda_into(bpoly<D, T>& dst, const bpoly<D, T>& u, int i) {
     assert(&dst != &u);
     if (i < 0 || i > D)
-        throw std::invalid_argument("bfem::dlambda: direction out of range");
+        vcp::throw_error<vcp::invalid_argument>("bfem::dlambda: direction out of range");
     int n = u.degree();
     if (n == 0) {
         detail::bpoly_access::prepare(dst, 0, true);

@@ -131,14 +131,14 @@ public:
     field_type field_from_coeffs(int q, time_bc bc, vcp::matrix<T, P> C) {
         field_type u = make_field(q, bc);
         if (C.rowsize() != u.mt_ || C.columnsize() != u.nx_)
-            throw std::invalid_argument("btfem::st_broken_space::field_from_coeffs: size != ndof_t x ndof_broken");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_broken_space::field_from_coeffs: size != ndof_t x ndof_broken");
         u.C_ = std::move(C);
         return u;
     }
     field_type field_from_vector(int q, time_bc bc, const vcp::matrix<T, P>& v) {
         field_type u = make_field(q, bc);
         if (v.rowsize() != u.mt_ * u.nx_ || v.columnsize() != 1)
-            throw std::invalid_argument("btfem::st_broken_space::field_from_vector: size != ndof_t ndof_broken x 1");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_broken_space::field_from_vector: size != ndof_t ndof_broken x 1");
         u.C_.zeros(u.mt_, u.nx_);
         for (int a = 0; a < u.mt_; ++a)
             for (int i = 0; i < u.nx_; ++i)
@@ -160,7 +160,7 @@ public:
         validate(u);
         const int m = tm_.num_intervals();
         if (l < 0 || l > m)
-            throw std::invalid_argument("btfem::st_broken_space::section_at_node: l out of range");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_broken_space::section_at_node: l out of range");
         const time_space<T>& Vt = time_dofs(u.q_, u.bc_);
         const int gt = (l == 0) ? Vt.global_dof(1, 0) : Vt.global_dof(l, u.q_);
         if (gt < 0) return bs_->zero_field();
@@ -173,7 +173,7 @@ public:
         validate(u);
         const int m = tm_.num_intervals();
         if (l < 1 || l > m)
-            throw std::invalid_argument("btfem::st_broken_space::section_at: l out of range");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_broken_space::section_at: l out of range");
         const time_space<T>& Vt = time_dofs(u.q_, u.bc_);
         vcp::matrix<T, P> c;
         c.zeros(u.nx_, 1);
@@ -228,11 +228,11 @@ public:
     // membership / shape check (public: used by the st_rt_assemble free functions)
     void validate(const field_type& u) const {
         if (u.space_id_ != static_cast<const void*>(bs_) || u.tmesh_id_ != static_cast<const void*>(&tm_))
-            throw std::invalid_argument("btfem::st_broken_space: st_broken_field does not belong to this space");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_broken_space: st_broken_field does not belong to this space");
         if (u.l_ != bs_->order())
-            throw std::invalid_argument("btfem::st_broken_space: st_broken_field order != broken_space::order()");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_broken_space: st_broken_field order != broken_space::order()");
         if (u.C_.rowsize() != u.mt_ || u.C_.columnsize() != u.nx_)
-            throw std::invalid_argument("btfem::st_broken_space: st_broken_field coefficient matrix size changed");
+            vcp::throw_error<vcp::invalid_argument>("btfem::st_broken_space: st_broken_field coefficient matrix size changed");
     }
 
 private:

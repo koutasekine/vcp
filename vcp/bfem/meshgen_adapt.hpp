@@ -148,7 +148,7 @@ struct nvb_engine {
         std::map<std::pair<int, int>, std::vector<int> >::iterator it =
             nvb.edge_tris.find(key);
         if (it == nvb.edge_tris.end())
-            throw meshgen_degenerate(
+            vcp::throw_error<vcp::error>(
                 "vcp::bfem::meshgen_adapt: internal: missing adjacency edge");
         std::vector<int>& lst = it->second;
         bool removed = false;
@@ -159,7 +159,7 @@ struct nvb_engine {
                 break;
             }
         if (!removed)
-            throw meshgen_degenerate(
+            vcp::throw_error<vcp::error>(
                 "vcp::bfem::meshgen_adapt: internal: missing adjacency entry");
         if (lst.empty()) nvb.edge_tris.erase(it);
     }
@@ -168,7 +168,7 @@ struct nvb_engine {
         std::vector<int>& lst = nvb.edge_tris[key];
         lst.push_back(t);
         if (lst.size() > 2)
-            throw meshgen_degenerate(
+            vcp::throw_error<vcp::error>(
                 "vcp::bfem::meshgen_adapt: internal: edge with more than two "
                 "incident triangles");
     }
@@ -178,7 +178,7 @@ struct nvb_engine {
         std::map<std::pair<int, int>, std::vector<int> >::const_iterator it =
             nvb.edge_tris.find(key);
         if (it == nvb.edge_tris.end())
-            throw meshgen_degenerate(
+            vcp::throw_error<vcp::error>(
                 "vcp::bfem::meshgen_adapt: internal: missing adjacency edge");
         const std::vector<int>& lst = it->second;
         for (std::size_t i = 0; i < lst.size(); ++i)
@@ -242,7 +242,7 @@ struct nvb_engine {
         const std::pair<int, int> ek = refedge_key(x);
         const int n = neighbor_across(ek, x);
         if (n >= 0 && refedge_key(n) != ek)
-            throw meshgen_degenerate(
+            vcp::throw_error<vcp::error>(
                 "vcp::bfem::meshgen_adapt: internal: partner not compatible");
         const int u = ek.first;    // u < v by edge_key
         const int v = ek.second;
@@ -269,7 +269,7 @@ struct nvb_engine {
             const int n = neighbor_across(ek, cur);
             if (n < 0 || refedge_key(n) == ek) break;
             if (in_chain[static_cast<std::size_t>(n)] != 0)
-                throw meshgen_degenerate(
+                vcp::throw_error<vcp::error>(
                     "vcp::bfem::meshgen_adapt: refinement-edge cycle "
                     "(unreachable by the labeling design; report if seen)");
             in_chain[static_cast<std::size_t>(cur)] = 1;
@@ -284,7 +284,7 @@ struct nvb_engine {
             const std::pair<int, int> ek = refedge_key(prev);
             const int n = neighbor_across(ek, prev);
             if (n >= 0 && refedge_key(n) != ek)
-                throw meshgen_degenerate(
+                vcp::throw_error<vcp::error>(
                     "vcp::bfem::meshgen_adapt: internal: chain unwind not "
                     "compatible");
             split_pair(prev);
@@ -311,7 +311,7 @@ void nvb_initialize(const coarse_mesh<T>& cm, nvb_state<T>& nvb) {
                          e[static_cast<std::size_t>((j + 1) % 3)])];
             lst.push_back(static_cast<int>(t));
             if (lst.size() > 2)
-                throw meshgen_error(
+                vcp::throw_error<vcp::bfem::meshgen_error>(
                     "vcp::bfem::meshgen_adapt: non-manifold input mesh");
         }
     }
@@ -332,13 +332,13 @@ template <typename T>
 void refine_marked(meshgen_detail::coarse_mesh<T>& cm, nvb_state<T>& nvb,
                    const std::vector<int>& marked_elements, int rounds) {
     if (rounds < 0)
-        throw meshgen_error(
+        vcp::throw_error<vcp::bfem::meshgen_error>(
             "vcp::bfem::meshgen_adapt: rounds must be non-negative");
     if (!nvb.labeled)
         meshgen_adapt_detail::nvb_initialize(cm, nvb);
     if (nvb.peak.size() != cm.triangles.size() ||
         nvb.gen.size() != cm.triangles.size())
-        throw meshgen_error(
+        vcp::throw_error<vcp::bfem::meshgen_error>(
             "vcp::bfem::meshgen_adapt: nvb_state out of sync with the mesh");
 
     meshgen_adapt_detail::nvb_engine<T> eng(cm, nvb);
@@ -346,7 +346,7 @@ void refine_marked(meshgen_detail::coarse_mesh<T>& cm, nvb_state<T>& nvb,
     for (std::size_t i = 0; i < marked_elements.size(); ++i) {
         const int t = marked_elements[i];
         if (t < 0 || t >= n0)
-            throw meshgen_error(
+            vcp::throw_error<vcp::bfem::meshgen_error>(
                 "vcp::bfem::meshgen_adapt: marked element id out of range");
         eng.is_target[static_cast<std::size_t>(t)] = 1;
     }
@@ -395,7 +395,7 @@ template <typename T, typename SizeFn>
 void refine_size_field(meshgen_detail::coarse_mesh<T>& cm, nvb_state<T>& nvb,
                        SizeFn h_of_x, int max_rounds) {
     if (max_rounds < 0)
-        throw meshgen_error(
+        vcp::throw_error<vcp::bfem::meshgen_error>(
             "vcp::bfem::meshgen_adapt: max_rounds must be non-negative");
     for (int r = 0; r < max_rounds; ++r) {
         std::vector<int> marked;
@@ -448,21 +448,21 @@ void refine_geometric_corner(meshgen_detail::coarse_mesh<T>& cm,
                              const std::vector<int>& corner_vertex_ids,
                              const T& sigma, int layers, const T& beta) {
     if (layers < 0)
-        throw meshgen_error(
+        vcp::throw_error<vcp::bfem::meshgen_error>(
             "vcp::bfem::meshgen_adapt: layers must be non-negative");
     if (!meshgen_detail::certainly_pos(sigma) ||
         !meshgen_adapt_detail::certainly_less(sigma, T(1)))
-        throw meshgen_error(
+        vcp::throw_error<vcp::bfem::meshgen_error>(
             "vcp::bfem::meshgen_adapt: sigma must be certainly inside (0,1)");
     if (!meshgen_detail::certainly_pos(beta))
-        throw meshgen_error(
+        vcp::throw_error<vcp::bfem::meshgen_error>(
             "vcp::bfem::meshgen_adapt: beta must be certainly positive");
     // corner coordinates are frozen up front (ids denote input vertices)
     std::vector<std::array<T, 2> > corners;
     for (std::size_t i = 0; i < corner_vertex_ids.size(); ++i) {
         const int v = corner_vertex_ids[i];
         if (v < 0 || v >= static_cast<int>(cm.vertices.size()))
-            throw meshgen_error(
+            vcp::throw_error<vcp::bfem::meshgen_error>(
                 "vcp::bfem::meshgen_adapt: corner vertex id out of range");
         corners.push_back(cm.vertices[static_cast<std::size_t>(v)]);
     }
@@ -572,7 +572,7 @@ mesh<2, T> generate_mesh_adaptive(const polygon_domain<T>& dom, const T& h,
         return generate_mesh(dom, h, status, opt);
     }
     if (!meshgen_detail::certainly_pos(h))
-        throw meshgen_error("vcp::bfem::meshgen: h must be certainly positive");
+        vcp::throw_error<vcp::bfem::meshgen_error>("vcp::bfem::meshgen: h must be certainly positive");
     status = meshgen_status<2>();
     meshgen_detail::coarse_mesh<T> cm;
     bool complete = true;

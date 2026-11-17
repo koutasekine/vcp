@@ -19,6 +19,7 @@
 #include <mutex>
 #include <cstdint>
 #include <cassert>
+#include <vcp/error.hpp>
 
 namespace vcp {
 namespace bfem {
@@ -62,7 +63,7 @@ public:
         return true;
     }
     long long to_int64() const {
-        if (!fits_int64()) throw std::overflow_error("bfem::bigint: to_int64 overflow");
+        if (!fits_int64()) vcp::throw_error<vcp::numerical_error>("bfem::bigint: to_int64 overflow");
         std::uint64_t u = 0;
         if (limb_.size() >= 1) u |= static_cast<std::uint64_t>(limb_[0]);
         if (limb_.size() == 2) u |= static_cast<std::uint64_t>(limb_[1]) << 32;
@@ -121,7 +122,7 @@ public:
     // truncated division: q = trunc(a/b), r = a - q*b (sign of r = sign of a).
     // identity q*b + r == a is the I1 test invariant.
     static void divmod(const bigint& a, const bigint& b, bigint& q, bigint& r) {
-        if (b.is_zero()) throw std::logic_error("bfem::bigint: division by zero");
+        if (b.is_zero()) vcp::throw_error<vcp::domain_error>("bfem::bigint: division by zero");
         divmod_abs(a.limb_, b.limb_, q.limb_, r.limb_);
         q.neg_ = !q.limb_.empty() && (a.neg_ != b.neg_);
         r.neg_ = !r.limb_.empty() && a.neg_;
@@ -180,7 +181,7 @@ public:
             neg = (s[pos] == '-');
             ++pos;
         }
-        if (pos >= s.size()) throw std::invalid_argument("bfem::bigint: empty numeral");
+        if (pos >= s.size()) vcp::throw_error<vcp::invalid_argument>("bfem::bigint: empty numeral");
         const bigint chunk_base(1000000000LL);
         // process leading partial chunk, then 9-digit chunks
         std::size_t ndig = s.size() - pos;
@@ -191,7 +192,7 @@ public:
             long long v = 0;
             for (; pos < end; ++pos) {
                 if (s[pos] < '0' || s[pos] > '9')
-                    throw std::invalid_argument("bfem::bigint: bad digit");
+                    vcp::throw_error<vcp::invalid_argument>("bfem::bigint: bad digit");
                 v = v * 10 + (s[pos] - '0');
             }
             r = r * chunk_base + bigint(v);
@@ -381,7 +382,7 @@ public:
     }
     rational& operator/=(const rational& o) {
         if (o.num_.is_zero())
-            throw std::logic_error("bfem::rational: division by zero");
+            vcp::throw_error<vcp::domain_error>("bfem::rational: division by zero");
         num_ = num_ * o.den_;
         den_ = den_ * o.num_;
         normalize();
@@ -415,7 +416,7 @@ private:
 
     void normalize() {
         if (den_.is_zero())
-            throw std::logic_error("bfem::rational: zero denominator");
+            vcp::throw_error<vcp::domain_error>("bfem::rational: zero denominator");
         if (den_.negative()) { den_ = -den_; num_ = -num_; }
         if (num_.is_zero()) { den_ = bigint(1); return; }
         bigint g = bigint::gcd(num_, den_);
@@ -443,7 +444,7 @@ public:
     // C(n, k). precondition: n >= 0, 0 <= k <= n.
     static const bigint& binom(int n, int k) {
         if (n < 0 || k < 0 || k > n)
-            throw std::invalid_argument("bfem::binomial_cache: bad (n, k)");
+            vcp::throw_error<vcp::invalid_argument>("bfem::binomial_cache: bad (n, k)");
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         while (static_cast<int>(s.rows.size()) <= n) {

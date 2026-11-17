@@ -87,7 +87,7 @@ public:
           u_loc_(), w_loc_(), b_loc_(), bsig_(), loc_(), buf_() {
         bfem::bfem_scalar_traits<T>::require();
         if (msh.num_elements() != Vh.num_elements())
-            throw std::invalid_argument("btfem::pg_space: mesh and fe_space element counts differ");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space: mesh and fe_space element counts differ");
     }
 
     // ---- T12 accessors ----
@@ -110,14 +110,14 @@ public:
     function_type function_from_coeffs(int q, time_bc bc, int n, vcp::matrix<T, P> C) {
         function_type u = make_fn(q, bc, n);
         if (C.rowsize() != u.mt_ || C.columnsize() != u.nx_)
-            throw std::invalid_argument("btfem::pg_space::function_from_coeffs: size != ndof_t x ndof_x");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space::function_from_coeffs: size != ndof_t x ndof_x");
         u.C_ = std::move(C);
         return u;
     }
     function_type function_from_vector(int q, time_bc bc, int n, const vcp::matrix<T, P>& v) {
         function_type u = make_fn(q, bc, n);
         if (v.rowsize() != u.mt_ * u.nx_ || v.columnsize() != 1)
-            throw std::invalid_argument("btfem::pg_space::function_from_vector: size != ndof_t ndof_x x 1");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space::function_from_vector: size != ndof_t ndof_x x 1");
         u.C_.zeros(u.mt_, u.nx_);
         for (int a = 0; a < u.mt_; ++a)
             for (int i = 0; i < u.nx_; ++i)
@@ -255,7 +255,7 @@ public:
     vcp::matrix<T, P> convection_dt(const std::array<T, D>& b_const, const function_type& ubar, int q, int n) {
         validate(ubar);
         if (ubar.n_ < 1)
-            throw std::invalid_argument("btfem::pg_space::convection_dt: ubar space degree < 1");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space::convection_dt: ubar space degree < 1");
         const time_space<T>& Vt = time_dofs(q, time_bc_zero_left);
         const time_space<T>& Vtb = time_dofs(ubar.q_, ubar.bc_);
         const bfem::dofmap<D>& dm = Vh_->dofs(n);
@@ -285,7 +285,7 @@ public:
         validate(ubar);
         validate_b(b);
         if (ubar.n_ < 1)
-            throw std::invalid_argument("btfem::pg_space::convection_dt: ubar space degree < 1");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space::convection_dt: ubar space degree < 1");
         const time_space<T>& Vt = time_dofs(q, time_bc_zero_left);
         const time_space<T>& Vtb = time_dofs(ubar.q_, ubar.bc_);
         const time_space<T>& Vtbb = time_dofs(b[0].q_, b[0].bc_);
@@ -316,7 +316,7 @@ public:
         validate(u);
         const int m = tm_.num_intervals();
         if (l < 0 || l > m)
-            throw std::invalid_argument("btfem::pg_space::section_at_node: l out of range");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space::section_at_node: l out of range");
         const time_space<T>& Vt = time_dofs(u.q_, u.bc_);
         int gt = (l == 0) ? Vt.global_dof(1, 0) : Vt.global_dof(l, u.q_);
         if (gt < 0) return Vh_->zero_function(u.n_);            // bc_zero_left, l = 0
@@ -331,7 +331,7 @@ public:
         validate(u);
         const int m = tm_.num_intervals();
         if (l < 1 || l > m)
-            throw std::invalid_argument("btfem::pg_space::section_at: l out of range");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space::section_at: l out of range");
         const time_space<T>& Vt = time_dofs(u.q_, u.bc_);
         vcp::matrix<T, P> c;
         c.zeros(u.nx_, 1);
@@ -350,7 +350,7 @@ public:
     std::vector<bfem::bpoly<1, T> > time_trace(const function_type& u, int e, const bfem::bary_point<D, T>& lam) {
         validate(u);
         if (e < 0 || e >= Vh_->num_elements())
-            throw std::invalid_argument("btfem::pg_space::time_trace: element out of range");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space::time_trace: element out of range");
         const time_space<T>& Vtb = time_dofs(u.q_, u.bc_);
         const bfem::dofmap<D>& dmb = Vh_->dofs(u.n_);
         const int m = tm_.num_intervals();
@@ -368,9 +368,9 @@ public:
     T eval(const function_type& u, int l, const bfem::bary_point<1, T>& tau, int e, const bfem::bary_point<D, T>& lam) {
         validate(u);
         if (l < 1 || l > tm_.num_intervals())
-            throw std::invalid_argument("btfem::pg_space::eval: l out of range");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space::eval: l out of range");
         if (e < 0 || e >= Vh_->num_elements())
-            throw std::invalid_argument("btfem::pg_space::eval: element out of range");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space::eval: element out of range");
         const time_space<T>& Vtb = time_dofs(u.q_, u.bc_);
         detail::st_gather(u_loc_, u.C_, Vtb, l, Vh_->dofs(u.n_), e);
         return detail::st_eval(u_loc_, tau, lam, ws_);
@@ -410,7 +410,7 @@ public:
     function_type elevate_space(const function_type& u, int n2) {
         validate(u);
         if (n2 < u.n_)
-            throw std::invalid_argument("btfem::pg_space::elevate_space: n2 < space degree");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space::elevate_space: n2 < space degree");
         function_type out = zero_function(u.q_, u.bc_, n2);
         vcp::matrix<T, P> c;
         for (int a = 0; a < u.mt_; ++a) {
@@ -470,15 +470,15 @@ private:
     }
     void validate(const function_type& u) const {
         if (u.space_id_ != static_cast<const void*>(Vh_) || u.tmesh_id_ != static_cast<const void*>(&tm_))
-            throw std::invalid_argument("btfem::pg_space: st_poly does not belong to this pg_space");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space: st_poly does not belong to this pg_space");
         if (u.C_.rowsize() != u.mt_ || u.C_.columnsize() != u.nx_)
-            throw std::invalid_argument("btfem::pg_space: st_poly coefficient matrix size changed");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space: st_poly coefficient matrix size changed");
     }
     void validate_b(const std::array<function_type, D>& b) const {
         for (int d = 0; d < D; ++d) {
             validate(b[static_cast<std::size_t>(d)]);
             if (b[static_cast<std::size_t>(d)].q_ != b[0].q_ || b[static_cast<std::size_t>(d)].bc_ != b[0].bc_)
-                throw std::invalid_argument("btfem::pg_space: components of b must share the time space (q, bc)");
+                vcp::throw_error<vcp::invalid_argument>("btfem::pg_space: components of b must share the time space (q, bc)");
         }
     }
     void require_same_space_degree(const function_type& ubar, int n, const char* where) const {
@@ -486,7 +486,7 @@ private:
             std::string msg("btfem::pg_space::");
             msg += where;
             msg += ": ubar space degree != n (D-3; use elevate_space)";
-            throw std::invalid_argument(msg);
+            vcp::throw_error<vcp::invalid_argument>(msg);
         }
     }
     void prepare_buffers(int count, int nt, int N) {
@@ -673,7 +673,7 @@ catch (...) {
     section_type initial_diff(const bfem::fe_function<D, T, P>& u0, const function_type& ubar) {
         validate(ubar);
         if (u0.coeffs().columnsize() != 1 || u0.coeffs().rowsize() != Vh_->ndof(u0.degree()))
-            throw std::invalid_argument("btfem::pg_space::initial_error: u0 does not match the fe_space");
+            vcp::throw_error<vcp::invalid_argument>("btfem::pg_space::initial_error: u0 does not match the fe_space");
         section_type e0 = section_at_node(ubar, 0);
         const int nn = u0.degree() > e0.degree() ? u0.degree() : e0.degree();
         section_type a = (u0.degree() == nn) ? u0 : Vh_->elevate(u0, nn);

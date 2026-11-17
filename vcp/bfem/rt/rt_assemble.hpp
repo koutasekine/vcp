@@ -63,7 +63,7 @@ inline void rt_require_same_mesh(int nt_a, int nv_a, int nt_b, int nv_b,
         std::string msg("bfem::");
         msg += where;
         msg += ": spaces are not built from the same mesh";
-        throw std::invalid_argument(msg);
+        vcp::throw_error<vcp::invalid_argument>(msg);
     }
 }
 
@@ -161,7 +161,7 @@ template <int D, typename T, typename P, class SPR, class SPF>
 vcp::spmatrix<T, SPR> assemble_cross_grad(rt_space<D, T, P, SPR>& rs,
                                           fe_space<D, T, P, SPF>& fs, int m) {
     if (m < 1)
-        throw std::invalid_argument("bfem::assemble_cross_grad: m < 1");
+        vcp::throw_error<vcp::invalid_argument>("bfem::assemble_cross_grad: m < 1");
     detail::rt_require_same_mesh(rs.num_elements(), rs.num_vertices(),
                                  fs.num_elements(), fs.ndof(1),
                                  "assemble_cross_grad");
@@ -242,10 +242,10 @@ T flux_error_sq(rt_space<D, T, P, SPR>& rs, const rt_field<D, T, P>& sig,
                                  fs.num_elements(), fs.ndof(1), "flux_error_sq");
     if (sig.order() != rs.order()
         || sig.coeffs().rowsize() != rs.ndof() || sig.coeffs().columnsize() != 1)
-        throw std::invalid_argument("bfem::flux_error_sq: rt_field mismatch");
+        vcp::throw_error<vcp::invalid_argument>("bfem::flux_error_sq: rt_field mismatch");
     const dofmap<D>& fdm = fs.dofs(u.degree());
     if (u.coeffs().rowsize() != fdm.ndof() || u.coeffs().columnsize() != 1)
-        throw std::invalid_argument("bfem::flux_error_sq: fe_function mismatch");
+        vcp::throw_error<vcp::invalid_argument>("bfem::flux_error_sq: fe_function mismatch");
     rt_element_op<D, T, P> op;
     rt_local_coeffs<T> sloc;
     sloc.k = rs.order();
@@ -271,10 +271,10 @@ T div_residual_sq(rt_space<D, T, P, SPR>& rs, const rt_field<D, T, P>& sig,
                                  fs.num_elements(), fs.ndof(1), "div_residual_sq");
     if (sig.order() != rs.order()
         || sig.coeffs().rowsize() != rs.ndof() || sig.coeffs().columnsize() != 1)
-        throw std::invalid_argument("bfem::div_residual_sq: rt_field mismatch");
+        vcp::throw_error<vcp::invalid_argument>("bfem::div_residual_sq: rt_field mismatch");
     const dofmap<D>& fdm = fs.dofs(u.degree());
     if (u.coeffs().rowsize() != fdm.ndof() || u.coeffs().columnsize() != 1)
-        throw std::invalid_argument("bfem::div_residual_sq: fe_function mismatch");
+        vcp::throw_error<vcp::invalid_argument>("bfem::div_residual_sq: fe_function mismatch");
     rt_element_op<D, T, P> op;
     rt_local_coeffs<T> sloc;
     sloc.k = rs.order();
@@ -304,7 +304,7 @@ vcp::matrix<T, P> broken_load(broken_space<D, T, P, SPB>& bs, const poly1<T>& f,
                                  fs.num_elements(), fs.ndof(1), "broken_load");
     const dofmap<D>& fdm = fs.dofs(uh.degree());
     if (uh.coeffs().rowsize() != fdm.ndof() || uh.coeffs().columnsize() != 1)
-        throw std::invalid_argument("bfem::broken_load: fe_function mismatch");
+        vcp::throw_error<vcp::invalid_argument>("bfem::broken_load: fe_function mismatch");
     const int l = bs.order();
     const int nloc = bs.local_size();
     element_op<D, T, P> op;
@@ -339,7 +339,7 @@ T projection_error_sq(broken_space<D, T, P, SPB>& bs, const poly1<T>& f,
                                  "projection_error_sq");
     const dofmap<D>& fdm = fs.dofs(uh.degree());
     if (uh.coeffs().rowsize() != fdm.ndof() || uh.coeffs().columnsize() != 1)
-        throw std::invalid_argument("bfem::projection_error_sq: fe_function mismatch");
+        vcp::throw_error<vcp::invalid_argument>("bfem::projection_error_sq: fe_function mismatch");
     const int l = bs.order();
     const int nloc = bs.local_size();
     const typename typed_rt_registry<D, T>::mat_table& Mi =
@@ -378,7 +378,7 @@ template <int D, typename T, typename P, class SPF, class SPB>
 vcp::spmatrix<T, SPF> assemble_mixed_mass(fe_space<D, T, P, SPF>& fs, int m,
                                           broken_space<D, T, P, SPB>& bs) {
     if (m < 1)
-        throw std::invalid_argument("bfem::assemble_mixed_mass: m < 1");
+        vcp::throw_error<vcp::invalid_argument>("bfem::assemble_mixed_mass: m < 1");
     detail::rt_require_same_mesh(fs.num_elements(), fs.ndof(1),
                                  bs.num_elements(), bs.num_vertices(),
                                  "assemble_mixed_mass");

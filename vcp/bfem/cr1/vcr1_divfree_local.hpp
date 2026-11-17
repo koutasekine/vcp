@@ -475,7 +475,7 @@ vcr1_divfree_local_basis<T> build_vcr1_divfree_local_basis(
     const int nfac = detail::cr1_topology<D>::num_facets(tp);
     const int nr = red.reduced_size();
     if (nt != V.num_elements() || nfac != V.scalar_ndof() || nfac != red.full_size())
-        throw std::invalid_argument(
+        vcp::throw_error<vcp::invalid_argument>(
             std::string(who) + ": the mesh, the vector CR space and the Dirichlet "
             "reduction do not belong together (sizes)");
     {
@@ -485,7 +485,7 @@ vcr1_divfree_local_basis<T> build_vcr1_divfree_local_basis(
         for (std::size_t k = 0; k < bf.size(); ++k) isb[static_cast<std::size_t>(bf[k])] = 1;
         for (int f = 0; f < nfac; ++f)
             if ((red.to_reduced(f) < 0) != (isb[static_cast<std::size_t>(f)] != 0))
-                throw std::invalid_argument(
+                vcp::throw_error<vcp::invalid_argument>(
                     std::string(who) + ": the Dirichlet reduction is not the reduction "
                     "of the boundary facets of the mesh");
     }

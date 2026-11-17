@@ -121,7 +121,7 @@ struct mesh_topology3 {
             for (int a = 0; a < 4; ++a)
                 for (int b = a + 1; b < 4; ++b)
                     if (t[static_cast<std::size_t>(a)] == t[static_cast<std::size_t>(b)])
-                        throw std::invalid_argument(
+                        vcp::throw_error<vcp::invalid_argument>(
                             "bfem::topology3: element with repeated vertex");
         }
         build_edges(tp);
@@ -238,7 +238,7 @@ private:
                    && rs[j].g2 == rs[i].g2) ++j;
             std::size_t count = j - i;
             if (count > 2)
-                throw std::invalid_argument(
+                vcp::throw_error<vcp::invalid_argument>(
                     "bfem::topology3: non-manifold input (a face shared by 3+ elements)");
             std::array<int, 3> fv = { { rs[i].g0, rs[i].g1, rs[i].g2 } };
             tp.faces.push_back(fv);

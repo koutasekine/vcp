@@ -37,7 +37,7 @@ public:
         : tm_(tm), q_(q), bc_(bc), m_(tm.num_intervals()), ndof_(0), l2g_(),
           local_mass_(), local_stiffness_(), wm_cache_() {
         if (q < 1)
-            throw std::invalid_argument("btfem::time_space: q < 1");
+            vcp::throw_error<vcp::invalid_argument>("btfem::time_space: q < 1");
         // l2g_t (internal 3.1)
         l2g_.assign(static_cast<std::size_t>(m_) * static_cast<std::size_t>(q + 1), -1);
         for (int l = 1; l <= m_; ++l) {
@@ -72,7 +72,7 @@ public:
     // g(l, r), l = 1..m, r = 0..q; removed dof -> -1
     int global_dof(int l, int r) const {
         if (l < 1 || l > m_ || r < 0 || r > q_)
-            throw std::invalid_argument("btfem::time_space::global_dof: (l, r) out of range");
+            vcp::throw_error<vcp::invalid_argument>("btfem::time_space::global_dof: (l, r) out of range");
         return l2g_[static_cast<std::size_t>(l - 1) * static_cast<std::size_t>(q_ + 1)
                     + static_cast<std::size_t>(r)];
     }
@@ -132,15 +132,15 @@ public:
         const std::vector<table_type>& W =
             detail::time_tables_typed<T>::weighted_dt_mass_ref(sdeg, q_);
         if (sigma < 0 || sigma > sdeg)
-            throw std::invalid_argument("btfem::time_space::local_weighted_dt_mass: sigma out of range");
+            vcp::throw_error<vcp::invalid_argument>("btfem::time_space::local_weighted_dt_mass: sigma out of range");
         return W[static_cast<std::size_t>(sigma)];
     }
     // k (beta^{sdeg}_sigma psi_b, psi_a)_{J_l}
     const table_type& local_weighted_mass(int sdeg, int sigma) const {
         if (sdeg < 0)
-            throw std::invalid_argument("btfem::time_space::local_weighted_mass: sdeg < 0");
+            vcp::throw_error<vcp::invalid_argument>("btfem::time_space::local_weighted_mass: sdeg < 0");
         if (sigma < 0 || sigma > sdeg)
-            throw std::invalid_argument("btfem::time_space::local_weighted_mass: sigma out of range");
+            vcp::throw_error<vcp::invalid_argument>("btfem::time_space::local_weighted_mass: sigma out of range");
         typename std::map<int, std::vector<table_type> >::iterator it = wm_cache_.find(sdeg);
         if (it == wm_cache_.end()) {
             const std::vector<table_type>& U =
@@ -179,7 +179,7 @@ private:
             std::string msg("btfem::time_space::");
             msg += where;
             msg += ": time spaces live on different time meshes";
-            throw std::invalid_argument(msg);
+            vcp::throw_error<vcp::invalid_argument>(msg);
         }
     }
     // scatter a (q+1)x(q+1) local table with l2g_t; order: l ascending, (a,b) row major

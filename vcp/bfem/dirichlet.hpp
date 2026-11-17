@@ -37,13 +37,13 @@ public:
     dirichlet_reduction(int full_size, std::vector<int> bdofs)
         : full_(full_size), to_reduced_(), to_full_() {
         if (full_size < 0)
-            throw std::invalid_argument("bfem::dirichlet_reduction: negative size");
+            vcp::throw_error<vcp::invalid_argument>("bfem::dirichlet_reduction: negative size");
         std::sort(bdofs.begin(), bdofs.end());
         for (std::size_t k = 0; k < bdofs.size(); ++k) {
             if (bdofs[k] < 0 || bdofs[k] >= full_size)
-                throw std::invalid_argument("bfem::dirichlet_reduction: bdof out of range");
+                vcp::throw_error<vcp::invalid_argument>("bfem::dirichlet_reduction: bdof out of range");
             if (k > 0 && bdofs[k] == bdofs[k - 1])
-                throw std::invalid_argument("bfem::dirichlet_reduction: duplicate bdof");
+                vcp::throw_error<vcp::invalid_argument>("bfem::dirichlet_reduction: duplicate bdof");
         }
         to_reduced_.assign(static_cast<std::size_t>(full_size), 0);
         for (std::size_t k = 0; k < bdofs.size(); ++k)
@@ -62,12 +62,12 @@ public:
     int reduced_size() const { return static_cast<int>(to_full_.size()); }
     int to_reduced(int full_dof) const {          // constrained dofs map to -1
         if (full_dof < 0 || full_dof >= full_)
-            throw std::invalid_argument("bfem::dirichlet_reduction::to_reduced: out of range");
+            vcp::throw_error<vcp::invalid_argument>("bfem::dirichlet_reduction::to_reduced: out of range");
         return to_reduced_[static_cast<std::size_t>(full_dof)];
     }
     int to_full(int reduced_dof) const {
         if (reduced_dof < 0 || reduced_dof >= reduced_size())
-            throw std::invalid_argument("bfem::dirichlet_reduction::to_full: out of range");
+            vcp::throw_error<vcp::invalid_argument>("bfem::dirichlet_reduction::to_full: out of range");
         return to_full_[static_cast<std::size_t>(reduced_dof)];
     }
 
@@ -75,7 +75,7 @@ public:
     // definiteness when present)
     spmatrix_t reduce(const spmatrix_t& A) const {
         if (A.rowsize() != full_ || A.columnsize() != full_)
-            throw std::invalid_argument("bfem::dirichlet_reduction::reduce: size mismatch");
+            vcp::throw_error<vcp::invalid_argument>("bfem::dirichlet_reduction::reduce: size mismatch");
         detail::coo_buffer<T> buf;
         collector col = { this, &buf };
         detail::spm_adapter<T, SP>::for_each_entry(A, col);
@@ -85,7 +85,7 @@ public:
 
     vcp::matrix<T, P> reduce(const vcp::matrix<T, P>& v) const {
         if (v.rowsize() != full_ || v.columnsize() != 1)
-            throw std::invalid_argument("bfem::dirichlet_reduction::reduce: vector size mismatch");
+            vcp::throw_error<vcp::invalid_argument>("bfem::dirichlet_reduction::reduce: vector size mismatch");
         vcp::matrix<T, P> out;
         out.zeros(reduced_size(), 1);
         for (int r = 0; r < reduced_size(); ++r)
@@ -96,7 +96,7 @@ public:
     // reinsert T(0) at the constrained dofs
     vcp::matrix<T, P> expand(const vcp::matrix<T, P>& v_reduced) const {
         if (v_reduced.rowsize() != reduced_size() || v_reduced.columnsize() != 1)
-            throw std::invalid_argument("bfem::dirichlet_reduction::expand: vector size mismatch");
+            vcp::throw_error<vcp::invalid_argument>("bfem::dirichlet_reduction::expand: vector size mismatch");
         vcp::matrix<T, P> out;
         out.zeros(full_, 1);
         for (int r = 0; r < reduced_size(); ++r)
@@ -116,7 +116,7 @@ public:
     // reduce(A) == reduce_rows(reduce_cols(A)) exactly.
     spmatrix_t reduce_rows(const spmatrix_t& A) const {
         if (A.rowsize() != full_)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::dirichlet_reduction::reduce_rows: row size mismatch");
         detail::coo_buffer<T> buf;
         row_collector col = { this, &buf };
@@ -126,7 +126,7 @@ public:
     }
     spmatrix_t reduce_cols(const spmatrix_t& A) const {
         if (A.columnsize() != full_)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::dirichlet_reduction::reduce_cols: column size mismatch");
         detail::coo_buffer<T> buf;
         col_collector col = { this, &buf };

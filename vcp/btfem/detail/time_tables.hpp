@@ -78,7 +78,7 @@ struct deriv_matrix {
     deriv_matrix() : q(0), d() {}
     explicit deriv_matrix(int qq) : q(qq), d() {
         if (qq < 1)
-            throw std::invalid_argument("btfem::deriv_matrix: q < 1");
+            vcp::throw_error<vcp::invalid_argument>("btfem::deriv_matrix: q < 1");
         d.assign(static_cast<std::size_t>(qq) * static_cast<std::size_t>(qq + 1), 0);
         bfem::derivative_map<1> dm(qq);
         for (int r = 0; r <= qq; ++r) {
@@ -199,7 +199,7 @@ private:
             std::string msg("btfem::time_tables_rational::");
             msg += where;
             msg += ": q < 1";
-            throw std::invalid_argument(msg);
+            vcp::throw_error<vcp::invalid_argument>(msg);
         }
     }
     static void check_s(int s, const char* where) {
@@ -207,7 +207,7 @@ private:
             std::string msg("btfem::time_tables_rational::");
             msg += where;
             msg += ": sdeg < 0";
-            throw std::invalid_argument(msg);
+            vcp::throw_error<vcp::invalid_argument>(msg);
         }
     }
 

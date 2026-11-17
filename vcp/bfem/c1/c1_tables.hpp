@@ -68,7 +68,7 @@ inline void c1_check_k(int k, const char* where) {
         std::string msg("bfem::c1: ");
         msg += where;
         msg += ": k must be >= 5";
-        throw std::invalid_argument(msg);
+        vcp::throw_error<vcp::invalid_argument>(msg);
     }
 }
 
@@ -318,7 +318,7 @@ inline rmat c1_hermite_w(int k) {
     for (int i = 0; i <= k; ++i)
         for (int j = 0; j <= k; ++j)
             if (!(P.at(i, j) == rational(i == j ? 1 : 0)))
-                throw std::logic_error(
+                vcp::throw_error<vcp::error>(
                     "bfem::c1_hermite_w: Hermite duality check failed");
     rmat G(k - 4, k + 1);
     for (int j = 1; j <= k - 4; ++j)
@@ -476,7 +476,7 @@ public:
     static const rt_mat_table& load_contracted(int k, int q) {
         detail::c1_check_k(k, "load_contracted");
         if (q < 0)
-            throw std::invalid_argument("bfem::c1_registry::load_contracted: q < 0");
+            vcp::throw_error<vcp::invalid_argument>("bfem::c1_registry::load_contracted: q < 0");
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(k, q);
@@ -490,7 +490,7 @@ public:
     static const rt_block_table& lap_mixed(int k, int l) {
         detail::c1_check_k(k, "lap_mixed");
         if (l < 0)
-            throw std::invalid_argument("bfem::c1_registry::lap_mixed: l < 0");
+            vcp::throw_error<vcp::invalid_argument>("bfem::c1_registry::lap_mixed: l < 0");
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(k, l);
@@ -555,7 +555,7 @@ private:
             for (int i = 0; i < dim; ++i)
                 for (int j = 0; j < dim; ++j)
                     if (!(P.at(i, j) == detail::rational(i == j ? 1 : 0)))
-                        throw std::logic_error(
+                        vcp::throw_error<vcp::error>(
                             "bfem::c1_registry::basis: duality check failed");
             rt_mat_table t = detail::rt_table_access::make_mat(
                 C.rows, C.cols, detail::rmat_flat(C));

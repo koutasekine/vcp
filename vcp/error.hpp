@@ -39,6 +39,7 @@
 
 namespace vcp {
 
+	// ---- 共通 ----
 	class error : public std::runtime_error {
 	public:
 		using std::runtime_error::runtime_error;
@@ -113,6 +114,60 @@ namespace vcp {
 		using error::error;
 	};
 
+	namespace bfem {
+		// ---- bfem 特有 ----
+		class degenerate_element : public vcp::verification_error {
+		public:
+			using vcp::verification_error::verification_error;
+		};
+
+		class meshgen_error : public vcp::invalid_argument {
+		public:
+			using vcp::invalid_argument::invalid_argument;
+		};
+
+		class meshgen_degenerate : public vcp::verification_error {
+		public:
+			using vcp::verification_error::verification_error;
+		};
+
+		class meshgen_limit : public vcp::numerical_error {
+		public:
+			using vcp::numerical_error::numerical_error;
+		};
+
+		class meshgen_convert_error : public vcp::domain_error {
+		public:
+			using vcp::domain_error::domain_error;
+		};
+
+		class meshgen_io_error : public vcp::io_error {
+		public:
+			using vcp::io_error::io_error;
+		};
+
+		// SV-4 fail-fast: the collinearity of interval coordinates is undecidable
+		class sv_indeterminate_singularity : public vcp::verification_error {
+		public:
+			using vcp::verification_error::verification_error;
+		};
+
+		// SV-4 contract transplanted: interval corner classification undecidable
+		class c1_indeterminate_corner : public vcp::verification_error {
+		public:
+			using vcp::verification_error::verification_error;
+		};
+	}
+
+	namespace btfem {
+		// ---- btfem 特有 ----
+		class degenerate_interval : public vcp::verification_error {
+		public:
+			using vcp::verification_error::verification_error;
+		};
+	}
+
+	// ---- throw_error ----
 	namespace detail {
 		inline void append_message(std::ostringstream&) {}
 

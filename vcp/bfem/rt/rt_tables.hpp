@@ -514,7 +514,7 @@ public:
     static const rt_block_table& div_mass(int k, int l) {
         check_k(k, "div_mass");
         if (l < 0)
-            throw std::invalid_argument("bfem::rt_registry::div_mass: l < 0");
+            vcp::throw_error<vcp::invalid_argument>("bfem::rt_registry::div_mass: l < 0");
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         std::pair<int, int> key(k, l);
@@ -547,7 +547,7 @@ public:
     // T-R7 (l >= 0; v0.3)
     static const rt_mat_table& inv_mass(int l) {
         if (l < 0)
-            throw std::invalid_argument("bfem::rt_registry::inv_mass: l < 0");
+            vcp::throw_error<vcp::invalid_argument>("bfem::rt_registry::inv_mass: l < 0");
         state& s = st();
         std::lock_guard<std::mutex> lk(s.mtx);
         return s.invm.get_or_build(l, [&]() -> rt_mat_table {
@@ -576,7 +576,7 @@ private:
             std::string msg("bfem::rt_registry::");
             msg += where;
             msg += ": k < 0";
-            throw std::invalid_argument(msg);
+            vcp::throw_error<vcp::invalid_argument>(msg);
         }
     }
     static void check_n(int n, const char* where) {
@@ -584,7 +584,7 @@ private:
             std::string msg("bfem::rt_registry::");
             msg += where;
             msg += ": n < 1";
-            throw std::invalid_argument(msg);
+            vcp::throw_error<vcp::invalid_argument>(msg);
         }
     }
 
@@ -931,7 +931,7 @@ rt_mat_table rt_registry<D>::build_inv_mass(int l) {
     for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
             if (!(P.at(i, j) == detail::rational(i == j ? 1 : 0)))
-                throw std::logic_error(
+                vcp::throw_error<vcp::error>(
                     "bfem::rt_registry::inv_mass: exact inverse check failed");
     return detail::rt_table_access::make_mat(n, n, detail::rmat_flat(Minv));
 }

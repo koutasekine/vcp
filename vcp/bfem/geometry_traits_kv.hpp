@@ -22,7 +22,7 @@ struct geometry_traits<kv::interval<F> > {
     static int sign(const kv::interval<F>& det) {
         if (det.upper() < F(0)) return -1;
         if (det.lower() > F(0)) return +1;
-        throw degenerate_element(
+        vcp::throw_error<vcp::bfem::degenerate_element>(
             "bfem::element_geometry: interval det encloses zero (unverifiable element)");
     }
 };

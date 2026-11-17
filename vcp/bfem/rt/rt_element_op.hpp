@@ -136,7 +136,7 @@ public:
         require_geometry();
         check_k(k, "local_div_mass");
         if (l < 0)
-            throw std::invalid_argument("bfem::rt_element_op::local_div_mass: l < 0");
+            vcp::throw_error<vcp::invalid_argument>("bfem::rt_element_op::local_div_mass: l < 0");
         const typename typed_rt_registry<D, T>::block_table& DM =
             typed_rt_registry<D, T>::div_mass(k, l);
         out.zeros(DM.rows(), DM.cols());
@@ -151,7 +151,7 @@ public:
         require_geometry();
         check_k(k, "local_cross_grad");
         if (n < 1)
-            throw std::invalid_argument("bfem::rt_element_op::local_cross_grad: n < 1");
+            vcp::throw_error<vcp::invalid_argument>("bfem::rt_element_op::local_cross_grad: n < 1");
         const typename typed_rt_registry<D, T>::mat_table& X =
             typed_rt_registry<D, T>::cross_grad_contracted(k, n);
         out.zeros(X.rows(), X.cols());
@@ -269,14 +269,14 @@ private:
     }
     void require_geometry() const {
         if (!geometry_set_)
-            throw std::logic_error("bfem::rt_element_op: set_geometry not called");
+            vcp::throw_error<vcp::state_error>("bfem::rt_element_op: set_geometry not called");
     }
     static void check_k(int k, const char* where) {
         if (k < 0) {
             std::string msg("bfem::rt_element_op::");
             msg += where;
             msg += ": k < 0";
-            throw std::invalid_argument(msg);
+            vcp::throw_error<vcp::invalid_argument>(msg);
         }
     }
     void validate_sig(const rt_local_coeffs<T>& sig, const char* where) const {
@@ -285,7 +285,7 @@ private:
             std::string msg("bfem::rt_element_op::");
             msg += where;
             msg += ": coefficient size != dim(k)";
-            throw std::invalid_argument(msg);
+            vcp::throw_error<vcp::invalid_argument>(msg);
         }
     }
 };

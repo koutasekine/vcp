@@ -142,7 +142,7 @@ public:
     std::vector<int> boundary_dofs() const { return dm_.boundary_dofs(); }
     const element_geometry<D, T>& geometry(int e) const {
         if (e < 0 || e >= topo_.nt)
-            throw std::invalid_argument("bfem::cr1_space::geometry: element out of range");
+            vcp::throw_error<vcp::invalid_argument>("bfem::cr1_space::geometry: element out of range");
         return geom_[static_cast<std::size_t>(e)];
     }
     // the facet as its ascending global vertex tuple: the data of the facet
@@ -241,7 +241,7 @@ public:
     // entry points take the facet means themselves.
     std::vector<T> interpolate_from_averages(const std::vector<T>& avg) const {
         if (static_cast<int>(avg.size()) != dm_.ndof())
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::cr1_space::interpolate_from_averages: size != ndof");
         return avg;
     }
@@ -257,9 +257,9 @@ public:
     // ---- local evaluation: sum_i dof_{l2g(e,i)} (1 - D lam_i) ----
     T value_local(int e, const std::vector<T>& dofvec, const T* lam) const {
         if (e < 0 || e >= topo_.nt)
-            throw std::invalid_argument("bfem::cr1_space::value_local: element out of range");
+            vcp::throw_error<vcp::invalid_argument>("bfem::cr1_space::value_local: element out of range");
         if (static_cast<int>(dofvec.size()) != dm_.ndof())
-            throw std::invalid_argument("bfem::cr1_space::value_local: size != ndof");
+            vcp::throw_error<vcp::invalid_argument>("bfem::cr1_space::value_local: size != ndof");
         T r(0);
         for (int i = 0; i <= D; ++i)
             r += dofvec[static_cast<std::size_t>(dm_.l2g(e, i))]

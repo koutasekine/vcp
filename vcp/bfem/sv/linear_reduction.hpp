@@ -83,7 +83,7 @@ public:
         : full_(full_size), to_reduced_(), to_full_(), weights_(),
           qmode_(false), qweights_() {
         if (full_size < 0)
-            throw std::invalid_argument("bfem::linear_reduction: negative size");
+            vcp::throw_error<vcp::invalid_argument>("bfem::linear_reduction: negative size");
 
         // working rows as sorted maps dof -> integer coefficient
         typedef std::map<int, long long> irow;
@@ -92,19 +92,19 @@ public:
         for (std::size_t k = 0; k < rows.size(); ++k) {
             const sv_constraint& r = rows[k];
             if (r.dof.size() != r.coef.size() || r.dof.empty())
-                throw std::invalid_argument(
+                vcp::throw_error<vcp::invalid_argument>(
                     "bfem::linear_reduction: malformed constraint row");
             irow m;
             for (std::size_t s = 0; s < r.dof.size(); ++s) {
                 if (r.dof[s] < 0 || r.dof[s] >= full_size)
-                    throw std::invalid_argument(
+                    vcp::throw_error<vcp::invalid_argument>(
                         "bfem::linear_reduction: dof out of range");
                 if (r.coef[s] == 0)
-                    throw std::invalid_argument(
+                    vcp::throw_error<vcp::invalid_argument>(
                         "bfem::linear_reduction: zero coefficient");
                 if (!m.insert(std::make_pair(r.dof[s],
                         static_cast<long long>(r.coef[s]))).second)
-                    throw std::invalid_argument(
+                    vcp::throw_error<vcp::invalid_argument>(
                         "bfem::linear_reduction: duplicate dof in a row");
             }
             w.push_back(m);
@@ -126,7 +126,7 @@ public:
                 }
             }
             if (w[k].empty())
-                throw std::invalid_argument(
+                vcp::throw_error<vcp::invalid_argument>(
                     "bfem::linear_reduction: dependent constraint row");
             // pivot: largest dof index among the +-1 coefficients
             int pk = -1;
@@ -135,7 +135,7 @@ public:
                 if (p->second == 1 || p->second == -1) { pk = p->first; sk = p->second; }
             }
             if (pk < 0)
-                throw std::invalid_argument(
+                vcp::throw_error<vcp::invalid_argument>(
                     "bfem::linear_reduction: no +-1 pivot in a constraint row");
             piv[static_cast<std::size_t>(k)] = pk;
             pivc[static_cast<std::size_t>(k)] = sk;
@@ -195,7 +195,7 @@ public:
         : full_(full_size), to_reduced_(), to_full_(), weights_(),
           qmode_(true), qweights_() {
         if (full_size < 0)
-            throw std::invalid_argument("bfem::linear_reduction: negative size");
+            vcp::throw_error<vcp::invalid_argument>("bfem::linear_reduction: negative size");
         typedef detail::rational rat;
         typedef std::map<int, rat> qrow;
         std::vector<qrow> w;
@@ -203,18 +203,18 @@ public:
         for (std::size_t k = 0; k < rows.size(); ++k) {
             const sv_constraint_q& r = rows[k];
             if (r.dof.size() != r.coef.size() || r.dof.empty())
-                throw std::invalid_argument(
+                vcp::throw_error<vcp::invalid_argument>(
                     "bfem::linear_reduction: malformed constraint row");
             qrow m;
             for (std::size_t s = 0; s < r.dof.size(); ++s) {
                 if (r.dof[s] < 0 || r.dof[s] >= full_size)
-                    throw std::invalid_argument(
+                    vcp::throw_error<vcp::invalid_argument>(
                         "bfem::linear_reduction: dof out of range");
                 if (r.coef[s].is_zero())
-                    throw std::invalid_argument(
+                    vcp::throw_error<vcp::invalid_argument>(
                         "bfem::linear_reduction: zero coefficient");
                 if (!m.insert(std::make_pair(r.dof[s], r.coef[s])).second)
-                    throw std::invalid_argument(
+                    vcp::throw_error<vcp::invalid_argument>(
                         "bfem::linear_reduction: duplicate dof in a row");
             }
             w.push_back(m);
@@ -241,7 +241,7 @@ public:
                 }
             }
             if (w[k].empty())
-                throw std::invalid_argument(
+                vcp::throw_error<vcp::invalid_argument>(
                     "bfem::linear_reduction: dependent constraint row");
             // pivot: first nonzero in canonical (ascending dof) order
             piv[static_cast<std::size_t>(k)] = w[k].begin()->first;
@@ -309,13 +309,13 @@ public:
     int num_constraints() const { return full_ - reduced_size(); }
     int to_reduced(int full_dof) const {          // pivot dofs map to -1
         if (full_dof < 0 || full_dof >= full_)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::linear_reduction::to_reduced: out of range");
         return to_reduced_[static_cast<std::size_t>(full_dof)];
     }
     int to_full(int reduced_dof) const {
         if (reduced_dof < 0 || reduced_dof >= reduced_size())
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::linear_reduction::to_full: out of range");
         return to_full_[static_cast<std::size_t>(reduced_dof)];
     }
@@ -323,7 +323,7 @@ public:
     // ---- congruence reduction T^t A T ----
     spmatrix_t reduce(const spmatrix_t& A) const {
         if (A.rowsize() != full_ || A.columnsize() != full_)
-            throw std::invalid_argument("bfem::linear_reduction::reduce: size mismatch");
+            vcp::throw_error<vcp::invalid_argument>("bfem::linear_reduction::reduce: size mismatch");
         detail::coo_buffer<T> buf;
         if (qmode_) {
             q_both_collector col = { this, &buf };
@@ -339,7 +339,7 @@ public:
     // ---- one-sided reductions (v0.2, A-2) ----
     spmatrix_t reduce_rows(const spmatrix_t& A) const {
         if (A.rowsize() != full_)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::linear_reduction::reduce_rows: row size mismatch");
         detail::coo_buffer<T> buf;
         if (qmode_) {
@@ -354,7 +354,7 @@ public:
     }
     spmatrix_t reduce_cols(const spmatrix_t& A) const {
         if (A.columnsize() != full_)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::linear_reduction::reduce_cols: column size mismatch");
         detail::coo_buffer<T> buf;
         if (qmode_) {
@@ -371,7 +371,7 @@ public:
     // ---- vectors ----
     vcp::matrix<T, P> reduce(const vcp::matrix<T, P>& v) const {   // T^t v
         if (v.rowsize() != full_ || v.columnsize() != 1)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::linear_reduction::reduce: vector size mismatch");
         vcp::matrix<T, P> out;
         out.zeros(reduced_size(), 1);
@@ -398,7 +398,7 @@ public:
     }
     vcp::matrix<T, P> expand(const vcp::matrix<T, P>& v_reduced) const {  // T x
         if (v_reduced.rowsize() != reduced_size() || v_reduced.columnsize() != 1)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::linear_reduction::expand: vector size mismatch");
         vcp::matrix<T, P> out;
         out.zeros(full_, 1);

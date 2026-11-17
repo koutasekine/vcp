@@ -301,7 +301,7 @@ public:
     sv_pressure_constraints(const mesh<D, T>& msh, int n)
         : n_(n), rows_(), singular_vertices_(), singular_edges_() {
         if (n < 1)
-            throw std::invalid_argument(
+            vcp::throw_error<vcp::invalid_argument>(
                 "bfem::sv_pressure_constraints: n must be >= 1");
         std::vector<detail::sv_candidate> cand =
             detail::sv_backend<D>::candidates(msh, n - 1,

@@ -80,7 +80,7 @@ void kron_check_shapes(const std::vector<kron_term<T, P, SP> >& terms, const cha
         std::string msg("btfem::");
         msg += where;
         msg += ": empty term list";
-        throw std::invalid_argument(msg);
+        vcp::throw_error<vcp::invalid_argument>(msg);
     }
     for (std::size_t t = 1; t < terms.size(); ++t) {
         if (terms[t].time_rows() != terms[0].time_rows() || terms[t].time_cols() != terms[0].time_cols()
@@ -89,7 +89,7 @@ void kron_check_shapes(const std::vector<kron_term<T, P, SP> >& terms, const cha
             std::string msg("btfem::");
             msg += where;
             msg += ": term shapes differ";
-            throw std::invalid_argument(msg);
+            vcp::throw_error<vcp::invalid_argument>(msg);
         }
     }
 }
@@ -173,7 +173,7 @@ vcp::matrix<T, P> kron_apply(const std::vector<kron_term<T, P, SP> >& terms,
     const int nx = t0.space_rows(), nxp = t0.space_cols();
     const int rt = t0.time_rows(), ct = t0.time_cols();
     if (x.rowsize() != ct * nxp || x.columnsize() != 1)
-        throw std::invalid_argument("btfem::kron_apply: x size != cols_t * n_x' x 1");
+        vcp::throw_error<vcp::invalid_argument>("btfem::kron_apply: x size != cols_t * n_x' x 1");
     vcp::matrix<T, P> y;
     y.zeros(rt * nx, 1);
     std::vector<T> z(static_cast<std::size_t>(nx));
@@ -205,7 +205,7 @@ vcp::matrix<T, P> block_reduce(const bfem::dirichlet_reduction<T, P, SP>& R, int
                                const vcp::matrix<T, P>& v) {
     const int nf = R.full_size(), nr = R.reduced_size();
     if (nblocks < 0 || v.rowsize() != nblocks * nf || v.columnsize() != 1)
-        throw std::invalid_argument("btfem::block_reduce: vector size != nblocks * full_size x 1");
+        vcp::throw_error<vcp::invalid_argument>("btfem::block_reduce: vector size != nblocks * full_size x 1");
     vcp::matrix<T, P> out;
     out.zeros(nblocks * nr, 1);
     for (int a = 0; a < nblocks; ++a)
@@ -219,7 +219,7 @@ vcp::matrix<T, P> block_expand(const bfem::dirichlet_reduction<T, P, SP>& R, int
                                const vcp::matrix<T, P>& vr) {
     const int nf = R.full_size(), nr = R.reduced_size();
     if (nblocks < 0 || vr.rowsize() != nblocks * nr || vr.columnsize() != 1)
-        throw std::invalid_argument("btfem::block_expand: vector size != nblocks * reduced_size x 1");
+        vcp::throw_error<vcp::invalid_argument>("btfem::block_expand: vector size != nblocks * reduced_size x 1");
     vcp::matrix<T, P> out;
     out.zeros(nblocks * nf, 1);
     for (int a = 0; a < nblocks; ++a)
@@ -251,7 +251,7 @@ vcp::spmatrix<T, SP> block_reduce(const bfem::dirichlet_reduction<T, P, SP>& R, 
     const int nf = R.full_size(), nr = R.reduced_size();
     if (nblocks < 0 || static_cast<int>(A.rowsize()) != nblocks * nf
         || static_cast<int>(A.columnsize()) != nblocks * nf)
-        throw std::invalid_argument("btfem::block_reduce: matrix size != (nblocks * full_size)^2");
+        vcp::throw_error<vcp::invalid_argument>("btfem::block_reduce: matrix size != (nblocks * full_size)^2");
     bfem::detail::coo_buffer<T> buf;
     detail::block_collector<T, P, SP> col = { &R, &buf, nf, nr };
     bfem::detail::spm_adapter<T, SP>::for_each_entry(A, col);
@@ -270,15 +270,15 @@ public:
     initial_reduction(const time_space<T>& full, const time_space<T>& reduced, int n_x)
         : mt_full_(full.ndof()), mt_red_(reduced.ndof()), nx_(n_x) {
         if (full.degree() != reduced.degree())
-            throw std::invalid_argument("btfem::initial_reduction: degrees differ");
+            vcp::throw_error<vcp::invalid_argument>("btfem::initial_reduction: degrees differ");
         if (full.bc() != time_bc_none || reduced.bc() != time_bc_zero_left)
-            throw std::invalid_argument("btfem::initial_reduction: full must be bc_none, reduced bc_zero_left");
+            vcp::throw_error<vcp::invalid_argument>("btfem::initial_reduction: full must be bc_none, reduced bc_zero_left");
         if (!full.same_mesh(reduced))
-            throw std::invalid_argument("btfem::initial_reduction: different time meshes");
+            vcp::throw_error<vcp::invalid_argument>("btfem::initial_reduction: different time meshes");
         if (n_x < 1)
-            throw std::invalid_argument("btfem::initial_reduction: n_x < 1");
+            vcp::throw_error<vcp::invalid_argument>("btfem::initial_reduction: n_x < 1");
         if (mt_full_ != mt_red_ + 1)
-            throw std::invalid_argument("btfem::initial_reduction: inconsistent dof counts");
+            vcp::throw_error<vcp::invalid_argument>("btfem::initial_reduction: inconsistent dof counts");
     }
 
     int full_size() const { return mt_full_ * nx_; }
@@ -287,7 +287,7 @@ public:
 
     vcp::matrix<T, P> reduce(const vcp::matrix<T, P>& v_full) const {
         if (v_full.rowsize() != full_size() || v_full.columnsize() != 1)
-            throw std::invalid_argument("btfem::initial_reduction::reduce: size mismatch");
+            vcp::throw_error<vcp::invalid_argument>("btfem::initial_reduction::reduce: size mismatch");
         vcp::matrix<T, P> out;
         out.zeros(reduced_size(), 1);
         for (int i = 0; i < reduced_size(); ++i) out(i, 0) = v_full(nx_ + i, 0);
@@ -297,9 +297,9 @@ public:
     vcp::matrix<T, P> expand(const vcp::matrix<T, P>& v_reduced,
                              const bfem::fe_function<D, T, P>& u_init) const {
         if (v_reduced.rowsize() != reduced_size() || v_reduced.columnsize() != 1)
-            throw std::invalid_argument("btfem::initial_reduction::expand: size mismatch");
+            vcp::throw_error<vcp::invalid_argument>("btfem::initial_reduction::expand: size mismatch");
         if (u_init.coeffs().rowsize() != nx_ || u_init.coeffs().columnsize() != 1)
-            throw std::invalid_argument("btfem::initial_reduction::expand: u_init size != n_x");
+            vcp::throw_error<vcp::invalid_argument>("btfem::initial_reduction::expand: u_init size != n_x");
         vcp::matrix<T, P> out;
         out.zeros(full_size(), 1);
         for (int i = 0; i < nx_; ++i) out(i, 0) = u_init.coeffs()(i, 0);
