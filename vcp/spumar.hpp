@@ -67,32 +67,14 @@ namespace spumar_detail {
 
 	// ---- exact-operator evaluation helpers (B-4 / P-6) -------------------
 	// These mirror the base dispatch-layer formulas (spmats_eigs.hpp helpers
-	// 13/13b/14/16) so that the C-1 verdict below is decided under the SAME
-	// conditions as the base solvers.  The C-1 acceptance CHECK itself is
-	// the shared vcp::tsparse::residual_acceptance_check_scaled_ (B-29: the
-	// scale definition is never re-implemented locally).
+	// 13/14/16) so that the residual fields of the result are computed under
+	// the SAME definitions as the base solvers.  They are diagnostics: the
+	// verdict is ARPACK's (EIG-T1 T-9c).
 
 	inline double vec_norm2_(const std::vector<double>& v) {
 		double s = 0.0;
 		for (std::size_t i = 0; i < v.size(); i++) s += v[i] * v[i];
 		return std::sqrt(s);
-	}
-
-	// exact ||A||_inf (max abs row sum) — base helper 13b mirror
-	inline double mat_inf_norm_(const vcp::spmats<double, int>& A) {
-		vcp::spmats<double, int> C = A.as_csr();
-		const std::vector<int>& outer = C.outer_index();
-		const std::vector<double>& val = C.values();
-		double best = 0.0;
-		for (int i = 0; i < C.rowsize(); i++) {
-			double s = 0.0;
-			for (int p = outer[static_cast<std::size_t>(i)];
-			     p < outer[static_cast<std::size_t>(i) + 1]; p++) {
-				s += std::fabs(val[static_cast<std::size_t>(p)]);
-			}
-			if (s > best) best = s;
-		}
-		return best;
 	}
 
 	// ||A||_F — base helper 13 mirror
@@ -341,7 +323,7 @@ namespace vcp {
 			const char* which = "LM";
 			const std::size_t ncv_s = ncv_for_(k, n);
 			const int ncv = static_cast<int>(ncv_s);
-			const int max_iter = max_iter_for_(opt);
+			const int max_iter = max_iter_for_(opt, ncv_s, k);
 
 			eig_result<double> result;
 			result.requested_count = k;
@@ -413,7 +395,7 @@ namespace vcp {
 			const double sigma = opt.use_shift ? opt.shift : 0.0;
 			const std::size_t ncv_s = ncv_for_(k, n);
 			const int ncv = static_cast<int>(ncv_s);
-			const int max_iter = max_iter_for_(opt);
+			const int max_iter = max_iter_for_(opt, ncv_s, k);
 
 			eig_result<double> result;
 			result.requested_count = k;
@@ -876,11 +858,9 @@ namespace vcp {
 		//   P-5: nonsymmetric -> dnaupd/dneupd; complex pairs follow the
 		//        base convention (adjacent (re,re)/(+im,-im), u/v vectors;
 		//        refused honestly when allow_complex_pairs == false, D3-2).
-		//   P-6: converged is decided ONLY by re-evaluated exact residuals
-		//        under the shared C-1 scaled acceptance
-		//        (residual_acceptance_check_scaled_, anorm = exact ||A||_inf);
-		//        C-2 remains backend(ARPACK)-dependent and is disclosed in
-		//        result.message.
+		//   P-6 (EIG-T1 T-9c): converged is ARPACK's verdict (info = 0 and
+		//        the requested count).  The exact residuals are re-evaluated
+		//        and reported as diagnostics.
 		//   info = 1 (max_iter exhausted): honest termination — converged =
 		//        false, converged_count = nconv, converged portion returned.
 		// -------------------------------------------------------------------
@@ -892,7 +872,13 @@ namespace vcp {
 
 			// ---- routing (fallback reasons per P-2; SPU-M1: shared helper) ----
 			const std::string fb = standard_fallback_reason_(k, opt);
-			if (!fb.empty()) {
+			// EIG-T1 T-3b: without shift, smallest_magnitude is the eigenvalues
+			// nearest 0 and target_real the eigenvalues nearest opt.shift --
+			// both are mode 3 with sigma = 0 / opt.shift (which = LM).
+			// target_magnitude (nearest in | |lambda| - |shift| |) has no single
+			// sigma and stays on the own implementation.
+			const bool t3_si = t3_standard_si_route_(k, opt);
+			if (!fb.empty() && !t3_si) {
 				last_delegate_info.clear();
 				last_delegate_info.backend = "spmats-base-fallback";
 				last_delegate_info.note = "eigs fallback to own implementation: " + fb;
@@ -906,10 +892,11 @@ namespace vcp {
 			const bool symmetric = decide_symmetric_(opt);
 
 			// ---- which / mode (P-2, P-3) ----
-			const int mode = opt.use_shift ? 3 : 1;
-			const double sigma = opt.use_shift ? opt.shift : 0.0;
+			const int mode = (opt.use_shift || t3_si) ? 3 : 1;
+			const double sigma = opt.use_shift ? opt.shift
+				: ((t3_si && opt.target == eig_target::target_real) ? opt.shift : 0.0);
 			const char* which = "LM";
-			if (!opt.use_shift) {
+			if (!opt.use_shift && !t3_si) {
 				switch (opt.target) {
 				case eig_target::largest_magnitude:  which = "LM"; break;
 				case eig_target::largest_algebraic:  which = symmetric ? "LA" : "LR"; break;
@@ -921,7 +908,7 @@ namespace vcp {
 			// ---- ncv (P-1) ----
 			const std::size_t ncv_s = ncv_for_(k, n);
 			const int ncv = static_cast<int>(ncv_s);
-			const int max_iter = max_iter_for_(opt);
+			const int max_iter = max_iter_for_(opt, ncv_s, k);
 
 			eig_result<double> result;
 			result.requested_count = k;
@@ -942,6 +929,14 @@ namespace vcp {
 				last_delegate_info.umfpack_numeric_status = si_lu.numeric_status();
 				last_delegate_info.umfpack_control.assign(si_lu.control, si_lu.control + UMFPACK_CONTROL);
 				last_delegate_info.umfpack_info.assign(si_lu.info, si_lu.info + UMFPACK_INFO);
+				if (st != UMFPACK_OK && t3_si) {
+					// EIG-T1 T-3b: the request carried no shift; a singular
+					// A - sigma*I goes back to the own implementation as before.
+					last_delegate_info.backend = "spmats-base-fallback";
+					last_delegate_info.note = "eigs fallback to own implementation: " + fb
+						+ " (mode 3 with the implied sigma: factorization failed)";
+					return spmats<double>::policy_eigs_with_info_impl(k, opt);
+				}
 				if (st != UMFPACK_OK) {
 					result.converged = false;
 					result.status = "factorization_failed";
@@ -979,11 +974,9 @@ namespace vcp {
 		//
 		// A - sigma B is factorized ONCE by UMFPACK before the loop; a
 		// singular pencil shift maps to an honest factorization_failed
-		// result (G-S3.3).  converged is decided ONLY by re-evaluated exact
-		// generalized residuals ||A x - lambda B x|| under the shared
-		// generalized C-1 scaled acceptance (B-48: the scale is
-		// vcp::tsparse::residual_acceptance_check_generalized_scaled_, never
-		// re-implemented).  A complex pair inside the returned window is
+		// result (G-S3.3).  converged is ARPACK's verdict (EIG-T1 T-9c); the
+		// exact generalized residuals ||A x - lambda B x|| are re-evaluated and
+		// reported as diagnostics.  A complex pair inside the returned window is
 		// refused honestly on this path (generalized complex-pair return is
 		// out of spumar's scope; documented).
 		// -------------------------------------------------------------------
@@ -994,6 +987,12 @@ namespace vcp {
 			const std::size_t n = static_cast<std::size_t>(this->rowsize());
 
 			const std::string fb = generalized_fallback_reason_(B, k, opt);
+			// EIG-T1 T-3a: largest_magnitude / largest_algebraic /
+			// smallest_algebraic without shift go to ARPACK mode 2
+			// (OP = B^{-1} A, bmat = 'G'; one UMFPACK factorization of B).
+			if (t3_generalized_mode2_route_(B, k, opt)) {
+				return t3_generalized_mode2_(B, k, opt);
+			}
 			if (!fb.empty()) {
 				last_delegate_info.clear();
 				last_delegate_info.backend = "spmats-base-fallback";
@@ -1011,7 +1010,7 @@ namespace vcp {
 
 			const std::size_t ncv_s = ncv_for_(k, n);
 			const int ncv = static_cast<int>(ncv_s);
-			const int max_iter = max_iter_for_(opt);
+			const int max_iter = max_iter_for_(opt, ncv_s, k);
 
 			eig_result<double> result;
 			result.requested_count = k;
@@ -1117,10 +1116,131 @@ namespace vcp {
 			if (ncv_s > n) ncv_s = n;
 			return ncv_s;
 		}
-		static int max_iter_for_(const eig_options<double>& opt)
+		// EIG-T1 T-3c: opt.max_iter is the total number of operator
+		// applications (as in spmats).  ARPACK's iparam(3) counts restarts:
+		// max(1, (max_iter - ncv) / (applications per restart)).  ARPACK cannot
+		// stop inside a restart, so the total can exceed max_iter slightly.
+		static int max_iter_for_(const eig_options<double>& opt, const std::size_t ncv, const std::size_t k)
 		{
-			return opt.max_iter > (static_cast<std::size_t>(1) << 30)
-				? (1 << 30) : static_cast<int>(opt.max_iter);
+			// G-1 ruling F-2: the applications ARPACK really uses per restart.
+			// dsaup2.f 678-684 / dnaup2.f 661-666: the number of kept Ritz
+			// values is nev + min(nconv, np/2), and with nev = 1 it is ncv/2
+			// (ncv >= 6) or 2 (smaller ncv); np = ncv - kept is largest while
+			// nothing has converged, so this never underestimates a restart.
+			// The first factorization costs ncv applications.
+			std::size_t kept = k;
+			if (k == 1 && ncv >= 6) kept = ncv / 2;
+			else if (k == 1 && ncv > 3) kept = 2;
+			const std::size_t per = (ncv > kept) ? (ncv - kept) : static_cast<std::size_t>(1);
+			std::size_t it = (opt.max_iter > ncv) ? (opt.max_iter - ncv) / per : 0;
+			if (it < 1) it = 1;
+			return it > (static_cast<std::size_t>(1) << 30) ? (1 << 30) : static_cast<int>(it);
+		}
+		// EIG-T1 T-3b: the standard requests without shift that are a mode 3
+		// with an implied sigma (everything else of the fallback rule holds).
+		bool t3_standard_si_route_(const std::size_t k, const eig_options<double>& opt) const
+		{
+			if (opt.use_shift) return false;
+			if (opt.target != eig_target::smallest_magnitude && opt.target != eig_target::target_real) return false;
+			eig_options<double> with_shift = opt;
+			with_shift.use_shift = true;
+			return standard_fallback_reason_(k, with_shift).empty();
+		}
+		// EIG-T1 T-3a: the generalized requests without shift that go to mode 2.
+		bool t3_generalized_mode2_route_(const spmats<double, int>& B, const std::size_t k,
+		                                 const eig_options<double>& opt) const
+		{
+			if (opt.use_shift) return false;
+			if (opt.target != eig_target::largest_magnitude && opt.target != eig_target::largest_algebraic
+			    && opt.target != eig_target::smallest_algebraic) return false;
+			eig_options<double> with_shift = opt;
+			with_shift.use_shift = true;
+			return generalized_fallback_reason_(B, k, with_shift).empty();
+		}
+		// EIG-T1 T-3a: ARPACK mode 2, OP = B^{-1} A (bmat = 'G').  Symmetric:
+		// dsaupd (which = LM / LA / SA; x is overwritten with A*x, dsaupd.f
+		// remark 5).  Nonsymmetric A: dnaupd (which = LM / LR / SR).
+		eig_result<double> t3_generalized_mode2_(const spmats<double, int>& B,
+			const std::size_t k, const eig_options<double>& opt) const
+		{
+			const std::size_t n = static_cast<std::size_t>(this->rowsize());
+			last_delegate_info.clear();
+			last_delegate_info.backend = "arpack";
+			last_delegate_info.note = "generalized delegation: ARPACK mode 2 (bmat='G'), OP=B^{-1}A";
+
+			const bool symmetric = decide_symmetric_(opt) && B.is_symmetric();
+			const char* which = "LM";
+			switch (opt.target) {
+			case eig_target::largest_algebraic:  which = symmetric ? "LA" : "LR"; break;
+			case eig_target::smallest_algebraic: which = symmetric ? "SA" : "SR"; break;
+			default:                             which = "LM"; break;
+			}
+			const std::size_t ncv_s = ncv_for_(k, n);
+			const int ncv = static_cast<int>(ncv_s);
+			const int max_iter = max_iter_for_(opt, ncv_s, k);
+
+			eig_result<double> result;
+			result.requested_count = k;
+			result.method = opt.method;
+			result.used_method = symmetric ? "spumar/arpack(dsaupd,gen)" : "spumar/arpack(dnaupd,gen)";
+			result.used_shift_invert = false;
+			result.used_generalized_operator = true;
+			result.used_subspace_dim = ncv_s;
+
+			spumar_detail::umfpack_lu b_lu;
+			{
+				const int st = b_lu.factorize(B);
+				last_delegate_info.umfpack_symbolic_status = b_lu.symbolic_status();
+				last_delegate_info.umfpack_numeric_status = b_lu.numeric_status();
+				last_delegate_info.umfpack_control.assign(b_lu.control, b_lu.control + UMFPACK_CONTROL);
+				last_delegate_info.umfpack_info.assign(b_lu.info, b_lu.info + UMFPACK_INFO);
+				if (st != UMFPACK_OK) {
+					result.converged = false;
+					result.status = "factorization_failed";
+					result.failure_reason =
+						"generalized mode 2: factorization of B failed (raw UMFPACK status in last_delegate_info)";
+					result.message = result.failure_reason;
+					return result;
+				}
+			}
+			umfpack_solve_ solve = { &b_lu };
+
+			std::size_t solve_count = 0, mul_count = 0;
+			const spmats<double, int>* Ap = this;
+			const spmats<double, int>* Bp = &B;
+			const std::size_t nn = n;
+			const umfpack_solve_* sp = &solve;
+			spumar_detail::arpack_op2_fn op2 =
+				[Ap, sp, &solve_count, &mul_count, nn](double* x, double* y, bool overwrite_x) {
+					std::vector<double> ax(nn, 0.0), sol;
+					Ap->mul_vec(x, ax.data());
+					mul_count++;
+					(*sp)(ax, sol);
+					solve_count++;
+					for (std::size_t i = 0; i < nn; i++) y[i] = sol[i];
+					if (overwrite_x) { for (std::size_t i = 0; i < nn; i++) x[i] = ax[i]; }
+				};
+			spumar_detail::arpack_op_fn opx_unused =
+				[](const double*, double*, const double*) {};   // mode 2 goes through op2
+			spumar_detail::arpack_b_fn bx =
+				[Bp, &mul_count](const double* x, double* y) {
+					Bp->mul_vec(x, y);
+					mul_count++;
+				};
+
+			const spumar_detail::arpack_outcome oc = symmetric
+				? spumar_detail::arpack_drive_symmetric(static_cast<int>(n),
+					static_cast<int>(k), ncv, which, 'G', 2, 0.0,
+					opt.tol, max_iter, opx_unused, bx, op2)
+				: spumar_detail::arpack_drive_nonsymmetric(static_cast<int>(n),
+					static_cast<int>(k), ncv, which, 'G', 2, 0.0, 0.0,
+					opt.tol, max_iter, opx_unused, bx, op2);
+			last_delegate_info.arpack_info = oc.aupd_info;
+			last_delegate_info.arpack_ierr = oc.eupd_ierr;
+			last_delegate_info.arpack_iparam = oc.iparam;
+
+			return assemble_arpack_generalized_result_(result, oc, B, k, opt,
+				solve_count, mul_count);
 		}
 		// S = A - sigma I (construction of override #3, verbatim)
 		spmats<double, int> shifted_standard_(const double sigma) const
@@ -1345,7 +1465,9 @@ namespace vcp {
 		{
 			result.iterations = static_cast<std::size_t>(oc.niter > 0 ? oc.niter : 0);
 			result.linear_solves = solve_count;
-			result.matrix_vector_products = bmul_count;
+			// G-1 ruling F-1: OP is applied once per solve in mode 2 and mode 3
+			result.matrix_vector_products = solve_count;
+			(void)bmul_count;
 			result.converged_count = static_cast<std::size_t>(oc.nconv > 0 ? oc.nconv : 0);
 
 			if ((oc.aupd_info != 0 && oc.aupd_info != 1) || oc.eupd_ierr != 0) {
@@ -1374,8 +1496,6 @@ namespace vcp {
 
 			const double frobA = spumar_detail::mat_frob_norm_(*this);
 			const double frobB = spumar_detail::mat_frob_norm_(B);
-			const double anorm = spumar_detail::mat_inf_norm_(*this);
-			const double bnorm = spumar_detail::mat_inf_norm_(B);
 			result.eigenvalues.assign(oc.dr.begin(), oc.dr.end());
 			result.eigenvectors = oc.z;
 			result.residuals_absolute.assign(m, 0.0);
@@ -1393,8 +1513,6 @@ namespace vcp {
 				result.eigenvalues, result.eigenvectors,
 				result.residuals_absolute, result.residuals_relative,
 				opt.target, opt.shift);
-			std::vector<double> theta_abs(m, 0.0);
-			for (std::size_t i = 0; i < m; i++) theta_abs[i] = std::fabs(result.eigenvalues[i]);
 			result.complex_eigenvalues.clear();
 			for (std::size_t i = 0; i < m; i++) {
 				result.complex_eigenvalues.push_back(
@@ -1413,9 +1531,6 @@ namespace vcp {
 				}
 			}
 
-			const bool c1_ok = vcp::tsparse::residual_acceptance_check_generalized_scaled_(
-				result.residuals_absolute, result.residuals_relative, opt.tol,
-				theta_abs, anorm, bnorm);
 			const bool count_ok = (m >= k);
 
 			if (oc.honest_nonconv()) {
@@ -1426,18 +1541,17 @@ namespace vcp {
 				result.message = result.failure_reason;
 				return result;
 			}
-			if (c1_ok && count_ok) {
+			// EIG-T1 T-9c: converged is ARPACK's own verdict (info = 0 and the
+			// requested count); the re-evaluated residuals above are diagnostics.
+			if (count_ok) {
 				result.converged = true;
 				result.status = "converged";
-				result.message = "converged (generalized C-1 re-evaluated with the exact operators; "
-					"C-2 rests on ARPACK's internal deflation and is backend-dependent — "
-					"disclosed per design §3 P-6)";
+				result.message = "converged (ARPACK's verdict; exact generalized residuals are "
+					"reported as diagnostics)";
 			} else {
 				result.converged = false;
-				result.status = count_ok ? "residual_check_failed" : "insufficient_count";
-				result.failure_reason = count_ok
-					? "end-of-run exact generalized residual failed the shared C-1 scaled acceptance"
-					: "fewer pairs returned than requested";
+				result.status = "insufficient_count";
+				result.failure_reason = "fewer pairs returned than requested";
 				result.message = result.failure_reason;
 			}
 			return result;
@@ -1456,8 +1570,10 @@ namespace vcp {
 			const std::size_t op_count) const
 		{
 			result.iterations = static_cast<std::size_t>(oc.niter > 0 ? oc.niter : 0);
+			// G-1 ruling F-1: matrix_vector_products = applications of OP in
+			// every mode (the unit of max_iter); linear_solves = solves.
+			result.matrix_vector_products = op_count;
 			if (mode == 3) result.linear_solves = op_count;
-			else result.matrix_vector_products = op_count;
 			result.converged_count = static_cast<std::size_t>(oc.nconv > 0 ? oc.nconv : 0);
 
 			// hard backend errors: no eigenpairs to report
@@ -1498,7 +1614,6 @@ namespace vcp {
 
 			// ---- assemble eigenpairs ----
 			const double frobA = spumar_detail::mat_frob_norm_(A);
-			const double anorm = spumar_detail::mat_inf_norm_(A);
 			result.eigenvalues.assign(oc.dr.begin(), oc.dr.end());
 			result.eigenvectors = oc.z;
 			result.residuals_absolute.assign(m, 0.0);
@@ -1587,11 +1702,7 @@ namespace vcp {
 				}
 			}
 
-			// ---- verdict (P-6: own exact residuals under the shared C-1
-			//      scaled acceptance; backend self-report never decides) ----
-			const bool c1_ok = vcp::tsparse::residual_acceptance_check_scaled_(
-				result.residuals_absolute, result.residuals_relative, opt.tol,
-				theta_abs, anorm);
+			// ---- verdict (EIG-T1 T-9c: ARPACK's own) ----
 			const bool count_ok = (m >= k);
 
 			if (oc.honest_nonconv()) {
@@ -1603,18 +1714,17 @@ namespace vcp {
 				result.message += result.failure_reason;
 				return result;
 			}
-			if (c1_ok && count_ok) {
+			// EIG-T1 T-9c: converged is ARPACK's own verdict (info = 0 and the
+			// requested count); the re-evaluated residuals above are diagnostics.
+			if (count_ok) {
 				result.converged = true;
 				result.status = "converged";
-				result.message += "converged (C-1 re-evaluated with the exact operator; "
-					"C-2 rests on ARPACK's internal deflation and is backend-dependent — "
-					"disclosed per design §3 P-6)";
+				result.message += "converged (ARPACK's verdict; exact residuals are reported "
+					"as diagnostics)";
 			} else {
 				result.converged = false;
-				result.status = count_ok ? "residual_check_failed" : "insufficient_count";
-				result.failure_reason = count_ok
-					? "end-of-run exact residual failed the shared C-1 scaled acceptance"
-					: "fewer pairs returned than requested";
+				result.status = "insufficient_count";
+				result.failure_reason = "fewer pairs returned than requested";
 				result.message += result.failure_reason;
 			}
 			return result;

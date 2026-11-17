@@ -44,8 +44,8 @@
 // CONST-K extends stokes_eigenvalue_lower_bounds_h01 to D = 3 (source: Liu,
 // Nakao, Oishi 2022, section 3-2, cited in the CONST-G section below) and
 // routes both dimensions through detail::stokes_divfree_eigen_enclosures
-// (dense now; the replacement point of the planned sparse path) and the
-// common index-certifying function of poisson_constants.hpp.  The report
+// (the dense path) and the common index-certifying function of
+// poisson_constants.hpp.  The report
 // stokes_eigenvalue_report gains four trailing fields with the names of
 // eigenvalue_report: index_lo / index_hi (k..k on the dense path) and
 // nnz_stiffness / nnz_mass (0 on the dense path).  The policy defaults of
@@ -55,6 +55,22 @@
 // the point-interval / rationalization requirement of CONST-G is gone; the
 // exact null space of vcr1_divfree.hpp stays in the library, unused by the
 // entry.  No new decimal string, no new formula.
+//
+// STK-S1 gives that entry three names.
+// stokes_eigenvalue_lower_bounds_h01_dense is the CONST-K implementation,
+// unchanged (the interval elimination basis and the dense eigsymge -- the
+// way the papers of Liu solve the problem; kept because a dense solve may be
+// the more robust one on some problems).
+// stokes_eigenvalue_lower_bounds_h01_sparse computes the same enclosures with
+// the local basis of vcp/bfem/cr1/vcr1_divfree_local.hpp, a sparse pencil and
+// spmatrix::eigs_with_info.  stokes_eigenvalue_lower_bounds_h01 calls one of
+// the two and nothing else: the SPARSE one, with the power-of-two column
+// scaling (G-1 ruling of STK-S1; stated at its definition, in the STK-S1
+// block).  What the CONST-K paragraph above says of the entry (the dense
+// route, index k..k, nnz 0, the elimination basis) is since then a statement
+// about stokes_eigenvalue_lower_bounds_h01_dense.  The sparse path was ADDED NEXT TO the dense functions, as
+// functions of its own; the dense functions were not replaced.  No new
+// decimal string, no new formula.
 //
 // ---------------------------------------------------------------------------
 // BUNDLING CONVENTION (CONST-E design section one).  For a vector field
@@ -189,6 +205,11 @@
 //                                                    problem (21) of
 //                                                    Liu-Nakao-Oishi 2022,
 //                                                    no-slip (CONST-K)
+//     stokes_eigenvalue_lower_bounds_h01_dense /     H^1_0 VECTOR fields:
+//     stokes_eigenvalue_lower_bounds_h01_sparse      the two paths of the
+//                                                    entry above, same frame
+//                                                    in both dimensions
+//                                                    (STK-S1)
 //     stokes_divfree_poincare_constant_h01_sq_bound  H^1_0 VECTOR fields,
 //                                                    DIV-FREE subspace: the
 //                                                    supplied lambda_1 is a
@@ -249,6 +270,9 @@
 #include <vector>
 #include <array>
 #include <cstddef>
+#include <string>
+#include <utility>
+#include <algorithm>
 #include <stdexcept>
 
 #include <vcp/error.hpp>
@@ -260,6 +284,8 @@
 #include <vcp/bfem/rational.hpp>
 #include <vcp/bfem/cr1/vcr1_space.hpp>
 #include <vcp/bfem/cr1/vcr1_divfree.hpp>
+// STK-S1: the local divergence-free basis of the sparse path
+#include <vcp/bfem/cr1/vcr1_divfree_local.hpp>
 #include <vcp/bfem/constants/poisson_constants.hpp>
 // CONST-G: the exact rationalization of point-interval vertices
 // (detail::rational_of_point_interval) lives in element_projection.hpp,
@@ -484,9 +510,10 @@ T stokes_poincare_constant_h01_bound(const T& lambda1_lower) {
 
 // ---------------------------------------------------------------------------
 // stokes_eigenvalue_report<T>: the diagnostics of one call of
-// stokes_eigenvalue_lower_bounds_h01 -- the sizes, the null space
-// certificate (vcr1_divfree.hpp, section (ii)), C_h^2 and the discrete
-// eigenvalue enclosures the bounds were made from.
+// stokes_eigenvalue_lower_bounds_h01 (either path) -- the sizes, the null
+// space certificate, C_h^2 and the discrete eigenvalue enclosures the bounds
+// were made from.  The meaning of rank / pairs_checked / index_lo / index_hi
+// / nnz_* depends on the path and is stated at the two entries.
 // ---------------------------------------------------------------------------
 template <typename T>
 struct stokes_eigenvalue_report {
@@ -501,10 +528,11 @@ struct stokes_eigenvalue_report {
     T ch_sq;                      // alpha_1^2 h^2
     std::vector<T> lambda_h;      // discrete eigenvalue enclosures, first nev
     // CONST-K: the common fields of eigenvalue_report (same names, same
-    // meaning).  DENSE PATH (to be replaced by the sparse path): index_lo /
-    // index_hi are k..k for k = 1 .. nev (the k-th diagonal enclosure of
-    // eigsymge, see detail::stokes_divfree_eigen_enclosures) and
-    // nnz_stiffness / nnz_mass are 0 in two and three dimensions.
+    // meaning).  DENSE PATH: index_lo / index_hi are k..k for k = 1 .. nev
+    // (the k-th diagonal enclosure of eigsymge, see
+    // detail::stokes_divfree_eigen_enclosures) and nnz_stiffness / nnz_mass
+    // are 0 in two and three dimensions.  SPARSE PATH (STK-S1): the indices
+    // of eigs_with_info and the stored entries of the reduced pencil.
     std::vector<std::size_t> index_lo;
     std::vector<std::size_t> index_hi;
     long long nnz_stiffness;
@@ -568,7 +596,7 @@ stokes_divfree_interval_basis<T, DP> stokes_divfree_build_basis(
         const vcp::bfem::vcr1_space<D, T, DP, SP>& V,
         const vcp::bfem::dirichlet_reduction<T, DP, SP>& red) {
     typedef typename T::base_type B;
-    static const char who[] = "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01";
+    static const char who[] = "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01_dense";
     stokes_divfree_interval_basis<T, DP> out;
     const int nt = V.num_elements();
     const int nr = red.reduced_size();
@@ -701,20 +729,25 @@ stokes_divfree_interval_basis<T, DP> stokes_divfree_build_basis(
 // true mesh (A*, M*, T*) lies inside the interval pencil, so its eigenvalues
 // are enclosed.
 //
-// SPARSE-PATH REPLACEMENT POINT.  The ruling builds this function to be
-// swapped for the sparse path (a) -- a sparse pencil and
-// spmatrix::eigs_with_info -- with the API, the common function, the report
-// fields and the tests unchanged.  The work that swap needs:
-//   (1) a new entry that builds the reduced pencil as a spmatrix with a
-//       pattern fixed symbolically (not from floating point cancellation);
-//       the dense X above is not sparse, so a sparse basis is needed;
-//   (2) spimats problem 1 resolved (below);
-//   (3) the report filled from the sparse result: index_lo / index_hi from
-//       the eig_result (no longer k..k) and nnz_stiffness / nnz_mass from
-//       the finalized pencil (no longer 0);
-//   (4) interval vertices accepted, as now (supplementary ruling 2).
+// THE SPARSE PATH (STK-S1).  CONST-K built this function as the point where
+// a sparse path would be swapped in.  STK-S1 did not swap: the sparse path
+// is the separate function detail::stokes_divfree_eigen_enclosures_sparse
+// (STK-S1 block below), and this function, the basis above and
+// stokes_divfree_reduce_dense stay as they are, as the dense path.  What the
+// CONST-K note listed as the work of the swap, and where it went:
+//   (1) a reduced pencil as a spmatrix with a pattern fixed symbolically; the
+//       dense X above is not sparse, so a sparse basis was needed -- the
+//       local basis of vcp/bfem/cr1/vcr1_divfree_local.hpp and
+//       detail::stokes_divfree_reduce_sparse_triplets;
+//   (2) the spimats problems below -- addressed on the eigensolver side by
+//       the tracks SPI-E1, EIG-T1 and EIG-T2 (their reports; what the sparse
+//       path returns at which size is measured in the STK-S1 report);
+//   (3) the report filled from the sparse result -- the sparse entry;
+//   (4) interval vertices accepted -- the local basis is evaluated in the
+//       interval scalar.
 // spimats problems recorded by CONST-K (sandbox/docs/reports/CONST-K_report.md,
-// section "the current problems of spimats"):
+// section "the current problems of spimats"; kept as the record of that
+// time):
 //   1. lambda_min(B) is approximated without shift-invert, contrary to
 //      veigs.m 'smallestabs'; fails for N > 300 on Z^T M Z.
 //   2. the approximation stage needs the caller's options (target alone
@@ -816,7 +849,9 @@ vcp::eig_result<T> stokes_divfree_eigen_enclosures(
 } // namespace detail
 
 // ---------------------------------------------------------------------------
-// stokes_eigenvalue_lower_bounds_h01<D, T, DP, SP>(Th, nev, rep): verified
+// stokes_eigenvalue_lower_bounds_h01_dense<D, T, DP, SP>(Th, nev, rep): the
+// DENSE path (the CONST-K implementation of the entry, renamed by STK-S1 and
+// otherwise unchanged) -- verified
 // lower bounds of the first nev Stokes eigenvalues on the mesh Th, i.e. the
 // vector ( lambda_{k,h} / (1 + C_h^2 lambda_{k,h}) )_{k = 1..nev} with every
 // lambda_{k,h} a verified enclosure of the k-th eigenvalue of the reduced
@@ -835,8 +870,8 @@ vcp::eig_result<T> stokes_divfree_eigen_enclosures(
 // detail::stokes_divfree_build_basis (interval constraint C, last row
 // dropped, midpoint column choice, verified C1^{-1} C2, C T contains zero)
 // -> detail::stokes_divfree_eigen_enclosures (T^T A T and T^T M T in the
-// interval scalar, eigsymge, E(k, k) numbered k..k: the dense path and the
-// replacement point of the planned sparse path) -> the common function
+// interval scalar, eigsymge, E(k, k) numbered k..k: the dense path) -> the
+// common function
 // indexed_eigenvalue_lower_bounds of poisson_constants.hpp (rules 1..3; the
 // bound at the LOWER END of each enclosure as a point, G-0 supplementary
 // ruling -- the two dimensional values may move in the last digits).
@@ -873,18 +908,18 @@ template <int D, typename T,
                                   vcp::spmats<typename T::base_type>,
                                   vcp::imats<typename T::base_type,
                                              vcp::mats2<typename T::base_type> > > >
-std::vector<T> stokes_eigenvalue_lower_bounds_h01(
+std::vector<T> stokes_eigenvalue_lower_bounds_h01_dense(
         const vcp::bfem::mesh<D, T>& Th, int nev,
         stokes_eigenvalue_report<T>* rep = nullptr) {
     static_assert(D == 2 || D == 3,
-                  "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01: "
+                  "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01_dense: "
                   "two or three dimensions only");
     if (Th.num_elements() < 1)
         throw std::invalid_argument(
-            "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01: empty mesh");
+            "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01_dense: empty mesh");
     if (nev < 1)
         throw std::invalid_argument(
-            "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01: nev < 1");
+            "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01_dense: nev < 1");
 
     // the vector CR space and the scalar Dirichlet reduction
     vcp::bfem::vcr1_space<D, T, DP, SP> V(Th);
@@ -900,16 +935,16 @@ std::vector<T> stokes_eigenvalue_lower_bounds_h01(
     const int dim = Zb.dim;
     if (nev > dim)
         throw std::invalid_argument(
-            "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01: nev exceeds "
+            "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01_dense: nev exceeds "
             "dim V_{0,h} (the lower bound theorem covers 1 <= k <= dim only)");
-    // the enclosures (replacement point) and the common function
+    // the enclosures (dense path) and the common function
     const vcp::eig_result<T> er =
         detail::stokes_divfree_eigen_enclosures<D, T, DP, SP>(V, red, Zb, nev);
 
     // the existing lower bound formula with the existing CR constant
     const T ch_sq = cr_projection_error_constant_sq(V.scalar());
     const detail::indexed_eigenvalue_bounds<T> b = detail::indexed_eigenvalue_lower_bounds(
-        er, nev, ch_sq, "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01");
+        er, nev, ch_sq, "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01_dense");
     if (rep != nullptr) {
         rep->n_elements = Th.num_elements();
         rep->n_scalar_dofs = V.scalar_ndof();
@@ -923,11 +958,384 @@ std::vector<T> stokes_eigenvalue_lower_bounds_h01(
         rep->lambda_h = b.lambda_h;
         rep->index_lo = b.index_lo;           // dense path: k..k
         rep->index_hi = b.index_hi;
-        rep->nnz_stiffness = 0;               // dense path (sparse path planned)
+        rep->nnz_stiffness = 0;               // dense path
         rep->nnz_mass = 0;
     }
     return b.bounds;
 }
+
+// ===========================================================================
+// STK-S1 additions (everything from here to the matching END marker): the
+// SPARSE path of the Stokes eigenvalue entry and the entry that picks a path.
+//
+// Authority: sandbox/docs/design/STK-S1_design_v1.0.md (decisions D-2, D-3,
+// D-5) and, for the mathematics, the method note
+// sandbox/handoff/stokes_sparse/stokes_sparse_method.md (chapters 3 to 6).
+//
+// The discrete space is the same V_{0,h} as on the dense path and the bound
+// is the same formula through the same common function; only the basis of
+// the space and the eigensolver differ:
+//
+//   basis     the local basis Z of vcp/bfem/cr1/vcr1_divfree_local.hpp
+//             (tangential and rotational functions, values rational in the
+//             vertex coordinates, support fixed by the connectivity) instead
+//             of the interval enclosure of [-C1^{-1} C2; I];
+//   pencil    A_Z = Z^T blockdiag(K) Z and M_Z = Z^T blockdiag(M) Z as
+//             spmatrix, K / M the scalar Dirichlet-reduced stiffness / mass;
+//   solver    spmatrix::eigs_with_info(M_Z, nev, options of the Poisson
+//             entry eigenvalue_lower_bounds_h01) instead of the dense
+//             eigsymge.
+//
+// Why the eigenvalues of the pencil are the discrete Stokes eigenvalues
+// (method note, section 4.3): [in the kernel] every column of Z lies in
+// ker C for every mesh inside the vertex boxes, and the interval product C Z
+// is checked to contain zero; [dimension] the number of columns equals
+// D n_r - N_T + 1 = dim V_{0,h}, an integer check that needs the dual graph
+// to be connected (both in build_vcr1_divfree_local_basis); [independence]
+// the eigensolver proves the interval matrix M_Z positive definite at its
+// entry or refuses with no claim, and M is positive definite, so the columns
+// of Z are independent for every mesh inside the vertex boxes.  This file
+// adds no check of its own for the third item.
+//
+// Pattern (decision D-2): entry (i, j) of A_Z and of M_Z is computed exactly
+// when a facet of the support of column i and a facet of the support of
+// column j belong to one element -- a rule of the connectivity, never of the
+// floating point values.  The upper triangle is computed and mirrored, so
+// the two matrices are exactly symmetric as interval matrices.  Note on the
+// storage: spmatrix does not keep an entry whose value is exactly the point
+// zero (the spmats invariant "no explicit zero"), so the stored pattern can
+// be smaller than the computed one on meshes with exact cancellations; the
+// computed pattern is available from stokes_divfree_reduce_sparse_triplets.
+//
+// Domains that are not simply connected are refused by the dimension check
+// (owner ruling 3 of the STK-S1 design).
+// ===========================================================================
+namespace detail {
+
+// the upper triangle (row <= col) of a reduced matrix Z^T blockdiag(K) Z on
+// the pattern of the connectivity, ascending in (col, row)
+template <typename T>
+struct stokes_divfree_sparse_triplets {
+    int n;                         // dim
+    std::vector<int> row;
+    std::vector<int> col;
+    std::vector<T> val;
+};
+
+// K(i, j) -> the slot of row i in column j of the facet adjacency
+template <typename T>
+struct stokes_sparse_k_gather {
+    const std::vector<std::vector<int> >* adj;
+    std::vector<std::vector<T> >* kcol;
+    long long* outside;
+    template <typename I, typename J>
+    void operator()(I i, J j, const T& v) const {
+        const std::vector<int>& a = (*adj)[static_cast<std::size_t>(j)];
+        const std::vector<int>::const_iterator it =
+            std::lower_bound(a.begin(), a.end(), static_cast<int>(i));
+        if (it == a.end() || *it != static_cast<int>(i)) {
+            ++(*outside);
+            return;
+        }
+        (*kcol)[static_cast<std::size_t>(j)][static_cast<std::size_t>(it - a.begin())] += v;
+    }
+};
+
+// ---------------------------------------------------------------------------
+// stokes_divfree_reduce_sparse_triplets<D, T, SP>(Z, K, who): the upper
+// triangle of Z^T blockdiag(K) Z, K an n_r x n_r scalar matrix whose entries
+// lie on the facet adjacency (two facets of one element), which is the case
+// for the Dirichlet-reduced stiffness and mass of the scalar CR space.
+//
+// (Z^T blockdiag(K) Z)(i, j) = sum_{t in supp i} z_i(t) . y_j(t) with
+// y_j(t) = sum_{s in supp j, s ~ t} K(t, s) z_j(s) (vector values, the dot
+// product over the D components).  y_j is accumulated over the facets
+// adjacent to the support of column j and every column i <= j with a support
+// facet among them gets an entry, whatever its value.
+//
+// Exceptions: vcp::verification_error when K has an entry off the facet
+// adjacency (the matrix is not one of the scalar CR space of this mesh).
+// ---------------------------------------------------------------------------
+template <int D, typename T, class SP>
+stokes_divfree_sparse_triplets<T> stokes_divfree_reduce_sparse_triplets(
+        const vcp::bfem::vcr1_divfree_local_basis<T>& Z,
+        const vcp::spmatrix<T, SP>& K, const char* who) {
+    const int nr = Z.n_reduced, N = Z.dim, nt = Z.n_elements, fpe = Z.facets_per_element;
+    stokes_divfree_sparse_triplets<T> out;
+    out.n = N;
+    // the facet adjacency: facets of one element (the facet itself included)
+    std::vector<std::vector<int> > adj(static_cast<std::size_t>(nr));
+    for (int e = 0; e < nt; ++e)
+        for (int a = 0; a < fpe; ++a) {
+            const int r = Z.element_facets[static_cast<std::size_t>(e) * static_cast<std::size_t>(fpe)
+                                           + static_cast<std::size_t>(a)];
+            if (r < 0) continue;
+            for (int c = 0; c < fpe; ++c) {
+                const int s = Z.element_facets[static_cast<std::size_t>(e) * static_cast<std::size_t>(fpe)
+                                               + static_cast<std::size_t>(c)];
+                if (s >= 0) adj[static_cast<std::size_t>(r)].push_back(s);
+            }
+        }
+    std::vector<std::vector<T> > kcol(static_cast<std::size_t>(nr));
+    for (int r = 0; r < nr; ++r) {
+        std::vector<int>& a = adj[static_cast<std::size_t>(r)];
+        std::sort(a.begin(), a.end());
+        a.erase(std::unique(a.begin(), a.end()), a.end());
+        kcol[static_cast<std::size_t>(r)].assign(a.size(), T(0));
+    }
+    {
+        long long outside = 0;
+        stokes_sparse_k_gather<T> g = { &adj, &kcol, &outside };
+        ::vcp::bfem::detail::spm_adapter<T, SP>::for_each_entry(K, g);
+        if (outside != 0)
+            vcp::throw_error<vcp::verification_error>(
+                who, ": the scalar matrix has ", outside,
+                " entries off the facet adjacency of the mesh");
+    }
+    // facet -> (column, position in its support), ascending column
+    std::vector<std::vector<std::pair<int, int> > > fcols(static_cast<std::size_t>(nr));
+    for (int j = 0; j < N; ++j) {
+        const std::vector<int>& sup = Z.support[static_cast<std::size_t>(j)];
+        for (std::size_t q = 0; q < sup.size(); ++q)
+            fcols[static_cast<std::size_t>(sup[q])].push_back(std::make_pair(j, static_cast<int>(q)));
+    }
+    std::vector<T> y(static_cast<std::size_t>(nr) * static_cast<std::size_t>(D), T(0));
+    std::vector<int> ymark(static_cast<std::size_t>(nr), -1);
+    std::vector<int> ylist;
+    std::vector<T> acc(static_cast<std::size_t>(N), T(0));
+    std::vector<int> amark(static_cast<std::size_t>(N), -1);
+    std::vector<int> alist;
+    for (int j = 0; j < N; ++j) {
+        const std::vector<int>& sup = Z.support[static_cast<std::size_t>(j)];
+        const std::vector<std::pair<int, T> >& zj = Z.cols[static_cast<std::size_t>(j)];
+        ylist.clear();
+        for (std::size_t q = 0; q < sup.size(); ++q) {
+            const std::size_t s = static_cast<std::size_t>(sup[q]);
+            const std::vector<int>& a = adj[s];
+            for (std::size_t k = 0; k < a.size(); ++k) {
+                const std::size_t t = static_cast<std::size_t>(a[k]);
+                if (ymark[t] != j) {
+                    ymark[t] = j;
+                    ylist.push_back(a[k]);
+                    for (int d = 0; d < D; ++d) y[t * static_cast<std::size_t>(D) + static_cast<std::size_t>(d)] = T(0);
+                }
+                for (int d = 0; d < D; ++d)
+                    y[t * static_cast<std::size_t>(D) + static_cast<std::size_t>(d)] +=
+                        kcol[s][k] * zj[q * static_cast<std::size_t>(D) + static_cast<std::size_t>(d)].second;
+            }
+        }
+        alist.clear();
+        for (std::size_t k = 0; k < ylist.size(); ++k) {
+            const std::size_t t = static_cast<std::size_t>(ylist[k]);
+            const std::vector<std::pair<int, int> >& fc = fcols[t];
+            for (std::size_t c = 0; c < fc.size(); ++c) {
+                const int i = fc[c].first;
+                if (i > j) break;                       // ascending column
+                const std::size_t ii = static_cast<std::size_t>(i);
+                if (amark[ii] != j) {
+                    amark[ii] = j;
+                    alist.push_back(i);
+                    acc[ii] = T(0);
+                }
+                const std::vector<std::pair<int, T> >& zi = Z.cols[ii];
+                const std::size_t q = static_cast<std::size_t>(fc[c].second);
+                for (int d = 0; d < D; ++d)
+                    acc[ii] += zi[q * static_cast<std::size_t>(D) + static_cast<std::size_t>(d)].second
+                               * y[t * static_cast<std::size_t>(D) + static_cast<std::size_t>(d)];
+            }
+        }
+        std::sort(alist.begin(), alist.end());
+        for (std::size_t k = 0; k < alist.size(); ++k) {
+            out.row.push_back(alist[k]);
+            out.col.push_back(j);
+            out.val.push_back(acc[static_cast<std::size_t>(alist[k])]);
+        }
+    }
+    return out;
+}
+
+// the mirrored, finalized spmatrix of an upper triangle
+template <typename T, class SP>
+vcp::spmatrix<T, SP> stokes_divfree_sparse_matrix(
+        const stokes_divfree_sparse_triplets<T>& u) {
+    typedef typename vcp::spmatrix<T, SP>::index_type index_type;
+    vcp::spmatrix<T, SP> A(static_cast<index_type>(u.n), static_cast<index_type>(u.n));
+    A.reserve(static_cast<index_type>(2 * u.val.size()));
+    for (std::size_t k = 0; k < u.val.size(); ++k) {
+        const index_type i = static_cast<index_type>(u.row[k]);
+        const index_type j = static_cast<index_type>(u.col[k]);
+        A.add(i, j, u.val[k]);
+        if (i != j) A.add(j, i, u.val[k]);
+    }
+    A.finalize();
+    return A;
+}
+
+// ---------------------------------------------------------------------------
+// stokes_divfree_eigen_enclosures_sparse<D, T, DP, SP>(V, red, Z, nev, ...):
+// "(the space with the local basis Z, nev) -> eig_result", the sparse
+// counterpart of stokes_divfree_eigen_enclosures.  The result of
+// eigs_with_info is returned as it is (the indices are the solver's, no
+// longer k..k); the numbers of stored entries of the two matrices go to
+// nnz_stiffness / nnz_mass when the pointers are given.
+//
+// Exceptions: those of the eigensolver, unchanged (spimats:
+// vcp::verification_error when M_Z cannot be proved positive definite or a
+// verification step cannot be certified, vcp::state_error when its
+// approximation stage does not converge).  nev <= dim is the caller's check.
+// ---------------------------------------------------------------------------
+template <int D, typename T, class DP, class SP>
+vcp::eig_result<T> stokes_divfree_eigen_enclosures_sparse(
+        const vcp::bfem::vcr1_space<D, T, DP, SP>& V,
+        const vcp::bfem::dirichlet_reduction<T, DP, SP>& red,
+        const vcp::bfem::vcr1_divfree_local_basis<T>& Z,
+        int nev, const char* who,
+        long long* nnz_stiffness = nullptr, long long* nnz_mass = nullptr) {
+    vcp::spmatrix<T, SP> A = stokes_divfree_sparse_matrix<T, SP>(
+        stokes_divfree_reduce_sparse_triplets<D, T, SP>(
+            Z, red.reduce(V.scalar().stiffness()), who));
+    vcp::spmatrix<T, SP> M = stokes_divfree_sparse_matrix<T, SP>(
+        stokes_divfree_reduce_sparse_triplets<D, T, SP>(
+            Z, red.reduce(V.scalar().mass()), who));
+    if (nnz_stiffness != nullptr) *nnz_stiffness = static_cast<long long>(A.nnz());
+    if (nnz_mass != nullptr) *nnz_mass = static_cast<long long>(M.nnz());
+
+    vcp::eig_options<T> opt;
+    opt.target = vcp::eig_target::smallest_algebraic;
+    opt.structure = vcp::matrix_structure_hint::symmetric;
+    opt.use_shift = true;
+    opt.shift = T(0);
+    return A.eigs_with_info(M, static_cast<std::size_t>(nev), opt);
+}
+
+// the column scaling the sparse entry uses (decision D-5, settled by the G-1
+// ruling of STK-S1: the power-of-two scaling)
+inline vcp::bfem::vcr1_local_scaling stokes_sparse_default_scaling() {
+    return vcp::bfem::vcr1_local_scaling_pow2;
+}
+
+// the sparse entry with the column scaling as an argument (the public entry
+// below passes the default; the acceptance tests and the measurements pass
+// both values)
+template <int D, typename T, class DP, class SP>
+std::vector<T> stokes_eigenvalue_lower_bounds_h01_sparse_scaled(
+        const vcp::bfem::mesh<D, T>& Th, int nev,
+        vcp::bfem::vcr1_local_scaling scaling,
+        stokes_eigenvalue_report<T>* rep) {
+    static_assert(D == 2 || D == 3,
+                  "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01_sparse: "
+                  "two or three dimensions only");
+    static const char who[] = "vcp::bfem::constants::stokes_eigenvalue_lower_bounds_h01_sparse";
+    if (Th.num_elements() < 1)
+        throw std::invalid_argument(std::string(who) + ": empty mesh");
+    if (nev < 1)
+        throw std::invalid_argument(std::string(who) + ": nev < 1");
+
+    // the vector CR space and the scalar Dirichlet reduction
+    vcp::bfem::vcr1_space<D, T, DP, SP> V(Th);
+    vcp::bfem::dirichlet_reduction<T, DP, SP> red(V.scalar_ndof(),
+                                                  V.scalar().boundary_dofs());
+
+    // the local basis: dual graph connected, count == D n_r - N_T + 1,
+    // C Z contains zero
+    const vcp::bfem::vcr1_divfree_local_basis<T> Z =
+        vcp::bfem::build_vcr1_divfree_local_basis<D, T, DP, SP>(Th, V, red, scaling, who);
+    const int dim = Z.dim;
+    if (nev > dim)
+        throw std::invalid_argument(
+            std::string(who) + ": nev exceeds dim V_{0,h} (the lower bound theorem "
+            "covers 1 <= k <= dim only)");
+    long long nnz_a = 0, nnz_m = 0;
+    const vcp::eig_result<T> er =
+        stokes_divfree_eigen_enclosures_sparse<D, T, DP, SP>(V, red, Z, nev, who, &nnz_a, &nnz_m);
+
+    // the existing lower bound formula with the existing CR constant
+    const T ch_sq = cr_projection_error_constant_sq(V.scalar());
+    const indexed_eigenvalue_bounds<T> b = indexed_eigenvalue_lower_bounds(er, nev, ch_sq, who);
+    // An enclosure whose lower end is not positive is not refused: the common
+    // function takes the bound at max(lower end, 0), so its bound is 0, and
+    // the enclosure is reported as it is.
+    if (rep != nullptr) {
+        rep->n_elements = Th.num_elements();
+        rep->n_scalar_dofs = V.scalar_ndof();
+        rep->n_reduced_scalar = red.reduced_size();
+        rep->columns = Z.columns;             // D n_r
+        rep->rank = Z.rank;                   // N_T - 1
+        rep->rank_deficiency = Z.n_elements - Z.rank;   // 1
+        rep->dim = dim;                       // D n_r - N_T + 1, the columns of Z
+        rep->pairs_checked = Z.pairs_checked; // entries of C Z checked
+        rep->ch_sq = ch_sq;
+        rep->lambda_h = b.lambda_h;
+        rep->index_lo = b.index_lo;           // the eigensolver's indices
+        rep->index_hi = b.index_hi;
+        rep->nnz_stiffness = nnz_a;
+        rep->nnz_mass = nnz_m;
+    }
+    return b.bounds;
+}
+
+} // namespace detail
+
+// ---------------------------------------------------------------------------
+// stokes_eigenvalue_lower_bounds_h01_sparse<D, T, DP, SP>(Th, nev, rep): the
+// SPARSE path -- the same statement, arguments, result and report as
+// stokes_eigenvalue_lower_bounds_h01_dense, computed with the local basis and
+// the verified sparse eigensolver (head of this block).
+//
+// Report on this path: columns = D n_r, rank = N_T - 1 (combinatorial, the
+// dual graph is connected), rank_deficiency = 1, dim = D n_r - N_T + 1 = the
+// number of columns of Z, pairs_checked = the entries of C Z checked (every
+// column against every element meeting its support), index_lo / index_hi =
+// the indices of eigs_with_info (a cluster may carry a range), nnz_stiffness
+// / nnz_mass = the stored entries of A_Z / M_Z.
+//
+// Exceptions: std::invalid_argument (empty mesh, nev < 1, nev > dim);
+// vcp::verification_error (dual graph not connected, the dimension check --
+// this is where a domain that is not simply connected is refused --, C Z not
+// containing zero, a degenerate edge or face, rules 1 and 3 of the common
+// function);
+// vcp::bfem::degenerate_element (flat element).  Failures of the
+// eigensolver propagate unchanged (spimats: vcp::verification_error when M_Z
+// cannot be proved positive definite or a step cannot be certified,
+// vcp::state_error when its approximation stage does not converge).
+// ---------------------------------------------------------------------------
+template <int D, typename T,
+          class DP = vcp::imats<typename T::base_type,
+                                vcp::mats2<typename T::base_type> >,
+          class SP = vcp::spimats<typename T::base_type,
+                                  vcp::spmats<typename T::base_type>,
+                                  vcp::imats<typename T::base_type,
+                                             vcp::mats2<typename T::base_type> > > >
+std::vector<T> stokes_eigenvalue_lower_bounds_h01_sparse(
+        const vcp::bfem::mesh<D, T>& Th, int nev,
+        stokes_eigenvalue_report<T>* rep = nullptr) {
+    return detail::stokes_eigenvalue_lower_bounds_h01_sparse_scaled<D, T, DP, SP>(
+        Th, nev, detail::stokes_sparse_default_scaling(), rep);
+}
+
+// ---------------------------------------------------------------------------
+// stokes_eigenvalue_lower_bounds_h01<D, T, DP, SP>(Th, nev, rep): THE entry.
+// It calls exactly one of the two paths above and adds nothing; the
+// statement, the arguments, the result and the report are those of the path
+// it calls.  Which path: the SPARSE one, with the default column scaling of
+// detail::stokes_sparse_default_scaling (STK-S1 decision D-5, G-1 ruling of
+// that track; the dense path stays callable under its own name, and the
+// switch, and its undoing, is the one line below).
+// ---------------------------------------------------------------------------
+template <int D, typename T,
+          class DP = vcp::imats<typename T::base_type,
+                                vcp::mats2<typename T::base_type> >,
+          class SP = vcp::spimats<typename T::base_type,
+                                  vcp::spmats<typename T::base_type>,
+                                  vcp::imats<typename T::base_type,
+                                             vcp::mats2<typename T::base_type> > > >
+std::vector<T> stokes_eigenvalue_lower_bounds_h01(
+        const vcp::bfem::mesh<D, T>& Th, int nev,
+        stokes_eigenvalue_report<T>* rep = nullptr) {
+    return stokes_eigenvalue_lower_bounds_h01_sparse<D, T, DP, SP>(Th, nev, rep);
+}
+// END of the STK-S1 additions
+// ===========================================================================
 
 // ---------------------------------------------------------------------------
 // stokes_divfree_poincare_constant_h01_sq_bound(stokes_lambda1_lower): the

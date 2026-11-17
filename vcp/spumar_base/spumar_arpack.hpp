@@ -57,6 +57,11 @@ namespace spumar_detail {
 	typedef std::function<void(const double* x, double* y, const double* bx_hint)> arpack_op_fn;
 	// B callback: y = B * x (bmat='G' only; never called for bmat='I').
 	typedef std::function<void(const double* x, double* y)> arpack_b_fn;
+	// EIG-T1 T-3a: OP callback of mode 2 (OP = B^{-1} A, bmat='G').  x is
+	// writable: the symmetric driver requires the caller to overwrite x with
+	// A*x before returning y = B^{-1} A x (dsaupd.f, remark 5); the callback
+	// receives overwrite_x = true exactly then.  Used only when mode == 2.
+	typedef std::function<void(double* x, double* y, bool overwrite_x)> arpack_op2_fn;
 
 	struct arpack_outcome {
 		int aupd_info;   // dsaupd/dnaupd final info
@@ -94,7 +99,8 @@ namespace spumar_detail {
 		std::vector<double>& resid, std::vector<double>& v,
 		std::vector<int>& iparam, std::vector<int>& ipntr,
 		std::vector<double>& workd, std::vector<double>& workl,
-		const arpack_op_fn& opx, const arpack_b_fn& bx)
+		const arpack_op_fn& opx, const arpack_b_fn& bx,
+		const arpack_op2_fn& op2 = arpack_op2_fn(), const bool op2_overwrite_x = false)
 	{
 		int ido = 0;
 		int ldv = n;
@@ -118,7 +124,12 @@ namespace spumar_detail {
 			aupd(&ido, &bmat, &n, which, &nev, &tol, resid.data(), &ncv,
 			     v.data(), &ldv, iparam.data(), ipntr.data(), workd.data(),
 			     workl.data(), &lworkl, &info);
-			if (ido == -1 || ido == 1) {
+			if ((ido == -1 || ido == 1) && mode == 2 && op2) {
+				// EIG-T1 T-3a: mode 2 hands x out writable (see arpack_op2_fn)
+				double* x = &workd[static_cast<std::size_t>(ipntr[0] - 1)];
+				double* y = &workd[static_cast<std::size_t>(ipntr[1] - 1)];
+				op2(x, y, op2_overwrite_x);
+			} else if (ido == -1 || ido == 1) {
 				const double* x = &workd[static_cast<std::size_t>(ipntr[0] - 1)];
 				double* y = &workd[static_cast<std::size_t>(ipntr[1] - 1)];
 				const double* bx_hint =
@@ -142,7 +153,8 @@ namespace spumar_detail {
 	// -------------------------------------------------------------------
 	inline arpack_outcome arpack_drive_symmetric(int n, int nev, int ncv,
 		const char* which, char bmat, int mode, double sigma, double tol,
-		int max_iter, const arpack_op_fn& opx, const arpack_b_fn& bx)
+		int max_iter, const arpack_op_fn& opx, const arpack_b_fn& bx,
+		const arpack_op2_fn& op2 = arpack_op2_fn())
 	{
 		arpack_outcome out;
 		out.ncv_used = ncv;
@@ -152,7 +164,8 @@ namespace spumar_detail {
 		std::vector<int> iparam, ipntr;
 
 		out.aupd_info = arpack_aupd_loop_(&dsaupd_, bmat, n, which, nev, tol,
-			ncv, mode, max_iter, resid, v, iparam, ipntr, workd, workl, opx, bx);
+			ncv, mode, max_iter, resid, v, iparam, ipntr, workd, workl, opx, bx,
+			op2, true /* dsaupd mode 2: x := A*x (remark 5) */);
 		out.iparam = iparam;
 		out.nconv = iparam[4];
 		out.niter = iparam[2];
@@ -199,7 +212,8 @@ namespace spumar_detail {
 	// -------------------------------------------------------------------
 	inline arpack_outcome arpack_drive_nonsymmetric(int n, int nev, int ncv,
 		const char* which, char bmat, int mode, double sigma_r, double sigma_i,
-		double tol, int max_iter, const arpack_op_fn& opx, const arpack_b_fn& bx)
+		double tol, int max_iter, const arpack_op_fn& opx, const arpack_b_fn& bx,
+		const arpack_op2_fn& op2 = arpack_op2_fn())
 	{
 		arpack_outcome out;
 		out.ncv_used = ncv;
@@ -209,7 +223,8 @@ namespace spumar_detail {
 		std::vector<int> iparam, ipntr;
 
 		out.aupd_info = arpack_aupd_loop_(&dnaupd_, bmat, n, which, nev, tol,
-			ncv, mode, max_iter, resid, v, iparam, ipntr, workd, workl, opx, bx);
+			ncv, mode, max_iter, resid, v, iparam, ipntr, workd, workl, opx, bx,
+			op2, false /* dnaupd mode 2: x is left as it is */);
 		out.iparam = iparam;
 		out.nconv = iparam[4];
 		out.niter = iparam[2];

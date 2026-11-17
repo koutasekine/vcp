@@ -2456,7 +2456,7 @@ protected:
 		// SPI-U5 が見る形は一般化のまま)。
 		_AP Amid;
 		vcp::mid_for_approximation(IAn, Amid);
-		const eig_options<_T> popt = spi_extract_eig_options_(opt);
+		eig_options<_T> popt = spi_extract_eig_options_(opt);   // [SPI-E1 E-2a] 下で「ライブラリに任せる」の値だけを補う
 		// [SPI-SH1] B2 シフト LDL handle(SLDL-SH)と workspace を Amid/Bmid
 		// 抽出直後に関数ローカルで構築(設計 SPI-SH1 §1(a)。クラスメンバ・
 		// static は追加しない)。options は B2 既定 = supernodal×none
@@ -2494,20 +2494,9 @@ protected:
 		const bool b_is_identity = spi_is_exact_identity_(B);
 		_AP Bmid;
 		if (!b_is_identity) vcp::mid_for_approximation(B, Bmid);
-		for (int li = 0; li < 3; li++) {
-			const std::size_t kr = k_ladder[li];
-			if (li > 0 && kr == k_ladder[li - 1]) continue;
-			if (li == 2 && kr == k_ladder[0]) continue;
-			if (b_is_identity) {
-				ap = (M != 0) ? Amid.policy_eigs_with_info(kr, popt, prec_ad)
-				              : Amid.policy_eigs_with_info(kr, popt);
-			}
-			else {
-				ap = (M != 0) ? Amid.policy_generalized_eigs_with_info(Bmid, kr, popt, prec_ad)
-				              : Amid.policy_generalized_eigs_with_info(Bmid, kr, popt);
-			}
-			if (ap.converged) { last_verify_info.veigs_ap_request_count = kr; break; }
-		}
+		// [SPI-E1 E-2d] shift ハンドルの構築を近似の段の前へ移した(構築の内容は
+		// 不変。E-2c の慣性の計算に使う)。invalid のときの無主張は従来どおり
+		// 近似の段の収束検査の後で投げる。
 		if (b_is_identity) {
 			sh = Amid.policy_ldl_shift_setup_with_info(
 				vcp::ldl_shift_default_options<_T>());
@@ -2515,6 +2504,186 @@ protected:
 		else {
 			sh = Amid.policy_ldl_shift_setup_with_info(
 				Bmid, vcp::ldl_shift_default_options<_T>());
+		}
+		// [SPI-E1 E-1a / E-1b / E-1c] λmin(B) の近似値 λ̃_B【対応: veigs.m L167
+		// eigs(mid(B),1,'smallestabs')。MATLAB の 'smallestabs' は σ = 0 の
+		// shift-invert】。求め方(G-1 裁定 1、2026-11-12): まず従来どおり shift
+		// なしの smallest_magnitude で求める。それが収束せず、n が点のソルバーの
+		// 密への切り替えの閾値(vcp::eig_auto_dense_threshold)より大きいときだけ、
+		// use_shift = true・shift = 0 で求め直す(E-1a)。閾値以下は従来のまま
+		// (密の経路。E-1b)。順番の理由: σ = 0 の shift-invert は B が悪条件の
+		// ときに効くが、B が良条件で最小側の固有値が密集していると B⁻¹ の
+		// スペクトルも密集して収束せず、shift なしで求まっていた入力を失う。
+		// ここで 1 回だけ求め(E-1c)、E-2c の σ と、後段の λ_B_min の区画の lb0 の
+		// 両方に使う。失敗の無主張(lambda_min(B) approximation failed)は従来の
+		// 位置(λ_B_min の区画)で投げる。近似値は手がかりで、certified 化は後段の
+		// is_spd の探索。
+		_T e1_lamB = _T(1);
+		bool e1_lamB_ok = true;
+		if (!b_is_identity) {
+			eig_options<_T> bo;
+			bo.target = vcp::eig_target::smallest_magnitude;   // 'smallestabs'【L167】
+			eig_result<_T> br = Bmid.policy_eigs_with_info(1, bo);   // 従来どおり shift なし
+			// [EIG-T1 T-4] 2 回目の shift を「0 と Gershgorin の下界の大きい方」にする。
+			// mid(B) の Gershgorin の下界 g = min_i (b_ii − Σ_{j≠i} |b_ij|) が正なら、
+			// まず shift = g (1 − 1e-8) の shift-invert で求める(B − shift·I は正定値
+			// なので、shift に最も近い固有値が最小固有値)。g ≤ 0 か、それが失敗した
+			// ときは従来の shift = 0。g は近似の手がかりを作るためだけに使い、精度
+			// 保証の主張には使わない(丸めの向きを管理しない)。
+			if (!(br.converged && !br.eigenvalues.empty())
+			    && n_sz > vcp::eig_auto_dense_threshold) {
+				const vcp::spmats<_T, index_type> Bc = Bmid.as_csr();
+				const std::vector<index_type>& go = Bc.outer_index();
+				const std::vector<index_type>& gi = Bc.inner_index();
+				const std::vector<_T>& gv = Bc.values();
+				bool g_set = false;
+				_T g = _T(0);
+				for (std::size_t i = 0; i + 1 < go.size(); i++) {
+					_T d = _T(0), off = _T(0);
+					for (std::size_t p = static_cast<std::size_t>(go[i]); p < static_cast<std::size_t>(go[i + 1]); p++) {
+						if (static_cast<std::size_t>(gi[p]) == i) d += gv[p];
+						else off += (gv[p] < _T(0)) ? _T(-gv[p]) : gv[p];
+					}
+					const _T gi_row = d - off;
+					if (!g_set || gi_row < g) { g = gi_row; g_set = true; }
+				}
+				if (g_set && g > _T(0)) {
+					eig_options<_T> bg = bo;
+					bg.use_shift = true;
+					bg.shift = g * (_T(1) - _T(1e-8));
+					const eig_result<_T> brg = Bmid.policy_eigs_with_info(1, bg);
+					if (brg.converged && !brg.eigenvalues.empty()) br = brg;
+				}
+			}
+			if (!(br.converged && !br.eigenvalues.empty())
+			    && n_sz > vcp::eig_auto_dense_threshold) {     // [SPI-E1 E-1b] 閾値以下は求め直さない
+				bo.use_shift = true;                           // [SPI-E1 E-1a] 失敗したときだけ σ = 0 の shift-invert
+				bo.shift = _T(0);
+				br = Bmid.policy_eigs_with_info(1, bo);
+			}
+			e1_lamB_ok = (br.converged && !br.eigenvalues.empty());
+			if (e1_lamB_ok) e1_lamB = br.eigenvalues[0];
+		}
+		// [SPI-E1 E-2a] 利用者の opt の「ライブラリに任せる」の値だけを補う。
+		// 利用者が auto_* 以外を書いた項目と、opt そのもの(target・k・tol・
+		// max_iter・後段で使う opt.shift)は変えない。補うのは近似の段への
+		// 依頼(popt)だけで、保証には使わない。
+		// [SPI-E1 E-2b] structure == auto_detect → symmetric(入口の検査
+		// spi_veigs_entry_checks_ で A・B が厳密に対称であることを確認済み)。
+		if (popt.structure == vcp::matrix_structure_hint::auto_detect) {
+			popt.structure = vcp::matrix_structure_hint::symmetric;
+		}
+		// [SPI-E1 E-2c] method == auto_select かつ use_shift == false かつ一般化
+		// 問題(B が厳密な単位行列でない)→ shift-invert。点の shift-invert は
+		// target を見ず σ に最も近い固有値を返すので、σ を target ごとに決める:
+		//   sa: A − 0·B の点の LDL の慣性(E-2d の sh)で負・零の個数がともに 0
+		//       なら σ = 0。そうでなければ σ = −2‖mid(A)‖∞ / λ̃_B【veigs.m L170
+		//       の粗い下界と同じ式を 2 倍】(λ̃_B が得られていなければ補わない)
+		//   sm: σ = 0 / target_real・target_magnitude: σ = mid(opt.shift)
+		//   la・lm: 補わない(shift なしの B 内積 Lanczos。E-2b だけを適用)
+		if (!b_is_identity
+		    && popt.method == vcp::eig_solver_method::auto_select
+		    && !popt.use_shift) {
+			if (opt.target == vcp::eig_target::smallest_algebraic) {
+				bool a_pd = false;
+				if (sh.valid()) {
+					const typename vcp::ldl_shift_handle<_T, index_type>::inertia_result_type ir0 =
+						sh.inertia_at(_T(0), sh_ws);
+					a_pd = (ir0.inertia.status == vcp::inertia_status::success
+					        && ir0.inertia.n_neg == index_type(0)
+					        && ir0.inertia.n_zero == index_type(0));
+				}
+				if (a_pd) {
+					popt.use_shift = true;
+					popt.shift = _T(0);
+				}
+				else if (e1_lamB_ok && e1_lamB > _T(0)) {
+					using std::abs;
+					const spmats<_T, index_type> Ac =
+						static_cast<const spmats<_T, index_type>&>(Amid).as_csr();
+					const std::vector<index_type>& ao = Ac.outer_index();
+					const std::vector<_T>& av = Ac.values();
+					_T an = _T(0);                             // ‖mid(A)‖∞(点計算。手がかり)
+					for (std::size_t i = 0; i + 1 < ao.size(); i++) {
+						_T rs = _T(0);
+						for (index_type p = ao[i]; p < ao[i + 1]; p++) {
+							rs += abs(av[static_cast<std::size_t>(p)]);
+						}
+						if (rs > an) an = rs;
+					}
+					popt.use_shift = true;
+					popt.shift = -(_T(2) * an / e1_lamB);
+				}
+			}
+			else if (opt.target == vcp::eig_target::smallest_magnitude) {
+				popt.use_shift = true;
+				popt.shift = _T(0);
+			}
+			else if (opt.target == vcp::eig_target::target_real
+			         || opt.target == vcp::eig_target::target_magnitude) {
+				popt.use_shift = true;
+				popt.shift = mid(opt.shift);
+			}
+		}
+		// [SPI-E1 E-4a / E-4b] 点のソルバーへの依頼 1 回分(梯子と、整合検査の
+		// 後のやり直しが共用)。
+		auto e4_solve = [&](std::size_t kr) -> eig_result<_T> {
+			if (b_is_identity) {
+				return (M != 0) ? Amid.policy_eigs_with_info(kr, popt, prec_ad)
+				                : Amid.policy_eigs_with_info(kr, popt);
+			}
+			return (M != 0) ? Amid.policy_generalized_eigs_with_info(Bmid, kr, popt, prec_ad)
+			                : Amid.policy_generalized_eigs_with_info(Bmid, kr, popt);
+		};
+		// [SPI-E1 E-4a] 一部だけ収束した結果から、収束した固有対を取り出す。
+		// 特定の仕方(P0 測定 M-3): 点のソルバーは経路ごとに返すものが違い
+		// (一般化の shift-invert は不収束なら 0 個。標準の thick-restart Lanczos
+		// は未収束の対を混ぜて要求個数を返し converged_count も要求個数のまま。
+		// 標準の shift-invert Lanczos はロック済みの対だけ)、converged_count と
+		// 並びでは特定できない。全経路が対ごとに返す残差で決める: 対 i を収束と
+		// みなす ⇔ residuals_relative[i] ≤ tol または residuals_absolute[i] ≤ tol
+		// (点の Krylov–Schur コアの受理と同じ形。NaN は比較が偽で落ちる)。
+		// 残差の配列が固有対と同じ長さで返っていなければ特定できない(0 個)。
+		// 取り出すのは近似(手がかり)で、保証は後段が担う。
+		auto e4_partial = [&](const eig_result<_T>& r, eig_result<_T>& out) -> std::size_t {
+			out = eig_result<_T>();
+			const std::size_t ne = r.eigenvalues.size();
+			if (r.converged_count == 0 || ne == 0) return 0;
+			if (r.eigenvectors.size() != ne) return 0;
+			if (r.residuals_relative.size() != ne || r.residuals_absolute.size() != ne) return 0;
+			for (std::size_t i = 0; i < ne; i++) {
+				if (r.eigenvectors[i].size() != n_sz) continue;
+				if (!(r.residuals_relative[i] <= popt.tol || r.residuals_absolute[i] <= popt.tol)) continue;
+				out.eigenvalues.push_back(r.eigenvalues[i]);
+				out.eigenvectors.push_back(r.eigenvectors[i]);
+			}
+			return out.eigenvalues.size();
+		};
+		// [SPI-E1 E-4a] 梯子: 全部が収束した段があればそれを採る(従来どおり)。
+		// 一部だけ収束した段は、収束した対が k 個以上あればその対だけで先へ進む
+		// (次の段に下げない)。k 個に満たない段は次の段も試し(少ない要求で全部
+		// 収束するなら従来の結果を失わない)、どの段も全部は収束しなかったら、
+		// 収束した対が最も多かった段の対だけで先へ進む。
+		bool e4_ap_ok = false;                             // ap が近似のリストとして使える
+		{
+			eig_result<_T> best_part;
+			std::size_t best_cnt = 0, best_kr = 0;
+			for (int li = 0; li < 3; li++) {
+				const std::size_t kr = k_ladder[li];
+				if (li > 0 && kr == k_ladder[li - 1]) continue;
+				if (li == 2 && kr == k_ladder[0]) continue;
+				ap = e4_solve(kr);
+				if (ap.converged) { last_verify_info.veigs_ap_request_count = kr; e4_ap_ok = true; break; }
+				eig_result<_T> part;
+				const std::size_t cnt = e4_partial(ap, part);
+				if (cnt > best_cnt) { best_part = part; best_cnt = cnt; best_kr = kr; }
+				if (best_cnt >= k) break;
+			}
+			if (!e4_ap_ok && best_cnt > 0) {
+				ap = best_part;
+				last_verify_info.veigs_ap_request_count = best_kr;
+				e4_ap_ok = true;
+			}
 		}
 
 		// スナップショット(設計 §5.2: 既定は近似固有値のみ。近似固有
@@ -2524,7 +2693,7 @@ protected:
 			last_verify_info.ap_eigenvectors = ap.eigenvectors;
 		}
 
-		if (!ap.converged) {
+		if (!e4_ap_ok) {
 			vcp::throw_error<vcp::state_error>(
 				"spimats::policy_generalized_eigs_with_info: approximation eigensolver did not converge (see last_verify_info.ap_eigenvalues)");
 		}
@@ -2733,16 +2902,14 @@ protected:
 					lb0 = _T(1);
 				}
 				else {
-					_AP Bmid2;
-					vcp::mid_for_approximation(B, Bmid2);
-					eig_options<_T> bo;
-					bo.target = vcp::eig_target::smallest_magnitude;   // 'smallestabs'【L167】
-					const eig_result<_T> br = Bmid2.policy_eigs_with_info(1, bo);
-					if (!br.converged || br.eigenvalues.empty()) {
+					// [SPI-E1 E-1c] 近似値 λ̃_B は近似の段の前で 1 回だけ求めてある
+					// (e1_lamB。求め方は E-1a・E-1b)。ここではその値を lb0 に使う。
+					// 失敗の無主張は従来と同じ位置・同じ文言。
+					if (!e1_lamB_ok) {
 						vcp::throw_error<vcp::verification_error>(
 							"spimats::policy_generalized_eigs_with_info: lambda_min(B) approximation failed (no claim)");
 					}
-					lb0 = br.eigenvalues[0];
+					lb0 = e1_lamB;
 				}
 				if (!(lb0 > _T(0))) {
 					vcp::throw_error<vcp::verification_error>(
@@ -2802,6 +2969,16 @@ protected:
 				lambda_rough_max = (An / lambda_B_min);    // 【L171】
 			}
 
+			// [SPI-E1 E-4b] ここから区画の末尾の return までを、近似のリスト ap に
+			// 対する 1 回分として回す(本体は字下げしない --- 下の try と同じ扱い)。
+			// 1 回目(e4_pass = 0)の整合検査で、慣性の番号の幅が近似の個数より
+			// 多いクラスタが見つかったら、点のソルバーへの要求を増やして ap を
+			// 取り直し、continue で 2 回目に入る【対応: veigs.m L485 の error
+			// 「Please consider increasing the value of EigNum」の意図】。やり直しは
+			// 1 回まで。それ以外の経路は、従来どおり return か throw でこのループを
+			// 抜ける(本体の末尾には到達しない)。分離子・慣性・is_spd・Lehmann・
+			// 順位の検査の計算は 1 回目も 2 回目も同じで、変えていない。
+			for (int e4_pass = 0; ; e4_pass++) {
 			// --- 近似固有値のソート【対応: veigs.m L132: sort(diag(D))】---
 			std::vector<_T> ev = ap.eigenvalues;
 			if (ev.empty()) {
@@ -3246,6 +3423,68 @@ protected:
 			// --- 整合検査【対応: veigs.m L458-491 の LDL Result check】---
 			// S の各クラスタの certified 番号幅がクラスタの近似固有値個数と一致
 			// することを要求(不一致 = 近似が粗い / 見落とし → 無主張)。
+			// [SPI-E1 E-4b / E-4c / E-4e] 番号の幅と近似の個数が合わない最初の
+			// クラスタ c*(sa は下端 c_lo から上へ、la は上端 c_hi から下へ、
+			// それ以外は c_lo から上へ数える)の扱い。番号 Nj・包含の端 dnj / upj は
+			// クラスタごとに独立に certified なので、合ったクラスタだけを返しても
+			// 各クラスタの主張(番号 [N_c+1, N_{c+1}] の固有値が [dn_c, up_{c+1}] に
+			// ある)は変わらない。
+			{
+				bool e4_found = false;
+				std::size_t e4_c = 0;
+				for (std::size_t q = 0; q + c_lo <= c_hi; q++) {
+					const std::size_t c = tg_la ? (c_hi - q) : (c_lo + q);
+					if (!(static_cast<std::size_t>(Nj[c + 1] - Nj[c]) == chi[c] - clo[c] + 1)) {
+						e4_found = true;
+						e4_c = c;
+						break;
+					}
+				}
+				if (e4_found) {
+					// [SPI-E1 E-4b] 慣性の幅が近似の個数より d 個多い → 要求を d 個
+					// 増やして(n を超えない)近似の段から 1 回だけやり直す。全部が
+					// 収束するか、E-4a の取り出しで k 個以上が得られたときだけ採る
+					// (得られなければ今の近似のまま E-4c へ)。
+					if (e4_pass == 0 && Nj[e4_c + 1] > Nj[e4_c]) {
+						const std::size_t wd = static_cast<std::size_t>(Nj[e4_c + 1] - Nj[e4_c]);
+						const std::size_t szs = chi[e4_c] - clo[e4_c] + 1;
+						const std::size_t kr0 = last_verify_info.veigs_ap_request_count;
+						if (wd > szs && kr0 < n_sz) {
+							const std::size_t kr2 = (n_sz - kr0 < wd - szs) ? n_sz : kr0 + (wd - szs);
+							eig_result<_T> ap2 = e4_solve(kr2);
+							bool ok2 = ap2.converged;
+							if (!ok2) {
+								eig_result<_T> part2;
+								if (e4_partial(ap2, part2) >= k) { ap2 = part2; ok2 = true; }
+							}
+							if (ok2 && !ap2.eigenvalues.empty()) {
+								ap = ap2;
+								last_verify_info.veigs_ap_request_count = kr2;
+								last_verify_info.ap_eigenvalues = ap.eigenvalues;
+								if (spi_opt.keep_ap_eigenvectors) {
+									last_verify_info.ap_eigenvectors = ap.eigenvectors;
+								}
+								continue;                      // 2 回目(e4_pass = 1)へ
+							}
+						}
+					}
+					// [SPI-E1 E-4c] 保証できたクラスタまでを返す(sa / la だけ。
+					// veigs.m にない振る舞い)。sa は S を c_lo〜c*−1、la は c*+1〜c_hi に
+					// 縮める。返す単位はクラスタ。縮めた S が空(c* が端のクラスタ)の
+					// ときと、[SPI-E1 E-4e] sa / la 以外は、従来どおり無主張を投げる
+					// (sa / la は下の catch で Rayleigh 退路)。
+					if (tg_sa && e4_c > c_lo) {
+						c_hi = e4_c - 1;
+					}
+					else if (tg_la && e4_c < c_hi) {
+						c_lo = e4_c + 1;
+					}
+					else {
+						vcp::throw_error<vcp::verification_error>(
+							"spimats::policy_generalized_eigs_with_info: certified index range does not match cluster size (no claim)");   // 【L485-491】
+					}
+				}
+			}
 			for (std::size_t c = c_lo; c <= c_hi; c++) {
 				const std::size_t szc = chi[c] - clo[c] + 1;
 				if (!(static_cast<std::size_t>(Nj[c + 1] - Nj[c]) == szc)) {
@@ -3799,6 +4038,7 @@ protected:
 			result.rank_certified = last_verify_info.veigs_rank_certified;   // [VCP-C1 C1-10] F4 の判定をそのまま
 			last_verify_info.stage = 4;                    // 成功
 			return result;
+			}   // for e4_pass([SPI-E1 E-4b])
 		}
 		// >>> END [SPI-U5] <<<
 		return result;   // not reached

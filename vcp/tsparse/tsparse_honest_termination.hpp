@@ -41,9 +41,9 @@ namespace tsparse {
 //
 // 比較規約(GT1 P1 / EIG-1 B-16): T の素の比較演算は interval では certainly
 // 比較である。継続(false)側に倒すのは「内側と保証できる未収束候補がある」
-// 場合のみで、indeterminate は終了許可(true)側に落ちる。converged の最終宣言
-// 自体は C-1 の終了時厳密残差検査(residual_acceptance_check_, certified-≤)が
-// 別途守るため、これで嘘側に倒れることはない。
+// 場合のみで、indeterminate は終了許可(true)側に落ちる。
+// (EIG-T1 P6a: 終了時の厳密残差検査 residual_acceptance_check_ は EIG-T1 で
+//  どこからも呼ばれなくなり削除した。converged は各ソルバー自身の判定である。)
 //
 // 注意: これは EIG-0 C-4 の通り完全性の保証ではない。「現在の部分空間に見えて
 // いる矛盾を無視しない」という規則である。呼び出し側は freshness(候補集合が
@@ -258,45 +258,19 @@ std::vector<std::size_t> locked_prefix_indices_(
 }
 
 // ---------------------------------------------------------------------------
-// residual_acceptance_check_   (EIG-1 F-3-2 / F-4 / F-5; EIG-0 C-1 の実装)
-//
-// 終了時に再評価した「厳密残差」(内部推定値ではない)が全返却対で受理条件
-//   res_abs <= tol  または  res_rel <= tol(scale = 各ソルバーの既存定義)
-// を満たすときのみ true。converged=true はこの検査を通過した場合に限る。
-//
-// 成功宣言側は certified-≤(GT1 P1 / B-16): interval では certainly-≤ のみ
-// 受理し、indeterminate は失敗側(第三分岐 = 正直な非収束)へ落ちる。
-// ---------------------------------------------------------------------------
-template <class R>
-bool residual_acceptance_check_(
-	const std::vector<R>& residuals_absolute,
-	const std::vector<R>& residuals_relative,
-	const R& tol)
-{
-	const std::size_t m = residuals_absolute.size();
-	if (m == 0) return false;                       // 返却なしに受理なし
-	if (residuals_relative.size() != m) return false;  // 診断の不整合は受理しない
-	for (std::size_t i = 0; i < m; i++) {
-		const bool accepted = (residuals_absolute[i] <= tol) ||
-		                      (residuals_relative[i] <= tol);
-		if (!accepted) return false;
-	}
-	return true;
-}
-
-// ---------------------------------------------------------------------------
 // EIG-4 T-4 (D4-4、R-1 改訂式): 改訂 C-1 受理スケールの唯一の定義(B-29:
 // scale 定義の分散・重複を禁止。ソルバー側での再定義は不可)。
 //
 //   scale(|θ|, ‖A‖_est) = max(1 + |θ|, ‖A‖_est)
 //
-// 受理は「既存受理(res_abs ≤ tol ∨ res_rel ≤ tol)∨ res_abs ≤ tol·scale」。
-// 既存受理式を 1 ビットも変えない OR 追加なので厳密に広義緩和であり、
-// 許される v1 遷移は「正直 NONCONV → 正解 OK」のみ(遷移許容集合 = {t1b})。
+// EIG-T1 P6a: この scale を使っていた終了時の受理関数
+// (residual_acceptance_check_scaled_ と dispatch 層の最終ゲート)は削除した。
+// 現在の利用者は Krylov-Schur の核に渡す λ 形式のロックのゲート
+// (spmats_eigs.hpp の KsLambdaGate)で、判定は res_abs ≤ tol·scale。
 //
 // ‖A‖_est の経路別定義(この 1 箇所に集約・文書化):
-//   - 行列を所持する dispatch 層の最終ゲート(lanczos_package_to_result_ /
-//     lambda_c1_acceptance_gate_): ‖A‖∞ の厳密値(O(nnz)、決定的)
+//   - 行列を所持する dispatch 層(λ 形式のロックのゲート): ‖A‖∞ の厳密値
+//     (O(nnz)、決定的)
 //   - TRL(apply 抽象、行列非所持): 実行全体で観測した射影 3 重対角の
 //     ∞ ノルム走行最大 max_i(|β_{i-1}| + |α_i| + |β_i|)。|α_i|,|β_i| ≤ ‖A‖₂
 //     より高々 3‖A‖₂(対称では ≤ 3‖A‖∞)の決定的推定であり、‖A‖∞ の厳密値
@@ -316,30 +290,6 @@ R c1_revised_scale_(const R& theta_abs, const R& anorm_est)
 	return s;
 }
 
-// 最終 verdict ゲート用の改訂受理(成功宣言側 = certified-≤、GT1 P1/B-16。
-// interval では indeterminate が失敗側 = 正直な非収束に落ちる)。
-template <class R>
-bool residual_acceptance_check_scaled_(
-	const std::vector<R>& residuals_absolute,
-	const std::vector<R>& residuals_relative,
-	const R& tol,
-	const std::vector<R>& theta_abs,
-	const R& anorm_est)
-{
-	const std::size_t m = residuals_absolute.size();
-	if (m == 0) return false;
-	if (residuals_relative.size() != m) return false;
-	if (theta_abs.size() != m) return false;
-	for (std::size_t i = 0; i < m; i++) {
-		const bool legacy = (residuals_absolute[i] <= tol) ||
-		                    (residuals_relative[i] <= tol);
-		const bool revised = (residuals_absolute[i]
-		    <= tol * c1_revised_scale_<R>(theta_abs[i], anorm_est));
-		if (!(legacy || revised)) return false;
-	}
-	return true;
-}
-
 // ---------------------------------------------------------------------------
 // EIG-8 T-2 (D8-2、G-0.1 承認): 一般化 C-1 受理スケールの唯一の定義(B-48:
 // ローカル再実装禁止。ソルバー側での再定義は不可)。
@@ -357,32 +307,6 @@ template <class R>
 R c1_generalized_scale_(const R& theta_abs, const R& anorm_est, const R& bnorm_est)
 {
 	return c1_revised_scale_<R>(theta_abs, anorm_est + theta_abs * bnorm_est);
-}
-
-// 一般化最終 verdict ゲート用の受理(既存式 ∨ tol·scale — 緩和方向のみ。
-// 成功宣言側 = certified-≤、GT1 P1/B-16。interval では indeterminate が
-// 失敗側 = 正直な非収束に落ちる)。
-template <class R>
-bool residual_acceptance_check_generalized_scaled_(
-	const std::vector<R>& residuals_absolute,
-	const std::vector<R>& residuals_relative,
-	const R& tol,
-	const std::vector<R>& theta_abs,
-	const R& anorm_est,
-	const R& bnorm_est)
-{
-	const std::size_t m = residuals_absolute.size();
-	if (m == 0) return false;
-	if (residuals_relative.size() != m) return false;
-	if (theta_abs.size() != m) return false;
-	for (std::size_t i = 0; i < m; i++) {
-		const bool legacy = (residuals_absolute[i] <= tol) ||
-		                    (residuals_relative[i] <= tol);
-		const bool revised = (residuals_absolute[i]
-		    <= tol * c1_generalized_scale_<R>(theta_abs[i], anorm_est, bnorm_est));
-		if (!(legacy || revised)) return false;
-	}
-	return true;
 }
 
 // ---------------------------------------------------------------------------

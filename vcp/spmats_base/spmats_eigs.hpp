@@ -15,15 +15,12 @@
 #include <vector>
 #include <vcp/spmats_base/spmats_eigs_types.hpp>
 #include <vcp/tsparse/tsparse_honest_termination.hpp>
-#include <vcp/tsparse/tsparse_lanczos.hpp>
 #include <vcp/tsparse/tsparse_krylov_schur.hpp>   // EIG-3: arnoldi/si successor
 #include <vcp/tsparse/tsparse_thick_restart_lanczos.hpp>   // EIG-4: TRL promotion (T-1/T-2)
 #include <vcp/tsparse/tsparse_factorization.hpp>
 #include <vcp/tsparse/tsparse_preconditioner.hpp>
 #include <vcp/tsparse/tsparse_eigen_selection.hpp>
 #include <vcp/tsparse/tsparse_generalized_shift_invert.hpp>
-#include <vcp/tsparse/tsparse_b_inner_lanczos.hpp>
-#include <vcp/tsparse/tsparse_hermitian_lanczos.hpp>
 #include <vcp/tsparse/tsparse_dense_fallback.hpp>
 #include <vcp/tsparse/tsparse_dense_schur_driver.hpp>
 #include <vcp/tsparse/tsparse_dense_linalg.hpp>
@@ -41,9 +38,21 @@
 namespace vcp {
 namespace tsparse_experimental {
 template <typename T> struct trl_is_real_floating;
+template <class T> struct trl_is_supported_scalar_;   // EIG-T2 D-1
 template <class Apply, class T>
 vcp::eig_result<T> thick_restart_lanczos_eigs(
     const Apply& apply, std::size_t n, std::size_t k,
+    const vcp::eig_options<T>& options);
+// EIG-T1 T-2: the kernel without its end-of-run residual applications
+template <class Apply, class T>
+vcp::eig_result<T> thick_restart_lanczos_eigs_no_residual_(
+    const Apply& apply, std::size_t n, std::size_t k,
+    const vcp::eig_options<T>& options);
+// EIG-T1 P5a: the kernel in the B inner product
+template <class T> struct thick_restart_lanczos_result;
+template <class Apply, class BMul, class T>
+thick_restart_lanczos_result<T> thick_restart_lanczos_eigs_b_inner_(
+    const Apply& apply, const BMul& bmul, std::size_t n, std::size_t k,
     const vcp::eig_options<T>& options);
 } // namespace tsparse_experimental
 } // namespace vcp
@@ -734,488 +743,11 @@ generalized_eigenpair_relative_residuals_(const spmats<_T,_Index>& A,
 }
 
 // ---------------------------------------------------------------------------
-// lanczos_package_to_result_
+// EIG-T1 P5b: the verdict of every route and every scalar type is the
+// solver's own (T-9).  The lambda-space end-of-run gates
+// (lambda_c1_acceptance_gate_) and the one-step polish behind them
+// (si_polish_*) were removed; the residual fields stay as diagnostics.
 // ---------------------------------------------------------------------------
-template <typename _T, typename _Index, class ApplyA>
-static eig_result<_T> lanczos_package_to_result_(
-    const vcp::tsparse_lanczos::lanczos_result_package<_T, ApplyA>& pkg,
-    const spmats<_T,_Index>& self,
-    const std::size_t k,
-    const eig_solver_method method,
-    const typename vcp::tsparse_scalar::real_type<_T>::type& tol)
-{
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    (void)sizeof(scalar_real_type);
-    eig_result<_T> result;
-    result.eigenvalues               = pkg.eigenvalues;
-    result.eigenvectors              = pkg.eigenvectors;
-    result.converged                 = pkg.converged;
-    result.iterations                = pkg.iterations;
-    result.converged_count           = pkg.converged_count;
-    result.returned_count            = pkg.returned_count;
-    result.matrix_vector_products    = pkg.mv_count;
-    result.residuals_absolute        = pkg.residuals_abs;
-    result.residuals_relative        = pkg.residuals_rel;
-    result.residual_history_absolute = pkg.history_abs;
-    result.residual_history_relative = pkg.history_rel;
-    result.breakdown_reason          = pkg.breakdown_reason;
-    result.failure_reason            = pkg.failure_reason;
-    if (!pkg.residuals_abs.empty()) {
-        result.residual_norm_absolute =
-            *std::max_element(pkg.residuals_abs.begin(), pkg.residuals_abs.end());
-    }
-    populate_real_complex_eigenvalues_<_T,_Index>(result);
-    bool exact_residual_rejected = false;
-    if (!result.eigenvectors.empty()) {
-        spmats<_T,_Index> A = self.as_csr();
-        result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
-        result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
-        // EIG-1 F-4/F-5 (EIG-0 C-1): 直前で再計算した「元の A に対する λ 空間の
-        // 厳密残差」を converged 判定へ反映する(降格のみ — false を true には
-        // しない)。shift-invert lanczos では内側反復は μ 空間だが、受理は
-        // この λ 空間残差で判定する(G-2.1 承認案 ①〜④)。
-        // EIG-4 T-4 (D4-4 / R-1): 受理は「既存式 ∨ res_abs ≤ tol·scale」、
-        // scale = max(1+|θ|, ‖A‖∞ 厳密値)(共有ヘルパ。緩和方向のみ — B-29)
-        std::vector<scalar_real_type> theta_abs_c1;
-        theta_abs_c1.reserve(result.eigenvalues.size());
-        for (std::size_t i2 = 0; i2 < result.eigenvalues.size(); i2++)
-            theta_abs_c1.push_back(vcp::tsparse_scalar::abs_value(
-                vcp::tsparse_scalar::real_part(result.eigenvalues[i2])));
-        if (result.converged &&
-            !vcp::tsparse::residual_acceptance_check_scaled_(
-                result.residuals_absolute, result.residuals_relative, tol,
-                theta_abs_c1, matrix_inf_norm_value_<_T,_Index>(A))) {
-            exact_residual_rejected = true;
-            result.converged = false;
-            result.failure_reason =
-                "end-of-run exact residual (lambda space) failed acceptance (C-1)";
-        }
-    }
-    set_eig_diagnostics_<_T,_Index>(result, method, result.returned_count, result.matrix_vector_products,
-        result.breakdown_reason, result.failure_reason);
-    if (exact_residual_rejected) result.status = "residual_check_failed";
-    result.used_shift_invert = (method == eig_solver_method::shift_invert_lanczos
-                             || method == eig_solver_method::shift_invert_arnoldi);
-    set_result_counts_<_T,_Index>(result, k);
-    return result;
-}
-
-// ---------------------------------------------------------------------------
-// demote_arnoldi_core_converged_claim_   (EIG-1 F-5; G-2.1 承認 案 (a))
-//
-// EIG-0 C-2(返却集合の内側に未収束候補が certainly 存在しないこと)は
-// converged=true の必要条件だが、arnoldi コアは active 候補集合を結果
-// パッケージとして輸出しておらず(かつ B-13 により編集禁止・EIG-3 で置換予定)、
-// arnoldi コア shift-invert 経路の back-half では C-2 を評価できない。
-// したがって同経路の converged 主張は正直な not_converged へ降格する。
-//
-// 判定順序(a-2): まず λ 空間の厳密残差受理(C-1)を評価し、
-//   C-1 不合格 → status="residual_check_failed"
-//   C-1 合格かつ C-2 証拠なし → (a-1) の明示文言で降格
-// 値と λ 空間厳密残差は診断として結果に残る(B-15)。enum 追加なし(文字列のみ)。
-// ---------------------------------------------------------------------------
-template <typename _T, typename _Index>
-static void demote_arnoldi_core_converged_claim_(
-    eig_result<_T>& result,
-    const typename vcp::tsparse_scalar::real_type<_T>::type& tol)
-{
-    const bool would_claim = result.converged;
-    result.converged = false;
-    if (!would_claim) return;   // 元々 not_converged: 触らない
-    if (!vcp::tsparse::residual_acceptance_check_(
-            result.residuals_absolute, result.residuals_relative, tol)) {
-        result.status = "residual_check_failed";
-        result.failure_reason =
-            "end-of-run exact residual (lambda space) failed acceptance (C-1)";
-    } else {
-        result.status = "not_converged";
-        result.failure_reason =
-            "C-2 evidence unavailable on arnoldi-core shift-invert path (pending EIG-3)";
-    }
-    result.message = result.failure_reason;
-}
-
-// ---------------------------------------------------------------------------
-// EIG-3 T-3: shift-invert back-halves on the rebuilt Krylov-Schur core.
-//
-// The KS driver (tsparse_krylov_schur.hpp) enforces C-1 (exact mu-space
-// residuals), C-2 (shared honest_termination_check_complex_), D3-2 (complex
-// pairs never returned as converged) and freshness internally, and exports
-// the C-2 evidence (D3-4 / EIG-1 a-5).  The back-half additionally
-// RE-EVALUATES the shared C-2 check on the exported evidence (design D3-4:
-// "back-half passes the evidence to the shared check"), then the lambda-space
-// C-1 acceptance below remains the final outer gate.  This lifts the EIG-1
-// arnoldi-core demotion (demote_arnoldi_core_converged_claim_, now unused).
-// ---------------------------------------------------------------------------
-template <typename _T, typename _Index>
-static void lambda_c1_acceptance_gate_(eig_result<_T>& result,
-    const typename vcp::tsparse_scalar::real_type<_T>::type& tol)
-{
-    if (!result.converged) return;
-    if (!vcp::tsparse::residual_acceptance_check_(
-            result.residuals_absolute, result.residuals_relative, tol)) {
-        result.converged = false;
-        result.status = "residual_check_failed";
-        result.failure_reason =
-            "end-of-run exact residual (lambda space) failed acceptance (C-1)";
-        result.message = result.failure_reason;
-    }
-}
-
-// EIG-4 T-4 (D4-4 / R-1): 標準問題用の改訂 scale 版(A x = λ x の si 経路)。
-// 受理は共有ヘルパ residual_acceptance_check_scaled_(既存式 ∨ tol·scale、
-// scale = max(1+|θ|, ‖A‖∞))。
-// (旧注記「一般化経路は従来ゲート維持」は EIG-8 T-3/D8-3 で共有形へ置換 —
-//  下の 4 引数 overload。)
-template <typename _T, typename _Index>
-static void lambda_c1_acceptance_gate_(eig_result<_T>& result,
-    const typename vcp::tsparse_scalar::real_type<_T>::type& tol,
-    const spmats<_T,_Index>& A_for_scale)
-{
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    if (!result.converged) return;
-    std::vector<scalar_real_type> theta_abs_c1;
-    theta_abs_c1.reserve(result.eigenvalues.size());
-    for (std::size_t i = 0; i < result.eigenvalues.size(); i++)
-        theta_abs_c1.push_back(vcp::tsparse_scalar::abs_value(
-            vcp::tsparse_scalar::real_part(result.eigenvalues[i])));
-    if (!vcp::tsparse::residual_acceptance_check_scaled_(
-            result.residuals_absolute, result.residuals_relative, tol,
-            theta_abs_c1, matrix_inf_norm_value_<_T,_Index>(A_for_scale))) {
-        result.converged = false;
-        result.status = "residual_check_failed";
-        result.failure_reason =
-            "end-of-run exact residual (lambda space) failed acceptance (C-1)";
-        result.message = result.failure_reason;
-    }
-}
-
-// EIG-8 T-3 (D8-3、停止報告裁定 s-3/s-4 の再位置づけ込み): 一般化問題用の
-// 共有 scale 版(A x = λ B x)。受理は D8-2 共有ヘルパ
-// residual_acceptance_check_generalized_scaled_(既存式 ∨ tol·max(1+|θ|,
-// ‖A‖∞ + |θ|·‖B‖∞))。既存式の rel 分岐は Frobenius 後退正規化
-// (generalized_eigenpair_relative_residual_norm_value_)を既に持つため、
-// 本置換の挙動遷移期待はゼロ — scale 定義の共有集約(契約整合の完成)である。
-template <typename _T, typename _Index>
-static void lambda_c1_acceptance_gate_(eig_result<_T>& result,
-    const typename vcp::tsparse_scalar::real_type<_T>::type& tol,
-    const spmats<_T,_Index>& A_for_scale,
-    const spmats<_T,_Index>& B_for_scale)
-{
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    if (!result.converged) return;
-    std::vector<scalar_real_type> theta_abs_c1;
-    theta_abs_c1.reserve(result.eigenvalues.size());
-    for (std::size_t i = 0; i < result.eigenvalues.size(); i++)
-        theta_abs_c1.push_back(vcp::tsparse_scalar::abs_value(
-            vcp::tsparse_scalar::real_part(result.eigenvalues[i])));
-    if (!vcp::tsparse::residual_acceptance_check_generalized_scaled_(
-            result.residuals_absolute, result.residuals_relative, tol,
-            theta_abs_c1, matrix_inf_norm_value_<_T,_Index>(A_for_scale),
-            matrix_inf_norm_value_<_T,_Index>(B_for_scale))) {
-        result.converged = false;
-        result.status = "residual_check_failed";
-        result.failure_reason =
-            "end-of-run exact residual (lambda space) failed acceptance (C-1)";
-        result.message = result.failure_reason;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// EIG-6 F-1: si back-half の返却前磨き(条件付き・single-round)
-//
-// 発火条件(G-0.1 承認 §3.0): 各 back-half の「既存の λ 空間 C-1 最終ゲート」が
-// 不合格(status == "residual_check_failed")を出した場合のみ。現行ゲートを
-// 通過する経路は磨き経路に入らず、実行軌跡・mv・値はバイト同一に保たれる。
-//
-// 磨き(D-17a 機構への対処): 返却予定の全対 (θ, v) へ逆反復 1 回
-//   w = op.apply(v)(標準: (A−σI)^{-1} v / 一般化: (A−σB)^{-1} B v)
-//   w ← w/‖w‖、θ' = Rayleigh 商(標準: wᵀAw / 一般化: wᵀAw / wᵀBw)
-// を適用し、磨き後の (θ', w) に対して**同一の**受理ゲートを再判定する。
-// λ 空間残差の床 ~|λ|·‖A‖·eps → ~‖A‖·eps に引き下げる(4〜5 桁改善)。
-//
-// 規律(EIG-6 設計 §3 F-1 (i)〜(v) + G-0.1 付帯 5 点):
-//  (i)   single-round: 磨きは 1 回限り。再不合格なら従来どおり
-//        residual_check_failed(磨きループ禁止)。
-//  (ii)  発火時は返却予定の全対を磨く(部分磨き不可)。磨き後に全対で
-//        ゲート再判定 + target 順再確定。
-//  (iii) 磨きの solve は mv / linear_solves に 1:1 計上(B-38)。予算超過に
-//        なる場合(mv + 対数 > max_iter)は磨かない(B-1: 無料磨きの禁止)。
-//  (iv)  決定的(乱数なし)。
-//  (v)   単調性ガードは対ごと: 磨き後残差が厳密に改善(certified <)した対のみ
-//        採用、悪化・不確定(interval の indeterminate を含む)は磨き前を採用。
-//  (vi)  受理式・scale・tol は 1 ビットも変えない(B-40)。ゲートは各 back-half
-//        の現行判定そのもの(標準 = 改訂 scale 版 / 一般化 = scale なし版)。
-//  (vii) 複素対が返却面にある場合(complex_pair_count != 0 または
-//        eigenvalues_imag に非零)は磨かない(実ベクトル逆反復の前提外。
-//        正直な不合格がそのまま残る)。
-// ---------------------------------------------------------------------------
-template <typename _T, typename _Index>
-static bool si_polish_returned_pairs_all_real_(const eig_result<_T>& result)
-{
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    if (result.complex_pair_count != 0) return false;
-    if (result.eigenvalues_imag.size() == result.eigenvalues.size()) {
-        for (std::size_t i = 0; i < result.eigenvalues_imag.size(); i++) {
-            const scalar_real_type im = vcp::tsparse_scalar::abs_value(
-                vcp::tsparse_scalar::real_part(result.eigenvalues_imag[i]));
-            if (im > scalar_real_type(0)) return false;
-        }
-    }
-    return true;
-}
-
-// 磨き本体(標準/一般化共通)。B_ptr == nullptr なら標準問題。
-// 戻り値: 磨きを実施したか(mv 計上済みか)。ゲート再判定は呼び出し側で行う。
-template <typename _T, typename _Index, class ApplyOp>
-static bool si_polish_pairs_once_(eig_result<_T>& result,
-                                  const spmats<_T,_Index>& A_csr,
-                                  const spmats<_T,_Index>* B_ptr,
-                                  const eig_options<_T>& options,
-                                  ApplyOp& apply_si)
-{
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    const std::size_t P = result.eigenvalues.size();
-    if (P == 0) return false;
-    if (result.eigenvectors.size() != P) return false;
-    if (result.residuals_absolute.size() != P) return false;
-    if (!si_polish_returned_pairs_all_real_<_T,_Index>(result)) return false;
-    // (iii) 予算規律: 磨き分の solve が予算を超えるなら磨かない(正直不合格を維持)
-    if (result.matrix_vector_products + P > options.max_iter) return false;
-
-    for (std::size_t p = 0; p < P; p++) {
-        std::vector<_T> w;
-        apply_si(result.eigenvectors[p], w);          // 逆反復 1 回 = 1 solve
-        result.matrix_vector_products += 1;           // (iii) B-38: 1:1 計上
-        const scalar_real_type wn = norm_value_<_T,_Index>(w);
-        if (!(wn > scalar_real_type(0))) continue;    // 退化(certified >0 のみ採用側へ)
-        for (std::size_t i = 0; i < w.size(); i++) w[i] = w[i] / _T(wn);
-        // Rayleigh 商(標準: wᵀAw、一般化: wᵀAw / wᵀBw)
-        std::vector<_T> Aw = A_csr.mul_vec(w);
-        _T num = _T(0);
-        for (std::size_t i = 0; i < w.size(); i++) num += w[i] * Aw[i];
-        _T theta_new = num;
-        if (B_ptr != 0) {
-            std::vector<_T> Bw = B_ptr->mul_vec(w);
-            _T den = _T(0);
-            for (std::size_t i = 0; i < w.size(); i++) den += w[i] * Bw[i];
-            const scalar_real_type den_abs = vcp::tsparse_scalar::abs_value(
-                vcp::tsparse_scalar::real_part(den));
-            if (!(den_abs > scalar_real_type(0))) continue;   // B 内積退化: 磨き前を採用
-            theta_new = num / den;
-        }
-        // (v) 対ごと単調性ガード: certified に改善した対のみ採用
-        const scalar_real_type res_new = (B_ptr != 0)
-            ? generalized_eigenpair_residual_norm_value_<_T,_Index>(A_csr, *B_ptr, theta_new, w)
-            : eigenpair_residual_norm_value_<_T,_Index>(A_csr, theta_new, w);
-        if (res_new < result.residuals_absolute[p]) {
-            result.eigenvalues[p]  = theta_new;
-            result.eigenvectors[p] = w;
-        }
-    }
-    // (ii) 磨き後の全対で残差を再計算(採用/非採用が混在しても一様に)
-    if (B_ptr != 0) {
-        result.residuals_absolute = generalized_eigenpair_residuals_<_T,_Index>(A_csr, *B_ptr, result.eigenvalues, result.eigenvectors);
-        result.residuals_relative = generalized_eigenpair_relative_residuals_<_T,_Index>(A_csr, *B_ptr, result.eigenvalues, result.eigenvectors);
-    } else {
-        result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A_csr, result.eigenvalues, result.eigenvectors);
-        result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A_csr, result.eigenvalues, result.eigenvectors);
-    }
-    if (!result.residuals_absolute.empty()) {
-        result.residual_norm_absolute =
-            *std::max_element(result.residuals_absolute.begin(), result.residuals_absolute.end());
-    }
-    // (ii) target 順の再確定(θ' の微小変化での順序逆転に備える)
-    vcp::tsparse_eigen_selection::sort_eigenpairs_by_target(
-        result.eigenvalues, result.eigenvectors,
-        result.residuals_absolute, result.residuals_relative,
-        options.target, options.shift);
-    populate_real_complex_eigenvalues_<_T,_Index>(result);
-    return true;
-}
-
-// 標準問題用: 現行の改訂 scale 版 C-1 ゲート(lambda_c1_acceptance_gate_ の
-// scale 版と同一式)で再判定する。合格なら converged=true へ昇格。
-template <typename _T, typename _Index, class ApplyOp>
-static void si_polish_rescue_standard_(eig_result<_T>& result,
-                                       const spmats<_T,_Index>& self,
-                                       const eig_options<_T>& options,
-                                       ApplyOp& apply_si)
-{
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    if (result.converged) return;
-    if (result.status != "residual_check_failed") return;   // 発火条件(既存ゲート不合格のみ)
-    spmats<_T,_Index> A = self.as_csr();
-    if (!si_polish_pairs_once_<_T,_Index>(result, A, static_cast<const spmats<_T,_Index>*>(0), options, apply_si))
-        return;
-    std::vector<scalar_real_type> theta_abs_c1;
-    theta_abs_c1.reserve(result.eigenvalues.size());
-    for (std::size_t i = 0; i < result.eigenvalues.size(); i++)
-        theta_abs_c1.push_back(vcp::tsparse_scalar::abs_value(
-            vcp::tsparse_scalar::real_part(result.eigenvalues[i])));
-    if (vcp::tsparse::residual_acceptance_check_scaled_(
-            result.residuals_absolute, result.residuals_relative, options.tol,
-            theta_abs_c1, matrix_inf_norm_value_<_T,_Index>(A))) {
-        result.converged = true;
-        result.status = "converged";
-        result.failure_reason.clear();
-        result.message = "converged (C-1 rescue: one-step inverse-iteration polish; EIG-6 F-1)";
-    } else {
-        // (i) single-round: 再不合格は従来どおり(磨き改善分は診断として残る — B-15)
-        result.failure_reason =
-            "end-of-run exact residual (lambda space) failed acceptance (C-1); one-step polish attempted (EIG-6 F-1)";
-        result.message = result.failure_reason;
-    }
-}
-
-// 一般化問題用: EIG-8 T-3(D8-3、G-0.1 承認事項 d)— 再判定も最終ゲートと
-// 同一の D8-2 共有 scale 形に統一する(発火条件が共有形不合格である以上、
-// 再判定だけ旧形では非対称が残るため。EIG-6 G-0.1 (v) の「統一しない」判断は
-// D8-3 の統一タスク承認で上書き)。
-template <typename _T, typename _Index, class ApplyOp>
-static void si_polish_rescue_generalized_(eig_result<_T>& result,
-                                          const spmats<_T,_Index>& self,
-                                          const spmats<_T,_Index>& B,
-                                          const eig_options<_T>& options,
-                                          ApplyOp& apply_si)
-{
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    if (result.converged) return;
-    if (result.status != "residual_check_failed") return;   // 発火条件(既存ゲート不合格のみ)
-    spmats<_T,_Index> A = self.as_csr();
-    spmats<_T,_Index> B_csr = B.as_csr();
-    if (!si_polish_pairs_once_<_T,_Index>(result, A, &B_csr, options, apply_si))
-        return;
-    std::vector<scalar_real_type> theta_abs_g;
-    theta_abs_g.reserve(result.eigenvalues.size());
-    for (std::size_t i = 0; i < result.eigenvalues.size(); i++)
-        theta_abs_g.push_back(vcp::tsparse_scalar::abs_value(
-            vcp::tsparse_scalar::real_part(result.eigenvalues[i])));
-    if (vcp::tsparse::residual_acceptance_check_generalized_scaled_(
-            result.residuals_absolute, result.residuals_relative, options.tol,
-            theta_abs_g, matrix_inf_norm_value_<_T,_Index>(A),
-            matrix_inf_norm_value_<_T,_Index>(B_csr))) {
-        result.converged = true;
-        result.status = "converged";
-        result.failure_reason.clear();
-        result.message = "converged (C-1 rescue: one-step inverse-iteration polish; EIG-6 F-1)";
-    } else {
-        result.failure_reason =
-            "end-of-run exact residual (lambda space) failed acceptance (C-1); one-step polish attempted (EIG-6 F-1)";
-        result.message = result.failure_reason;
-    }
-}
-
-// ---------------------------------------------------------------------------
-// EIG-6 F-2' θ シフト磨き(G-2B.1 承認事項・E-A1 si_lanczos front 限定)
-//
-// 発火条件: converged だが「scaled-abs 分岐(res_abs ≤ tol·max(1+|θ|,‖A‖∞))を
-// 満たさない対がある」場合のみ。契約ゲート(無変更)は rel 分岐(Frobenius
-// 相対)で受理し得るが、μ ロック品質の λ 空間残差床 ~|λ|·‖A‖·r_μ は近接
-// クラスタで scaled-abs を外れ得る(grid_large 実測 3.5e-9 > 1.2e-9)。
-// σ=0 の逆反復磨き(F-1)は近接固有値の誤差成分をほぼ減衰させない
-// (減衰比 λ_i/λ_j ≈ 0.997)ため、対ごとの Rayleigh 商 θ_p をシフトに使う
-// 古典的な shifted inverse iteration で 1 回で eps 床へ落とす:
-//   w = (A − θ_p I)^{-1} v_p(E-A1 sparse LU を対ごとに新規分解)、
-//   w ← w/‖w‖、θ' = wᵀAw、対ごと単調性ガード(certified に改善した対のみ採用)。
-// 規律: single-round(P4 同様の防御)・全対走査・solve は mv/linear_solves に
-// 1:1 計上(P1)・決定的・複素対除外(P3)・予算内のみ(mv + 対数 ≤ max_iter)。
-// 分解は mv 通貨の対象外(E-A1 と同じ扱い)だが、対ごとの追加分解 ≤ k 回を
-// 診断メッセージに明記する。θ_p が固有値に極近く (A−θI) が数値特異でも、
-// 逆反復の誤差は目的固有方向に落ちる(古典理論)— 分解失敗対は磨き前を採用。
-// ---------------------------------------------------------------------------
-template <typename _T, typename _Index>
-static void
-si_polish_shifted_rescue_(eig_result<_T>& result,
-                          const spmats<_T,_Index>& self,
-                          const eig_options<_T>& options)
-{
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    typedef vcp::tsparse::lu_shift_invert_operator<spmats<_T,_Index> > LUOp;
-    if (!result.converged) return;
-    const std::size_t P = result.eigenvalues.size();
-    if (P == 0) return;
-    if (result.eigenvectors.size() != P) return;
-    if (result.residuals_absolute.size() != P) return;
-    if (!si_polish_returned_pairs_all_real_<_T,_Index>(result)) return;
-    spmats<_T,_Index> A = self.as_csr();
-    const scalar_real_type anorm = matrix_inf_norm_value_<_T,_Index>(A);
-    // 発火判定: scaled-abs 全対クリーンなら何もしない(既存 OK 面はバイト不変)
-    bool all_clean = true;
-    for (std::size_t i = 0; i < P; i++) {
-        const scalar_real_type th = vcp::tsparse_scalar::abs_value(
-            vcp::tsparse_scalar::real_part(result.eigenvalues[i]));
-        const scalar_real_type sc = vcp::tsparse::c1_revised_scale_(th, anorm);
-        if (!(result.residuals_absolute[i] <= options.tol * sc)) { all_clean = false; break; }
-    }
-    if (all_clean) return;
-    if (result.matrix_vector_products + P > options.max_iter) return;   // 予算規律
-
-    std::size_t polish_factorizations = 0;
-    // SLU-L1 L-6: symbolic reuse across the per-pair factorizations.  The
-    // sparse pattern of (A - theta*I) does not depend on theta (A is fixed;
-    // only the diagonal is shifted), and the symbolic phase (column ordering /
-    // etree / supernode partition) is pattern-only, so ONE symbolic computed
-    // for the first pair's shifted matrix is valid for every pair.  Passing it
-    // to the 2nd+ LUOp constructions skips the redundant symbolic phases;
-    // sparse_lu_numeric is solve-bit-identical to sparse_lu_factorize_with_info
-    // (SLU-L1 design §3.3, measured), so all outputs are unchanged.
-    vcp::sparse_lu_symbolic_result<_Index> lu_sym_cache;   // success=false until set
-    if (P >= 2) {
-        spmats<_T,_Index> sh0 = A;   // A is already as_csr (above)
-        const _Index nn = static_cast<_Index>(sh0.rowsize());
-        for (_Index i = 0; i < nn; i++) {
-            const _T cur = sh0.get(i, i);
-            sh0.set(i, i, cur - result.eigenvalues[0]);
-        }
-        sh0.finalize();
-        lu_sym_cache = vcp::sparse_lu_symbolic(sh0.as_csr(),
-                                               options.shift_invert_lu);
-    }
-    for (std::size_t p = 0; p < P; p++) {
-        // 1st pair keeps the legacy path (reuse=null) -- minimal change; the
-        // cache is consumed from the 2nd pair on.
-        const vcp::sparse_lu_symbolic_result<_Index>* reuse =
-            (p >= 1 && lu_sym_cache.success) ? &lu_sym_cache : 0;
-        LUOp op(self, result.eigenvalues[p], options.shift_invert_lu, reuse);
-        polish_factorizations++;
-        if (!op.factorization_ok()) continue;              // 磨き前を採用
-        std::vector<_T> w;
-        op.apply(result.eigenvectors[p], w);               // 1 solve
-        result.matrix_vector_products += 1;                // P1: 1:1 計上
-        result.linear_solves += 1;
-        const scalar_real_type wn = norm_value_<_T,_Index>(w);
-        if (!(wn > scalar_real_type(0))) continue;
-        for (std::size_t i = 0; i < w.size(); i++) w[i] = w[i] / _T(wn);
-        std::vector<_T> Aw = A.mul_vec(w);
-        _T num = _T(0);
-        for (std::size_t i = 0; i < w.size(); i++) num += w[i] * Aw[i];
-        const _T theta_new = num;
-        const scalar_real_type res_new =
-            eigenpair_residual_norm_value_<_T,_Index>(A, theta_new, w);
-        if (res_new < result.residuals_absolute[p]) {      // 対ごと単調性(certified)
-            result.eigenvalues[p]  = theta_new;
-            result.eigenvectors[p] = w;
-        }
-    }
-    result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
-    result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
-    if (!result.residuals_absolute.empty()) {
-        result.residual_norm_absolute =
-            *std::max_element(result.residuals_absolute.begin(), result.residuals_absolute.end());
-    }
-    vcp::tsparse_eigen_selection::sort_eigenpairs_by_target(
-        result.eigenvalues, result.eigenvectors,
-        result.residuals_absolute, result.residuals_relative,
-        options.target, options.shift);
-    populate_real_complex_eigenvalues_<_T,_Index>(result);
-    if (polish_factorizations > 0) {
-        // (f-3) 追加分解回数の正式公開(構造化フィールド)+ 人間可読の注記
-        result.polish_factorizations = polish_factorizations;
-        result.message = "converged (theta-shifted inverse-iteration polish; EIG-6 F-2'; "
-            "extra factorizations=" + std::to_string(polish_factorizations) + ")";
-    }
-}
 
 // Field-compatible package (mirrors the consumed subset of the old
 // arnoldi_result_package) produced by the KS core in mu space.
@@ -1413,6 +945,17 @@ static eig_options<_T> resolve_eigs_options_(const spmats<_T,_Index>& A, const e
      && !is_symmetric_value_<_T,_Index>(A, vcp::tsparse_scalar::decimal_power_negative<scalar_real_type>(10))) {
         vcp::throw_error<vcp::domain_error>("spmats::eigs: Lanczos requires a symmetric matrix");
     }
+    // EIG-T1 (G-1 ruling A): the same input check for the two other
+    // symmetric-only methods when they are named explicitly (after the
+    // use_shift resolution above, so lanczos + use_shift is covered too).
+    // With structure = symmetric the caller is trusted, as for lanczos.
+    // A check of the precondition on the input, not of a residual.
+    if (active.structure == matrix_structure_hint::auto_detect
+     && (active.method == eig_solver_method::thick_restart_lanczos
+      || active.method == eig_solver_method::shift_invert_lanczos)
+     && !is_symmetric_value_<_T,_Index>(A, vcp::tsparse_scalar::decimal_power_negative<scalar_real_type>(10))) {
+        vcp::throw_error<vcp::domain_error>("spmats::eigs: Lanczos requires a symmetric matrix");
+    }
     return active;
 }
 
@@ -1448,8 +991,29 @@ static eig_result<_T> generalized_diagonal_eigs_(const spmats<_T,_Index>& A,
         e[i] = _T(1);
         vectors.push_back(e);
     }
-    const std::vector<std::size_t> order =
-        vcp::tsparse_eigen_selection::select_real_eigenpairs(values, k, options.target, options.shift);
+    // EIG-T1 P6b: a request that is a shift-invert request on the general
+    // routes (use_shift, or shift_invert_lanczos / shift_invert_arnoldi named)
+    // returns the k values nearest sigma = options.shift whatever the target
+    // is, as every other route does (generalized / standard shift-invert,
+    // spumar).  Other requests select by options.target as before.
+    const bool nearest_shift =
+        options.use_shift
+        || options.method == eig_solver_method::shift_invert_lanczos
+        || options.method == eig_solver_method::shift_invert_arnoldi;
+    std::vector<std::size_t> order;
+    if (nearest_shift) {
+        std::vector<scalar_real_type> dist(n);
+        for (std::size_t i = 0; i < n; i++)
+            dist[i] = vcp::tsparse_scalar::abs_value(
+                scalar_real_type(vcp::tsparse_scalar::real_part(values[i]) - options.shift));
+        order.resize(n);
+        for (std::size_t i = 0; i < n; i++) order[i] = i;
+        std::stable_sort(order.begin(), order.end(),
+            [&dist](const std::size_t x, const std::size_t y) { return dist[x] < dist[y]; });
+        if (order.size() > k) order.resize(k);
+    } else {
+        order = vcp::tsparse_eigen_selection::select_real_eigenpairs(values, k, options.target, options.shift);
+    }
     for (std::size_t i = 0; i < order.size(); i++) {
         result.eigenvalues.push_back(values[order[i]]);
         result.eigenvectors.push_back(vectors[order[i]]);
@@ -1473,7 +1037,7 @@ hermitian_eigenpair_residual_norm_value_(const spmats<_T,_Index>& A, const _T& l
 {
     std::vector<_T> r = A.mul_vec(v);
     for (std::size_t i = 0; i < r.size(); i++) r[i] -= lambda * v[i];
-    return vcp::tsparse_hermitian_lanczos::hermitian_norm(r);
+    return vcp::tsparse_scalar::hermitian_norm_value(r);
 }
 
 template <typename _T, typename _Index>
@@ -1497,7 +1061,7 @@ hermitian_eigenpair_relative_residual_norm_value_(const spmats<_T,_Index>& A, co
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
     const scalar_real_type abs_res = hermitian_eigenpair_residual_norm_value_<_T,_Index>(A, lambda, v);
-    const scalar_real_type vn = vcp::tsparse_hermitian_lanczos::hermitian_norm(v);
+    const scalar_real_type vn = vcp::tsparse_scalar::hermitian_norm_value(v);
     const scalar_real_type denom = frobenius_norm_value_<_T,_Index>(A) * vn
         + vcp::tsparse_scalar::abs_value(lambda) * vn
         + vcp::tsparse_scalar::epsilon<scalar_real_type>();
@@ -1558,58 +1122,6 @@ static std::string check_hermitian_sparse_(const spmats<_T,_Index>& A,
 }
 
 // ---------------------------------------------------------------------------
-// hermitian_package_to_result_
-// ---------------------------------------------------------------------------
-template <typename _T, typename _Index>
-static eig_result<_T> hermitian_package_to_result_(
-    const vcp::tsparse_hermitian_lanczos::hermitian_lanczos_result<_T>& pkg,
-    const spmats<_T,_Index>& self,
-    const std::size_t k)
-{
-    eig_result<_T> result;
-    result.eigenvalues               = pkg.eigenvalues;
-    result.eigenvectors              = pkg.eigenvectors;
-    result.converged                 = pkg.converged;
-    result.iterations                = pkg.iterations;
-    result.converged_count           = pkg.converged_count;
-    result.returned_count            = pkg.returned_count;
-    result.matrix_vector_products    = pkg.mv_count;
-    result.residuals_absolute        = pkg.residuals_abs;
-    result.residuals_relative        = pkg.residuals_rel;
-    result.residual_history_absolute = pkg.history_abs;
-    result.residual_history_relative = pkg.history_rel;
-    result.breakdown_reason          = pkg.breakdown_reason;
-    result.failure_reason            = pkg.failure_reason;
-    result.used_method               = pkg.used_method;
-    result.method                    = eig_solver_method::lanczos;
-    result.used_shift_invert         = false;
-    result.used_dense_fallback       = false;
-    result.used_generalized_operator = false;
-    result.requested_count           = k;
-    populate_real_complex_eigenvalues_<_T,_Index>(result);
-    if (!result.eigenvectors.empty()) {
-        spmats<_T,_Index> A = self.as_csr();
-        result.residuals_absolute = hermitian_eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
-        result.residuals_relative = hermitian_eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
-    }
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    (void)sizeof(scalar_real_type);
-    if (!result.residuals_absolute.empty())
-        result.residual_norm_absolute = *std::max_element(result.residuals_absolute.begin(), result.residuals_absolute.end());
-    if (!result.residuals_relative.empty())
-        result.residual_norm_relative = *std::max_element(result.residuals_relative.begin(), result.residuals_relative.end());
-    if (result.converged) {
-        result.status  = "converged";
-        result.message = result.breakdown_reason.empty() ? "converged" : result.breakdown_reason;
-    } else {
-        result.status  = "not_converged";
-        result.message = result.failure_reason.empty() ? "not converged" : result.failure_reason;
-    }
-    set_result_counts_<_T,_Index>(result, k);
-    return result;
-}
-
-// ---------------------------------------------------------------------------
 // complex_generalized_eigs_unsupported_
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
@@ -1658,42 +1170,16 @@ static eig_result<_T> complex_preconditioned_eigs_unsupported_(const std::size_t
 
 // ---------------------------------------------------------------------------
 // hermitian_lanczos_eigs_impl_
+//
+// EIG-T2 D-3: the complex Hermitian standard route (no shift) runs on the
+// thick-restart kernel, in the shape of the real symmetric route T-2c
+// (t2_lanczos_plain_).  Declared here for complex_standard_eigs_with_info_;
+// defined after the T-7c helpers it uses.
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 static eig_result<_T> hermitian_lanczos_eigs_impl_(const spmats<_T,_Index>& self,
                                                      const std::size_t k,
-                                                     const eig_options<_T>& options)
-{
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type R;
-    spmats<_T,_Index> A = self.as_csr();
-    const std::size_t n = static_cast<std::size_t>(self.rowsize());
-    const R normA_fro = frobenius_norm_value_<_T,_Index>(A);
-    const std::size_t sdim = (options.subspace_dim == 0)
-        ? std::max(k + std::size_t(5), std::min(n, std::size_t(30)))
-        : options.subspace_dim;
-    struct apply_fn {
-        const spmats<_T,_Index>* mat;
-        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { y = mat->mul_vec(x); }
-    } apply_op = { &A };
-    // EIG-3 T-4 (D-6, Q1 ruling 2026-07-06): max_iter is the TOTAL mv budget on
-    // every path.  Pure unit conversion to restarts with the worst per-restart
-    // cost 2*sdim (expansion sdim + lock-scan exact residuals <= sdim;
-    // tsparse_lanczos.hpp mv_count++ sites); the inflation term "+ k + 1" is
-    // deleted.  The restart loop is INCLUSIVE (restart <= max_restarts), so a
-    // floor of 0 already yields one restart; no max(1,.) floor (it would
-    // double the minimum work and break the bound for max_iter < 2*sdim).
-    // Machine-checked overshoot bound: mv <= max_iter + 2*sdim.
-    const std::size_t max_restarts_l = (sdim > 0)
-        ? options.max_iter / (2 * sdim)
-        : options.max_iter;
-    vcp::tsparse_hermitian_lanczos::hermitian_lanczos_result<_T> pkg =
-        vcp::tsparse_hermitian_lanczos::hermitian_lanczos_eigs<_T, apply_fn>(
-            n, k, sdim, max_restarts_l, options.tol,
-            options.random_seed, options.random_start,
-            options.target, R(options.shift),
-            normA_fro, options.compute_residual_history, apply_op);
-    return hermitian_package_to_result_<_T,_Index>(pkg, self, k);
-}
+                                                     const eig_options<_T>& options);
 
 // ---------------------------------------------------------------------------
 // complex_standard_eigs_with_info_
@@ -1705,9 +1191,11 @@ static eig_result<_T> complex_standard_eigs_with_info_(const spmats<_T,_Index>& 
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
     // EIG-4 T-2 (R-4 と同趣旨): 複素 T の auto_select は旧既定(lanczos =
-    // hermitian 経路)へ正規化する(挙動は旧既定と同一)。実 T 専用の
-    // thick_restart_lanczos / krylov_schur は正直拒否。以下の本体は
-    // options 名の付け替えのみで無変更(B-26)。
+    // hermitian 経路)へ正規化する(挙動は旧既定と同一)。複素 T には提供
+    // しない method = thick_restart_lanczos / krylov_schur の明示指定は
+    // 正直拒否(EIG-T2 以降、thick-restart の核そのものは複素エルミートを
+    // 受け付け、method = lanczos の経路が使う。krylov_schur の核は実 T
+    // 専用のまま)。以下の本体は options 名の付け替えのみで無変更(B-26)。
     eig_options<_T> options_norm = options_in;
     if (options_norm.method == eig_solver_method::auto_select)
         options_norm.method = eig_solver_method::lanczos;
@@ -1719,8 +1207,8 @@ static eig_result<_T> complex_standard_eigs_with_info_(const spmats<_T,_Index>& 
         result.converged = false;
         result.status = "unsupported_complex_non_hermitian";
         result.failure_reason =
-            "thick_restart_lanczos / krylov_schur are real-scalar drivers;"
-            " for complex Hermitian matrices use method=lanczos";
+            "method=thick_restart_lanczos / krylov_schur is not offered for"
+            " complex scalars; for complex Hermitian matrices use method=lanczos";
         result.message = result.failure_reason;
         result.method = options_norm.method;
         result.used_method = eig_method_to_string_<_T,_Index>(options_norm.method);
@@ -1855,6 +1343,691 @@ static eig_result<_T> complex_standard_eigs_with_info_(const spmats<_T,_Index>& 
 }
 
 // ---------------------------------------------------------------------------
+// EIG-T1 T-2: the four Lanczos-type routes on the T-1 thick-restart kernel
+// (they replaced the plain-restart cores lanczos_eigs_standard /
+// lanczos_eigs_standard_si_ / b_inner_lanczos_eigs).
+//
+//   T-2a / T-2b  standard shift-invert (with or without a user
+//                preconditioner): the operator (A - sigma I)^{-1} goes to the
+//                kernel (largest |mu|), lambda = sigma + 1 / mu
+//   T-2c         standard, method = lanczos, no shift: the operator A
+//   T-2d         generalized, no shift: B = P^T L L^T P (sparse Cholesky),
+//                the operator C = L^{-1} P A P^T L^{-T}, x = P^T L^{-T} y
+//
+// max_iter is the total number of operator applications.  The residual
+// fields are true residuals of the original problem, computed after the run
+// as diagnostics; they do not decide `converged`.
+// Tag: t2_supported_ (the real point scalars the kernel accepts,
+// trl_is_real_floating; since EIG-T2 the kernel also accepts their
+// std::complex, which has its own route hermitian_trl_route_ and does not
+// use these four); the false overloads are compile-time fences for the
+// other scalar types (interval), which are refused before they are reached
+// (t2_unsupported_scalar_).
+// ---------------------------------------------------------------------------
+template <typename _T>
+struct t2_supported_ {
+    static const bool value =
+        vcp::tsparse_experimental::trl_is_real_floating<_T>::value;
+};
+
+// EIG-T1 (G-1 ruling E): scalar types the kernel does not accept (interval
+// scalars) have no Lanczos-type route.  lanczos / shift_invert_lanczos (with
+// or without preconditioner) and the generalized problem without shift are
+// refused with status "unsupported" (the shape of the thick_restart_lanczos
+// refusal in trl_drive_).  krylov_schur / arnoldi / dense stay available.
+template <typename _T, typename _Index>
+static eig_result<_T> t2_unsupported_scalar_(const std::size_t k,
+                                             const eig_solver_method method,
+                                             const std::string& used_method)
+{
+    eig_result<_T> result;
+    result.requested_count = k;
+    result.converged = false;
+    result.status = "unsupported";
+    result.failure_reason = used_method +
+        ": scalar type unsupported (real point scalars only);"
+        " use krylov_schur / arnoldi (shift_invert_arnoldi with a shift)";
+    result.message = result.failure_reason;
+    result.method = method;
+    result.used_method = used_method;
+    set_result_counts_<_T,_Index>(result, k);
+    return result;
+}
+
+// status / message of the lanczos-type routes ("converged" /
+// "not_converged") from a kernel result
+template <typename _T, typename _Index>
+static void t2_finish_lanczos_type_(eig_result<_T>& result,
+                                    const eig_solver_method method,
+                                    const std::size_t k)
+{
+    // These routes never report `converged` with fewer pairs than requested
+    // (the kernel clamps k to n and judges the clamped count).
+    if (result.converged && result.eigenvalues.size() < k) {
+        result.converged = false;
+        if (result.failure_reason.empty())
+            result.failure_reason = "fewer eigenpairs than requested (k exceeds the dimension)";
+    }
+    const std::string kernel_failure = result.failure_reason;
+    const std::size_t sdim = result.used_subspace_dim;
+    const std::size_t mv = result.matrix_vector_products;
+    result.requested_count = k;
+    set_eig_diagnostics_<_T,_Index>(result, method, sdim, mv,
+        result.breakdown_reason, kernel_failure);
+    populate_real_complex_eigenvalues_<_T,_Index>(result);
+    set_result_counts_<_T,_Index>(result, k);
+}
+
+// --- T-2a / T-2b -----------------------------------------------------------
+template <typename _T, typename _Index, class Apply>
+static eig_result<_T> t2_si_lanczos_core_(const spmats<_T,_Index>&,
+                                          const std::size_t k,
+                                          const eig_options<_T>&,
+                                          const typename vcp::tsparse_scalar::real_type<_T>::type&,
+                                          Apply&,
+                                          std::false_type /* t2_supported */)
+{
+    eig_result<_T> result;   // fence (never executed)
+    result.requested_count = k;
+    result.converged = false;
+    result.status = "unsupported";
+    return result;
+}
+
+template <typename _T, typename _Index, class Apply>
+static eig_result<_T> t2_si_lanczos_core_(const spmats<_T,_Index>& self,
+                                          const std::size_t k,
+                                          const eig_options<_T>& options,
+                                          const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
+                                          Apply& apply_si,
+                                          std::true_type /* t2_supported */)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    const std::size_t n = static_cast<std::size_t>(self.rowsize());
+    eig_options<_T> mu_opts = options;
+    mu_opts.target = eig_target::largest_magnitude;   // nearest sigma in lambda
+    mu_opts.shift = scalar_real_type(0);
+    mu_opts.use_shift = false;
+    eig_result<_T> result =
+        vcp::tsparse_experimental::thick_restart_lanczos_eigs_no_residual_<Apply, _T>(
+            apply_si, n, k, mu_opts);
+    for (std::size_t i = 0; i < result.eigenvalues.size(); i++) {
+        const scalar_real_type mu = vcp::tsparse_scalar::real_part(result.eigenvalues[i]);
+        if (vcp::tsparse_scalar::abs_value(mu) > scalar_real_type(0))
+            result.eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
+    }
+    if (!result.eigenvectors.empty()) {
+        spmats<_T,_Index> A = self.as_csr();
+        result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
+        result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
+    }
+    t2_finish_lanczos_type_<_T,_Index>(result, eig_solver_method::shift_invert_lanczos, k);
+    result.used_shift_invert = true;
+    return result;
+}
+
+// --- T-2c --------------------------------------------------------------------
+template <typename _T, typename _Index>
+static eig_result<_T> t2_lanczos_plain_(const spmats<_T,_Index>&,
+                                        const std::size_t k,
+                                        const eig_options<_T>&,
+                                        std::false_type /* t2_supported */)
+{
+    eig_result<_T> result;   // fence (never executed)
+    result.requested_count = k;
+    result.converged = false;
+    result.status = "unsupported";
+    return result;
+}
+
+template <typename _T, typename _Index>
+static eig_result<_T> t2_lanczos_plain_(const spmats<_T,_Index>& self,
+                                        const std::size_t k,
+                                        const eig_options<_T>& options,
+                                        std::true_type /* t2_supported */)
+{
+    spmats<_T,_Index> A = self.as_csr();
+    const std::size_t n = static_cast<std::size_t>(self.rowsize());
+    struct apply_fn {
+        const spmats<_T,_Index>* mat;
+        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { y = mat->mul_vec(x); }
+    };
+    apply_fn apply_op = { &A };
+    eig_result<_T> result =
+        vcp::tsparse_experimental::thick_restart_lanczos_eigs_no_residual_<apply_fn, _T>(
+            apply_op, n, k, options);
+    if (!result.eigenvectors.empty()) {
+        result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
+        result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
+    }
+    t2_finish_lanczos_type_<_T,_Index>(result, eig_solver_method::lanczos, k);
+    result.used_shift_invert = false;
+    return result;
+}
+
+// --- T-2d --------------------------------------------------------------------
+template <typename _T, typename _Index>
+static bool t2_generalized_chol_(const spmats<_T,_Index>&,
+                                 const spmats<_T,_Index>&,
+                                 const std::size_t,
+                                 const eig_options<_T>&,
+                                 eig_result<_T>&,
+                                 std::false_type /* t2_supported */)
+{
+    return false;   // fence: the caller refuses the scalar type
+}
+
+// Returns true when the route produced `result` (also for an honest
+// factorization failure); false = not applicable.
+template <typename _T, typename _Index>
+static bool t2_generalized_chol_(const spmats<_T,_Index>& self,
+                                 const spmats<_T,_Index>& B,
+                                 const std::size_t k,
+                                 const eig_options<_T>& options,
+                                 eig_result<_T>& result,
+                                 std::true_type /* t2_supported */)
+{
+    // The sparse Cholesky needs a signed index type; the factor is held with
+    // std::ptrdiff_t indices whatever _Index is (index conversion only).
+    typedef std::ptrdiff_t CI;
+    const std::size_t n = static_cast<std::size_t>(self.rowsize());
+
+    vcp::sparse_chol_result<_T, CI> f;
+    bool chol_ok = false;
+    std::string chol_note;
+    try {
+        const spmats<_T,_Index> Bc = B.as_csc();
+        const std::vector<_Index>& bo = Bc.outer_index();
+        const std::vector<_Index>& bi = Bc.inner_index();
+        std::vector<CI> cp(bo.size()), ri(bi.size());
+        for (std::size_t i = 0; i < bo.size(); i++) cp[i] = static_cast<CI>(bo[i]);
+        for (std::size_t i = 0; i < bi.size(); i++) ri[i] = static_cast<CI>(bi[i]);
+        vcp::sparse_chol_options<_T> copt;
+        copt.check_symmetry = false;   // symmetry of B was checked by the caller (tolerance 1e-10)
+        f = vcp::sparse_chol_factorize_with_info<_T, CI>(
+            static_cast<CI>(n), cp, ri, Bc.values(), copt);
+        chol_ok = (f.status == vcp::sparse_chol_status::success);
+        if (!chol_ok) {
+            if (f.status == vcp::sparse_chol_status::not_positive_definite)
+                chol_note = "B is not positive definite";
+            else if (f.status == vcp::sparse_chol_status::inconclusive_pivot_test)
+                chol_note = "positive definiteness of B could not be decided";
+            else
+                chol_note = "sparse Cholesky of B did not complete";
+        }
+    } catch (const std::exception& e) {
+        chol_ok = false;
+        chol_note = std::string("sparse Cholesky of B threw: ") + e.what();
+    }
+    if (!chol_ok) {
+        result.converged = false;
+        result.status = "factorization_failed";
+        result.failure_reason = "generalized eigs without shift: " + chol_note;
+        result.message = result.failure_reason;
+        set_result_counts_<_T,_Index>(result, k);
+        return true;
+    }
+
+    spmats<_T,_Index> A = self.as_csr();
+    struct chol_apply {
+        const spmats<_T,_Index>* A;
+        const vcp::sparse_chol_result<_T, CI>* f;
+        std::size_t n;
+        // z <- L^{-T} z
+        void lt_solve(std::vector<_T>& z) const {
+            for (std::size_t jj = n; jj > 0; jj--) {
+                const std::size_t j = jj - 1;
+                const std::size_t p0 = static_cast<std::size_t>(f->L_col_ptr[j]);
+                const std::size_t p1 = static_cast<std::size_t>(f->L_col_ptr[j + 1]);
+                _T sum = z[j];
+                for (std::size_t q = p0 + 1; q < p1; q++)
+                    sum -= f->L_val[q] * z[static_cast<std::size_t>(f->L_row_ind[q])];
+                z[j] = sum / f->L_val[p0];
+            }
+        }
+        // z <- L^{-1} z
+        void l_solve(std::vector<_T>& z) const {
+            for (std::size_t j = 0; j < n; j++) {
+                const std::size_t p0 = static_cast<std::size_t>(f->L_col_ptr[j]);
+                const std::size_t p1 = static_cast<std::size_t>(f->L_col_ptr[j + 1]);
+                z[j] = z[j] / f->L_val[p0];
+                for (std::size_t q = p0 + 1; q < p1; q++)
+                    z[static_cast<std::size_t>(f->L_row_ind[q])] -= f->L_val[q] * z[j];
+            }
+        }
+        // x = P^T L^{-T} y
+        std::vector<_T> back(const std::vector<_T>& y) const {
+            std::vector<_T> z(y), x(n, _T(0));
+            lt_solve(z);
+            for (std::size_t i = 0; i < n; i++) x[static_cast<std::size_t>(f->perm[i])] = z[i];
+            return x;
+        }
+        // y = L^{-1} P A P^T L^{-T} x
+        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const {
+            const std::vector<_T> u = back(x);
+            const std::vector<_T> t = A->mul_vec(u);
+            y.resize(n);
+            for (std::size_t i = 0; i < n; i++) y[i] = t[static_cast<std::size_t>(f->perm[i])];
+            l_solve(y);
+        }
+    };
+    chol_apply apply_c = { &A, &f, n };
+
+    const eig_result<_T> kr =
+        vcp::tsparse_experimental::thick_restart_lanczos_eigs_no_residual_<chol_apply, _T>(
+            apply_c, n, k, options);
+
+    result.iterations = kr.iterations;
+    result.matrix_vector_products = kr.matrix_vector_products;
+    result.used_subspace_dim = kr.used_subspace_dim;
+    result.breakdown_reason = kr.breakdown_reason;
+    result.failure_reason = kr.failure_reason;
+    result.converged_count = kr.converged_count;
+    result.eigenvalues = kr.eigenvalues;
+    result.eigenvectors.clear();
+    for (std::size_t i = 0; i < kr.eigenvectors.size(); i++)
+        result.eigenvectors.push_back(apply_c.back(kr.eigenvectors[i]));
+    if (!result.eigenvectors.empty()) {
+        result.residuals_absolute = generalized_eigenpair_residuals_<_T,_Index>(self, B, result.eigenvalues, result.eigenvectors);
+        result.residuals_relative = generalized_eigenpair_relative_residuals_<_T,_Index>(self, B, result.eigenvalues, result.eigenvectors);
+    }
+    result.converged = kr.converged;
+    if (options.compute_residual_history) {
+        result.residual_history_absolute = kr.residual_history_absolute;
+        result.residual_history_relative = kr.residual_history_relative;
+    }
+    populate_real_complex_eigenvalues_<_T,_Index>(result);
+    if (result.converged) {
+        result.status = "converged";
+        result.message = "converged";
+        result.failure_reason.clear();
+    } else if (kr.status == "max_iter_exhausted") {
+        result.status = "max_iter_exhausted";
+        if (result.failure_reason.empty())
+            result.failure_reason = "MV budget (max_iter) exhausted before convergence";
+        result.message = result.failure_reason;
+    } else {
+        result.status = "not_converged";
+        if (result.failure_reason.empty())
+            result.failure_reason = "generalized thick-restart Lanczos did not converge";
+        result.message = result.failure_reason;
+    }
+    set_result_counts_<_T,_Index>(result, k);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// EIG-T1 P5a: generalized shift-invert of a symmetric pair on the T-1 kernel
+//
+// A x = lambda B x with A, B symmetric and a Lanczos-type request
+// (shift_invert_lanczos, lanczos + use_shift, auto_select + use_shift; all
+// three arrive here as promoted_from_lanczos).  The iteration has the shape
+// of ARPACK mode 3: OP = (A - sigma B)^{-1} B is symmetric in the B inner
+// product, the kernel runs on OP with that inner product (largest |mu|),
+// lambda = sigma + 1 / mu.  B is not factorized and may be semidefinite.
+// Convergence / kept pairs / termination are the kernel's (T-1, T-7, T-8,
+// T-9); no end-of-run residual test, no polish, no purification.
+// When a B inner product turns out negative or not finite the kernel stops
+// and the request is served by the Krylov-Schur route as before.
+// Requests outside the conditions (not symmetric, shift_invert_arnoldi named,
+// scalar types the kernel does not accept) keep the Krylov-Schur route.
+// used_method / status strings and the meaning of max_iter (total number of
+// applications of OP, the one for the start vector included) are unchanged.
+// ---------------------------------------------------------------------------
+template <typename _T, typename _Index>
+static bool p5a_symmetric_pair_(const spmats<_T,_Index>& A,
+                                const spmats<_T,_Index>& B,
+                                const eig_options<_T>& options)
+{
+    // the symmetry decision of auto_select_eigs_ (hint first, else certain)
+    if (options.structure == matrix_structure_hint::symmetric) return true;
+    if (options.structure == matrix_structure_hint::general)   return false;
+    return is_certainly_symmetric_<_T,_Index>(A) && is_certainly_symmetric_<_T,_Index>(B);
+}
+
+template <typename _T, typename _Index>
+static bool p5a_route_(const spmats<_T,_Index>& A,
+                       const spmats<_T,_Index>& B,
+                       const eig_options<_T>& options,
+                       const bool promoted_from_lanczos)
+{
+    if (!t2_supported_<_T>::value) return false;
+    if (!promoted_from_lanczos) return false;
+    return p5a_symmetric_pair_<_T,_Index>(A, B, options);
+}
+
+// Symmetric factorization of K = A - sigma B for the default (direct) entry:
+//   (a) sparse Cholesky; (b) sparse LDL^T (supernodal, Bunch-Kaufman; after
+//   pivot_out_of_panel once more with baseline_dynamic); kind == 0 when
+//   neither succeeded (the caller then uses the sparse LU).
+// solve(): K^{-1} b in place.  LDL^T: P^T K P = L D L^T (perm new->old) --
+// permute, unit lower forward substitution, 1x1 / 2x2 block diagonal,
+// back substitution, permute back.  No iterative refinement.
+template <typename _T, typename _Index>
+struct p5a_sym_factor_ {
+    typedef std::ptrdiff_t CI;
+    int kind;                    // 0 none, 1 Cholesky, 2 LDL^T
+    std::string diagnostics;
+    std::size_t n;
+    vcp::sparse_chol_result<_T, CI> chol;
+    std::vector<std::size_t> l_ptr, l_row, perm;   // strict lower part of L by columns
+    std::vector<_T> l_val, d_diag, d_sub;          // d_sub[k] = D(k+1, k)
+    std::vector<char> d_two;                       // 1: a 2x2 block starts at k
+
+    p5a_sym_factor_() : kind(0), n(0) {}
+
+    void factorize(const spmats<_T,_Index>& K)
+    {
+        kind = 0;
+        n = static_cast<std::size_t>(K.rowsize());
+        std::string note_a, note_b;
+        // (a) Cholesky
+        try {
+            const spmats<_T,_Index> Kc = K.as_csc();
+            const std::vector<_Index>& ko = Kc.outer_index();
+            const std::vector<_Index>& ki = Kc.inner_index();
+            std::vector<CI> cp(ko.size()), ri(ki.size());
+            for (std::size_t i = 0; i < ko.size(); i++) cp[i] = static_cast<CI>(ko[i]);
+            for (std::size_t i = 0; i < ki.size(); i++) ri[i] = static_cast<CI>(ki[i]);
+            vcp::sparse_chol_options<_T> copt;
+            copt.check_symmetry = false;   // symmetry was decided by the caller
+            chol = vcp::sparse_chol_factorize_with_info<_T, CI>(
+                static_cast<CI>(n), cp, ri, Kc.values(), copt);
+            if (chol.status == vcp::sparse_chol_status::success) {
+                kind = 1;
+                diagnostics = "shift_invert_factorization=cholesky";
+                return;
+            }
+            note_a = vcp::sparse_chol_status_to_string(chol.status);
+        } catch (const std::exception& e) {
+            note_a = std::string("exception: ") + e.what();
+        }
+        // (b) LDL^T
+        for (int attempt = 0; attempt < 2; attempt++) {
+            const bool sn = (attempt == 0);
+            vcp::sparse_ldl_status st = vcp::sparse_ldl_status::internal_error;
+            try {
+                vcp::ldl_options<_T> lopt;
+                lopt.method = sn ? vcp::sparse_ldl_method::supernodal
+                                 : vcp::sparse_ldl_method::baseline_dynamic;
+                lopt.pivoting = vcp::sparse_ldl_pivoting::bk;
+                spmats<_T,_Index> L, D;
+                std::vector<_Index> pm;
+                const vcp::ldl_result<_T,_Index> lr = K.policy_ldl_with_info(L, D, pm, lopt);
+                st = lr.status;
+                if (st == vcp::sparse_ldl_status::success && pm.size() == n) {
+                    load_ldl_(L, D, pm);
+                    kind = 2;
+                    diagnostics = std::string("shift_invert_factorization=ldlt(method=")
+                        + (sn ? "supernodal" : "baseline_dynamic")
+                        + ",pivoting=bk); cholesky: " + note_a
+                        + (note_b.empty() ? std::string() : ("; " + note_b));
+                    return;
+                }
+                note_b += std::string(note_b.empty() ? "" : ", ")
+                    + "ldlt(" + (sn ? "supernodal" : "baseline_dynamic") + "): "
+                    + vcp::sparse_ldl_status_to_string(st);
+            } catch (const std::exception& e) {
+                note_b += std::string(note_b.empty() ? "" : ", ")
+                    + "ldlt(" + (sn ? "supernodal" : "baseline_dynamic") + "): exception: " + e.what();
+                break;
+            }
+            if (!(sn && st == vcp::sparse_ldl_status::pivot_out_of_panel)) break;
+        }
+        diagnostics = "cholesky: " + note_a + "; " + note_b;
+    }
+
+    void load_ldl_(const spmats<_T,_Index>& L, const spmats<_T,_Index>& D,
+                   const std::vector<_Index>& pm)
+    {
+        const spmats<_T,_Index> Lc = L.as_csc();
+        const std::vector<_Index>& lo = Lc.outer_index();
+        const std::vector<_Index>& li = Lc.inner_index();
+        const std::vector<_T>& lv = Lc.values();
+        l_ptr.assign(n + 1, 0);
+        l_row.clear();
+        l_val.clear();
+        for (std::size_t j = 0; j < n; j++) {
+            for (std::size_t q = static_cast<std::size_t>(lo[j]); q < static_cast<std::size_t>(lo[j + 1]); q++) {
+                const std::size_t i = static_cast<std::size_t>(li[q]);
+                if (i <= j) continue;   // the explicit unit diagonal
+                l_row.push_back(i);
+                l_val.push_back(lv[q]);
+            }
+            l_ptr[j + 1] = l_row.size();
+        }
+        d_diag.assign(n, _T(0));
+        d_sub.assign(n, _T(0));
+        d_two.assign(n, char(0));
+        {
+            // an entry (o, inner) is (row, col) or (col, row); D is symmetric
+            const std::vector<_Index>& dout = D.outer_index();
+            const std::vector<_Index>& din = D.inner_index();
+            const std::vector<_T>& dv = D.values();
+            for (std::size_t o = 0; o < n; o++) {
+                for (std::size_t q = static_cast<std::size_t>(dout[o]); q < static_cast<std::size_t>(dout[o + 1]); q++) {
+                    const std::size_t i = static_cast<std::size_t>(din[q]);
+                    if (i == o) d_diag[o] = dv[q];
+                    else if (i + 1 == o) { d_sub[i] = dv[q]; d_two[i] = char(1); }
+                    else if (o + 1 == i) { d_sub[o] = dv[q]; d_two[o] = char(1); }
+                }
+            }
+        }
+        perm.resize(n);
+        for (std::size_t i = 0; i < n; i++) perm[i] = static_cast<std::size_t>(pm[i]);
+    }
+
+    void solve(std::vector<_T>& b) const
+    {
+        std::vector<_T> z(n);
+        if (kind == 1) {
+            for (std::size_t i = 0; i < n; i++) z[i] = b[static_cast<std::size_t>(chol.perm[i])];
+            for (std::size_t j = 0; j < n; j++) {
+                const std::size_t p0 = static_cast<std::size_t>(chol.L_col_ptr[j]);
+                const std::size_t p1 = static_cast<std::size_t>(chol.L_col_ptr[j + 1]);
+                z[j] = z[j] / chol.L_val[p0];
+                for (std::size_t q = p0 + 1; q < p1; q++)
+                    z[static_cast<std::size_t>(chol.L_row_ind[q])] -= chol.L_val[q] * z[j];
+            }
+            for (std::size_t jj = n; jj > 0; jj--) {
+                const std::size_t j = jj - 1;
+                const std::size_t p0 = static_cast<std::size_t>(chol.L_col_ptr[j]);
+                const std::size_t p1 = static_cast<std::size_t>(chol.L_col_ptr[j + 1]);
+                _T sum = z[j];
+                for (std::size_t q = p0 + 1; q < p1; q++)
+                    sum -= chol.L_val[q] * z[static_cast<std::size_t>(chol.L_row_ind[q])];
+                z[j] = sum / chol.L_val[p0];
+            }
+            for (std::size_t i = 0; i < n; i++) b[static_cast<std::size_t>(chol.perm[i])] = z[i];
+            return;
+        }
+        for (std::size_t i = 0; i < n; i++) z[i] = b[perm[i]];
+        for (std::size_t j = 0; j < n; j++) {
+            const _T zj = z[j];
+            for (std::size_t q = l_ptr[j]; q < l_ptr[j + 1]; q++) z[l_row[q]] -= l_val[q] * zj;
+        }
+        for (std::size_t kk = 0; kk < n; ) {
+            if (d_two[kk] != char(0) && kk + 1 < n) {
+                // [a e; e c]^{-1} with the scaling of LAPACK's xSYTRS
+                const _T e = d_sub[kk];
+                const _T am = d_diag[kk] / e;
+                const _T cm = d_diag[kk + 1] / e;
+                const _T den = am * cm - _T(1);
+                const _T b0 = z[kk] / e;
+                const _T b1 = z[kk + 1] / e;
+                z[kk]     = (cm * b0 - b1) / den;
+                z[kk + 1] = (am * b1 - b0) / den;
+                kk += 2;
+            } else {
+                z[kk] = z[kk] / d_diag[kk];
+                kk += 1;
+            }
+        }
+        for (std::size_t jj = n; jj > 0; jj--) {
+            const std::size_t j = jj - 1;
+            _T sum = z[j];
+            for (std::size_t q = l_ptr[j]; q < l_ptr[j + 1]; q++) sum -= l_val[q] * z[l_row[q]];
+            z[j] = sum;
+        }
+        for (std::size_t i = 0; i < n; i++) b[perm[i]] = z[i];
+    }
+};
+
+// The kernel run in the B inner product on apply_si: y = (A - sigma B)^{-1} B x.
+// Returns false when the route did not produce a result (B inner product
+// negative / not finite, or the scalar fence); the caller then continues
+// with the Krylov-Schur route.  On true, `result` holds values, Euclidean
+// unit vectors, true residuals of the original pair (diagnostics) and the
+// kernel's verdict in `converged`; method / status are the caller's.
+template <typename _T, typename _Index, class Apply>
+static bool p5a_gsi_lanczos_core_(const spmats<_T,_Index>&,
+                                  const spmats<_T,_Index>&,
+                                  const std::size_t,
+                                  const eig_options<_T>&,
+                                  const typename vcp::tsparse_scalar::real_type<_T>::type&,
+                                  Apply&,
+                                  eig_result<_T>&,
+                                  std::false_type /* t2_supported */)
+{
+    return false;   // fence (p5a_route_ is false for these scalar types)
+}
+
+template <typename _T, typename _Index, class Apply>
+static bool p5a_gsi_lanczos_core_(const spmats<_T,_Index>& self,
+                                  const spmats<_T,_Index>& B,
+                                  const std::size_t k,
+                                  const eig_options<_T>& options,
+                                  const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
+                                  Apply& apply_si,
+                                  eig_result<_T>& result,
+                                  std::true_type /* t2_supported */)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    const std::size_t n = static_cast<std::size_t>(self.rowsize());
+    const spmats<_T,_Index> Bc = B.as_csr();
+    struct BMul {
+        const spmats<_T,_Index>* Bm;
+        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { y = Bm->mul_vec(x); }
+    } bmul = { &Bc };
+    eig_options<_T> mu_opts = options;
+    mu_opts.target = eig_target::largest_magnitude;   // nearest sigma in lambda
+    mu_opts.shift = scalar_real_type(0);
+    mu_opts.use_shift = false;
+    const vcp::tsparse_experimental::thick_restart_lanczos_result<_T> tr =
+        vcp::tsparse_experimental::thick_restart_lanczos_eigs_b_inner_<Apply, BMul, _T>(
+            apply_si, bmul, n, k, mu_opts);
+    if (tr.b_inner_invalid) return false;
+    result = tr.eigs;
+    for (std::size_t i = 0; i < result.eigenvalues.size(); i++) {
+        const scalar_real_type mu = vcp::tsparse_scalar::real_part(result.eigenvalues[i]);
+        if (vcp::tsparse_scalar::abs_value(mu) > scalar_real_type(0))
+            result.eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
+    }
+    for (std::size_t i = 0; i < result.eigenvectors.size(); i++) {
+        std::vector<_T>& v = result.eigenvectors[i];
+        const scalar_real_type nv = vcp::tsparse_scalar::real_norm_value(v);
+        if (nv > scalar_real_type(0))
+            for (std::size_t j = 0; j < v.size(); j++) v[j] = v[j] / _T(nv);
+    }
+    result.residuals_absolute.clear();
+    result.residuals_relative.clear();
+    result.residual_norm_absolute = scalar_real_type(0);
+    result.residual_norm_relative = scalar_real_type(0);
+    if (!result.eigenvectors.empty()) {
+        result.residuals_absolute = generalized_eigenpair_residuals_<_T,_Index>(self, B, result.eigenvalues, result.eigenvectors);
+        result.residuals_relative = generalized_eigenpair_relative_residuals_<_T,_Index>(self, B, result.eigenvalues, result.eigenvectors);
+        result.residual_norm_absolute = max_generalized_eigenpair_residual_value_<_T,_Index>(self, B, result.eigenvalues, result.eigenvectors);
+        for (std::size_t i = 0; i < result.residuals_relative.size(); i++)
+            if (result.residuals_relative[i] > result.residual_norm_relative)
+                result.residual_norm_relative = result.residuals_relative[i];
+    }
+    if (result.converged && result.eigenvalues.size() < k) {
+        result.converged = false;
+        if (result.failure_reason.empty())
+            result.failure_reason = "fewer eigenpairs than requested (k exceeds the dimension)";
+    }
+    result.requested_count = k;
+    result.used_shift_invert = true;
+    result.used_generalized_operator = true;
+    result.used_dense_fallback = false;
+    populate_real_complex_eigenvalues_<_T,_Index>(result);
+    return true;
+}
+
+// method / used_method / status of a P5a result, as the Krylov-Schur route
+// writes them for the same request
+template <typename _T, typename _Index>
+static void p5a_finish_(eig_result<_T>& result,
+                        const eig_solver_method actual_method,
+                        const std::string& used_method)
+{
+    const std::string kernel_failure = result.failure_reason;
+    set_eig_diagnostics_<_T,_Index>(result, actual_method, result.used_subspace_dim,
+        result.matrix_vector_products, result.breakdown_reason, kernel_failure);
+    result.used_method = used_method;
+}
+
+// Default (direct) entry.  Returns false when the caller must continue with
+// its present code (Krylov-Schur on the sparse LU; also reports an LU that
+// cannot be factorized).
+template <typename _T, typename _Index>
+static bool p5a_gsi_direct_(const spmats<_T,_Index>& self,
+                            const spmats<_T,_Index>& B,
+                            const std::size_t k,
+                            const eig_options<_T>& options,
+                            const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
+                            const eig_solver_method actual_method,
+                            eig_result<_T>& result)
+{
+    typedef typename std::integral_constant<bool, t2_supported_<_T>::value>::type tag_t;
+    const std::string used = "shift_invert_arnoldi(promoted_from_lanczos)";
+    p5a_sym_factor_<_T,_Index> fac;
+    const spmats<_T,_Index> Bc = B.as_csr();
+    {
+        const spmats<_T,_Index> K = vcp::tsparse::subtract_scaled_sparse(self, B, _T(sigma));
+        fac.factorize(K);
+    }
+    if (fac.kind != 0) {
+        std::size_t solves = 0;
+        struct SymApply {
+            const p5a_sym_factor_<_T,_Index>* f;
+            const spmats<_T,_Index>* Bm;
+            std::size_t* count;
+            void operator()(const std::vector<_T>& x, std::vector<_T>& y) const {
+                y = Bm->mul_vec(x);
+                f->solve(y);
+                (*count)++;
+            }
+        } apply_sym = { &fac, &Bc, &solves };
+        if (!p5a_gsi_lanczos_core_<_T,_Index>(self, B, k, options, sigma, apply_sym, result, tag_t()))
+            return false;
+        result.linear_solves = solves;
+        result.factorization_diagnostics = fac.diagnostics;
+        p5a_finish_<_T,_Index>(result, actual_method, used);
+        return true;
+    }
+    // (c) the sparse LU as the solver of the same iteration
+    typedef vcp::tsparse::lu_shift_invert_operator<spmats<_T,_Index> > LUOp;
+    LUOp op(self, B, _T(sigma), options.shift_invert_lu);
+    if (!op.factorization_ok()) return false;
+    struct LUApply {
+        LUOp* op;
+        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { op->apply(x, y); }
+    } apply_lu = { &op };
+    if (!p5a_gsi_lanczos_core_<_T,_Index>(self, B, k, options, sigma, apply_lu, result, tag_t()))
+        return false;
+    result.linear_solves = op.linear_solves();
+    result.inner_iterations = op.inner_iterations();
+    result.inner_failure_count = op.inner_failure_count();
+    result.inner_residual_norm = op.inner_residual_norm();
+    result.factorization_diagnostics = "shift_invert_factorization=sparse_lu ("
+        + fac.diagnostics + "): " + op.factorization_diagnostics();
+    result.factorization_zero_pivots = op.factorization_zero_pivots();
+    p5a_finish_<_T,_Index>(result, actual_method, used);
+    return true;
+}
+
+// ---------------------------------------------------------------------------
 // E-A1: shared shift-invert back halves and sparse_lu dispatch helpers.
 //
 // The *_drive_ helpers are byte-preserving mechanical extractions of the
@@ -1877,15 +2050,8 @@ static eig_result<_T> complex_standard_eigs_with_info_(const spmats<_T,_Index>& 
 // ---------------------------------------------------------------------------
 
 // --- back half #1: standard shift-invert Lanczos --------------------------
-// EIG-10 D-17d 委譲用の前方宣言(back half #2 は本ファイル後方で定義)
-template <typename _T, typename _Index, class Apply>
-static eig_result<_T> shift_invert_arnoldi_drive_(const spmats<_T,_Index>& self,
-                                                    const std::size_t k,
-                                                    const eig_options<_T>& options,
-                                                    const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
-                                                    Apply& apply_si,
-                                                    bool& pkg_converged);
-
+// EIG-T1 T-2a: the T-1 kernel on (A - sigma I)^{-1}; no lambda-space gate,
+// no end-of-run demotion, no polish, no Krylov-Schur delegation (T-9b).
 template <typename _T, typename _Index, class Apply>
 static eig_result<_T> shift_invert_lanczos_drive_(const spmats<_T,_Index>& self,
                                                     const std::size_t k,
@@ -1893,184 +2059,8 @@ static eig_result<_T> shift_invert_lanczos_drive_(const spmats<_T,_Index>& self,
                                                     const typename vcp::tsparse_scalar::real_type<_T>::type& sigma,
                                                     Apply& apply_si)
 {
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    const std::size_t n = static_cast<std::size_t>(self.rowsize());
-    const std::size_t sdim = (options.subspace_dim == 0)
-        ? std::max(k + 5, std::min(n, std::size_t(30)))
-        : options.subspace_dim;
-    // EIG-3 T-4 (D-6, Q1 ruling 2026-07-06): max_iter is the TOTAL mv budget on
-    // every path.  Pure unit conversion to restarts with the worst per-restart
-    // cost 2*sdim (expansion sdim + lock-scan exact residuals <= sdim;
-    // tsparse_lanczos.hpp mv_count++ sites); the inflation term "+ k + 1" is
-    // deleted.  The restart loop is INCLUSIVE (restart <= max_restarts), so a
-    // floor of 0 already yields one restart; no max(1,.) floor (it would
-    // double the minimum work and break the bound for max_iter < 2*sdim).
-    // Machine-checked overshoot bound: mv <= max_iter + 2*sdim.
-    const std::size_t max_restarts_si = (sdim > 0)
-        ? options.max_iter / (2 * sdim)
-        : options.max_iter;
-    // EIG-6 F-2' (G-2.1 承認): si_lanczos back-half は μ コアの opt-in
-    // リスタート制御(b' warm start / d' 走査キャップ)+ λ 形式 lock 併記 (e)
-    // を有効化する。λ ゲートは契約 C-1 の共有ヘルパ
-    // (eigenpair_residual_norm_value_ = λ 空間厳密残差 / c1_revised_scale_ =
-    // 改訂 scale の唯一定義)をそのまま呼ぶ(e-1。受理は scaled 分岐のみ =
-    // 契約受理の厳密部分集合。最終ゲート lanczos_package_to_result_ は無変更の
-    // まま全対を再検査する — e-3)。A·x は mv に 1:1 計上 + 別建てカウント(e-2)。
-    spmats<_T,_Index> A_for_gate = self.as_csr();
-    const scalar_real_type anorm_gate = matrix_inf_norm_value_<_T,_Index>(A_for_gate);
-    struct SiLambdaGate {
-        const spmats<_T,_Index>* A;
-        scalar_real_type anorm;
-        scalar_real_type tol;
-        scalar_real_type sigma;
-        bool operator()(const std::vector<_T>& x, const _T& mu, std::size_t& mv) const {
-            const scalar_real_type mu_re = vcp::tsparse_scalar::real_part(mu);
-            if (!(vcp::tsparse_scalar::abs_value(mu_re) > scalar_real_type(0))) return false;
-            const scalar_real_type lam = scalar_real_type(1) / mu_re + sigma;
-            const scalar_real_type r_abs =
-                eigenpair_residual_norm_value_<_T,_Index>(*A, _T(lam), x);
-            mv += 1;   // λ 判定の A·x 積(B-38: 1:1 計上)
-            const scalar_real_type scale = vcp::tsparse::c1_revised_scale_(
-                vcp::tsparse_scalar::abs_value(lam), anorm);
-            return r_abs <= tol * scale;   // certified-≤(interval は不確定を失敗側へ)
-        }
-    } si_lambda_gate = { &A_for_gate, anorm_gate, options.tol, sigma };
-    std::size_t lambda_gate_count = 0;
-    auto pkg = vcp::tsparse_lanczos::lanczos_eigs_standard_si_<_T, Apply, SiLambdaGate>(
-        n, k, sdim, max_restarts_si, options.tol,
-        options.random_seed, options.random_start,
-        eig_target::largest_magnitude, scalar_real_type(0), options.compute_residual_history,
-        apply_si, si_lambda_gate, &lambda_gate_count);
-
-    for (std::size_t i = 0; i < pkg.eigenvalues.size(); i++) {
-        const scalar_real_type mu = vcp::tsparse_scalar::real_part(pkg.eigenvalues[i]);
-        if (vcp::tsparse_scalar::abs_value(mu) > scalar_real_type(0)) {
-            pkg.eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
-        }
-    }
-    eig_result<_T> result = lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::shift_invert_lanczos, options.tol);
-    result.lambda_gate_products = lambda_gate_count;   // (e-2) 別建て計上
-    // EIG-6 F-1: 条件付き磨き(既存 C-1 ゲート不合格時のみ発火)。sparse_lu /
-    // legacy ilu0_gmres の両フロントを被覆(linear_solves はフロント側が
-    // apply 内カウンタ / op から再同期するため磨き分も自動計上される)。
-    si_polish_rescue_standard_<_T,_Index>(result, self, options, apply_si);
-    // -----------------------------------------------------------------------
-    // EIG-10 D-17d 委譲(G-0.1 承認 案 (b)・(c-1) 改訂・additive route)。
-    //
-    // 発火署名(すべて既存フィールドの読み取りのみ・新定数ゼロ):
-    //   現行パイプライン(μ コア → C-1 λ 空間最終ゲート → F-1 磨き)が
-    //   完全失敗(status == residual_check_failed)し、かつ残予算がある場合のみ。
-    //   凍結スイートに本署名で終わる si_lanczos セルは存在しない(G-0.1 §8)
-    //   ため、既存挙動はビット不変(休眠は構造的 — G-2.3 で全数機械証明)。
-    //
-    // 機構(D-17d): μ 空間絶対 lock 基準(r_μ ≤ tol)は |μ| ≪ 1 で分解能
-    // 不正直(過受理)となり、core は honest termination で予算 ~1% の時点で
-    // converged 終了 → C-1 が正直棄却 → 再入機構不在で残予算 99% が死蔵される。
-    // 委譲先の KS μ コアは同条件の縮退多重度を予算内で完全発見できることが
-    // 実証済み(EIG-10 Phase 0 §5)。
-    //
-    // 規律:
-    //  - 決定的(乱数なし)・試行は最大 3 回の段階許容(EIG-R2)。
-    //    各試行の採否は all-or-nothing。
-    //  - all-or-nothing((c-1)): 委譲結果が「全ゲート合格の converged ∧
-    //    返却全対実 ∧ 複製方向なし(R4 と同一ヘルパ)」の場合のみ丸ごと採用。
-    //    それ以外は元の正直結果をそのまま返す(対集合の混合・部分採用禁止)。
-    //  - allow_complex_pairs=true の内部指定は「過渡複素窓の通過許可」であって
-    //    「複素対の返却許可」ではない: FP 丸め非対称の対称宣言行列で KS が
-    //    D3-2 の正直拒否により空振りするのを防ぐためのみ。複素対を含む委譲
-    //    結果は全実ガードが不採用に倒すため、structure=symmetric の呼び出しに
-    //    複素対が漏れる経路は構造的に存在しない。
-    //  - mv は採否に依らず実消費を 1:1 計上(B-38)し、ks_rescue_products に
-    //    別建て記録((c-2) の恒等式 mv_total == si 分 + 委譲分)。KS コアは
-    //    mv ≤ 残予算を厳守するため mv_total ≤ max_iter(B-1)。
-    //    linear_solves はフロントが op カウンタから再同期(磨きと同じ経路)。
-    //  - EIG-R2: 委譲は最大 3 回の試行(許容 tol, tol/10, tol/100)。試行 0 は
-    //    EIG-10 と同一。各試行の採否は all-or-nothing のまま(採用でループ終了)。
-    //    ks_rescue_products は全試行の合計(mv 1:1 計上・B-1 は各試行の残予算上限)。
-    // -----------------------------------------------------------------------
-    for (int attempt = 0; attempt < 3 && !result.converged
-         && result.status == "residual_check_failed"
-         && options.max_iter > result.matrix_vector_products; ++attempt) {
-        eig_options<_T> ks_opts = options;
-        ks_opts.max_iter = options.max_iter - result.matrix_vector_products;
-        ks_opts.allow_complex_pairs = true;   // 過渡複素窓の通過許可(上記規律)
-        for (int e = 0; e < attempt; ++e) ks_opts.tol = ks_opts.tol / scalar_real_type(10);   // EIG-R2: 段階許容 tol·10^-attempt
-        bool ks_conv = false;
-        eig_result<_T> alt = shift_invert_arnoldi_drive_<_T,_Index>(
-            self, k, ks_opts, sigma, apply_si, ks_conv);
-        alt.converged = ks_conv && alt.eigenvalues.size() >= k;
-        // 帰結配線は E-A1 arnoldi front と同一(B-43 再利用): C-1 改訂 scale
-        // 最終ゲート → F-1 条件付き磨き(不合格時のみ発火・same-helper。
-        // 磨き solve は apply_si 経由 = ls はフロント再同期で自動整合、
-        // mv は helper 内で 1:1 計上され下の rescue 合算に含まれる)。
-        lambda_c1_acceptance_gate_<_T,_Index>(alt, options.tol, self);
-        si_polish_rescue_standard_<_T,_Index>(alt, self, ks_opts, apply_si);
-        result.ks_rescue_products += alt.matrix_vector_products;
-        result.matrix_vector_products += alt.matrix_vector_products;
-        result.lambda_gate_products += alt.lambda_gate_products;
-        if (alt.converged && si_polish_returned_pairs_all_real_<_T,_Index>(alt)) {
-            // 採用前の基底整形: 返却集合の MGS 直交正規化(2 パス)。縮退固有
-            // 空間の基底の向きを整えるだけで、対集合の混合・部分採用ではない
-            // ((c-1) の all-or-nothing は集合単位で維持)。整形後に残差を
-            // 再計算し、最終ゲートと同一の受理式で全対を再判定してから採用する
-            // (整形で品質が立たない場合・基底が退化する場合は丸ごと不採用)。
-            typedef typename vcp::tsparse_scalar::real_type<_T>::type R__;
-            std::vector<std::vector<_T> > ortho = alt.eigenvectors;
-            bool ortho_ok = (ortho.size() == alt.eigenvalues.size()) && !ortho.empty();
-            for (std::size_t i = 0; ortho_ok && i < ortho.size(); i++) {
-                for (int pass = 0; pass < 2; pass++) {
-                    for (std::size_t j = 0; j < i; j++) {
-                        const R__ c = vcp::tsparse_scalar::real_dot_value(ortho[j], ortho[i]);
-                        for (std::size_t t = 0; t < ortho[i].size(); t++)
-                            ortho[i][t] -= _T(c) * ortho[j][t];
-                    }
-                }
-                const R__ nv = vcp::tsparse_scalar::real_norm_value(ortho[i]);
-                if (!(nv > R__(0))) { ortho_ok = false; break; }   // certified > 0 のみ採用側
-                for (std::size_t t = 0; t < ortho[i].size(); t++)
-                    ortho[i][t] = ortho[i][t] / _T(nv);
-            }
-            if (ortho_ok) {
-                std::vector<R__> res_abs_o = eigenpair_residuals_<_T,_Index>(
-                    A_for_gate, alt.eigenvalues, ortho);
-                std::vector<R__> res_rel_o = eigenpair_relative_residuals_<_T,_Index>(
-                    A_for_gate, alt.eigenvalues, ortho);
-                std::vector<R__> theta_abs_o;
-                theta_abs_o.reserve(alt.eigenvalues.size());
-                for (std::size_t i = 0; i < alt.eigenvalues.size(); i++)
-                    theta_abs_o.push_back(vcp::tsparse_scalar::abs_value(
-                        vcp::tsparse_scalar::real_part(alt.eigenvalues[i])));
-                if (vcp::tsparse::residual_acceptance_check_scaled_(
-                        res_abs_o, res_rel_o, options.tol, theta_abs_o, anorm_gate)
-                    && !vcp::tsparse::returned_pair_duplicate_direction_found_<_T>(ortho)) {
-                    result.eigenvalues          = alt.eigenvalues;
-                    result.eigenvalues_imag     = alt.eigenvalues_imag;
-                    result.complex_pair_count   = alt.complex_pair_count;
-                    result.complex_eigenvalues  = alt.complex_eigenvalues;
-                    result.eigenvectors         = ortho;
-                    result.residuals_absolute   = res_abs_o;
-                    result.residuals_relative   = res_rel_o;
-                    if (!res_abs_o.empty()) {
-                        result.residual_norm_absolute = *std::max_element(
-                            res_abs_o.begin(), res_abs_o.end());
-                    }
-                    result.converged        = true;
-                    result.converged_count  = alt.converged_count;
-                    result.status           = "converged";
-                    result.failure_reason.clear();
-                    result.breakdown_reason.clear();
-                    result.message = "converged (D-17d rescue: ks_mu_core delegation; EIG-10)";
-                    result.iterations += alt.iterations;
-                    // method / used_method / used_subspace_dim は公開面
-                    // (shift_invert_lanczos)のまま(G-0.1 §6.1: enum・文字列追加なし)。
-                    populate_real_complex_eigenvalues_<_T,_Index>(result);
-                    set_result_counts_<_T,_Index>(result, k);
-                }
-            }
-        }
-        // 不採用: 元の正直結果を維持(値・status 不変。消費計上のみ反映済み)。
-    }
-    return result;
+    return t2_si_lanczos_core_<_T,_Index>(self, k, options, sigma, apply_si,
+        typename std::integral_constant<bool, t2_supported_<_T>::value>::type());
 }
 
 // --- back half #2: standard shift-invert Arnoldi ---------------------------
@@ -2323,9 +2313,6 @@ shift_invert_lanczos_sparse_lu_(const spmats<_T,_Index>& self,
     result.inner_residual_norm = op.inner_residual_norm();
     result.factorization_diagnostics = op.factorization_diagnostics();
     result.factorization_zero_pivots = op.factorization_zero_pivots();
-    // EIG-6 F-2': θ シフト磨き(converged だが scaled-abs 未クリーンの対が
-    // ある場合のみ発火 — ヘルパ冒頭の設計コメント参照。E-A1 front 限定)。
-    si_polish_shifted_rescue_<_T,_Index>(result, self, options);
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -2373,13 +2360,7 @@ shift_invert_arnoldi_sparse_lu_(const spmats<_T,_Index>& self,
     result.converged = pkg_converged && result.eigenvalues.size() >= k;
     set_eig_diagnostics_<_T,_Index>(result, eig_solver_method::shift_invert_arnoldi, result.used_subspace_dim,
         result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
-    // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の converged 主張は C-1 判定後、
-    // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
-    // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
-    // Lambda-space C-1 remains the final acceptance gate.
-    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self);   // EIG-4 T-4: 標準 si は改訂 scale
-    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
-    si_polish_rescue_standard_<_T,_Index>(result, self, options, apply_lu);
+    // EIG-T1 P5b: no end-of-run residual gate and no polish (T-9, every scalar type)
     result.linear_solves = op.linear_solves();
     set_result_counts_<_T,_Index>(result, k);
     return result;
@@ -2396,6 +2377,15 @@ generalized_shift_invert_sparse_lu_(const spmats<_T,_Index>& self,
                                       const eig_solver_method actual_method,
                                       const bool promoted_from_lanczos)
 {
+    // EIG-T1 P5a: symmetric pair + Lanczos-type request -> the T-1 kernel in
+    // the B inner product on Cholesky / LDL^T / sparse LU (in this order)
+    if (p5a_route_<_T,_Index>(self, B, options, promoted_from_lanczos)) {
+        eig_result<_T> r5;
+        if (p5a_gsi_direct_<_T,_Index>(self, B, k, options, sigma, actual_method, r5)) {
+            set_result_counts_<_T,_Index>(r5, k);
+            return r5;
+        }
+    }
     typedef vcp::tsparse::lu_shift_invert_operator<spmats<_T,_Index> > LUOp;
     LUOp op(self, B, _T(sigma), options.shift_invert_lu);
     if (!op.factorization_ok()) {
@@ -2435,21 +2425,8 @@ generalized_shift_invert_sparse_lu_(const spmats<_T,_Index>& self,
         if (promoted_from_lanczos)
             result.used_method = "shift_invert_arnoldi(promoted_from_lanczos)";
     }
-    // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
-    // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
-    // Lambda-space C-1 remains the final acceptance gate.
-    // EIG-8 T-3 (D8-3): 一般化は D8-2 共有 scale 版(挙動遷移期待ゼロ —
-    // 既存 rel 分岐が Frobenius 後退正規化を内包。契約整合の完成)。
-    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self, B);
-    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
-    {
-        struct ApplyPolish {
-            LUOp* op;
-            void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { op->apply(x, y); }
-        } apply_polish = { &op };
-        si_polish_rescue_generalized_<_T,_Index>(result, self, B, options, apply_polish);
-        result.linear_solves = op.linear_solves();
-    }
+    // EIG-T1 P5b: no end-of-run residual gate and no polish (T-9, every scalar type)
+    result.linear_solves = op.linear_solves();
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -2576,39 +2553,24 @@ static eig_result<_T> lanczos_eigs_new_(const spmats<_T,_Index>& self,
                                           const eig_options<_T>& options)
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    spmats<_T,_Index> A = self.as_csr();
-    const std::size_t n = static_cast<std::size_t>(self.rowsize());
-    const std::size_t sdim = (options.subspace_dim == 0)
-        ? std::max(k + 5, std::min(n, std::size_t(30)))
-        : options.subspace_dim;
     const scalar_real_type shift_val = options.shift;
+
+    // EIG-T1 (G-1 ruling E): no Lanczos-type route for interval scalars
+    if (!t2_supported_<_T>::value) {
+        const eig_solver_method m_e =
+            (options.method == eig_solver_method::shift_invert_lanczos)
+                ? eig_solver_method::shift_invert_lanczos : eig_solver_method::lanczos;
+        eig_result<_T> r_e = t2_unsupported_scalar_<_T,_Index>(k, m_e, eig_method_to_string_<_T,_Index>(m_e));
+        r_e.used_shift_invert = (m_e == eig_solver_method::shift_invert_lanczos);
+        return r_e;
+    }
 
     if (options.method == eig_solver_method::shift_invert_lanczos) {
         return shift_invert_lanczos_eigs_<_T,_Index>(self, k, options, shift_val);
     }
-
-    struct apply_fn {
-        const spmats<_T,_Index>* mat;
-        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { y = mat->mul_vec(x); }
-    } apply = { &A };
-
-    // EIG-3 T-4 (D-6, Q1 ruling 2026-07-06): max_iter is the TOTAL mv budget on
-    // every path.  Pure unit conversion to restarts with the worst per-restart
-    // cost 2*sdim (expansion sdim + lock-scan exact residuals <= sdim;
-    // tsparse_lanczos.hpp mv_count++ sites); the inflation term "+ k + 1" is
-    // deleted.  The restart loop is INCLUSIVE (restart <= max_restarts), so a
-    // floor of 0 already yields one restart; no max(1,.) floor (it would
-    // double the minimum work and break the bound for max_iter < 2*sdim).
-    // Machine-checked overshoot bound: mv <= max_iter + 2*sdim.
-    const std::size_t max_restarts_l = (sdim > 0)
-        ? options.max_iter / (2 * sdim)
-        : options.max_iter;
-    auto pkg = vcp::tsparse_lanczos::lanczos_eigs_standard<_T, apply_fn>(
-        n, k, sdim, max_restarts_l, options.tol,
-        options.random_seed, options.random_start,
-        options.target, shift_val, options.compute_residual_history, apply);
-
-    return lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::lanczos, options.tol);
+    // EIG-T1 T-2c: the T-1 kernel on A (method / used_method stay "lanczos")
+    return t2_lanczos_plain_<_T,_Index>(self, k, options,
+        typename std::integral_constant<bool, t2_supported_<_T>::value>::type());
 }
 
 // ---------------------------------------------------------------------------
@@ -2720,13 +2682,7 @@ static eig_result<_T> shift_invert_arnoldi_eigs_(const spmats<_T,_Index>& self,
         set_eig_diagnostics_<_T,_Index>(result, eig_solver_method::shift_invert_arnoldi, result.used_subspace_dim,
             result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
     }
-    // EIG-1 F-5 (G-2.1 案 (a)): arnoldi コア経路の降格(legacy ilu0_gmres 分岐も
-    // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
-    // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
-    // Lambda-space C-1 remains the final acceptance gate.
-    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self);   // EIG-4 T-4: 標準 si は改訂 scale
-    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
-    si_polish_rescue_standard_<_T,_Index>(result, self, options, apply_si);
+    // EIG-T1 P5b: no end-of-run residual gate and no polish (T-9, every scalar type)
     result.linear_solves = linear_solve_count;
     set_result_counts_<_T,_Index>(result, k);
     return result;
@@ -2810,18 +2766,25 @@ static eig_result<_T> trl_drive_(const spmats<_T,_Index>& /*self*/,
                                  const eig_options<_T>& /*options*/,
                                  std::false_type /* trl_supported */)
 {
-    // Fence for scalar types the TRL driver cannot instantiate (complex and
-    // non-builtin real scalars: kv::dd / kv::mpfr / kv::interval -- the
-    // driver static_asserts trl_is_real_floating).  Honest explicit refusal
-    // (C-5); the auto_select routing never reaches this (it sends such
-    // scalars to the KS side), only explicit method=thick_restart_lanczos.
+    // Fence for the scalar types outside trl_is_real_floating, the trait this
+    // real route is selected by (trl_eigs_new_).  The kernel's own
+    // static_assert is trl_is_supported_scalar_ (EIG-T2: real point scalars
+    // with a numeric_limits specialization and their std::complex).
+    // What actually arrives here: scalars without a numeric_limits
+    // specialization (kv::interval).  float / double / long double / kv::dd /
+    // kv::mpfr take the true overload (EIG-T1 T-1f).  Complex scalars never
+    // arrive: policy_eigs_with_info sends them to
+    // complex_standard_eigs_with_info_ first, which refuses an explicit
+    // method=thick_restart_lanczos itself.  Honest explicit refusal (C-5);
+    // the auto_select routing never reaches this (it sends such scalars to
+    // the KS side), only explicit method=thick_restart_lanczos.
     eig_result<_T> result;
     result.requested_count = k;
     result.converged = false;
     result.status = "unsupported";
     result.failure_reason =
-        "thick_restart_lanczos: scalar type unsupported (builtin real"
-        " floating-point only); use krylov_schur or lanczos";
+        "thick_restart_lanczos: scalar type unsupported (real point"
+        " scalars only); use krylov_schur or lanczos";
     result.message = result.failure_reason;
     result.method = eig_solver_method::thick_restart_lanczos;
     result.used_method = "thick_restart_lanczos";
@@ -3033,33 +2996,12 @@ static eig_result<_T> auto_dense_eigs_(const spmats<_T,_Index>& A,
     // trim -- kept byte-identical on explicit paths per B-26, issue filed)
     select_eigenpairs_aligned_<_T,_Index>(result, k, options.target, options.shift);
     // EIG-4: exact end-of-run residuals of the RETURNED pairs against the
-    // sparse A (C-1 spirit on the new default path; the jacobi/Schur internal
-    // verdicts are additionally gated below -- demotion only, never promotion)
+    // sparse A (diagnostics; EIG-T1 P5b: they do not demote the verdict of
+    // the dense solver, for any scalar type)
     if (!result.eigenvectors.empty()
         && result.eigenvectors.size() == result.eigenvalues.size()) {
         result.residuals_absolute = eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
         result.residuals_relative = eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
-        if (result.converged) {
-            std::vector<scalar_real_type> theta_abs_c1;
-            theta_abs_c1.reserve(result.eigenvalues.size());
-            for (std::size_t i = 0; i < result.eigenvalues.size(); i++)
-                theta_abs_c1.push_back(vcp::tsparse_scalar::abs_value(
-                    vcp::tsparse_scalar::real_part(result.eigenvalues[i])));
-            // dense の既存受理スケール(tol·10n)を含めて広義に判定する
-            scalar_real_type anorm = matrix_inf_norm_value_<_T,_Index>(A);
-            const scalar_real_type tol10n =
-                options.tol * scalar_real_type(static_cast<int>(n) * 10);
-            if (tol10n > options.tol * anorm) anorm = tol10n / options.tol;
-            if (!vcp::tsparse::residual_acceptance_check_scaled_(
-                    result.residuals_absolute, result.residuals_relative,
-                    options.tol, theta_abs_c1, anorm)) {
-                result.converged = false;
-                result.status = "residual_check_failed";
-                result.failure_reason =
-                    "end-of-run exact residual failed acceptance (C-1, auto dense)";
-                result.message = result.failure_reason;
-            }
-        }
     }
     set_result_counts_<_T,_Index>(result, k);
     return result;
@@ -3091,6 +3033,27 @@ static eig_result<_T> auto_select_eigs_(const spmats<_T,_Index>& A,
     if (options.use_shift) {
         eig_options<_T> active = options;
         active.method = eig_solver_method::shift_invert_lanczos;
+        // EIG-T1 T-9b: without the end-of-run residual check and the
+        // Krylov-Schur delegation behind it, the symmetric driver must only
+        // receive symmetric input (as dsaupd / dnaupd are chosen in ARPACK).
+        // The same symmetry decision as the no-shift routing below; a matrix
+        // that is not certainly symmetric goes to shift_invert_arnoldi.
+        // (G-1 ruling E) scalars without a Lanczos-type route also go to the
+        // Krylov-Schur side: auto never routes to a refusal because of the type.
+        {
+            bool sym_si;
+            if (options.structure == matrix_structure_hint::symmetric)     sym_si = true;
+            else if (options.structure == matrix_structure_hint::general)  sym_si = false;
+            else sym_si = is_certainly_symmetric_<_T,_Index>(A);
+            if (!t2_supported_<_T>::value) sym_si = false;
+            if (!sym_si) {
+                active.method = eig_solver_method::shift_invert_arnoldi;
+                eig_result<_T> result = arnoldi_eigs_new_<_T,_Index>(A, k, active);
+                result.method = eig_solver_method::auto_select;
+                result.used_method = "auto_select(" + result.used_method + ")";
+                return result;
+            }
+        }
         eig_result<_T> result = lanczos_eigs_new_<_T,_Index>(A, k, active);
         result.method = eig_solver_method::auto_select;
         result.used_method = "auto_select(" + result.used_method + ")";
@@ -3114,10 +3077,12 @@ static eig_result<_T> auto_select_eigs_(const spmats<_T,_Index>& A,
     else if (options.structure == matrix_structure_hint::general)  sym = false;
     else sym = is_certainly_symmetric_<_T,_Index>(A);
 
-    // B-28 と同方向の保守則: TRL が対応しないスカラー型(kv::dd / kv::mpfr /
-    // kv::interval — 組込み浮動小数点以外)は対称でも KS 側に倒す(KS は
-    // 対称入力でも正しく、汎用スカラーで動く。auto が型を理由に拒否結果へ
-    // ルートすることはない)。
+    // B-28 と同方向の保守則: TRL の実の経路が対応しないスカラー型
+    // (trl_is_real_floating が false = numeric_limits の特殊化が無い型、
+    // kv::interval)は対称でも KS 側に倒す(KS は対称入力でも正しく、
+    // 汎用スカラーで動く。auto が型を理由に拒否結果へルートすることは
+    // ない)。float / double / long double / kv::dd / kv::mpfr は
+    // trl_is_real_floating が true で、対称なら核(TRL)に行く(EIG-T1 T-1f)。
     const bool trl_ok =
         vcp::tsparse_experimental::trl_is_real_floating<_T>::value;
 
@@ -3191,6 +3156,39 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_(const spmats<_T,_In
         return result;
     }
 
+    // EIG-T1 P5a: symmetric pair + Lanczos-type request -> the T-1 kernel in
+    // the B inner product; the inner solver (ILU(0) + GMRES) is unchanged
+    if (p5a_route_<_T,_Index>(self, B, options, promoted_from_lanczos)) {
+        struct ApplyP5 {
+            GSIOperator* op;
+            void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { op->apply(x, y); }
+        } apply_p5 = { &gsi_op };
+        eig_result<_T> r5;
+        if (p5a_gsi_lanczos_core_<_T,_Index>(self, B, k, options, sigma, apply_p5, r5,
+                typename std::integral_constant<bool, t2_supported_<_T>::value>::type())) {
+            r5.linear_solves = gsi_op.linear_solves();
+            r5.inner_iterations = gsi_op.inner_iterations();
+            r5.inner_failure_count = gsi_op.inner_failure_count();
+            r5.inner_residual_norm = gsi_op.inner_residual_norm();
+            r5.factorization_diagnostics = gsi_op.factorization_diagnostics();
+            r5.factorization_zero_pivots = gsi_op.factorization_zero_pivots();
+            const bool inner_ok5 = (gsi_op.inner_failure_count() == 0);
+            r5.converged = r5.converged && inner_ok5;
+            if (!inner_ok5) {
+                r5.method = actual_method;
+                r5.used_method = "shift_invert_arnoldi(promoted_from_lanczos)";
+                r5.status = "inner_solve_failed";
+                r5.failure_reason = "inner GMRES solve failed in generalized shift-invert";
+                r5.inner_failure_reason = r5.failure_reason;
+                r5.message = r5.failure_reason;
+            } else {
+                p5a_finish_<_T,_Index>(r5, actual_method, "shift_invert_arnoldi(promoted_from_lanczos)");
+            }
+            set_result_counts_<_T,_Index>(r5, k);
+            return r5;
+        }
+    }
+
     // E-A1: back half (apply wrapper -> driver -> lambda inversion -> result
     // assembly -> residuals) mechanically extracted to
     // generalized_shift_invert_drive_; the legacy-path computation and
@@ -3220,21 +3218,8 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_(const spmats<_T,_In
         if (promoted_from_lanczos)
             result.used_method = "shift_invert_arnoldi(promoted_from_lanczos)";
     }
-    // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
-    // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
-    // Lambda-space C-1 remains the final acceptance gate.
-    // EIG-8 T-3 (D8-3): 一般化は D8-2 共有 scale 版(挙動遷移期待ゼロ —
-    // 既存 rel 分岐が Frobenius 後退正規化を内包。契約整合の完成)。
-    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self, B);
-    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
-    {
-        struct ApplyPolish {
-            GSIOperator* op;
-            void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { op->apply(x, y); }
-        } apply_polish = { &gsi_op };
-        si_polish_rescue_generalized_<_T,_Index>(result, self, B, options, apply_polish);
-        result.linear_solves = gsi_op.linear_solves();
-    }
+    // EIG-T1 P5b: no end-of-run residual gate and no polish (T-9, every scalar type)
+    result.linear_solves = gsi_op.linear_solves();
     set_result_counts_<_T,_Index>(result, k);
     return result;
 }
@@ -3260,7 +3245,6 @@ static eig_result<_T> b_inner_lanczos_generalized_eigs_impl_(const spmats<_T,_In
                                                                spmats_b_inner_real_tag_)
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    const std::size_t n = static_cast<std::size_t>(self.rowsize());
 
     eig_result<_T> result;
     result.requested_count = k;
@@ -3280,67 +3264,16 @@ static eig_result<_T> b_inner_lanczos_generalized_eigs_impl_(const spmats<_T,_In
         return result;
     }
 
-    const scalar_real_type norm_A_val = frobenius_norm_value_<_T,_Index>(self);
-    const scalar_real_type norm_B_val = frobenius_norm_value_<_T,_Index>(B);
-
-    const std::size_t sdim = (options.subspace_dim == 0)
-        ? std::max(k + 5, std::min(n, std::size_t(30)))
-        : options.subspace_dim;
-    const std::size_t mv_budget = options.max_iter;
-
-    typedef vcp::tsparse_b_inner_lanczos::b_lanczos_result<_T> BLResult;
-    BLResult pkg = vcp::tsparse_b_inner_lanczos::b_inner_lanczos_eigs(
-        self, B, n, k, sdim, mv_budget, options.tol,
-        options.random_seed, options.random_start,
-        options.target, norm_A_val, norm_B_val,
-        options.compute_residual_history);
-
-    if (pkg.spd_check_failed) {
-        result.converged = false;
-        result.status = "spd_check_failed";
-        result.failure_reason = pkg.failure_reason.empty()
-            ? "SPD check failed during B-inner Lanczos"
-            : pkg.failure_reason;
-        result.message = result.failure_reason;
-        set_result_counts_<_T,_Index>(result, k);
+    // EIG-T1 T-2d: sparse Cholesky of B and the T-1 kernel on
+    // L^{-1} P A P^T L^{-T} (used_method stays "b_inner_lanczos").
+    if (t2_generalized_chol_<_T,_Index>(self, B, k, options, result,
+            typename std::integral_constant<bool, t2_supported_<_T>::value>::type())) {
         return result;
     }
-
-    result.iterations = pkg.iterations;
-    result.matrix_vector_products = pkg.mv_count;
-    result.used_subspace_dim = sdim;
-    result.breakdown_reason = pkg.breakdown_reason;
-    result.failure_reason = pkg.failure_reason;
-    result.converged_count = pkg.converged_count;
-    result.eigenvalues = pkg.eigenvalues;
-    result.eigenvectors = pkg.eigenvectors;
-    result.residuals_absolute = pkg.residuals_abs;
-    result.residuals_relative = pkg.residuals_rel;
-    result.converged = pkg.converged;
-
-    if (options.compute_residual_history) {
-        result.residual_history_absolute = pkg.history_abs;
-        result.residual_history_relative = pkg.history_rel;
-    }
-
-    populate_real_complex_eigenvalues_<_T,_Index>(result);
-    if (result.converged) {
-        result.status = "converged";
-        result.message = pkg.breakdown_reason.empty() ? "converged" : pkg.breakdown_reason;
-        result.failure_reason.clear();
-    } else if (pkg.budget_exhausted) {
-        result.status = "max_iter_exhausted";
-        if (result.failure_reason.empty())
-            result.failure_reason = "MV budget (max_iter) exhausted before convergence";
-        result.message = result.failure_reason;
-    } else {
-        result.status = "not_converged";
-        if (result.failure_reason.empty())
-            result.failure_reason = "B-inner Lanczos did not converge";
-        result.message = result.failure_reason;
-    }
-    set_result_counts_<_T,_Index>(result, k);
-    return result;
+    // EIG-T1 (G-1 ruling E): no generalized no-shift route for interval scalars
+    eig_result<_T> r_e = t2_unsupported_scalar_<_T,_Index>(k, eig_solver_method::lanczos, "b_inner_lanczos");
+    r_e.used_generalized_operator = true;
+    return r_e;
 }
 
 template <typename _T, typename _Index>
@@ -3368,6 +3301,13 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
     const Preconditioner& M)
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
+    // EIG-T1 (G-1 ruling E): no Lanczos-type route for interval scalars
+    if (!t2_supported_<_T>::value) {
+        eig_result<_T> r_e = t2_unsupported_scalar_<_T,_Index>(k,
+            eig_solver_method::shift_invert_lanczos, "shift_invert_lanczos+user_preconditioner");
+        r_e.used_shift_invert = true;
+        return r_e;
+    }
     spmats<_T,_Index> A = self.as_csr();
     const std::size_t n = static_cast<std::size_t>(self.rowsize());
 
@@ -3454,57 +3394,10 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
                    &inner_iteration_count, &inner_residual_norm,
                    &prec_failure_reason };
 
-    const std::size_t sdim = (options.subspace_dim == 0)
-        ? std::max(k + 5, std::min(n, std::size_t(30)))
-        : options.subspace_dim;
-    // EIG-3 T-4 (D-6, Q1 ruling 2026-07-06): max_iter is the TOTAL mv budget on
-    // every path.  Pure unit conversion to restarts with the worst per-restart
-    // cost 2*sdim (expansion sdim + lock-scan exact residuals <= sdim;
-    // tsparse_lanczos.hpp mv_count++ sites); the inflation term "+ k + 1" is
-    // deleted.  The restart loop is INCLUSIVE (restart <= max_restarts), so a
-    // floor of 0 already yields one restart; no max(1,.) floor (it would
-    // double the minimum work and break the bound for max_iter < 2*sdim).
-    // Machine-checked overshoot bound: mv <= max_iter + 2*sdim.
-    const std::size_t max_restarts_si = (sdim > 0)
-        ? options.max_iter / (2 * sdim)
-        : options.max_iter;
-
-    // EIG-6 F-2': with_prec si_lanczos も同一の opt-in(drive_ と同じ λ ゲート
-    // 構成 — 共有ヘルパ e-1 / 1:1 計上 e-2 / 最終ゲート再検査 e-3)。
-    const scalar_real_type anorm_gate_p = matrix_inf_norm_value_<_T,_Index>(A);
-    struct SiLambdaGateP {
-        const spmats<_T,_Index>* Am;
-        scalar_real_type anorm;
-        scalar_real_type tol;
-        scalar_real_type sigma;
-        bool operator()(const std::vector<_T>& x, const _T& mu, std::size_t& mv) const {
-            const scalar_real_type mu_re = vcp::tsparse_scalar::real_part(mu);
-            if (!(vcp::tsparse_scalar::abs_value(mu_re) > scalar_real_type(0))) return false;
-            const scalar_real_type lam = scalar_real_type(1) / mu_re + sigma;
-            const scalar_real_type r_abs =
-                eigenpair_residual_norm_value_<_T,_Index>(*Am, _T(lam), x);
-            mv += 1;
-            const scalar_real_type scale = vcp::tsparse::c1_revised_scale_(
-                vcp::tsparse_scalar::abs_value(lam), anorm);
-            return r_abs <= tol * scale;
-        }
-    } si_lambda_gate_p = { &A, anorm_gate_p, options.tol, sigma };
-    std::size_t lambda_gate_count_p = 0;
-    typedef vcp::tsparse_lanczos::lanczos_result_package<_T, SIApply> LPkg;
-    LPkg pkg = vcp::tsparse_lanczos::lanczos_eigs_standard_si_<_T, SIApply, SiLambdaGateP>(
-        n, k, sdim, max_restarts_si, options.tol,
-        options.random_seed, options.random_start,
-        eig_target::largest_magnitude, scalar_real_type(0),
-        options.compute_residual_history, apply_si, si_lambda_gate_p, &lambda_gate_count_p);
-
-    for (std::size_t i = 0; i < pkg.eigenvalues.size(); i++) {
-        const scalar_real_type mu = vcp::tsparse_scalar::real_part(pkg.eigenvalues[i]);
-        if (vcp::tsparse_scalar::abs_value(mu) > scalar_real_type(0))
-            pkg.eigenvalues[i] = _T(scalar_real_type(1) / mu + sigma);
-    }
-
-    eig_result<_T> result = lanczos_package_to_result_<_T,_Index>(pkg, self, k, eig_solver_method::shift_invert_lanczos, options.tol);
-    result.lambda_gate_products = lambda_gate_count_p;   // (e-2)
+    // EIG-T1 T-2b: the T-1 kernel on the preconditioned inner solve (same
+    // core as T-2a)
+    eig_result<_T> result = t2_si_lanczos_core_<_T,_Index>(self, k, options, sigma, apply_si,
+        typename std::integral_constant<bool, t2_supported_<_T>::value>::type());
     result.used_method = "shift_invert_lanczos+user_preconditioner";
     result.linear_solves = linear_solve_count;
     result.inner_iterations = inner_iteration_count;
@@ -3523,132 +3416,7 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
         result.inner_failure_reason = result.failure_reason;
         result.message = result.failure_reason;
     }
-    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
-    si_polish_rescue_standard_<_T,_Index>(result, self, options, apply_si);
-    // -----------------------------------------------------------------------
-    // EIG-10.1 D-17d-wp 委譲(G-0.1/G-1.1 承認・EIG-10 D-17d ブロックの
-    // 逐語鏡映・additive route)。
-    //
-    // 発火署名は EIG-10 と同一(既存フィールドの読み取りのみ・新定数ゼロ):
-    //   !converged ∧ status == residual_check_failed ∧ 残予算 > 0。
-    //   inner_solve_failed / preconditioner_failed は署名不一致 = 構造休眠。
-    //   凍結スイートに preconditioner オーバーロード呼び出しは存在しない
-    //   (EIG-10.1 G-0.1 §4)ため既存挙動はビット不変。
-    //
-    // 委譲先は plain 面と同じ shift_invert_arnoldi_drive_(same-helper)に
-    // **wp 既存の apply_si(内側 GMRES+前処理 closure)をそのまま渡す**。
-    // 前処理オブジェクトの引き回しは closure 経由で暗黙に実現され、委譲先の
-    // 意味論は不変(G-0.1 承認 2)。plain 面との正直な差異: 内側解が実質
-    // 厳密な族(diag 族)のみ委譲が採用に至り、mock/rpp6c 級は内側 GMRES
-    // 精度により C-1 正直棄却 → all-or-nothing 不採用(値・status 不変・
-    // 消費のみ計上 = EIG-10 mixed/interval と同じ受理済みクラス)。
-    //
-    // 規律((c-1) 全継承):
-    //  - 決定的(乱数なし)・試行は最大 3 回の段階許容(EIG-R2)。
-    //    各試行の採否は all-or-nothing。
-    //  - all-or-nothing: 委譲結果が「全ゲート合格の converged ∧ 返却全対実 ∧
-    //    複製方向なし(R4 と同一ヘルパ)」の場合のみ丸ごと採用。それ以外は
-    //    元の正直結果をそのまま返す(対集合の混合・部分採用禁止)。
-    //  - allow_complex_pairs=true の内部指定は「過渡複素窓の通過許可」であって
-    //    「複素対の返却許可」ではない(全実ガードにより structure=symmetric
-    //    呼び出しへ複素対が漏れる経路は構造的に不存在)。
-    //  - mv は採否に依らず実消費を 1:1 計上(B-38)し ks_rescue_products に
-    //    別建て記録。KS コアは mv ≤ 残予算を厳守するため mv_total ≤ max_iter
-    //    (B-1)。
-    //  - wp 会計 (i)(G-0.1 裁定・恒等式維持の必須要件): ls /
-    //    inner_iterations / inner_residual_norm / inner_failure_count は
-    //    ブロック末尾で共有カウンタから 1:1 再同期(委譲・磨きの内側消費を
-    //    含む物理量)。
-    //  - wp 会計 (ii)(G-0.1 裁定): 不採用時は status=rcf のまま消費のみ
-    //    反映。診断組合せ「status==residual_check_failed ∧
-    //    inner_failure_count > 0」は「委譲を試みたが内側精度で正直に不採用」
-    //    の意味(嘘ではない — 採用は C-1 再ゲート合格のみが通す)。
-    // -----------------------------------------------------------------------
-    for (int attempt = 0; attempt < 3 && !result.converged
-         && result.status == "residual_check_failed"
-         && options.max_iter > result.matrix_vector_products; ++attempt) {
-        eig_options<_T> ks_opts = options;
-        ks_opts.max_iter = options.max_iter - result.matrix_vector_products;
-        ks_opts.allow_complex_pairs = true;   // 過渡複素窓の通過許可(上記規律)
-        for (int e = 0; e < attempt; ++e) ks_opts.tol = ks_opts.tol / scalar_real_type(10);   // EIG-R2: 段階許容 tol·10^-attempt
-        bool ks_conv = false;
-        eig_result<_T> alt = shift_invert_arnoldi_drive_<_T,_Index>(
-            self, k, ks_opts, sigma, apply_si, ks_conv);
-        alt.converged = ks_conv && alt.eigenvalues.size() >= k;
-        // 帰結配線は EIG-10 ブロックと同一(B-43 再利用): C-1 改訂 scale
-        // 最終ゲート → F-1 条件付き磨き(不合格時のみ発火・same-helper。
-        // 磨き solve は apply_si 経由 = 内側カウンタへ自動計上、mv は helper
-        // 内で 1:1 計上され下の rescue 合算に含まれる)。
-        lambda_c1_acceptance_gate_<_T,_Index>(alt, options.tol, self);
-        si_polish_rescue_standard_<_T,_Index>(alt, self, ks_opts, apply_si);
-        result.ks_rescue_products += alt.matrix_vector_products;
-        result.matrix_vector_products += alt.matrix_vector_products;
-        result.lambda_gate_products += alt.lambda_gate_products;
-        if (alt.converged && si_polish_returned_pairs_all_real_<_T,_Index>(alt)) {
-            // 採用前の基底整形: 返却集合の MGS 直交正規化(2 パス)。縮退固有
-            // 空間の基底の向きを整えるだけで、対集合の混合・部分採用ではない
-            // ((c-1) の all-or-nothing は集合単位で維持)。整形後に残差を
-            // 再計算し、最終ゲートと同一の受理式で全対を再判定してから採用する
-            // (整形で品質が立たない場合・基底が退化する場合は丸ごと不採用)。
-            typedef typename vcp::tsparse_scalar::real_type<_T>::type R__;
-            std::vector<std::vector<_T> > ortho = alt.eigenvectors;
-            bool ortho_ok = (ortho.size() == alt.eigenvalues.size()) && !ortho.empty();
-            for (std::size_t i = 0; ortho_ok && i < ortho.size(); i++) {
-                for (int pass = 0; pass < 2; pass++) {
-                    for (std::size_t j = 0; j < i; j++) {
-                        const R__ c = vcp::tsparse_scalar::real_dot_value(ortho[j], ortho[i]);
-                        for (std::size_t t = 0; t < ortho[i].size(); t++)
-                            ortho[i][t] -= _T(c) * ortho[j][t];
-                    }
-                }
-                const R__ nv = vcp::tsparse_scalar::real_norm_value(ortho[i]);
-                if (!(nv > R__(0))) { ortho_ok = false; break; }   // certified > 0 のみ採用側
-                for (std::size_t t = 0; t < ortho[i].size(); t++)
-                    ortho[i][t] = ortho[i][t] / _T(nv);
-            }
-            if (ortho_ok) {
-                std::vector<R__> res_abs_o = eigenpair_residuals_<_T,_Index>(
-                    A, alt.eigenvalues, ortho);
-                std::vector<R__> res_rel_o = eigenpair_relative_residuals_<_T,_Index>(
-                    A, alt.eigenvalues, ortho);
-                std::vector<R__> theta_abs_o;
-                theta_abs_o.reserve(alt.eigenvalues.size());
-                for (std::size_t i = 0; i < alt.eigenvalues.size(); i++)
-                    theta_abs_o.push_back(vcp::tsparse_scalar::abs_value(
-                        vcp::tsparse_scalar::real_part(alt.eigenvalues[i])));
-                if (vcp::tsparse::residual_acceptance_check_scaled_(
-                        res_abs_o, res_rel_o, options.tol, theta_abs_o, anorm_gate_p)
-                    && !vcp::tsparse::returned_pair_duplicate_direction_found_<_T>(ortho)) {
-                    result.eigenvalues          = alt.eigenvalues;
-                    result.eigenvalues_imag     = alt.eigenvalues_imag;
-                    result.complex_pair_count   = alt.complex_pair_count;
-                    result.complex_eigenvalues  = alt.complex_eigenvalues;
-                    result.eigenvectors         = ortho;
-                    result.residuals_absolute   = res_abs_o;
-                    result.residuals_relative   = res_rel_o;
-                    if (!res_abs_o.empty()) {
-                        result.residual_norm_absolute = *std::max_element(
-                            res_abs_o.begin(), res_abs_o.end());
-                    }
-                    result.converged        = true;
-                    result.converged_count  = alt.converged_count;
-                    result.status           = "converged";
-                    result.failure_reason.clear();
-                    result.breakdown_reason.clear();
-                    result.message = "converged (D-17d-wp rescue: ks_mu_core delegation; EIG-10.1)";
-                    result.iterations += alt.iterations;
-                    // method / used_method / used_subspace_dim は公開面
-                    // ("shift_invert_lanczos+user_preconditioner")のまま
-                    // (EIG-10 G-0.1 §6.1 と同じ: enum・route 文字列追加なし)。
-                    populate_real_complex_eigenvalues_<_T,_Index>(result);
-                    set_result_counts_<_T,_Index>(result, k);
-                }
-            }
-        }
-        // 不採用: 元の正直結果を維持(値・status 不変。消費計上のみ反映済み)。
-    }
-    // wp 会計 (i): 内側消費の 1:1 再同期(委譲・磨き分を含む。恒等式
-    // mv == ls + lgate の維持に必須 — G-0.1 裁定で凍結)。
+    // 内側の消費(求解の回数・反復数・残差・失敗の数)を共有カウンタから同期する
     result.linear_solves = linear_solve_count;
     result.inner_iterations = inner_iteration_count;
     result.inner_residual_norm = inner_residual_norm;
@@ -3848,12 +3616,7 @@ static eig_result<_T> shift_invert_arnoldi_eigs_with_prec_(
         if (result.failure_reason.empty()) result.failure_reason = "Arnoldi shift-invert did not converge";
         result.message = result.failure_reason;
     }
-    // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
-    // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
-    // Lambda-space C-1 remains the final acceptance gate.
-    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self);   // EIG-4 T-4: 標準 si は改訂 scale
-    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
-    si_polish_rescue_standard_<_T,_Index>(result, self, options, apply_si);
+    // EIG-T1 P5b: no end-of-run residual gate and no polish (T-9, every scalar type)
     result.linear_solves = linear_solve_count;
     set_result_counts_<_T,_Index>(result, k);
     return result;
@@ -3973,6 +3736,38 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
                     &inner_iteration_count, &inner_residual_norm,
                     &prec_failure_reason };
 
+    // EIG-T1 P5a: symmetric pair + Lanczos-type request -> the T-1 kernel in
+    // the B inner product; the inner solver (preconditioned GMRES) is unchanged
+    if (p5a_route_<_T,_Index>(self, B, options, promoted_from_lanczos)) {
+        eig_result<_T> r5;
+        if (p5a_gsi_lanczos_core_<_T,_Index>(self, B, k, options, sigma, apply_gsi, r5,
+                typename std::integral_constant<bool, t2_supported_<_T>::value>::type())) {
+            r5.linear_solves = linear_solve_count;
+            r5.inner_iterations = inner_iteration_count;
+            r5.inner_failure_count = inner_failure_count;
+            r5.inner_residual_norm = inner_residual_norm;
+            r5.factorization_diagnostics = vcp::tsparse_prec_traits::get_diagnostics(M);
+            r5.factorization_zero_pivots = vcp::tsparse_prec_traits::get_zero_pivots(M);
+            if (inner_failure_count != 0) {
+                r5.method = actual_method;
+                r5.used_method = used_method_str;
+                r5.converged = false;
+                r5.eigenvalues.clear();
+                r5.eigenvectors.clear();
+                r5.status = "inner_solve_failed";
+                r5.failure_reason = prec_failure_reason.empty()
+                    ? "inner GMRES solve failed in generalized shift-invert with user preconditioner"
+                    : prec_failure_reason;
+                r5.inner_failure_reason = r5.failure_reason;
+                r5.message = r5.failure_reason;
+            } else {
+                p5a_finish_<_T,_Index>(r5, actual_method, used_method_str);
+            }
+            set_result_counts_<_T,_Index>(r5, k);
+            return r5;
+        }
+    }
+
     // EIG-8 T-1 (e): μ 面 opt-in の λ 形式 lock ゲート(一般化。
     // generalized_shift_invert_drive_ と同一式 — D8-2 共有ヘルパ、B-48)。
     const scalar_real_type anorm_gate_ks = matrix_inf_norm_value_<_T,_Index>(self);
@@ -4088,14 +3883,7 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
             result.matrix_vector_products, result.breakdown_reason, result.failure_reason);
         result.used_method = used_method_str;
     }
-    // EIG-3 T-3: KS core exports C-2 evidence (D3-4) and the back-half
-    // re-checked it in mu space; the EIG-1 arnoldi-core demotion is lifted.
-    // Lambda-space C-1 remains the final acceptance gate.
-    // EIG-8 T-3 (D8-3): 一般化は D8-2 共有 scale 版(挙動遷移期待ゼロ —
-    // 既存 rel 分岐が Frobenius 後退正規化を内包。契約整合の完成)。
-    lambda_c1_acceptance_gate_<_T,_Index>(result, options.tol, self, B);
-    // EIG-6 F-1: 条件付き磨き(ゲート不合格時のみ)+ 磨き solve の再同期(B-38)
-    si_polish_rescue_generalized_<_T,_Index>(result, self, B, options, apply_gsi);
+    // EIG-T1 P5b: no end-of-run residual gate and no polish (T-9, every scalar type)
     result.linear_solves = linear_solve_count;
     set_result_counts_<_T,_Index>(result, k);
     return result;
@@ -4155,6 +3943,202 @@ static eig_result<_T> make_internal_error_eigs_result_(const std::size_t k,
     return result;
 }
 
+// ---------------------------------------------------------------------------
+// EIG-T1 T-7c: entry normalization helpers.
+//
+// The point entries (standard / generalized, with or without a user
+// preconditioner; real point scalars only -- the complex Hermitian route
+// applies the same scaling inside hermitian_trl_route_, EIG-T2) solve A / s
+// with s a power of two
+// near ||A||_inf and map the result back, so that every path behind the
+// entry (thick-restart, Krylov-Schur, dense, shift-invert) works on a matrix
+// of norm about 1.  Powers of two do not round.  ||A||_inf = 0 and
+// non-finite norms are not normalized.
+// ---------------------------------------------------------------------------
+template <typename _T>
+struct t7c_enabled_ {
+    static const bool value =
+        !spmatrix_is_complex<_T>::value
+        && !vcp::tsparse_scalar::numeric_limits_is_unspecialized<
+               typename vcp::tsparse_scalar::real_type<_T>::type>::value;
+};
+
+// s = 2^e with s <= norm < 2 s (norm > 0); returns 1 (e = 0) otherwise.
+template <typename R>
+static R t7c_pow2_floor_(const R& norm, int& e)
+{
+    e = 0;
+    R s = R(1);
+    if (!(norm > R(0))) return s;
+    int guard = 0;
+    while (s * R(2) <= norm && guard < 5000) { s = s * R(2); e++; guard++; }
+    while (s > norm && guard < 10000) { s = s / R(2); e--; guard++; }
+    if (!(s <= norm && norm < s * R(2))) { e = 0; return R(1); }
+    return s;
+}
+
+// 2^round(log2 norm): the power of two nearest in the log scale.
+template <typename R>
+static R t7c_pow2_scale_(const R& norm)
+{
+    int e = 0;
+    R s = t7c_pow2_floor_(norm, e);
+    if (!(norm > R(0))) return s;
+    const R q = norm / s;
+    if (q * q > R(2)) s = s * R(2);
+    return s;
+}
+
+// A power of FOUR s with s / 2 <= norm < 2 s; root = sqrt(s) (a power of
+// two), so that B-normalized eigenvectors map back without rounding.
+template <typename R>
+static R t7c_pow4_scale_(const R& norm, R& root)
+{
+    int e = 0;
+    R s = t7c_pow2_floor_(norm, e);
+    root = R(1);
+    if (!(norm > R(0))) return s;
+    if (e % 2 != 0) { s = s * R(2); e++; }
+    for (int i = 0; i < e / 2; i++) root = root * R(2);
+    for (int i = 0; i > e / 2; i--) root = root / R(2);
+    return s;
+}
+
+template <typename _T, typename _Index>
+static spmats<_T,_Index> t7c_scaled_copy_(const spmats<_T,_Index>& A,
+    const typename vcp::tsparse_scalar::real_type<_T>::type& s)
+{
+    spmats<_T,_Index> C = A.as_csr();
+    std::vector<_T>& v = C.values();
+    for (std::size_t i = 0; i < v.size(); i++) v[i] = v[i] / _T(s);
+    return C;
+}
+
+// eigenvalues x lam_factor, absolute residuals x res_factor, eigenvectors x
+// vec_factor (relative residuals are dimensionless and stay as computed).
+template <typename _T>
+static void t7c_unscale_result_(eig_result<_T>& r,
+    const typename vcp::tsparse_scalar::real_type<_T>::type& lam_factor,
+    const typename vcp::tsparse_scalar::real_type<_T>::type& res_factor,
+    const typename vcp::tsparse_scalar::real_type<_T>::type& vec_factor)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type R;
+    for (std::size_t i = 0; i < r.eigenvalues.size(); i++)
+        r.eigenvalues[i] = r.eigenvalues[i] * _T(lam_factor);
+    for (std::size_t i = 0; i < r.eigenvalues_imag.size(); i++)
+        r.eigenvalues_imag[i] = r.eigenvalues_imag[i] * _T(lam_factor);
+    for (std::size_t i = 0; i < r.complex_eigenvalues.size(); i++)
+        r.complex_eigenvalues[i] = typename eig_result<_T>::eigenvalue_type(
+            r.complex_eigenvalues[i].real() * lam_factor,
+            r.complex_eigenvalues[i].imag() * lam_factor);
+    for (std::size_t i = 0; i < r.residuals_absolute.size(); i++)
+        r.residuals_absolute[i] = r.residuals_absolute[i] * res_factor;
+    for (std::size_t i = 0; i < r.residual_history_absolute.size(); i++)
+        r.residual_history_absolute[i] = r.residual_history_absolute[i] * res_factor;
+    r.residual_norm_absolute = r.residual_norm_absolute * res_factor;
+    if (vec_factor != R(1)) {
+        for (std::size_t i = 0; i < r.eigenvectors.size(); i++)
+            for (std::size_t j = 0; j < r.eigenvectors[i].size(); j++)
+                r.eigenvectors[i][j] = r.eigenvectors[i][j] * _T(vec_factor);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EIG-T2 D-3: hermitian_lanczos_eigs_impl_ (complex Hermitian, standard, no
+// shift) on the thick-restart kernel.  The steps are those of the real
+// symmetric route (policy_eigs_with_info -> lanczos_eigs_new_ ->
+// t2_lanczos_plain_), in the same order:
+//   1. T-7c: solve A / s with s = 2^round(log2 ||A||_inf), shift / s
+//   2. the kernel without its end-of-run applications, on the operator A / s,
+//      with the caller's options (max_iter = total number of applications;
+//      tol, subspace_dim, target, shift, seed, history)
+//   3. true residuals of the returned pairs as diagnostics (Hermitian norm);
+//      they do not decide `converged`
+//   4. t2_finish_lanczos_type_ (status "converged" / "not_converged",
+//      method = lanczos, counts); used_method stays "hermitian_lanczos"
+//   5. map back: eigenvalues and absolute residuals x s
+// The verdict is the kernel's own; no acceptance, demotion or rescue by the
+// true residuals.
+// Tag: complex scalars the kernel accepts; the false overload is a fence for
+// every other scalar type (complex_standard_eigs_with_info_ is instantiated
+// for real scalars too, but never executed for them).
+// ---------------------------------------------------------------------------
+template <typename _T>
+struct hermitian_trl_supported_ {
+    static const bool value =
+        spmatrix_is_complex<_T>::value
+        && vcp::tsparse_experimental::trl_is_supported_scalar_<_T>::value;
+};
+
+template <typename _T, typename _Index>
+static eig_result<_T> hermitian_trl_route_(const spmats<_T,_Index>&,
+                                           const std::size_t k,
+                                           const eig_options<_T>& options,
+                                           std::false_type /* hermitian_trl_supported */)
+{
+    eig_result<_T> result;   // fence
+    result.requested_count = k;
+    result.converged = false;
+    result.status = "unsupported";
+    result.failure_reason =
+        "hermitian_lanczos: scalar type unsupported (std::complex of a real"
+        " point scalar only)";
+    result.message = result.failure_reason;
+    result.method = options.method;
+    result.used_method = "hermitian_lanczos";
+    set_result_counts_<_T,_Index>(result, k);
+    return result;
+}
+
+template <typename _T, typename _Index>
+static eig_result<_T> hermitian_trl_route_(const spmats<_T,_Index>& self,
+                                           const std::size_t k,
+                                           const eig_options<_T>& options,
+                                           std::true_type /* hermitian_trl_supported */)
+{
+    typedef typename vcp::tsparse_scalar::real_type<_T>::type R;
+    spmats<_T,_Index> A = self.as_csr();
+    const std::size_t n = static_cast<std::size_t>(self.rowsize());
+    // 1. T-7c (as the real entry; a power of two does not round)
+    const R s7 = t7c_pow2_scale_<R>(matrix_inf_norm_value_<_T,_Index>(A));
+    eig_options<_T> o7 = options;
+    if (s7 != R(1)) {
+        std::vector<_T>& v = A.values();
+        for (std::size_t i = 0; i < v.size(); i++) v[i] = v[i] / s7;
+        o7.shift = options.shift / s7;
+    }
+    // 2. the kernel (Hermitian inner product, EIG-T2 D-1)
+    struct apply_fn {
+        const spmats<_T,_Index>* mat;
+        void operator()(const std::vector<_T>& x, std::vector<_T>& y) const { y = mat->mul_vec(x); }
+    };
+    apply_fn apply_op = { &A };
+    eig_result<_T> result =
+        vcp::tsparse_experimental::thick_restart_lanczos_eigs_no_residual_<apply_fn, _T>(
+            apply_op, n, k, o7);
+    // 3. diagnostics
+    if (!result.eigenvectors.empty()) {
+        result.residuals_absolute = hermitian_eigenpair_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
+        result.residuals_relative = hermitian_eigenpair_relative_residuals_<_T,_Index>(A, result.eigenvalues, result.eigenvectors);
+    }
+    // 4. status / counts
+    t2_finish_lanczos_type_<_T,_Index>(result, eig_solver_method::lanczos, k);
+    result.used_method = "hermitian_lanczos";
+    result.used_shift_invert = false;
+    // 5. map back
+    if (s7 != R(1)) t7c_unscale_result_<_T>(result, s7, s7, R(1));
+    return result;
+}
+
+template <typename _T, typename _Index>
+static eig_result<_T> hermitian_lanczos_eigs_impl_(const spmats<_T,_Index>& self,
+                                                     const std::size_t k,
+                                                     const eig_options<_T>& options)
+{
+    return hermitian_trl_route_<_T,_Index>(self, k, options,
+        typename std::integral_constant<bool, hermitian_trl_supported_<_T>::value>::type());
+}
+
 // ===========================================================================
 // PUBLIC POLICY METHODS  (non-member free functions operating on spmats)
 // These mirror spmatrix::eigs_with_info / spmatrix::eigs_with_info(B,...).
@@ -4176,6 +4160,21 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
     if (k == 0) return make_empty_eigs_success_<_T,_Index>(A, options);
     if (spmatrix_is_complex<_T>::value)
         return complex_standard_eigs_with_info_<_T,_Index>(A, k, options);
+    // EIG-T1 T-7c: solve A / s (s = 2^round(log2 ||A||_inf)), shift sigma / s,
+    // and map back.  The call below re-enters this function with a matrix
+    // whose scale is exactly 1, so it does not normalize again.
+    if (t7c_enabled_<_T>::value) {
+        const scalar_real_type s7 =
+            t7c_pow2_scale_<scalar_real_type>(matrix_inf_norm_value_<_T,_Index>(A));
+        if (s7 != scalar_real_type(1)) {
+            const spmats<_T,_Index> A7 = t7c_scaled_copy_<_T,_Index>(A, s7);
+            eig_options<_T> o7 = options;
+            o7.shift = options.shift / s7;
+            eig_result<_T> r7 = policy_eigs_with_info<_T,_Index>(A7, k, o7);
+            t7c_unscale_result_<_T>(r7, s7, s7, scalar_real_type(1));
+            return r7;
+        }
+    }
     eig_options<_T> active = resolve_eigs_options_<_T,_Index>(A, options);
     validate_eigs_input_<_T,_Index>(A, k, "spmats::eigs", active.method);
     if (active.max_iter == 0 || active.tol <= scalar_real_type(0)) {
@@ -4239,6 +4238,21 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
     if (k == 0) { (void)M; return make_empty_eigs_success_<_T,_Index>(A, options); }
     if (spmatrix_is_complex<_T>::value)
         return complex_preconditioned_eigs_unsupported_<_T,_Index>(k, options);
+    // EIG-T1 T-7c: as in the overload without preconditioner.  M is passed
+    // unchanged: the inner systems (A - sigma I) / s y = x have the same
+    // residuals and the same Krylov spaces as the unscaled ones.
+    if (t7c_enabled_<_T>::value) {
+        const scalar_real_type s7 =
+            t7c_pow2_scale_<scalar_real_type>(matrix_inf_norm_value_<_T,_Index>(A));
+        if (s7 != scalar_real_type(1)) {
+            const spmats<_T,_Index> A7 = t7c_scaled_copy_<_T,_Index>(A, s7);
+            eig_options<_T> o7 = options;
+            o7.shift = options.shift / s7;
+            eig_result<_T> r7 = policy_eigs_with_info<_T,_Index,Preconditioner>(A7, k, o7, M);
+            t7c_unscale_result_<_T>(r7, s7, s7, scalar_real_type(1));
+            return r7;
+        }
+    }
     eig_options<_T> active = resolve_eigs_options_<_T,_Index>(A, options);
     validate_eigs_input_<_T,_Index>(A, k, "spmats::eigs_with_info(with preconditioner)", active.method);
     if (active.max_iter == 0 || active.tol <= scalar_real_type(0)) {
@@ -4275,10 +4289,20 @@ eig_result<_T> policy_eigs_with_info(const spmats<_T,_Index>& A,
         return result;
     }
 
-    const bool use_lanczos =
+    bool use_lanczos =
         (active.method == eig_solver_method::shift_invert_lanczos)
         || (active.use_shift && active.method == eig_solver_method::lanczos)
         || (active.use_shift && active.method == eig_solver_method::auto_select);
+    // EIG-T1 T-9b: auto_select hands the symmetric driver symmetric input only
+    // (same decision as auto_select_eigs_).
+    if (active.use_shift && active.method == eig_solver_method::auto_select) {
+        if (active.structure == matrix_structure_hint::general) use_lanczos = false;
+        else if (active.structure != matrix_structure_hint::symmetric)
+            use_lanczos = is_certainly_symmetric_<_T,_Index>(A);
+    }
+    // (G-1 ruling E) auto_select: scalars without a Lanczos-type route go to the Krylov-Schur side
+    if (!t2_supported_<_T>::value
+        && active.use_shift && active.method == eig_solver_method::auto_select) use_lanczos = false;
 
     eig_result<_T> result;
     if (use_lanczos)
@@ -4322,6 +4346,28 @@ eig_result<_T> policy_generalized_eigs_with_info(const spmats<_T,_Index>& A,
     if (spmatrix_is_complex<_T>::value)
         return complex_generalized_eigs_unsupported_<_T,_Index>(k, options);
     validate_generalized_eig_input_<_T,_Index>(A, B, "spmats::eigs(A,B)");
+    // EIG-T1 T-7c: solve (A / sA, B / sB) with sA a power of two and sB a
+    // power of four; eigenvalues x sA / sB, shift x sB / sA.  Vectors of the
+    // B-normalized route (used_method "b_inner_lanczos") x 1 / sqrt(sB), so
+    // that x^T B x = 1 still holds; absolute residuals follow.
+    if (t7c_enabled_<_T>::value) {
+        scalar_real_type rootB7(1);
+        const scalar_real_type sA7 =
+            t7c_pow2_scale_<scalar_real_type>(matrix_inf_norm_value_<_T,_Index>(A));
+        const scalar_real_type sB7 =
+            t7c_pow4_scale_<scalar_real_type>(matrix_inf_norm_value_<_T,_Index>(B), rootB7);
+        if (sA7 != scalar_real_type(1) || sB7 != scalar_real_type(1)) {
+            const spmats<_T,_Index> A7 = t7c_scaled_copy_<_T,_Index>(A, sA7);
+            const spmats<_T,_Index> B7 = t7c_scaled_copy_<_T,_Index>(B, sB7);
+            eig_options<_T> o7 = options_in;
+            o7.shift = options_in.shift * sB7 / sA7;
+            eig_result<_T> r7 = policy_generalized_eigs_with_info<_T,_Index>(A7, B7, k, o7);
+            const bool bnorm7 = (r7.used_method == "b_inner_lanczos");
+            const scalar_real_type vf7 = bnorm7 ? scalar_real_type(scalar_real_type(1) / rootB7) : scalar_real_type(1);
+            t7c_unscale_result_<_T>(r7, sA7 / sB7, sA7 * vf7, vf7);
+            return r7;
+        }
+    }
 
     const std::size_t n = static_cast<std::size_t>(A.rowsize());
 
@@ -4422,6 +4468,26 @@ eig_result<_T> policy_generalized_eigs_with_info(const spmats<_T,_Index>& A,
     if (spmatrix_is_complex<_T>::value)
         return complex_generalized_eigs_unsupported_<_T,_Index>(k, options);
     validate_generalized_eig_input_<_T,_Index>(A, B, "spmats::eigs_with_info(A,B,with preconditioner)");
+    // EIG-T1 T-7c: as in the overload without preconditioner (M unchanged:
+    // (A - sigma B) / sA has the same inner residuals and Krylov spaces).
+    if (t7c_enabled_<_T>::value) {
+        scalar_real_type rootB7(1);
+        const scalar_real_type sA7 =
+            t7c_pow2_scale_<scalar_real_type>(matrix_inf_norm_value_<_T,_Index>(A));
+        const scalar_real_type sB7 =
+            t7c_pow4_scale_<scalar_real_type>(matrix_inf_norm_value_<_T,_Index>(B), rootB7);
+        if (sA7 != scalar_real_type(1) || sB7 != scalar_real_type(1)) {
+            const spmats<_T,_Index> A7 = t7c_scaled_copy_<_T,_Index>(A, sA7);
+            const spmats<_T,_Index> B7 = t7c_scaled_copy_<_T,_Index>(B, sB7);
+            eig_options<_T> o7 = options_in;
+            o7.shift = options_in.shift * sB7 / sA7;
+            eig_result<_T> r7 = policy_generalized_eigs_with_info<_T,_Index,Preconditioner>(A7, B7, k, o7, M);
+            const bool bnorm7 = (r7.used_method == "b_inner_lanczos");
+            const scalar_real_type vf7 = bnorm7 ? scalar_real_type(scalar_real_type(1) / rootB7) : scalar_real_type(1);
+            t7c_unscale_result_<_T>(r7, sA7 / sB7, sA7 * vf7, vf7);
+            return r7;
+        }
+    }
 
     const std::size_t n = static_cast<std::size_t>(A.rowsize());
 

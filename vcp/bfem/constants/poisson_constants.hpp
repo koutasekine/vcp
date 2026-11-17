@@ -988,6 +988,11 @@ T poincare_constant_h01_bound(const T& lambda1_lower) {
 //           point: lambda_h appears twice in the formula, and an interval
 //           argument would evaluate the denominator at the upper end --
 //           G-0 supplementary ruling);
+//           the lower end enters the formula as max(lower end, 0): the
+//           formula is monotone on lambda > -1 / C_h^2 only, the eigenvalue
+//           is not negative, and a lower end that is not positive gives the
+//           bound 0 (STK-S1 G-1 ruling; no exception, and the enclosure is
+//           returned uncut);
 //   rule 3  a k covered by no enclosure is vcp::verification_error (no
 //           value without a claim is returned).  The Rayleigh fallback of
 //           spimats (one enclosure, index 1..1) lands here for nev >= 2.
@@ -1125,7 +1130,21 @@ indexed_eigenvalue_bounds<T> indexed_eigenvalue_lower_bounds(
                 who, ": no certified enclosure covers eigenvalue number ", k,
                 " (rule 3; enclosures returned = ", m, ")");
         const T& e = r.eigenvalues[best];
-        out.bounds.push_back(eigenvalue_lower_bound(T(e.lower()), ch_sq));
+        // The bound is taken at max(lower end, 0), not at the lower end as it
+        // is.  lambda / (1 + C_h^2 lambda) is increasing in lambda only on
+        // lambda > -1 / C_h^2; left of that pole it is positive again, so a
+        // lower end there would give a positive value that is no lower bound
+        // (seen with an enclosure as wide as [-171, 557]).  The eigenvalues
+        // of the problems that come here are not negative, hence max(lower
+        // end, 0) is still a lower end of an interval that contains lambda_{h,k},
+        // it lies in the monotone range, and the bound it gives is 0 when
+        // the lower end is not positive -- a true statement, never a
+        // refusal.  A positive lower end gives the same value as before.
+        // The enclosure itself is returned as it is, negative lower end
+        // included.
+        const T zero(0);
+        out.bounds.push_back(eigenvalue_lower_bound(
+            e.lower() > zero.lower() ? T(e.lower()) : zero, ch_sq));
         out.lambda_h.push_back(e);
         out.index_lo.push_back(r.index_lo[best]);
         out.index_hi.push_back(r.index_hi[best]);

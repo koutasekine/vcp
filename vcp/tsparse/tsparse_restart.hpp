@@ -304,9 +304,6 @@ bool honest_termination_check_(
 	return honest_termination_check_(values, conv, locked, k, target, shift);
 }
 
-// residual_acceptance_check_(EIG-0 C-1)のコア実装も
-// tsparse_honest_termination.hpp にある(同 namespace vcp::tsparse)。
-
 // ---------------------------------------------------------------------------
 // append_locked_to_result
 //
