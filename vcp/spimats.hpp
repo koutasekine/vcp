@@ -54,7 +54,7 @@
 //   既存 API から override に到達する。固有メンバはポリシーオブジェクトの
 //   直接利用(vcp::spimats<double> A; A.add(...); A.finalize(); A.is_spd();)
 //   で使う(spumar の muar_opt と同方式)。詳細は
-//   sandbox/docs/usage/spimats_usage.md。
+//   docs/spmatrix.md の「spimats の詳細」。
 
 #ifndef VCP_SPIMATS_HPP
 #define VCP_SPIMATS_HPP

@@ -4,7 +4,7 @@
 // VCP Library is licensed under the BSD 3 - clause "New" or "Revised" License
 //
 // ---------------------------------------------------------------------------
-// License note (3-line summary; full text: sandbox/docs/usage/spcmodumar_usage.md §7):
+// License note (3-line summary; full text: docs/spmatrix.md, "外部ライブラリのライセンスに関する注意"):
 //  1. This header itself is BSD; it delegates the sparse Cholesky
 //     factorization to CHOLMOD, whose modules carry DIFFERENT licenses:
 //     Check / Cholesky / Core(Utility) / Partition = LGPL,

@@ -756,7 +756,7 @@ std::vector<_T> spmats<_T, _Index>::policy_lss(
 {
 	linear_solve_result<_T> result = policy_lss_with_info(b, opt);
 	if (!result.converged)
-		vcp::throw_error<vcp::state_error>("spmats::policy_lss: iterative solver did not converge");
+		vcp::throw_error<vcp::state_error>("spmats::policy_lss: linear solver failed (iterative method did not converge or direct factorization failed)");
 	return result.x;
 }
 
@@ -820,7 +820,7 @@ std::vector<std::vector<_T> > spmats<_T, _Index>::policy_lss_multi(
 	std::vector<std::vector<_T> > X(res.size());
 	for (std::size_t c = 0; c < res.size(); c++) {
 		if (!res[c].converged)
-			vcp::throw_error<vcp::state_error>("spmats::policy_lss_multi: solver did not converge (some column)");
+			vcp::throw_error<vcp::state_error>("spmats::policy_lss_multi: linear solver failed for some column (iterative method did not converge or direct factorization failed)");
 		X[c] = res[c].x;
 	}
 	return X;

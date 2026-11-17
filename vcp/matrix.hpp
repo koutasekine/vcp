@@ -37,6 +37,7 @@
 #include <utility>
 
 #include <vcp/mats.hpp>
+#include <vcp/mats2.hpp>
 #include <vcp/vcp_converter.hpp>
 
 namespace vcp {
@@ -51,7 +52,7 @@ namespace vcp {
 	// SUB-1: block-write proxy (defined after matrix below).
 	template <typename _T, class _P> class matrix_block;
 
-	template <typename _T, class _P = mats< _T >> class matrix : protected _P {
+	template <typename _T, class _P = mats2< _T >> class matrix : protected _P {
 	public:
 		matrix() {
 			this->row = 0;

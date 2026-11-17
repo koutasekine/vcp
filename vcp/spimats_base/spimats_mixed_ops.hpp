@@ -781,7 +781,7 @@ void sub_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 // >>> END [SPI-R7] <<<
 
 // >>> REVIEW-REQUIRED [SPOMP-2: mul_v_im 生配列オーバーロード(D-7)] <<<
-// STATUS: UNREVIEWED (SPOMP-2, 2026-07-29)
+// STATUS: REVIEWED-OK (Kouta Sekine, 2026-11-17)
 // CLAIM: 出力は公開カーネル mul_v_im(x, IA, iy) と同一。根拠: 入力配列が
 //   finalize 済み CSR(IA.as_csr() の outer/inner/values と同内容)である
 //   とき、値・走査順・演算列が公開カーネルの本体ループと字句的に同一

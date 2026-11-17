@@ -32,7 +32,6 @@ namespace vcp {
 	}
 
 	template <typename _T> class mats2 : public mats< _T > {
-		static_assert(!std::is_same<_T, bool>::value, "mats2<bool> is not supported. Use mbool for comparison results.");
 
 		typedef mats< _T > base_type;
 
@@ -80,7 +79,9 @@ namespace vcp {
 		using base_type::base_type;
 
 		mats2() : base_type() {}
-		~mats2() = default;
+		~mats2() {
+			static_assert(!std::is_same<_T, bool>::value, "mats2<bool> is not supported. Use mbool for comparison results.");
+		}
 		mats2(const mats2&) = default;
 		mats2(mats2&&) = default;
 		mats2& operator=(const mats2&) = default;
