@@ -2336,11 +2336,19 @@ namespace vcp {
 			_TC n = _TC(this->dimension);
 
 			if (this->dimension == 1) {
-				if (p <= 0) {
+				// Nazarov--Shcheglova, Proc. Steklov Inst. Math. 331 (2025), Theorem 2.1, (2.1)--(2.3)
+				// with p = 2 (p' = 2), l = 1, and q = (the argument p of this function):
+				//   || u ||_{L^q(0,1)} <= lambda_1(2,q) || u' ||_{L^2(0,1)},  u(0) = u(1) = 0,
+				//   lambda_1(2,q) = F(1/2 + 1/q) / (2 F(1/2) F(1/q)),  F(s) = Gamma(s+1) / s^s
+				if (p < 1) {
 					vcp::throw_error<vcp::domain_error>(
-						">> ERROR : Not exist a Sobolev's constant : Please set p > 0  : p <= ", p);
+						">> ERROR : Not exist a Sobolev's constant : Please set p >= 1  : p < ", p);
 				}
-				return pow(2 / (_TC(p) + 2), 1/_TC(p));
+				auto F = [](const _TC& s) -> _TC {
+					using std::pow;
+					return kv::gamma(s + 1) / pow(s, s);   // s in (0, 1]
+				};
+				return F(_TC(1) / 2 + 1 / _TC(p)) / (2 * F(_TC(1) / 2) * F(1 / _TC(p)));
 			}
 			else if (this->dimension == 2) {
 				if (p <= 2) {
