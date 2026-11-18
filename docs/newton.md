@@ -1,6 +1,7 @@
 # Newton Solver Guide
 
-この文書では、`vcp/newton.hpp` の使い方を説明します。
+この文書では、`vcp/newton.hpp` の使い方と、ヤコビ行列が疎行列の場合に使う
+`vcp/spnewton.hpp` の使い方を説明します。
 
 `vcp::Newton<T, Policy>` は、非線形方程式
 
@@ -207,6 +208,77 @@ vcp::matrix<T, Policy> Df() override {
 このように、`Newton` 自体は PDE 専用ではなく、`matrix` で表された残差と
 ヤコビ行列を返せる問題なら同じ形で利用できます。
 
+## 疎なヤコビ行列を使う場合(`SpNewton`)
+
+有限要素法などでヤコビ行列が疎行列になる場合は、`vcp/spnewton.hpp` の
+`vcp::SpNewton<T, Policy, SparsePolicy>` を使います。`Newton` との違いは、
+`Df()` が疎行列 `vcp::spmatrix<T, SparsePolicy>` を返すことです。近似解と
+`f()` の戻り値は、`Newton` と同じく列ベクトル `vcp::matrix<T, Policy>` です。
+`setting_newton()`、`f()`、`Df()` を実装して `solve_nls(x0)` を呼ぶ手順も、
+収束判定も `Newton` と同じです。疎行列については [spmatrix.md](spmatrix.md) を
+参照してください。
+
+```cpp
+#include <iostream>
+
+#include <vcp/matrix.hpp>
+#include <vcp/spmatrix.hpp>
+#include <vcp/spnewton.hpp>
+
+// F(x) = ( x0^2 + x1 - 3, x0 + x1^2 - 5 ) = 0、解は (1, 2)
+template <typename T, typename PM, typename SP>
+struct TwoVarNewton : public vcp::SpNewton<T, PM, SP> {
+    vcp::matrix<T, PM> x;
+
+    void setting_newton(vcp::matrix<T, PM>& xx) override {
+        x = xx;
+    }
+
+    vcp::matrix<T, PM> f() override {
+        vcp::matrix<T, PM> r;
+        r.zeros(2, 1);
+        r(0) = x(0) * x(0) + x(1) - 3;
+        r(1) = x(0) + x(1) * x(1) - 5;
+        return r;
+    }
+
+    vcp::spmatrix<T, SP> Df() override {
+        vcp::spmatrix<T, SP> J(2, 2);
+        J.add(0, 0, 2 * x(0));
+        J.add(0, 1, T(1));
+        J.add(1, 0, T(1));
+        J.add(1, 1, 2 * x(1));
+        return J;
+    }
+};
+
+int main() {
+    vcp::matrix<double> x;
+    x.zeros(2, 1);
+    x(0) = 1.2;
+    x(1) = 1.8;
+
+    TwoVarNewton<double, vcp::mats2<double>, vcp::spmats<double> > solver;
+    x = solver.solve_nls(x);
+
+    std::cout << x << std::endl;
+    std::cout << "convergence: " << solver.is_convergence() << std::endl;
+}
+```
+
+`SpNewton` に固有の点は次の通りです。
+
+| 項目 | 内容 |
+| --- | --- |
+| `Df()` の戻り値 | n x n の `vcp::spmatrix`。`finalize()` していなくても構いません |
+| 補正方程式の解法 | 既定は疎 LU 直接法(`linear_solver_method::sparse_lu`)。`setting_linear_solve_options(opt)` で変更でき、`get_linear_solve_options()` で取得できます |
+| 反復ごとの処理 | ヤコビ行列を毎回作り直して分解します(分解を使い回す簡易 Newton 法ではありません) |
+| 最大反復回数 | `setting_newton_max_iteration(n)` で変更できます(既定は 100 回) |
+
+`SparsePolicy` を省略すると `vcp::spmats<T>` が使われます。補正方程式の
+`J.solve()` が収束しない、または分解に失敗した場合は `vcp::state_error` が
+投げられます([error_handling.md](error_handling.md))。
+
 ## 代表的なサンプル
 
 | ファイル | 内容 |
@@ -215,6 +287,10 @@ vcp::matrix<T, Policy> Df() override {
 | `test_PDE/test_newton2_Emden.cpp` | Legendre 基底を使う Emden 問題の Newton 法 |
 | `test_PDE/test_1d_Neumann_Gray_Scott.cpp` | Fourier cosine basis を使う Gray-Scott 型の例 |
 | `test_PDE/test_Lotka_Volterra2_NOLTA2021.cpp` | 論文に紐づく Lotka-Volterra 型の例 |
+| `test_PDE/test_spnewton_Emden_2dFEM.cpp` | `SpNewton` と bfem の有限要素空間を使う、2 次元 L 字領域上の Emden 方程式 |
+| `test_PDE/test_spnewton_Emden_3dFEM_Lsc.cpp` | 3 次元(L 字断面の柱状領域)の Emden 方程式 |
+| `test_PDE/test_spnewton_NavierStokes_3dSV_Lsc.cpp` | Scott-Vogelius 要素による定常 Navier-Stokes 方程式(L 字断面の柱状領域) |
+| `test_PDE/test_spnewton_NavierStokes_3dSV_LNO.cpp` | Liu–Nakao–Oishi(2022)の数値例の領域での定常 Navier-Stokes 方程式 |
 
 ## 注意点
 

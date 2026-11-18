@@ -114,17 +114,20 @@ BLAS/LAPACK を利用する `kv::interval<double>` の区間行列:
 
 | Policy | 典型的な行列型 | 主な用途 |
 | --- | --- | --- |
-| `vcp::mats<T>` | `vcp::matrix<T, vcp::mats<T> >` | 汎用の密行列計算 |
+| `vcp::mats2<T>`(推奨) | `vcp::matrix<T, vcp::mats2<T> >` | tblas/tlapack を下請けとして使う汎用の近似計算。インクルード構成で特性が変わる |
+| `vcp::mats<T>`(非推奨) | `vcp::matrix<T, vcp::mats<T> >` | 汎用の密行列計算。`vcp::mats2<T>` に置き換えてください |
 | `vcp::minimats<T>` | `vcp::matrix<T, vcp::minimats<T> >` | 機能を絞った軽量な密行列計算 |
 | `vcp::pdblas` | `vcp::matrix<double, vcp::pdblas>` | BLAS/LAPACK を使う高速な近似計算 |
 | `vcp::pddblas` | `vcp::matrix<kv::dd, vcp::pddblas>` | double の BLAS/LAPACK を使う `kv::dd` の高速な近似計算 |
-| `vcp::mats2<T>` | `vcp::matrix<T, vcp::mats2<T> >` | tblas/tlapack を下請けとして使う近似計算。インクルード構成で特性が変わる |
 | `vcp::imats<T>` | `vcp::matrix<kv::interval<T>, vcp::imats<T> >` | 汎用の区間行列計算 |
 | `vcp::imats<T, P>` | `vcp::matrix<kv::interval<T>, vcp::imats<T, P> >` | 中点計算などに policy `P` を使う区間行列計算 |
 | `vcp::pidblas` | `vcp::matrix<kv::interval<double>, vcp::pidblas>` | BLAS/LAPACK と有向丸めを使う高速な区間 double 計算 |
 | `vcp::pidblas_fma` | `vcp::matrix<kv::interval<double>, vcp::pidblas_fma>` | FMA を利用する実験的な区間行列積 |
 
-`vcp::matrix<T>` の default policy は `vcp::mats<T>` です。
+汎用の近似計算 policy には `vcp::mats2<T>` を推奨します。`vcp::mats<T>` は
+非推奨です。
+
+`vcp::matrix<T>` の default policy は `vcp::mats2<T>` です。
 
 `vcp::mats2<T>` は tblas/tlapack を下請けとして使う近似計算 policy で、
 `vcp::mats<T>` を継承し、行列積・線形方程式・逆行列・Cholesky 分解・
@@ -134,18 +137,17 @@ BLAS/LAPACK を利用する `kv::interval<double>` の区間行列:
 
 ```cpp
 vcp::matrix<double> A;
-vcp::matrix<double, vcp::mats<double> > B;
+vcp::matrix<double, vcp::mats2<double> > B;
 ```
 
 この 2 つは同じ policy を使います。
 
 ## policy の選び方
 
-まず動かす、または小さな検証例を書く場合は `vcp::matrix<double>` から
-始めるのが簡単です。
+汎用の近似計算には `vcp::mats2<T>` を使います。
 
 ```cpp
-vcp::matrix<double> A;
+vcp::matrix<double, vcp::mats2<double> > A;
 ```
 
 大きな `double` 行列で速度が必要な場合は `vcp::pdblas` を使います。
@@ -171,7 +173,7 @@ vcp::matrix<I, vcp::imats<double> > A;
 
 `vcp::imats<T, P>` の第 2 テンプレート引数 `P` には、精度保証付き
 数値計算の内部で使う近似計算用の policy を指定します（省略時は
-`vcp::mats<T>`）。`P` が使われるのは、`lss` の近似逆行列や
+`vcp::mats2<T>`）。`P` が使われるのは、`lss` の近似逆行列や
 `eigsym`/`eigsymge` の近似固有対といった近似計算だけで、包含の計算は
 すべて `kv::interval<T>` の区間演算で行われます。そのため `P` の選択は
 包含の成否・包含の幅・計算速度にだけ影響し、精度保証の正しさには
@@ -656,7 +658,7 @@ vcp::matrix<I, vcp::imats<kv::dd, vcp::pddblas> > A, b, x;
   解そのものが得られない（または `vcp::lapack_error` が投げられる）ことが
   あります。残差反復で改善できるのは、おおよそ
   `条件数 × 1e-16 < 1` を満たす問題に限られます。条件数がそれを超える
-  問題では、`vcp::mats<kv::dd>`（dd 精度のままの LU 分解）や
+  問題では、特殊化ヘッダなしの `vcp::mats2<kv::dd>`（dd 精度のままの LU 分解）や
   `kv::mpfr<N>` などの高精度型の利用を検討してください。
 - 同様に、固有値問題でも固有値の分離が double 精度で判別できない
   （極端にクラスター化した）場合、荻田-相島反復は該当する固有ベクトルを
@@ -699,8 +701,10 @@ x = lss(A, b);
 ### インクルード構成と動作モード
 
 `mats2<T>` の最大の特徴は、**どの特殊化ヘッダをインクルードするかによって
-計算の実装が変わる**点です。`mats2.hpp` 自体は特殊化ヘッダをインクルード
-しないため、利用者が明示的に選択します。
+計算の実装が変わる**点です。`mats2.hpp` と `matrix.hpp` は特殊化ヘッダを
+インクルードしないため、利用者が明示的に選択します。特殊化ヘッダは任意です。
+インクルードしなくても汎用実装で動き、外部 BLAS/LAPACK をリンクして
+特殊化ヘッダをインクルードすると高速になります。
 
 #### モード 1: 汎用実装（追加依存なし）
 
@@ -747,10 +751,6 @@ x = lss(A, b);
 モード 2 の内容を含んだ上で、さらに `T=kv::dd` のとき
 `vcp::pddblas` と同等の動作になります。外部 BLAS/LAPACK または Intel MKL、
 および kv ライブラリが必要です。
-
-`tlapack_dd.hpp` のインクルード順は `mats2.hpp` より前であれば任意ですが、
-明示的特殊化は対象 template の暗黙実体化より前に参照される必要があるため、
-**`mats2.hpp` より先にインクルードしてください**。
 
 ### 使用するアルゴリズム
 
