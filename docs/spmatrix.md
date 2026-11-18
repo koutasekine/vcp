@@ -637,7 +637,7 @@ auto er = A.eigs_with_info(4, eopt);    // ARPACK
 
 ```bash
 sudo apt install libsuitesparse-dev libarpack2-dev
-g++ -std=c++11 -I/path/to/libs example.cpp -lumfpack -larpack
+g++ -std=c++20 -I/path/to/libs example.cpp -lumfpack -larpack
 ```
 
 | 操作 | 委譲先 |

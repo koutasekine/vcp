@@ -59,7 +59,7 @@ flowchart LR
 `/home/user/libs` です。
 
 ```bash
-g++ -std=c++11 -I/home/user/libs example.cpp
+g++ -std=c++20 -I/home/user/libs example.cpp
 ```
 
 `#include <vcp/matrix.hpp>` に対して、コンパイラは次のファイルを探します。
@@ -79,7 +79,7 @@ g++ -std=c++11 -I/home/user/libs example.cpp
 次のように `vcp/` ディレクトリそのものを include path に指定しないでください。
 
 ```bash
-g++ -std=c++11 -I/home/user/libs/vcp example.cpp
+g++ -std=c++20 -I/home/user/libs/vcp example.cpp
 ```
 
 この指定だと、`#include <vcp/matrix.hpp>` に対してコンパイラは次を探します。
@@ -127,7 +127,7 @@ include path は 1 つで済みます。
 この場合のコンパイル例:
 
 ```bash
-g++ -std=c++11 -I/home/user/libs example.cpp
+g++ -std=c++20 -I/home/user/libs example.cpp
 ```
 
 コンパイラから見える必要があるファイルは次の 2 つです。
@@ -155,7 +155,7 @@ project-root/
 
 ```bash
 cd test_matrix
-g++ -std=c++11 -I.. test_matrix.cpp
+g++ -std=c++20 -I.. test_matrix.cpp
 ```
 
 ここで `..` は `vcp/` と `kv/` を含む親ディレクトリを指します。
@@ -195,7 +195,7 @@ bash tools/download_vcp_kv.sh vcp-work
 
 ```bash
 cd ~/vcp-work/test_matrix
-g++ -std=c++11 -I.. test_matrix.cpp
+g++ -std=c++20 -I.. test_matrix.cpp
 ```
 
 BLAS/LAPACK を使う場合は、BLAS の演算が丸めモード変更を反映するかも
@@ -203,8 +203,8 @@ BLAS/LAPACK を使う場合は、BLAS の演算が丸めモード変更を反映
 
 ```bash
 cd ~/vcp-work/test_matrix
-g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out
-g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out
+g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out
+g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out
 ```
 
 Intel MKL やその他の BLAS/LAPACK を使う場合は、リンクオプションや
@@ -275,6 +275,10 @@ sudo dnf install boost-devel -y
 sudo dnf install gmp-devel -y
 sudo dnf install mpfr-devel -y
 ```
+
+Ubuntu 22.04 の Boost 1.74 など古い Boost は、uBLAS が C++20 に対応していないため、
+kv を使うコードを `-std=c++20` でコンパイルできないことがあります。その場合は
+`-std=c++17` を指定するか、新しい Boost を使ってください。
 
 BLAS/LAPACK、Intel MKL、OpenBLAS、OpenMP の設定例は
 [blas_build.md](blas_build.md) を参照してください。

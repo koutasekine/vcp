@@ -197,7 +197,7 @@ udmatmul(m, n, k, A, B, CU, CD);
 プロジェクトルートから実行する場合の AVX2 実装の確認例です。
 
 ```bash
-g++ -I. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 \
+g++ -I. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 -m64 \
 -mavx2 -mfma \
 vcp/vblas/Check_rmatmul_rounding.cpp \
 -lpthread \
@@ -212,7 +212,7 @@ vcp/vblas/Check_rmatmul_rounding.cpp \
 AVX-512 実装を使う場合は、AVX-512 用の compile option を追加します。
 
 ```bash
-g++ -I. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 \
+g++ -I. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 -m64 \
 -mavx512f -DVCP_USE_AVX512 \
 vcp/vblas/Check_rmatmul_rounding.cpp \
 -lpthread \

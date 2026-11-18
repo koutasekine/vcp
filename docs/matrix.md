@@ -273,7 +273,7 @@ const std::vector<double>& v = A.vecpointer();
 | `A == B` | 要素ごとに `A(i,j) == B(i,j)` | `vcp::mbool` |
 | `A != B` | 要素ごとに `A(i,j) != B(i,j)` | `vcp::mbool` |
 
-全 policy（`mats<T>`、`pdblas`、`pddblas`、`imats<T>`、`pidblas`、`piddblas`、`mats2<T>`）で利用できます。
+全 policy（`mats<T>`、`pdblas`、`pddblas`、`imats<T>`、`pidblas`、`mats2<T>`）で利用できます。
 
 ### vcp::mbool
 
@@ -521,7 +521,7 @@ backend 選択を共有しています。
 MKL や OpenBLAS がない環境でも次のようにコンパイルできます。
 
 ```bash
-g++ -std=c++11 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND \
+g++ -std=c++20 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND \
     -DUSE_VCP_BLAS -DUSE_VCP_LAPACK \
     example.cpp -lmpfr -fopenmp
 ```

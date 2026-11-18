@@ -550,13 +550,13 @@ bfem はヘッダだけで使えます。`vcp/` を含むディレクトリを i
 ([install.md](install.md))。
 
 ```bash
-g++ -std=c++11 -O3 -DNDEBUG -I/path/to/libs example.cpp -fopenmp
+g++ -std=c++20 -O3 -DNDEBUG -I/path/to/libs example.cpp -fopenmp
 ```
 
 区間型・誤差定数を使う場合は、kv の include path と MPFR も必要です。
 
 ```bash
-g++ -std=c++11 -O3 -DNDEBUG -DKV_FASTROUND -I/path/to/libs example.cpp -lmpfr -fopenmp
+g++ -std=c++20 -O3 -DNDEBUG -DKV_FASTROUND -I/path/to/libs example.cpp -lmpfr -fopenmp
 ```
 
 ## よくある失敗

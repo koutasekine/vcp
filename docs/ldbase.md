@@ -345,7 +345,7 @@ std::vector<double> uh_max = Generator.global_max(x, std::pow(2.0, -9));
 Ubuntu (WSL) + MKL の場合:
 
 ```bash
-g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 test_PDE/test_Emden.cpp \
+g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 -m64 test_PDE/test_Emden.cpp \
 -L${MKLROOT}/lib/intel64 \
 -Wl,--no-as-needed \
 -lmkl_intel_lp64 \

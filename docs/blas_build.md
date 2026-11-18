@@ -29,15 +29,18 @@ VCP Library 本体は Intel 専用ではありません。Intel MKL は選択肢
 
 ## 基本のコンパイル例
 
-以下の例では、最小対応規格として `-std=c++11` を指定しています。
-検証済みの環境では、`-std=c++14`、`-std=c++17`、`-std=c++20` も利用できます。
+以下の例では `-std=c++20` を指定しています。VCP Library 自体は C++11 以降の
+どの規格でも使えるので、`-std=c++17` などに変えてもかまいません。
+Ubuntu 22.04 の Boost 1.74 など古い Boost は、uBLAS が C++20 に対応していないため、
+kv を使うコードを `-std=c++20` でコンパイルできないことがあります。その場合は
+`-std=c++17` を指定するか、新しい Boost を使ってください。
 
 `vcp/` ディレクトリを含む VCP Library の展開先を include path に追加します。
 `vcp/` そのものを `-I` に指定しないでください。配置と include path の考え方は
 [install.md](install.md) を参照してください。
 
 ```bash
-g++ -std=c++11 -I/path/to/libs example.cpp
+g++ -std=c++20 -I/path/to/libs example.cpp
 ```
 
 区間演算を使う場合は、別途取得した kv ライブラリの include path も
@@ -45,19 +48,19 @@ g++ -std=c++11 -I/path/to/libs example.cpp
 この場合は include path を 1 つ指定するだけで済みます。
 
 ```bash
-g++ -std=c++11 -I/path/to/libs example.cpp
+g++ -std=c++20 -I/path/to/libs example.cpp
 ```
 
 BLAS/LAPACK を使う場合:
 
 ```bash
-g++ -std=c++11 -I/path/to/libs example.cpp -llapack -lblas
+g++ -std=c++20 -I/path/to/libs example.cpp -llapack -lblas
 ```
 
 OpenMP、MPFR、GMP も使う場合:
 
 ```bash
-g++ -std=c++11 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND example.cpp -llapack -lblas -lmpfr -lgmp -fopenmp
+g++ -std=c++20 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND example.cpp -llapack -lblas -lmpfr -lgmp -fopenmp
 ```
 
 ## Intel MKL を使う場合
@@ -125,7 +128,7 @@ MKL を精度保証付き計算で使う場合は、丸めモードの変更が�
 
 ```bash
 source /opt/intel/oneapi/setvars.sh
-g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 <filename.cpp> -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp
+g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 -m64 <filename.cpp> -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp
 ```
 
 この例では `-lblas` と `-llapack` を指定していません。MKL を使う意図を
@@ -147,10 +150,10 @@ OpenBLAS や Apple LAPACK を使う例:
 
 ```bash
 cd test_matrix
-g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp
+g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp
 ./a.out
 
-g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp
+g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp
 ./a.out
 ```
 
@@ -165,8 +168,8 @@ Intel MKL を使う場合の確認例:
 echo "Check for BLAS rounding mode changes: Please wait..."
 source /opt/intel/oneapi/setvars.sh
 cd test_matrix
-g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pdblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
-g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pidblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
+g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pdblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
+g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pidblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
 ```
 
 成功すると、丸めモード変更可能であることを示すメッセージが表示されます。
