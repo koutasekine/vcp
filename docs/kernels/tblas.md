@@ -42,7 +42,7 @@ tgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 
 全て `template <typename T>` の関数 template (例: `tgemm<T>`)．
 引数順は rdblas から末尾の `rounding_mode` を除いたもの (= reference BLAS と同順)．
-column-major / 0-based / `int` index，不正引数は `std::invalid_argument`，
+column-major / 0-based / `int` index，不正引数は `vcp::invalid_argument`，
 scalar 引数は `const T&` 渡し (mpfr 等の copy cost 回避) とします．
 
 ## T=double の BLAS 委譲特殊化
@@ -302,7 +302,7 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
   `TBLAS_OMP_THRESHOLD` (既定 2e4)，`-fopenmp` なしでも compile 可能．
 - **引数規約**: reference BLAS と同順で rounding_mode なし，scalar は
   `const T&` 渡し，column-major / 0-based / `int` index，不正引数は
-  `std::invalid_argument` (例外無効時は `abort`)．
+  `vcp::invalid_argument` (例外無効時は `abort`)．
 
 ## 検証方針
 
@@ -340,7 +340,7 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
   `incx == 0` は不正引数 (`tscal` `itamax` `tasum` `tnrm2` は `incx <= 0` のとき
   何もしない / 0 / -1 を返す BLAS 規約)．
 - **scalar 引数は `const T&` 渡し**，vector/行列は pointer 渡し．
-- **不正引数**は `std::invalid_argument` を投げる (例外無効時は `abort`)．
+- **不正引数**は `vcp::invalid_argument` を投げる (例外無効時は `abort`)．
 - **丸めモードは扱わない**．丸めモード指定が必要なら `vcp/vblas/rdblas` を使う．
 - `std::fma` は使わない (`a*b + c` は乗算 1 丸め + 加算 1 丸め)．
 - BLAS 規約の quick return: `beta == T(0)` のとき出力は読まずに 0 埋め

@@ -4,7 +4,7 @@
 丸めモードを指定して計算できる形で提供する header-only library です．
 `rmatmul` と同様に実験的な位置付けで，`vcp::matrix` からは自動では使われません．
 この上に構築した丸めモード指定付き LAPACK (rdlapack) は兄弟 directory の
-`vcp/vlapack/` にあります (`docs/rdlapack.md` 参照)．
+`vcp/vlapack/` にあります (`docs/kernels/rdlapack.md` 参照)．
 
 ```cpp
 #include <vcp/vblas/rdblas.hpp>
@@ -44,7 +44,7 @@ rdgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, 1);
 - 行列は column-major，index は 0-based です．
   `idamax` の返り値も 0-based index です (Fortran BLAS の 1-based と異なる
   ので注意．`n <= 0` などでは -1 を返します)．
-- 不正な引数 (`lda` 不足など) は `std::invalid_argument` を投げます
+- 不正な引数 (`lda` 不足など) は `vcp::invalid_argument` を投げます
   (例外無効時は `abort`)．
 
 ## 提供 routine
@@ -89,7 +89,7 @@ std::fesetround(FE_TONEAREST);
 - LAPACK 3.12.1 で追加された `dgemmtr_` も提供します (全 35 関数)．
   reference LAPACK 3.12.1 以降と link する場合に dsytrf 系が必要とします．
 - `lsame_` / `xerbla_` は提供しません．引数 error は rdblas に従い
-  `std::invalid_argument` を投げます．
+  `vcp::invalid_argument` を投げます．
 - Fortran object と link する library を作る場合は，1 つの翻訳単位で
   `VBLAS_DBLAS_EMIT_SYMBOLS` を定義して include すると全 symbol が発行されます
   (MKL 等と同名 symbol が衝突しないよう link 構成に注意)．
@@ -149,8 +149,8 @@ VCP Library の精度保証付き計算 (`vcp::pidblas`) において，BLAS の
    呼び出し側が事前に設定していた丸めモード (例えば `FE_DOWNWARD`) は
    呼び出し後もそのまま維持されます．
 
-`sandbox/tests/test_rdblas.cpp` の `test_rounding_restore` と
-「1/3 データで全要素 up != down」の test がこの 2 点・3 点を検証します
+開発時のテスト(`test_rounding_restore` と「1/3 データで全要素 up != down」の test)が
+この 2 点・3 点を検証しています
 (1 thread でも切り替えに失敗すると担当要素が up == down になり検出されます)．
 
 ## 実装方針 (速度)

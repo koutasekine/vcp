@@ -48,7 +48,7 @@ int info3 = tgesv(n, nrhs, A, lda, ipiv, B, ldb);
 | 補助 | — | `tlassq` `tlapy2` `tlapy3` `tladiv` `tlartg` `tlarfg` `tlarf` `tlarf1f` `tlarf1l` `tlarft` `tlarfb` `tlascl` `tlasr` `tlae2` `tlaev2` `tlas2` `tlasv2` `tlanv2` `tlange` `tlangb` `tlansy` `tlansb` `tlanst` `tlamch` `tlaset` `tlacpy` `tlaswp` `tlasrt` `ilatlr` `ilatlc` |
 
 引数規約は rdlapack と同じ (reference LAPACK と同順で rounding_mode なし，
-INFO は返り値，引数 error は `std::invalid_argument`，WORK/LWORK なし，
+INFO は返り値，引数 error は `vcp::invalid_argument`，WORK/LWORK なし，
 ipiv / ilo / ihi の 0-based / 1-based 規約も rdlapack と同一)．
 scalar は tblas と同様 `const T&` 渡しとします．
 
@@ -341,7 +341,7 @@ LAPACK は pivot 選択・収束判定・shift 選択など，ほぼ全 routine 
    `tlapack_common.hpp` / `_aux` / `_lu` / `_chol` / `_band` / `_qr` /
    `_sy` / `_eig` / `_geev` / `_svd`．
 6. **rdlapack の reference との相違点を引き継ぐ**: `tbdsqr` は dqds でなく
-   QR 反復，`tgesvd` は基本経路のみ，など (docs/rdlapack.md 参照)．
+   QR 反復，`tgesvd` は基本経路のみ，など (docs/kernels/rdlapack.md 参照)．
 
 ## まとめ: tblas からの要件の増分
 
@@ -420,7 +420,7 @@ reference LAPACK 3.12.1 の同名 routine (`t` → `d`) に準ずる．
 - **行列は column-major**: `A(i,j)` は `A[i + lda * j]`，`lda >= max(1, 行数)`．
 - **返り値は LAPACK の INFO** (int)．`0`: 成功，`> 0`: LAPACK と同じ意味
   (位置・個数は **1-based**)．LAPACK で `INFO < 0` になる引数 error は返り値では
-  なく `std::invalid_argument` を投げる (例外無効時は `abort`)．
+  なく `vcp::invalid_argument` を投げる (例外無効時は `abort`)．
 - **WORK / LWORK 引数はない**．作業領域は内部で `std::vector<T>` により
   最適 size を確保する (workspace query 不要)．
 - **index の規約** (rdlapack と同一):

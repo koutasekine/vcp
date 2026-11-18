@@ -226,7 +226,35 @@ oneAPI/MKL の環境設定が異なります。[blas_build.md](blas_build.md) �
 | 区間演算 | kv ライブラリ |
 | `kv::mpfr` | MPFR |
 | `vcp::pdblas`, `vcp::pidblas` | BLAS/LAPACK または Intel MKL |
+| `vcp::spumar` | UMFPACK(SuiteSparse)、ARPACK-NG |
+| `vcp::spcmodumar` | UMFPACK・CHOLMOD(SuiteSparse)、ARPACK-NG |
 | OpenMP を使うビルド | OpenMP 対応コンパイラとリンクオプション |
+
+疎行列の既定の policy `vcp::spmats<T>` と区間疎行列の policy `vcp::spimats<T>` は、
+追加の外部ライブラリなしで使えます。
+
+## 疎行列の外部委譲 policy を使う場合
+
+`vcp::spumar` と `vcp::spcmodumar` を使う場合は、SuiteSparse と ARPACK-NG の
+開発用パッケージを入れます。
+
+Ubuntu の例:
+
+```bash
+sudo apt install libsuitesparse-dev libarpack2-dev
+```
+
+リンクには次のオプションを付けます。
+
+| policy | リンクオプション |
+| --- | --- |
+| `vcp::spumar` | `-lumfpack -larpack` |
+| `vcp::spcmodumar` | `-lumfpack -larpack -lcholmod` |
+
+外部ライブラリが必要になるのは、`vcp/spumar.hpp` または `vcp/spcmodumar.hpp` を
+include した翻訳単位だけです。これらのライブラリのライセンスについては
+[spmatrix.md](spmatrix.md) の「外部ライブラリのライセンスに関する注意」を
+参照してください。
 
 ## 推奨する基本パッケージ
 

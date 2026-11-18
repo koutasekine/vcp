@@ -91,7 +91,7 @@ vcp::Legendre_Bases_Generator< _T, _TM, _PM >
 | --- | --- |
 | `_T` | 基底・積分点の生成に使う高精度型。オーバーフロー防止のため MPFR ベースの区間型がほぼ必須（例: `kv::interval< kv::mpfr<500> >`） |
 | `_TM` | 行列・積分値の計算に使う型（例: `double`, `kv::dd`, `kv::interval<double>`） |
-| `_PM` | `vcp::matrix` の計算 policy（省略時 `vcp::mats<_TM>`） |
+| `_PM` | `vcp::matrix` の計算 policy（省略時 `vcp::mats2<_TM>`） |
 
 典型的な typedef は次の通りです。
 
@@ -100,7 +100,7 @@ typedef kv::interval< kv::mpfr<500> > DataType; // 基底生成用（高精度�
 
 // 近似計算用
 typedef kv::dd AppData;
-typedef vcp::mats< AppData > POLICY;
+typedef vcp::mats2< AppData > POLICY;
 
 // 精度保証用（区間演算）
 typedef kv::interval< double > VData;

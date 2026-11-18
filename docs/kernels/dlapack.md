@@ -36,7 +36,7 @@ std::fesetround(FE_TONEAREST);
   BLAS 部分も scalar 部分も，OpenMP の全 worker thread も) が同じ丸めモードで
   実行され，終了後に各 thread の丸めモードは呼び出し前の状態へ復元されます．
 - `vcp::rdlapack` と同様，これは「全演算を同一丸めモードで計算する」だけであり，
-  **精度保証付き数値計算ではありません** (`docs/rdlapack.md` の注意を参照)．
+  **精度保証付き数値計算ではありません** (`docs/kernels/rdlapack.md` の注意を参照)．
 
 ## 既存の BLAS の取り扱い (重要)
 
@@ -74,7 +74,7 @@ trmm/trsm 系は MKL の 5〜6 割，非対称固有値 (dgeev) は algorithm �
 | 目的 | 構成 |
 |---|---|
 | 全演算の丸めモード保証 (LAPACK 演算) | **dlapack** (または rounding_mode を明示する rdlapack) |
-| 既存 LAPACK + BLAS 部分のみ丸め保証 | 既存 liblapack + **dblas** (検証済み，docs/rdblas.md 参照) |
+| 既存 LAPACK + BLAS 部分のみ丸め保証 | 既存 liblapack + **dblas** (検証済み，docs/kernels/rdblas.md 参照) |
 | 性能優先 (丸め保証なし) | 既存 liblapack + MKL 等 (従来どおり) |
 | 丸め保証付き LAPACK と高速 BLAS の同居 | dlapack + MKL を同一 binary にリンク (dblas は emit しない) |
 
@@ -103,7 +103,7 @@ wrapper は計算を持たず，次の変換のみを行います:
    `LWORK = -1` (workspace query) のときは計算せず推奨 size を `WORK(1)` に
    返す．それ以外の LWORK の値は**検査せず無視**する (LAPACK は不足時に
    INFO < 0 を返すが，dlapack では不足という概念がない)
-5. **引数 error**: rdlapack が投げる `std::invalid_argument` を catch して
+5. **引数 error**: rdlapack が投げる `vcp::invalid_argument` を catch して
    `INFO = -1` に変換する (LAPACK と異なり，どの引数が不正かは特定しない)．
    `INFO > 0` (特異・非収束等) は LAPACK と同じ意味
 6. **symbol の強制発行**: Fortran object と link する場合は 1 つの翻訳単位で

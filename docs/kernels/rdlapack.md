@@ -23,7 +23,7 @@ int info = rdgesv(n, nrhs, A, lda, ipiv, B, ldb, 1);
 ```
 
 現在の丸めモードを読み込んで計算する Fortran 互換 wrapper (dlapack) は
-`vcp/vlapack/dlapack.hpp` にあります (`docs/dlapack.md` 参照)．
+`vcp/vlapack/dlapack.hpp` にあります (`docs/kernels/dlapack.md` 参照)．
 
 ## 名前空間
 
@@ -65,7 +65,7 @@ FP 演算を含まない補助関数 (`dlamch`, `dlaset`, `dlacpy`, `dlaswp`,
     **1-based**．
   - `rdgesv`/`rdgetrf`/`rdgbsv` 系の `ipiv` と `dlaswp` は 0-based．
 - LAPACK の `INFO` は **返り値 (int)** です (0: 成功，> 0: LAPACK と同じ意味の
-  1-based 位置/個数)．`INFO < 0` に相当する引数 error は `std::invalid_argument`
+  1-based 位置/個数)．`INFO < 0` に相当する引数 error は `vcp::invalid_argument`
   を投げます (例外無効時は `abort`)．
 - LAPACK の `WORK`/`LWORK` 引数は持ちません．作業領域は内部で `std::vector` により
   最適 size を確保します (workspace query は不要)．
