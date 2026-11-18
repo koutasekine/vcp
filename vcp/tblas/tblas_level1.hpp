@@ -52,7 +52,7 @@
 // - abs / sqrt は `using std::abs;` + 非修飾呼び出しで ADL 解決する
 //   (kv::dd / kv::mpfr / kv::interval は namespace kv の abs / sqrt が使われる)
 // - itamax / tnrm2 / trotg / trotmg は順序比較で分岐するため，区間型では非推奨
-//   (tblas/README_tblas.md 参照)
+//   (docs/kernels/tblas.md 参照)
 
 #include <cmath>
 #include <cstddef>

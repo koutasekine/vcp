@@ -54,7 +54,7 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_add(
 	std::vector<_T> new_value;
 	const std::size_t cap = index_to_size(Ap->stored_nnz(), "spmats::policy_add")
 	                      + index_to_size(Bp->stored_nnz(), "spmats::policy_add");
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 	// SPOMP-1 A1 (design §3.1/§4.1): two-pass parallel builder above the
 	// work threshold (work = nnz(A)+nnz(B) = cap); bit-identical to the
 	// emit path below (identical per-row algorithm and order).  The emit
@@ -116,7 +116,7 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_sub(
 	std::vector<_T> new_value;
 	const std::size_t cap = index_to_size(Ap->stored_nnz(), "spmats::policy_sub")
 	                      + index_to_size(Bp->stored_nnz(), "spmats::policy_sub");
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 	// SPOMP-1 A1 (design §3.1/§4.1): same parallel-builder switch as
 	// policy_add, with beta = -1.
 	if (cap >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD)) {
@@ -190,7 +190,7 @@ spmats<_T, _Index> spmats<_T, _Index>::policy_mul_impl(
 	std::vector<_Index> new_outer(nrows + 1, _Index(0));
 	std::vector<_Index> new_inner;
 	std::vector<_T> new_value;
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 	// SPOMP-1 A2 (design §3.1/§4.1): two-pass parallel builder above the
 	// work threshold (work = nnz(A)+nnz(B)); bit-identical to the emit
 	// path below (identical per-row algorithm and order).
@@ -279,7 +279,7 @@ std::vector<_T> spmats<_T, _Index>::policy_left_mul_vec(
 template <typename _T, typename _Index>
 void spmats<_T, _Index>::policy_mulsm(const _T& alpha)
 {
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 	// SPOMP-1 B1 (design §4.2, pass-2 modified -- see
 	// sandbox/docs/reports/SPOMP-1_stop_report.md): phase 1 multiplies every
 	// stored value IN PLACE (one multiplication per element, exactly the
@@ -363,7 +363,7 @@ void spmats<_T, _Index>::policy_mulsm(const _T& alpha)
 template <typename _T, typename _Index>
 void spmats<_T, _Index>::policy_divms(const _T& alpha)
 {
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 	// SPOMP-1 B1: same two-phase scheme as policy_mulsm above (in-place
 	// parallel divide + survivor count; sequential compaction only when
 	// exact zeros appeared -- see the policy_mulsm comment / stop report).
@@ -438,7 +438,7 @@ void spmats<_T, _Index>::policy_divms(const _T& alpha)
 template <typename _T, typename _Index>
 void spmats<_T, _Index>::policy_minusm()
 {
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 	// SPOMP-1 A4 (design §3.1): negation cannot create a zero from a
 	// stored non-zero (-x == 0 iff x == 0), so the pattern is invariant
 	// and no compaction pass is needed -- plain elementwise parallel map

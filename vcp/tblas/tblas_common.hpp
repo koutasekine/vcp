@@ -34,7 +34,7 @@
 
 // tblas (template BLAS) の共通基盤．
 // - 要素型 T の要件 (R1: 値セマンティクス / T(int) 構築 / + - * 単項- == != ,
-//   R2: 除算, R3: 順序比較, R4: ADL の abs / sqrt) は tblas/README_tblas.md 参照
+//   R2: 除算, R3: 順序比較, R4: ADL の abs / sqrt) は docs/kernels/tblas.md 参照
 // - 丸めモードは一切扱わない (vblas/rdblas との最大の違い)
 // - 行列は column-major，index は 0-based
 // - OpenMP が有効な場合，演算量が閾値を超える独立 loop のみ並列化する

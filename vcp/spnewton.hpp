@@ -63,9 +63,10 @@
 // Linear solver
 // -------------
 // The default method is linear_solver_method::sparse_lu (a DIRECT solve),
-// deliberately not auto_select: auto_select resolves a symmetric matrix to
-// conjugate_gradient, and a Newton Jacobian is frequently symmetric but
-// indefinite, and in any case ill-conditioned enough that CG stalls.  The
+// set explicitly.  (auto_select currently resolves to sparse_lu as well;
+// the explicit choice keeps the direct solve independent of any future
+// change of that rule, since a Newton Jacobian is frequently symmetric but
+// indefinite, and ill-conditioned enough that an iterative method stalls.)  The
 // options object is exposed through setting_linear_solve_options() for
 // callers who know better.
 //

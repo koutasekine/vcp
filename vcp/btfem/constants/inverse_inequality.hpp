@@ -53,8 +53,8 @@
 //   largest upper end negative
 //   degenerate element                      vcp::bfem::degenerate_element
 //                                           (propagated from the space
-//                                           construction; outside the
-//                                           vcp::error hierarchy)
+//                                           construction; derives from
+//                                           vcp::verification_error)
 //
 // Authority: sandbox/docs/design/BT-3_design_v1.0.md,
 //            sandbox/docs/design/BT-3_requirements_v1.0.md.

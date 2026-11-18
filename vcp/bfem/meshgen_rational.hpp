@@ -22,9 +22,9 @@ namespace bfem {
 typedef detail::rational rational;
 
 // Parses "num/den" or "num" (decimal, optional leading '+'/'-' on either
-// part). Malformed input raises std::invalid_argument (from bigint parsing
+// part). Malformed input raises vcp::invalid_argument (from bigint parsing
 // or the structural checks below). A zero denominator is not a format
-// error; it surfaces as the std::logic_error thrown by rational itself.
+// error; it surfaces as the vcp::domain_error thrown by rational itself.
 inline rational rational_from_string(const std::string& s) {
     const std::string::size_type slash = s.find('/');
     if (slash == std::string::npos)

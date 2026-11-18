@@ -17,7 +17,7 @@
 //    parity is published alongside (unused by P^n, consumed by 3D RT).
 //
 // Non-manifold check: a FACE shared by 3+ elements is rejected
-// (std::invalid_argument). Edges are intentionally NOT multiplicity-checked:
+// (vcp::invalid_argument). Edges are intentionally NOT multiplicity-checked:
 // in 3D an edge may be shared by arbitrarily many elements (AX3D-3).
 //
 // The 2D topology (vcp/bfem/dofmap.hpp) is frozen; this is a parallel

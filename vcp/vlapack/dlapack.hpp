@@ -43,9 +43,9 @@
 // - 内部の BLAS は rdlapack が rdblas を C++ 直接呼び出しで使う (固定)．
 //   dgemm_ などの BLAS シンボルを参照も提供もしないため，リンクされた既存
 //   BLAS (MKL 等) とは干渉しないが，その速度の恩恵も受けない
-//   (詳細は vlapack/README_dlapack.md)．
+//   (詳細は docs/kernels/dlapack.md)．
 //
-// LAPACK との互換性の差異 (詳細は README_dlapack.md):
+// LAPACK との互換性の差異 (詳細は docs/kernels/dlapack.md):
 // - ipiv は LAPACK と同じ 1-based に変換して入出力する
 //   (dsytrf 系は rdlapack 自体が LAPACK 互換のためそのまま)．
 // - WORK は使用しない (作業領域は内部確保)．LWORK = -1 の workspace query

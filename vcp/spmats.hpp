@@ -31,18 +31,20 @@
 
 // SPOMP-1 (design §2, D-1): two-stage OpenMP guard, mirrored from the
 // BFEM (VCP_BFEM_NOMP) / TBLAS (VCP_TBLAS_NOMP) precedent.
-// VCP_NOMP          : global kill switch (implies VCP_SPARSE_NOMP)
-// VCP_SPARSE_NOMP   : sparse-layer kill switch
+// Policy layer (spmats / spmats_base / spimats / spimats_base); the tsparse
+// kernels use their own guard VCP_SPARSE_NOMP / VCP_SPARSE_USE_OPENMP.
+// VCP_NOMP          : global kill switch (implies VCP_SPMATS_NOMP)
+// VCP_SPMATS_NOMP   : sparse policy-layer kill switch
 #ifdef VCP_NOMP
-#  ifndef VCP_SPARSE_NOMP
-#    define VCP_SPARSE_NOMP
+#  ifndef VCP_SPMATS_NOMP
+#    define VCP_SPMATS_NOMP
 #  endif
 #endif
-#if defined(_OPENMP) && !defined(VCP_SPARSE_NOMP)
-#  define VCP_SPARSE_USE_OPENMP 1
+#if defined(_OPENMP) && !defined(VCP_SPMATS_NOMP)
+#  define VCP_SPMATS_USE_OPENMP 1
 #  include <omp.h>
 #else
-#  define VCP_SPARSE_USE_OPENMP 0
+#  define VCP_SPMATS_USE_OPENMP 0
 #endif
 
 // SPOMP-1 (design §2, D-8): parallelization threshold on the work measure
@@ -313,7 +315,7 @@ namespace vcp {
 		void mul_vec(const _T* x, _T* y) const {
 			require_finalized("spmats::mul_vec");
 			if (fmt == vcp::sparse_csr) {
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 				// SPOMP-1 A3 (design §4.3, D-4): CSR x 'N' is the gather
 				// side -- row-parallel kernel above the work threshold
 				// (work = nnz), bit-identical to tcsrmv 'N'.
@@ -347,7 +349,7 @@ namespace vcp {
 				vcp::tcsrmv('T', row, column, _T(1), outer.data(), inner.data(), value.data(), x, _T(0), y);
 			}
 			else if (fmt == vcp::sparse_csc) {
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 				// SPOMP-1 A3 (design §4.3, D-4): CSC x 'T' is the gather
 				// side -- column-parallel kernel above the work threshold
 				// (work = nnz), bit-identical to tcscmv 'T'.  The scatter
@@ -404,7 +406,7 @@ namespace vcp {
 		// matrix keeps its CSC format (value-array map is format-agnostic).
 		template <class _Fn> void spfn_map_stored_(_Fn f) {
 			if (!finalized) to_csr();
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 			// SPOMP-1 A5 (design §3.1): elementwise parallel map (work =
 			// nnz) with OR-reduction on has_zero; f may throw (e.g. the
 			// sqrt negative-component guard), so exceptions are captured
@@ -500,7 +502,7 @@ namespace vcp {
 			std::vector<index_type> new_outer(m + 1);
 			std::vector<index_type> new_inner;
 			std::vector<_T> new_value;
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 			// SPOMP-1 B3 (design §3.2/§4.1): the per-row output nnz is
 			// value-dependent, so the same block-partition + stitch scheme
 			// as the spgemm builders is used (work = m*nc, the number of f
@@ -661,7 +663,7 @@ namespace vcp {
 		template <class _Cmp> void spfn_colreduce_(spmats& B, _Cmp better) const {
 			const spmats C = as_csc();
 			B.resize(1, column);
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 			// SPOMP-1 B4 (design §3.2): column-parallel reduction into a
 			// results array (work = nnz; per-column fold order unchanged --
 			// max/min are exact, so bit-identical barring NaN payload
@@ -731,7 +733,7 @@ namespace vcp {
 				best = _T(0);
 			}
 			else {
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 				// SPOMP-1 B4 (design §3.2): contiguous-block partial folds
 				// + sequential combine in block order (work = nnz).  max/
 				// min are exact, so the value equals the sequential fold
@@ -901,7 +903,7 @@ namespace vcp {
 			std::vector<_T> new_value;
 			std::vector<_T> rowa(nc, _T(0)), rowb(nc, _T(0));
 			using std::pow;
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 			// RES-2 (OpenMP branch): the same block-partition + stitch scheme as
 			// spfn_map_full_ (work = m*nc pow evaluations).  Each block runs the
 			// identical per-row algorithm of the sequential path below into a
@@ -1045,7 +1047,7 @@ namespace vcp {
 			}
 			else {
 				const spmats C = as_csc();
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 				// SPOMP-1 A7 (design §3.1): column-parallel column abs-sums
 				// (work = nnz; column-internal order unchanged), then a
 				// sequential max fold in the original column order (max is
@@ -1113,7 +1115,7 @@ namespace vcp {
 			}
 			else {
 				const spmats C = as_csr();
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 				// SPOMP-1 A6 (design §3.1): row-parallel row abs-sums
 				// (work = nnz; row-internal order unchanged), then a
 				// sequential max fold in the original row order (max is
@@ -1191,7 +1193,7 @@ namespace vcp {
 			if (row == 1 || column == 1) {
 				const spmats C = as_csr();
 				_T s = _T(0);
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 				// SPOMP-1 B5 (design §3.2, D-6): contiguous-block partial
 				// sums + sequential combine (work = nnz).  The summation
 				// ORDER DIFFERS from the sequential path -- floating-point
@@ -1761,7 +1763,7 @@ namespace vcp {
 			const std::vector<_Index>& outer = A.outer;
 			const std::vector<_Index>& inner = A.inner;
 			const std::vector<_T>& val = A.value;
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 			// SPOMP-1 A9 (design §3.1): row-parallel check (work = nnz)
 			// with a logical-AND flag; no omp cancel -- once a mismatch is
 			// found, remaining rows spin through empty (design: フラグで
@@ -1875,7 +1877,7 @@ namespace vcp {
 			const std::vector<_Index>& outerv = Acsr.outer_index();
 			const std::vector<_Index>& innerv = Acsr.inner_index();
 			const std::vector<_T>& val = Acsr.values();
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 			// SPOMP-1 A9 (design §3.1): same row-parallel scheme as
 			// is_symmetric(tol) above (flag instead of early return; the
 			// per-row check is the sequential code verbatim).

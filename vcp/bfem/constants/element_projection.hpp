@@ -691,9 +691,9 @@ void interval_matrix_of_rmat(const ep_rmat& r, vcp::matrix<T, DP>& out) {
 // genuine interval vertex / non-dyadic coordinate), vcp::verification_error
 // (eigsymge certification failed, or the mu_max enclosure is certainly
 // negative although N_h is positive semi-definite -- inclusion broken),
-// vcp::bfem::degenerate_element (flat input simplex; NOT in the vcp::error
-// hierarchy, same caveat as ritz_projection_error_constant_h01),
-// std::logic_error from solve_exact (the exact monomial Gram found singular
+// vcp::bfem::degenerate_element (flat input simplex; derives from
+// vcp::verification_error),
+// vcp::domain_error from solve_exact (the exact monomial Gram found singular
 // -- an implementation bug by theory, never an input condition).
 // ---------------------------------------------------------------------------
 template <int D, typename T,

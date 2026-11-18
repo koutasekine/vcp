@@ -38,7 +38,7 @@ namespace btfem {
 // ---------------------------------------------------------------------------
 // kron_term: scale * (time (x) space)
 // ---------------------------------------------------------------------------
-template <typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
+template <typename T, typename P = vcp::mats2<T>, class SP = vcp::spmats<T> >
 struct kron_term {
     T scale;                                    // scalar factor (nu etc.), default T(1)
     vcp::matrix<T, P> time;                     // ndof_t x ndof_t' (dense)
@@ -264,7 +264,7 @@ vcp::spmatrix<T, SP> block_reduce(const bfem::dirichlet_reduction<T, P, SP>& R, 
 // V^q_k (bc_zero_left, m q time dofs) on the same mesh; the left-end block
 // (time dof 0, n_x components) is removed / reinserted from u_init.
 // ---------------------------------------------------------------------------
-template <typename T, typename P = vcp::mats<T> >
+template <typename T, typename P = vcp::mats2<T> >
 class initial_reduction {
 public:
     initial_reduction(const time_space<T>& full, const time_space<T>& reduced, int n_x)

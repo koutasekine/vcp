@@ -65,7 +65,7 @@ template <int D, typename T, typename P, class SP> class vfe_space;
 // extraction / write-back go through vfe_space (which owns the scalar-space
 // linkage, per the B-4 lifetime contract).
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T> >
+template <int D, typename T, typename P = vcp::mats2<T> >
 class vfe_function {
 public:
     int degree() const { return deg_; }
@@ -113,7 +113,7 @@ void sv_scatter_rect_identity(const DMR& dmr, int row_off,
 // ---------------------------------------------------------------------------
 // vfe_space<D, T, P, SP> (V1)
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
+template <int D, typename T, typename P = vcp::mats2<T>, class SP = vcp::spmats<T> >
 class vfe_space {
     static_assert(D == 2 || D == 3, "bfem::vfe_space: only D == 2 or D == 3");
 public:

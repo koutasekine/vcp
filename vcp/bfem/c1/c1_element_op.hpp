@@ -45,7 +45,7 @@
 namespace vcp {
 namespace bfem {
 
-template <typename T, typename P = vcp::mats<T> >
+template <typename T, typename P = vcp::mats2<T> >
 class c1_element_op {
 public:
     c1_element_op()

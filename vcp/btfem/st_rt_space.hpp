@@ -50,7 +50,7 @@ template <int D, typename T, typename P, class SP> class st_rt_space;
 // C is m_t x ndof_rt (time-block major flattening v[a ndof_rt + j]).
 // Created only through the st_rt_space factories (internal 2.1).
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T> >
+template <int D, typename T, typename P = vcp::mats2<T> >
 class st_rt_field {
 public:
     int order() const { return k_; }
@@ -138,7 +138,7 @@ void st_gather_rt(st_rt_local<T>& out, const vcp::matrix<T, P>& C, const time_sp
 // ---------------------------------------------------------------------------
 // st_rt_space<D, T, P, SP>
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
+template <int D, typename T, typename P = vcp::mats2<T>, class SP = vcp::spmats<T> >
 class st_rt_space {
     static_assert(D == 2 || D == 3, "btfem::st_rt_space: only D == 2 or D == 3");
 public:
@@ -243,7 +243,7 @@ public:
     }
 
     // membership / shape check of a field (public so that the free functions
-    // of st_rt_assemble.hpp can use it; std::invalid_argument on violation)
+    // of st_rt_assemble.hpp can use it; vcp::invalid_argument on violation)
     void validate(const field_type& s) const {
         if (s.space_id_ != static_cast<const void*>(rs_) || s.tmesh_id_ != static_cast<const void*>(&tm_))
             vcp::throw_error<vcp::invalid_argument>("btfem::st_rt_space: st_rt_field does not belong to this space");

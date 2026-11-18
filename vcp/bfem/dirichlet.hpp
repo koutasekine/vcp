@@ -27,7 +27,7 @@ namespace bfem {
 
 // SP: sparse policy, forwarded into spmatrix_t (default: the approximate
 // spmats<T>; see the policy note at the top of fe_space.hpp)
-template <typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
+template <typename T, typename P = vcp::mats2<T>, class SP = vcp::spmats<T> >
 class dirichlet_reduction {
 public:
     typedef vcp::spmatrix<T, SP> spmatrix_t;

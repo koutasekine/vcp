@@ -28,7 +28,7 @@
 //  - all geometry-free contractions happen at the RATIONAL stage; the typed
 //    stage is a pure convert_traits image (enclose-once, S-C1-3);
 //  - generation-time duality checks: L C == I (element Vandermonde) and
-//    H H^{-1} == I (T-C3 Hermite table) raise std::logic_error on failure.
+//    H H^{-1} == I (T-C3 Hermite table) raise vcp::error on failure.
 //
 // No floating point appears in this header. No division operator appears in
 // this header (G-C1-1: the single c1/ division is the edge cache of

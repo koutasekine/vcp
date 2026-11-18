@@ -17,7 +17,7 @@
 //                       reduced by the rational constructor itself.  Accepted
 //                       grammar: one or more digits, one dot, one or more
 //                       digits -- nothing else.  Sign, exponent, spaces and
-//                       every other character throw std::invalid_argument,
+//                       every other character throw vcp::invalid_argument,
 //                       because the table format is fixed and anything beyond
 //                       it in a table string is a defect, not an input;
 //     double            UPWARD point value: the upper end of the outward kv

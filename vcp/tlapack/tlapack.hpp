@@ -54,7 +54,7 @@
 // - 関数名は double LAPACK の d を t に読み替えたもの (dgesv -> tgesv<T> など)．
 //   引数は rdlapack から rounding_mode を除いたもの (= reference LAPACK と同順)．
 // - 丸めモードは扱わない．丸めモード指定が必要な場合は vlapack/rdlapack を使う．
-// - 要素型 T の要件は tlapack/README_tlapack.md:
+// - 要素型 T の要件は docs/kernels/tlapack.md:
 //   tblas の R1-R4 (四則・比較・ADL の abs/sqrt) に加えて
 //   R5: std::numeric_limits<T> の特殊化 (epsilon/min/max/radix/digits)，
 //   R6: NaN との == が false (既定の tisnan = !(x == x) が機能すること)．
@@ -62,7 +62,7 @@
 //   区間型は対象外 (分岐が多く数学的に不適切)．
 // - 行列は column-major，index は 0-based (例外: tsytrf 系の ipiv は
 //   LAPACK と同じ 1-based 符号付き，tgebal/tgehrd 系の ilo/ihi は 1-based)．
-// - LAPACK の INFO は返り値 (int)．引数 error は std::invalid_argument を投げる．
+// - LAPACK の INFO は返り値 (int)．引数 error は vcp::invalid_argument を投げる．
 // - WORK/LWORK 引数は持たず，作業領域は内部で確保する．
 //
 // 提供 routine (駆動 routine):

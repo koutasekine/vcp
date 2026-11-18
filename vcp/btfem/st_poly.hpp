@@ -42,7 +42,7 @@ template <int D, typename T, typename P, class SP> class pg_space;
 // row-major flattening equals the time-block-major vector v[a n_x + i].
 // Created only through the pg_space factories.
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T> >
+template <int D, typename T, typename P = vcp::mats2<T> >
 class st_poly {
 public:
     int time_degree() const { return q_; }

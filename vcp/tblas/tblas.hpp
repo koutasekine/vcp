@@ -38,7 +38,7 @@
 //   idamax -> itamax)．引数は reference BLAS と同順 (rounding_mode はない)
 // - 行列は column-major，index は 0-based，scalar は const T& 渡し
 // - 丸めモードは扱わない．丸めモード指定が必要な場合は vblas/rdblas を使うこと
-// - 要素型 T の要件 (R1-R4) と各 routine の対応は tblas/README_tblas.md 参照
+// - 要素型 T の要件 (R1-R4) と各 routine の対応は docs/kernels/tblas.md 参照
 //
 // 提供 routine:
 //   Level 1: tcopy tswap itamax tscal taxpy tdot tasum tnrm2

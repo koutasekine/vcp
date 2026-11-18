@@ -43,7 +43,7 @@
 //   (外部 BLAS と異なり，全 OpenMP worker thread でも同じ丸めが保証され，
 //   計算後は各 thread の丸めモードが呼び出し前の状態へ復元される)．
 // - idamax_ の返り値は Fortran BLAS と同じ 1-based index (n<=0 等では 0)．
-// - 引数 error は rdblas に従い std::invalid_argument を投げる (xerbla は呼ばない)．
+// - 引数 error は rdblas に従い vcp::invalid_argument を投げる (xerbla は呼ばない)．
 // - lsame_ / xerbla_ は提供しない (LAPACK や他の BLAS 側の実装を使うこと)．
 //
 // header-only で extern "C" inline 定義のため，Fortran object と link する

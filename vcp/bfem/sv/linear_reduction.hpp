@@ -15,7 +15,7 @@
 //     updates are integer multiply-subtract only (the pivot is +-1, so no
 //     division exists anywhere in this file -- G-SV-1);
 //  3. a row that becomes zero is DEPENDENT, a row without any +-1 entry has
-//     no admissible pivot: both raise std::invalid_argument;
+//     no admissible pivot: both raise vcp::invalid_argument;
 //  4. the embedding T (full x reduced, int entries) is stored row-wise:
 //     kept dof i        -> the single pair (reduced(i), 1)
 //     pivot dof p (row r with pivot coefficient s = +-1, entries c_j on the
@@ -74,7 +74,7 @@ struct sv_constraint_q {
     std::vector<detail::rational> coef;
 };
 
-template <typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
+template <typename T, typename P = vcp::mats2<T>, class SP = vcp::spmats<T> >
 class linear_reduction {
 public:
     typedef vcp::spmatrix<T, SP> spmatrix_t;

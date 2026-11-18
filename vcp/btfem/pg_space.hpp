@@ -69,7 +69,7 @@ struct pg_thread_ws {
 };
 } // namespace detail
 
-template <int D, typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
+template <int D, typename T, typename P = vcp::mats2<T>, class SP = vcp::spmats<T> >
 class pg_space {
     static_assert(D == 2 || D == 3, "btfem::pg_space: only D == 2 or D == 3");
 public:

@@ -52,11 +52,11 @@
 // 由来) を，BLAS 呼び出しを tblas に置き換えながら template 化したもの．
 //
 // - 丸めモードは扱わない (丸めモード指定が必要な場合は vlapack/rdlapack を使う)
-// - 要素型 T の要件は tlapack/README_tlapack.md (tblas の R1-R4 に加えて
+// - 要素型 T の要件は docs/kernels/tlapack.md (tblas の R1-R4 に加えて
 //   R5: std::numeric_limits<T> の特殊化，R6: NaN との == が false)
 // - 行列は column-major，index (ipiv 等) の 0-based / 1-based 規約は rdlapack と同一
 // - LAPACK の INFO は返り値 (int)．INFO < 0 に相当する引数 error は
-//   std::invalid_argument を投げる (例外無効時は abort)
+//   vcp::invalid_argument を投げる (例外無効時は abort)
 // - LAPACK の WORK/LWORK 引数は持たず，作業領域は内部で std::vector<T> により確保する
 
 #include <algorithm>

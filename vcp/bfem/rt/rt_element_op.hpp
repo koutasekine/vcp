@@ -64,7 +64,7 @@ struct rt_local_coeffs {
     std::vector<T> c;          // length rt_registry<D>::dim(k)
 };
 
-template <int D, typename T, typename P = vcp::mats<T> >
+template <int D, typename T, typename P = vcp::mats2<T> >
 class rt_element_op {
     static_assert(D == 2 || D == 3, "bfem::rt_element_op: only D == 2 or D == 3");
 public:

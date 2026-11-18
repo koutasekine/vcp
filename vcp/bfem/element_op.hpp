@@ -35,7 +35,7 @@
 namespace vcp {
 namespace bfem {
 
-template <int D, typename T, typename P = vcp::mats<T> >
+template <int D, typename T, typename P = vcp::mats2<T> >
 class element_op {
     static_assert(D == 2 || D == 3, "bfem::element_op: only D == 2 or D == 3");
 public:

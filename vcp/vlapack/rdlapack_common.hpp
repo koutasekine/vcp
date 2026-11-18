@@ -57,7 +57,7 @@
 //   rdblas は OpenMP の各 worker thread についても同じ保存・変更・復元を行う．
 // - 行列は column-major，index (ipiv 等) は 0-based．
 // - LAPACK の INFO は返り値 (int) で返す．INFO < 0 に相当する引数 error は
-//   rdblas と同様に std::invalid_argument を投げる (xerbla は呼ばない)．
+//   rdblas と同様に vcp::invalid_argument を投げる (xerbla は呼ばない)．
 // - LAPACK の WORK/LWORK 引数は持たず，作業領域は内部で std::vector により
 //   最適 size を確保する．
 

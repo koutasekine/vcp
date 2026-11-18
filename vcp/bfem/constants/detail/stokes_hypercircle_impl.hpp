@@ -281,7 +281,7 @@ bool stokes_intervals_overlap(const T& a, const T& b) {
 //
 // Exceptions: vcp::invalid_argument (k < 1, empty mesh), vcp::verification_error
 // (prolongation identity, Lagrange identity, compsym, lss or eigsymge could
-// not certify), std::invalid_argument / vcp::bfem exceptions from the space
+// not certify), vcp::invalid_argument / vcp::bfem exceptions from the space
 // layer (degenerate element, undecidable SV singularity on interval input).
 // ---------------------------------------------------------------------------
 template <int D, typename T, class DP, class SP>

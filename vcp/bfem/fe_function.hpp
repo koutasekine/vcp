@@ -20,7 +20,7 @@ namespace bfem {
 
 template <int D, typename T, typename P, class SP> class fe_space;
 
-template <int D, typename T, typename P = vcp::mats<T> >
+template <int D, typename T, typename P = vcp::mats2<T> >
 class fe_function {
 public:
     int degree() const { return deg_; }
@@ -35,7 +35,7 @@ private:
     template <int DD, typename TT, typename PP, class SS> friend class fe_space;
 };
 
-template <int D, typename T, typename P = vcp::mats<T> >
+template <int D, typename T, typename P = vcp::mats2<T> >
 class dual_vector {
 public:
     int test_degree() const { return deg_; }                // degree of psi

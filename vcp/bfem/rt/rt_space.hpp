@@ -183,7 +183,7 @@ struct rt_space_backend<3> {
 // convention of external design 2.2 (signs/index reversal absorbed by the
 // dofmap). Factory-created; coefficients are directly editable.
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T> >
+template <int D, typename T, typename P = vcp::mats2<T> >
 class rt_field {
 public:
     int order() const { return k_; }
@@ -204,7 +204,7 @@ private:
 // bit reproducibility, SP lazy realization rules. Space members reuse
 // instance buffers (allocation-free from the second call on, A-2).
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
+template <int D, typename T, typename P = vcp::mats2<T>, class SP = vcp::spmats<T> >
 class rt_space {
     static_assert(D == 2 || D == 3, "bfem::rt_space: only D == 2 or D == 3");
     typedef detail::rt_space_backend<D> BK;

@@ -90,9 +90,9 @@ struct HOGE : public vcp::Newton< _T, _P > {
 int main(void){
 //    HOGE< double, vcp::pdblas > N;
 //    vcp::matrix< double, vcp::pdblas > uh;
-    HOGE< kv::dd, vcp::mats< kv::dd > > N;
+    HOGE< kv::dd, vcp::mats2< kv::dd > > N;
     N.first_execute(5);
-    vcp::matrix< kv::dd, vcp::mats< kv::dd > > uh;
+    vcp::matrix< kv::dd, vcp::mats2< kv::dd > > uh;
     
 
     vcp::matrix< int > list_uh = N.Generator.output_list();

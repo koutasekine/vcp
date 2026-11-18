@@ -45,7 +45,7 @@ namespace bfem {
 // ---------------------------------------------------------------------------
 // graphics_output<D,T,P>: the (points, cells) package
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T> >
+template <int D, typename T, typename P = vcp::mats2<T> >
 struct graphics_output {
     vcp::matrix<T, P> points;   // npoint x (D + ncomp)
     vcp::matrix<int>  cells;    // ncell x (D + 1), 0-based rows of points

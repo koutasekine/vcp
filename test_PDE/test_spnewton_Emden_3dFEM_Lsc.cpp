@@ -226,7 +226,7 @@ private:
 
 int main(void) {
     typedef double                      TYPE;
-    typedef vcp::mats< TYPE >           POLICY;      // dense policy  (vectors)
+    typedef vcp::mats2< TYPE >           POLICY;      // dense policy  (vectors)
     typedef vcp::spmats< TYPE >         SPPOLICY;    // sparse policy (Jacobian)
 
     // ---- discretization parameters (all variable) -----------------------

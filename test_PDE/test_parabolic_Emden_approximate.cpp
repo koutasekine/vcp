@@ -49,7 +49,7 @@
 #include <vcp/vcp_timer.hpp>
 
 typedef kv::dd T;
-typedef vcp::mats< T > P;
+typedef vcp::mats2< T > P;
 typedef kv::interval< kv::mpfr< 500 > > TT;
 
 // Please declare a structure with two template arguments : _T = Datatype, _P = Matrix Policy

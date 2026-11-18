@@ -895,7 +895,7 @@ vcp::eig_result<T> stokes_divfree_eigen_enclosures(
 // (DP = vcp::pidblas is the other choice of that guideline).
 //
 // T: a kv interval scalar (T::base_type required by the policy defaults).
-// Exceptions: std::invalid_argument (empty mesh, nev < 1, nev > dim -- the
+// Exceptions: vcp::invalid_argument (empty mesh, nev < 1, nev > dim -- the
 // lower bound theorem covers 1 <= k <= dim only), vcp::verification_error
 // (no independent columns, lss on C1 not certified, C T not containing
 // zero, eigsymge not certified, rules 1 and 3 of the common function),
@@ -1289,7 +1289,7 @@ std::vector<T> stokes_eigenvalue_lower_bounds_h01_sparse_scaled(
 // the indices of eigs_with_info (a cluster may carry a range), nnz_stiffness
 // / nnz_mass = the stored entries of A_Z / M_Z.
 //
-// Exceptions: std::invalid_argument (empty mesh, nev < 1, nev > dim);
+// Exceptions: vcp::invalid_argument (empty mesh, nev < 1, nev > dim);
 // vcp::verification_error (dual graph not connected, the dimension check --
 // this is where a domain that is not simply connected is refused --, C Z not
 // containing zero, a degenerate edge or face, rules 1 and 3 of the common

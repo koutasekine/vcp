@@ -48,7 +48,7 @@ template <int D, typename T, typename P, class SP> class st_broken_space;
 // st_broken_field<D, T, P>: u(t, x) = sum_a sum_i C[a][i] psi_a(t) q_i(x),
 // C is m_t x ndof_broken. Created only through the st_broken_space factories.
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T> >
+template <int D, typename T, typename P = vcp::mats2<T> >
 class st_broken_field {
 public:
     int order() const { return l_; }
@@ -92,7 +92,7 @@ struct st_broken_dofmap_view {
 // ---------------------------------------------------------------------------
 // st_broken_space<D, T, P, SP>
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
+template <int D, typename T, typename P = vcp::mats2<T>, class SP = vcp::spmats<T> >
 class st_broken_space {
     static_assert(D == 2 || D == 3, "btfem::st_broken_space: only D == 2 or D == 3");
 public:

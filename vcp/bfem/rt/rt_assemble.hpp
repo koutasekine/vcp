@@ -8,7 +8,7 @@
 // Contracts:
 //  - same-mesh: both spaces must be built from the same mesh; checked by
 //    element/vertex counts (identity itself is a documented contract, Q2);
-//    violation raises std::invalid_argument.
+//    violation raises vcp::invalid_argument.
 //  - the free functions borrow dofmaps and geometry from the spaces and run
 //    their OWN element op and buffers ("do not mutate the space", external
 //    design section 5). Per-call setup allocation is allowed; the element

@@ -76,7 +76,7 @@ struct multi_index {
 //
 // Construction bakes tab[d][s] = C(s + d, d) (d = 0..D, s = 0..n) into an int
 // table via binomial_cache; a bigint value that does not fit int raises
-// std::overflow_error (such degrees are outside practical use).
+// vcp::numerical_error (such degrees are outside practical use).
 // rank/unrank afterwards are pure int table arithmetic, allocation free.
 // ---------------------------------------------------------------------------
 template <int D>

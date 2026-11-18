@@ -28,7 +28,7 @@
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 // ---------------------------------------------------------------------------
-// test_newton3_Emden_2dFEM.cpp
+// test_spnewton_Emden_2dFEM.cpp
 //
 // FEM counterpart of test_newton2_Emden.cpp.
 //
@@ -49,7 +49,7 @@
 // dirichlet_reduction (constrained rows AND columns removed).
 //
 // Build (this file only depends on headers):
-//     g++ -O2 -std=c++11 -I<path to vcp root> test_newton3_Emden_2dFEM.cpp
+//     g++ -O2 -std=c++11 -I<path to vcp root> test_spnewton_Emden_2dFEM.cpp
 // add -fopenmp to use the parallel assembly paths of fe_space.
 // ---------------------------------------------------------------------------
 
@@ -189,7 +189,7 @@ private:
 
 int main(void) {
     typedef double                      TYPE;
-    typedef vcp::mats< TYPE >           POLICY;      // dense policy  (vectors)
+    typedef vcp::mats2< TYPE >           POLICY;      // dense policy  (vectors)
     typedef vcp::spmats< TYPE >         SPPOLICY;    // sparse policy (Jacobian)
 
     // ---- discretization parameters (both variable) ---------------------

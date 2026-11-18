@@ -66,7 +66,7 @@ typedef kv::interval< ResData > VResData;
 typedef vcp::imats< ResData > VResPOLICY;
 
 //typedef vcp::pdblas POLICY;
-typedef vcp::mats< AppData > POLICY;
+typedef vcp::mats2< AppData > POLICY;
 
 typedef vcp::pidblas VPOLICY;
 

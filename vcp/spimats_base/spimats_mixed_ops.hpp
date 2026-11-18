@@ -45,7 +45,7 @@
 #include <vcp/spimats_base/spimats_convert.hpp>   // spimats_convert_detail::is_strict_zero_interval
 
 // SPOMP-2 (design §2, D-1): two-stage OpenMP guard, replicated per file so
-// the header stands alone (same block as spmats.hpp / tsparse_spgemm.hpp;
+// the header stands alone (same policy-layer block as spmats.hpp;
 // identical re-definition is well-formed).  The threshold macro
 // VCP_SPMATS_OMP_THRESHOLD is shared with spmats.hpp (no new macros, D-1).
 // Thread-safety precondition (design §5-3): the parallel kernels below may
@@ -54,15 +54,15 @@
 // writes mutable state, so concurrently handing one unfinalized matrix to
 // several kernel calls is undefined.
 #ifdef VCP_NOMP
-#  ifndef VCP_SPARSE_NOMP
-#    define VCP_SPARSE_NOMP
+#  ifndef VCP_SPMATS_NOMP
+#    define VCP_SPMATS_NOMP
 #  endif
 #endif
-#if defined(_OPENMP) && !defined(VCP_SPARSE_NOMP)
-#  define VCP_SPARSE_USE_OPENMP 1
+#if defined(_OPENMP) && !defined(VCP_SPMATS_NOMP)
+#  define VCP_SPMATS_USE_OPENMP 1
 #  include <omp.h>
 #else
-#  define VCP_SPARSE_USE_OPENMP 0
+#  define VCP_SPMATS_USE_OPENMP 0
 #endif
 
 namespace vcp {
@@ -137,7 +137,7 @@ void mul_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 	// merge/flush は行昇順・行内列昇順で emit するため finalize のソート・統合は
 	// 不要(実測 add 14.7×/mul 4.5×)。mul 系は出力上限が安く取れないため
 	// push_back のまま。
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 	// SPOMP-2(設計 §3.1、D-8/D-10): tsparse_spgemm::csr_csr_multiply_par
 	// (SPOMP-1 §4.1)鏡映の行ブロック 2 パス構築。ブロック内の行順序と
 	// 行内の演算列は逐次カーネルと同一なので、出力 CSR はスレッド数に
@@ -285,7 +285,7 @@ void mul_m_im(const spmats<_TP, _Index>& B,
 	// merge/flush は行昇順・行内列昇順で emit するため finalize のソート・統合は
 	// 不要(実測 add 14.7×/mul 4.5×)。mul 系は出力上限が安く取れないため
 	// push_back のまま。
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 	// SPOMP-2(設計 §3.1、D-8/D-10): mul_im_m と同じ行ブロック 2 パス構築
 	// (SPOMP-1 §4.1 鏡映)。行内の演算列は逐次カーネルと同一 = ビット一致。
 	// work = nnz(A)+nnz(B)、入れ子並列は抑止(D-10)。
@@ -431,7 +431,7 @@ void add_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 	// merge/flush は行昇順・行内列昇順で emit するため finalize のソート・統合は
 	// 不要(実測 add 14.7×/mul 4.5×)。add 系は nnzA+nnzB を上限として
 	// reserve する。
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 	// SPOMP-2(設計 §3.1、D-8/D-10): 行ブロック 2 パス構築(SPOMP-1 §4.1
 	// 鏡映)。行内は既存の 2 ポインタ合流コードそのまま = ビット一致。
 	// work = nnz(A)+nnz(B)、入れ子並列は抑止(D-10)。
@@ -591,7 +591,7 @@ void mul_im_v(const spmats<kv::interval<_T>, _Index>& IA,
 	const std::vector<_Index>& ai = Ac.inner_index();
 	const std::vector<kv::interval<_T> >& av = Ac.values();
 	iy.assign(static_cast<std::size_t>(Ac.rowsize()), kv::interval<_T>(_T(0)));
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 	// SPOMP-2(設計 §3.1、SPOMP-1 A3 同型): 行並列 gather。行内累積順序は
 	// 不変・書き込み先 iy[i] は行ごとに素 = ビット一致。work = nnz、
 	// 入れ子並列は抑止(D-10)。例外は exception_ptr で領域外 rethrow。
@@ -647,7 +647,7 @@ void mul_m_iv(const spmats<_TP, _Index>& B,
 	const std::vector<_Index>& bi = Bc.inner_index();
 	const std::vector<_TP>& bv = Bc.values();
 	iy.assign(static_cast<std::size_t>(Bc.rowsize()), kv::interval<_T>(_T(0)));
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 	// SPOMP-2(設計 §3.1、SPOMP-1 A3 同型): 行並列 gather(mul_im_v と同旨)。
 	{
 		const std::ptrdiff_t nrows = static_cast<std::ptrdiff_t>(Bc.rowsize());
@@ -745,7 +745,7 @@ void sub_im_m(const spmats<kv::interval<_T>, _Index>& IA,
 	// (COO 再構築・finalize 不要 — 旧実装の廃止理由。SPI-R8-b)。
 	spmats<_TP, _Index> Bn = B.as_csr();
 	std::vector<_TP>& v = Bn.values();
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 	// SPOMP-2(設計 §3.1): 符号反転は厳密演算(丸めなし)・要素ごとに素
 	// なので要素並列化してよい(順序によらず値同一 = ビット一致)。
 	// work = nnz、入れ子並列は抑止(D-10)。委譲部(add_im_m)は無変更。

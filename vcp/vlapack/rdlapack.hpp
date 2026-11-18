@@ -59,7 +59,7 @@
 //   精度保証付き数値計算 (区間演算による厳密な誤差評価) ではないことに注意．
 // - 行列は column-major，index は 0-based (例外: rdsytrf 系の ipiv は
 //   LAPACK と同じ 1-based 符号付き，rdgebal/rdgehrd 系の ilo/ihi は 1-based)．
-// - LAPACK の INFO は返り値 (int)．引数 error は std::invalid_argument を投げる．
+// - LAPACK の INFO は返り値 (int)．引数 error は vcp::invalid_argument を投げる．
 // - WORK/LWORK 引数は持たず，作業領域は内部で確保する．
 //
 // 提供 routine (駆動 routine):

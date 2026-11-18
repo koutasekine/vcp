@@ -279,7 +279,7 @@ struct fe_space_backend<3> {
 // they mutate the owned buffers, which is exactly how the zero-allocation
 // contract is realized.
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
+template <int D, typename T, typename P = vcp::mats2<T>, class SP = vcp::spmats<T> >
 class fe_space {
     static_assert(D == 2 || D == 3, "bfem::fe_space: only D == 2 or D == 3");
 public:

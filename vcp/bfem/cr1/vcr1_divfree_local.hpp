@@ -454,7 +454,7 @@ struct vcr1_local_generator<3> {
 // T: a kv interval scalar (T::base_type, lower(), upper(), mid).
 // `who` prefixes every exception text (the qualified name of the entry point
 // that calls this function).
-// Exceptions: std::invalid_argument (msh / V / red do not belong together),
+// Exceptions: vcp::invalid_argument (msh / V / red do not belong together),
 // vcp::verification_error (steps 1, 4, 5; an edge or a face whose squared
 // measure is not certainly positive).
 // ---------------------------------------------------------------------------

@@ -70,7 +70,7 @@ private:
 // broken_field<D,T,P> (B-2): degree l + global coefficients (element blocks,
 // each block in the canonical L0 order, barycentric definition).
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T> >
+template <int D, typename T, typename P = vcp::mats2<T> >
 class broken_field {
 public:
     int order() const { return l_; }
@@ -87,7 +87,7 @@ private:
 // ---------------------------------------------------------------------------
 // broken_space<D,T,P,SP> (K2)
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
+template <int D, typename T, typename P = vcp::mats2<T>, class SP = vcp::spmats<T> >
 class broken_space {
     // phase 5c (D5C-5): broken_space is dimension uniform; D == 3 is enabled
     // by relaxing this guard only (no other change -- see

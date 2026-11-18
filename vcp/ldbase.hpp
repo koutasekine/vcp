@@ -234,7 +234,7 @@ namespace vcp {
 		}
 	};
 	
-	template <typename _T, typename _TM, class _PM = mats< _TM >> class Legendre_Bases_Generator : protected interval_ld_weightpoint< _T > {
+	template <typename _T, typename _TM, class _PM = mats2< _TM >> class Legendre_Bases_Generator : protected interval_ld_weightpoint< _T > {
 	protected:
 //	public:
 		int Order_of_Base;   // Order of Legendre Base
@@ -612,7 +612,7 @@ namespace vcp {
 			this->disp_args(vs, args...);
 		}
 
-		template <class _TC, class _PTCM = mats< _TC >> matrix< _TC, _PTCM> func(std::vector< _TC > x) {
+		template <class _TC, class _PTCM = mats2< _TC >> matrix< _TC, _PTCM> func(std::vector< _TC > x) {
 			int mmax = this->phi.size();
 			int dim = this->dimension;
 			int var = this->variablesize;

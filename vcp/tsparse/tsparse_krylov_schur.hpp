@@ -16,6 +16,8 @@
 //    every apply() call is counted (B-24, 1:1) and mv <= max_iter always
 //    (the final C-1 re-evaluation applies are inside the budget too).
 //    options.max_iter == 0 = default budget 300*n (TRL convention).
+//    (Direct-driver callers only: the spmats eigs entry rejects
+//    max_iter == 0 with invalid_argument before this driver is reached.)
 //    Budget reached => honest not_converged, status "max_iter_exhausted".
 //  * converged=true requires, at the terminating analysis:
 //      C-1  exact lambda-space residuals of all k returned pairs, re-evaluated

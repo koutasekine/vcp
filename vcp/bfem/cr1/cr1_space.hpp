@@ -108,7 +108,7 @@ template <int D, typename T, typename P, class SP> class cr1_space;
 // ---------------------------------------------------------------------------
 // cr1_space<D, T, P, SP>
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
+template <int D, typename T, typename P = vcp::mats2<T>, class SP = vcp::spmats<T> >
 class cr1_space {
     static_assert(D == 2 || D == 3, "bfem::cr1_space: only D == 2 or D == 3");
 public:

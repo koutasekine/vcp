@@ -15,7 +15,7 @@ Modifications by Kouta Sekine (2026):
     saved/changed/restored around all computations,
   - LAPACK WORK/LWORK workspace arguments were removed (workspace is
     allocated internally), INFO is returned as the function return value,
-  - some algorithmic substitutions documented in vlapack/README_rdlapack.md
+  - some algorithmic substitutions documented in docs/kernels/rdlapack.md
     (e.g. dlasq-family and dlaqr-family are not ported).
 
 These modified files are distributed under the BSD 3-clause license of the

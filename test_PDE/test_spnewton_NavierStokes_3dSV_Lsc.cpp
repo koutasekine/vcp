@@ -322,7 +322,7 @@ private:
 
 int main(void) {
     typedef double                      TYPE;
-    typedef vcp::mats< TYPE >           POLICY;
+    typedef vcp::mats2< TYPE >           POLICY;
     typedef vcp::spmats< TYPE >         SPPOLICY;
 
     // ---- discretization parameters (all variable) -----------------------

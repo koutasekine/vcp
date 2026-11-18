@@ -489,15 +489,18 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_bicgstab_with_info_(
 	result.iterations = 0;
 	result.method = linear_solver_method::bicgstab;
 	const real_type eps = vcp::tsparse_scalar::epsilon<real_type>();
+	// breakdown tests are scale-relative (|<x,y>| against eps*||x||*||y||) so
+	// that the scale of b and A does not stop the iteration early.
+	const real_type rhat_norm = spmats_lss_detail::norm_value_lss<_T,_Index>(r_hat);
 	for (std::size_t iter = 1; iter <= max_iter && !result.converged; iter++) {
 		const real_type rho = spmats_lss_detail::dot_value_lss<_T,_Index>(r_hat, r);
-		if (!(vcp::tsparse_scalar::abs_value(rho) > eps) || !vcp::tsparse_scalar::is_finite(rho)) break;
+		if (!(vcp::tsparse_scalar::abs_value(rho) > eps * rhat_norm * spmats_lss_detail::norm_value_lss<_T,_Index>(r)) || !vcp::tsparse_scalar::is_finite(rho)) break;
 		const real_type beta = (rho / rho_old) * (alpha / omega);
 		for (std::size_t i = 0; i < n; i++)
 			p[i] = r[i] + _T(beta) * (p[i] - _T(omega) * v[i]);
 		v = spmats_lss_detail::apply_prec_op_lss<_T,_Index>(A, p, inv_diag, prec_type);
 		const real_type denom = spmats_lss_detail::dot_value_lss<_T,_Index>(r_hat, v);
-		if (!(vcp::tsparse_scalar::abs_value(denom) > eps) || !vcp::tsparse_scalar::is_finite(denom)) break;
+		if (!(vcp::tsparse_scalar::abs_value(denom) > eps * rhat_norm * spmats_lss_detail::norm_value_lss<_T,_Index>(v)) || !vcp::tsparse_scalar::is_finite(denom)) break;
 		alpha = rho / denom;
 		std::vector<_T> s(n);
 		for (std::size_t i = 0; i < n; i++) s[i] = r[i] - _T(alpha) * v[i];
@@ -512,9 +515,9 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_bicgstab_with_info_(
 		}
 		const std::vector<_T> t = spmats_lss_detail::apply_prec_op_lss<_T,_Index>(A, s, inv_diag, prec_type);
 		const real_type tt = spmats_lss_detail::dot_value_lss<_T,_Index>(t, t);
-		if (!(tt > eps) || !vcp::tsparse_scalar::is_finite(tt)) break;
+		if (!(tt > real_type(0)) || !vcp::tsparse_scalar::is_finite(tt)) break;
 		omega = spmats_lss_detail::dot_value_lss<_T,_Index>(t, s) / tt;
-		if (!(vcp::tsparse_scalar::abs_value(omega) > eps) || !vcp::tsparse_scalar::is_finite(omega)) break;
+		if (!(vcp::tsparse_scalar::abs_value(omega) * vcp::tsparse_scalar::sqrt_value(tt) > eps * snorm) || !vcp::tsparse_scalar::is_finite(omega)) break;
 		for (std::size_t i = 0; i < n; i++) {
 			x[i] += _T(alpha) * p[i] + _T(omega) * s[i];
 			r[i] = s[i] - _T(omega) * t[i];

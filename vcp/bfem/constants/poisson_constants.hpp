@@ -797,8 +797,8 @@ T hypercircle_kappa_h01_squared(const vcp::bfem::mesh<2, T>& Th, int k) {
 // vcp::dimension_error (empty W_h or X_h).  Note that the degenerate element
 // check of the two dimensional path happens inside C_0 h, which is not on this
 // path at all: a degenerate tetrahedron surfaces from the space construction
-// as vcp::bfem::degenerate_element, which derives from std::runtime_error and
-// is NOT part of the vcp::error hierarchy.
+// as vcp::bfem::degenerate_element, which derives from
+// vcp::verification_error.
 // ---------------------------------------------------------------------------
 template <typename T,
           class DP = vcp::imats<typename T::base_type>,
@@ -822,8 +822,7 @@ T hypercircle_kappa_h01_squared(const vcp::bfem::mesh<3, T>& Th, int k) {
 //
 // Exceptions: as for ritz_projection_constants_h01 above.  Note that on a degenerate
 // mesh vcp::bfem::degenerate_element may propagate from the space construction;
-// it derives from std::runtime_error and is NOT part of the vcp::error
-// hierarchy, so a catch on vcp::error alone does not see it.
+// it derives from vcp::verification_error.
 // ---------------------------------------------------------------------------
 template <typename T,
           class DP = vcp::imats<typename T::base_type>,
@@ -1092,7 +1091,7 @@ struct indexed_eigenvalue_bounds {
 // (the entry point's qualified name, as the existing Stokes entry writes its
 // messages).
 //
-// Exceptions: std::invalid_argument (nev < 1), vcp::verification_error
+// Exceptions: vcp::invalid_argument (nev < 1), vcp::verification_error
 // (rule 1, rule 3).
 // ---------------------------------------------------------------------------
 template <typename T>
@@ -1177,7 +1176,7 @@ indexed_eigenvalue_bounds<T> indexed_eigenvalue_lower_bounds(
 // boxes).
 //
 // T: a kv interval scalar (T::base_type is required by the defaults).
-// Exceptions (design chapter 4, section 4): std::invalid_argument (empty
+// Exceptions (design chapter 4, section 4): vcp::invalid_argument (empty
 // mesh, nev < 1, nev > dim); vcp::verification_error (rules 1 and 3);
 // vcp::bfem::degenerate_element (flat element, from the space).  Failures of
 // the eigensolver itself (spimats: vcp::state_error when its approximation

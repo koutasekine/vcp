@@ -66,7 +66,7 @@ template <int D, typename T, typename P, class SP> class c1_space;
 // ---------------------------------------------------------------------------
 // c1_function<D,T,P>: degree + global C1 coefficients (factory-created)
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T> >
+template <int D, typename T, typename P = vcp::mats2<T> >
 class c1_function {
 public:
     int degree() const { return deg_; }
@@ -83,7 +83,7 @@ private:
 // ---------------------------------------------------------------------------
 // c1_space<D = 2, T, P, SP>
 // ---------------------------------------------------------------------------
-template <int D, typename T, typename P = vcp::mats<T>, class SP = vcp::spmats<T> >
+template <int D, typename T, typename P = vcp::mats2<T>, class SP = vcp::spmats<T> >
 class c1_space {
     static_assert(D == 2, "bfem::c1_space: D == 2 only (C1 scope)");
 public:

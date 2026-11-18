@@ -54,7 +54,7 @@ typedef kv::dd AppData;
 typedef kv::interval<kv::mpfr<2000>> DataType;
 
 //typedef vcp::pdblas POLICY;
-typedef vcp::mats<AppData> POLICY;
+typedef vcp::mats2<AppData> POLICY;
 
 typedef kv::interval<AppData> VAccData;
 typedef vcp::imats<AppData> VAccPOLICY;

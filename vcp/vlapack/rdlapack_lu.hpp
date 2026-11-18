@@ -51,7 +51,7 @@
 // reference LAPACK 3.12.1 の dgetf2/dgetrf2/dgetrf/dgetrs/dgesv/dgetri/
 // dtrti2/dtrtri/dtrtrs/dlauu2/dlauum を移植．
 // ipiv は 0-based．返り値は LAPACK の INFO (0: 成功, >0: LAPACK と同じ意味の
-// 1-based 位置)．引数 error は std::invalid_argument を投げる．
+// 1-based 位置)．引数 error は vcp::invalid_argument を投げる．
 
 #include "rdlapack_aux.hpp"
 

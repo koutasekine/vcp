@@ -12,7 +12,7 @@
 //
 // Two shared stages (process wide, lazily generated, bfem table_cache vessel):
 //   rational stage  time_tables_rational          keyed by q / (s, q) / (q, qb)
-//   T stage         time_tables_typed<T>          same keys, vcp::matrix<T, mats<T>>
+//   T stage         time_tables_typed<T>          same keys, vcp::matrix<T, mats2<T>>
 // The physical factors k and 1/k (internal 4.2) are applied by time_space on
 // its own copies (multiplications only); the T-stage conversion divisions
 // belong to the L0 conversion budget (same convention as typed_registry).
@@ -313,7 +313,7 @@ private:
 template <typename T>
 class time_tables_typed {
 public:
-    typedef vcp::matrix<T, vcp::mats<T> > table_type;
+    typedef vcp::matrix<T, vcp::mats2<T> > table_type;
 
     static const table_type& mass_ref(int a, int b) {
         state& s = st();

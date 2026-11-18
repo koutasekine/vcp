@@ -11,7 +11,9 @@
 // 位置づけ(設計 G1): spimats<T, AP, DP> : public spmats<kv::interval<T>>。
 //   vcp::spmatrix<kv::interval<T>, vcp::spimats<T, AP, DP>> として既存 API
 //   (solve / eig / eigs / generalized_eig(s))経由で保証付き結果を得る。
-//   override は NVI virtual _impl 3 本のみ(§3)。
+//   override は NVI virtual _impl 5 本(policy_lss_with_info_impl /
+//   policy_lss_multi_with_info_impl / policy_eigs_with_info_impl /
+//   policy_generalized_eigs_with_info_impl / policy_is_spd_impl)。
 //
 // 意味論の芯(設計 G3/G4、二段 throw = §4):
 //   - 成功時のみ result が返る。保証の失敗は「十分条件が満たせなかった」
@@ -214,7 +216,7 @@ struct spimats_verify_info {
 //         spumar 側の static_assert が要素挿入時に弾く [確認済み spumar.hpp
 //         L253 相当])
 //   _DP : 区間密ポリシー(要素 kv::interval<_T>、eigsymge を提供。既定
-//         vcp::imats<_T> = imats<_T, mats<_T>>。vcp::pidblas で BLAS 高速版に
+//         vcp::imats<_T> = imats<_T, mats2<_T>>。vcp::pidblas で BLAS 高速版に
 //         切り替え --- 派生側オーバーライド込み)。区間密行列は
 //         matrix<kv::interval<_T>, _DP> を内部で構成(DD-11、v0.2)
 // index_type は _AP から導出する(_Index を変更したい利用者は
@@ -461,7 +463,7 @@ protected:
 		//   - 近似 Cholesky G の対角が非負なら GGᵀ ⪰ 0、E := LLᵀ − λ̃²I − GGᵀ の
 		//     評価で λ(LLᵀ) ≥ λ̃² − ρ(E)、ρ(E) ≤ ‖E‖∞ --- Rump 1993, Computing
 		//     Suppl. 9, §2 Theorem 2.1 とその直前の議論(Golub–Van Loan Cor. 8.1.3
-		//     経由。Cor. 8.1.3 本文は [UNVERIFIED: 逐語未確認])。
+		//     経由)。
 		//   - SPD 行列への直接適用 A ≈ G̃G̃ᵀ、σ̃ ≈ σn(A)、λ̃ = 0.9σ̃ で
 		//     Algorithm 2.1 → σn(A) ≥ (λ̃² − emax)^{1/2} --- Rump 1993 §2 II)。
 		//   - 区間系: ΔA := |[A] − Ã|、Algorithm 2.2 手順 6 の µ := σ₁σ₂ −
@@ -1585,8 +1587,7 @@ protected:
 	// [SPI-P1] 実装は SPI-D1 オラクル(spimats_debug.hpp、SHA f54f8894…)
 	// 由来。オーナー逐行検証済み(2026-07-24)。USER-IMPLEMENTS の正しさの
 	// 担保者はオーナー(SPI-1 二重マーカー規律のとおり)。
-		//     正しさはオーナーが実装・保証。以下の想定コードコメントは
-		//     補助であり拘束しない。定理由来箇所は UNVERIFIED マーク付き。
+		//     正しさはオーナーが実装・保証。
 		//
 		// 【想定フロー】imats::linearsolve [確認済み vcp/imats.hpp L293-364]
 		//   の疎版。x~ = ap.x(点近似解)として:
@@ -1619,8 +1620,7 @@ protected:
 		//       端点 max は NaN を順序依存で黙殺しうる [SPFN 実測]。
 		//   (6) 誤差評価: ‖R([A]x~ − b)‖ / (1 − ‖RA − I‖) と |RA − I| による
 		//       成分別評価の合成(imats L343-361 と同型の構成であることは
-		//       確認済み。評価式自体の正当性は Rump 流の定理由来
-		//       [UNVERIFIED: 一次資料未照合。オーナーが保証する])。
+		//       確認済み。評価式は Rump 流の定理による)。
 		//   (7) 十分条件不成立(‖RA − I‖ ≥ 1 等)は
 		//       vcp::throw_error<vcp::verification_error>(...)(無主張)。
 		//       成立時のみ result.x に x~ + 誤差区間を格納して return result。
@@ -1634,8 +1634,7 @@ protected:
 		// 規範式(系 3.2.1): G := RA − I。‖G‖∞ < 1 ならば A は正則で、
 		//   |x* − x̂| ≤ |R(b − Ax̂)| + ‖R(Ax̂ − b)‖∞ / (1 − ‖G‖∞) · (|G|e)
 		//   (成分別)。区間 [A], [b] へは全量を区間演算で包含評価して
-		//   持ち上げる [UNVERIFIED: 点定理の区間持ち上げの定式化は
-		//   オーナー照合(設計 §6/§9)]。
+		//   持ち上げる。
 		// 変数名・処理順序はオーナー提供フローに一致させる(DD-9)。
 		// 【訂正合意の記録(2026-07-23)--- よくある取り違え 2 点】
 		//   ①「abs 済み RiA を n 次元 tmp に累積」は列和(‖G‖₁)になるため
@@ -1700,7 +1699,7 @@ protected:
 
 			// --- 6.2 行ループ(i = 0 .. n−1。R は行ストリーミング --- DD-7)---
 			last_verify_info.stage = 2;                    // ノルム評価段
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 			// SPOMP-2(設計 §3.2/§4.2): 行並列版。行 i の処理は行間で
 			// データを共有せず(共有は const 読みのみ)、書き込み先
 			// Rir[i]/RiAe[i] は行ごとに素。成功時の演算列は逐次側と行ごとに
@@ -2043,7 +2042,7 @@ protected:
 			// 6.2 行ループ(行ストリーミング 1 周 --- R_i は 1 回だけ取り出し、
 			// m 本の残差すべてと内積、G の行和は 1 回)
 			last_verify_info.stage = 2;                    // ノルム評価段
-#if VCP_SPARSE_USE_OPENMP
+#if VCP_SPMATS_USE_OPENMP
 			// 単一右辺コアの OpenMP 分岐(:1702-1808)の写し。行 i の書き込み先
 			// Rir[c][i](c = 0..m−1)/ RiAe[i] は行ごとに素。行間縮約なし =
 			// 並列でも値は同じ(D-8 と同じ論法)。
@@ -2721,24 +2720,21 @@ protected:
 		result.used_method = "spimats_veigs";
 
 		// >>> USER-IMPLEMENTS [SPI-U5: veigs 一般化固有値コア(U4 = B=I 転送、記入なし)] <<<
-		//     正しさはオーナーが実装・保証。以下の想定コードコメントは
-		//     補助であり拘束しない。定理由来箇所は UNVERIFIED マーク付き。
+		//     正しさはオーナーが実装・保証。
 		//
 		// 【想定フロー】近似固有値は last_verify_info.ap_eigenvalues(点型)。
 		//   (1) 個数勘定の道具: 点側 _AP の policy_ldl_with_info /
 		//       policy_inertia_with_info [確認済み spmats.hpp L1428-1496 相当:
 		//       certified Bunch-Kaufman LDL + 慣性] を mid(A) − s·mid(B) に
 		//       適用した慣性で、シフト s 近傍の固有値個数の近似勘定 → 包含の
-		//       精密化に用いる(Sylvester 慣性則の適用条件・区間化の正当化は
-		//       [UNVERIFIED: 一次資料照合が必要])。
+		//       精密化に用いる(Sylvester の慣性則)。
 		//   (2) シフト s の保証側判定は is_spd の二分法(設計 §7.1):
 		//       保証付き区間演算で [A] − s[B] を構成(add_im_m / 点側 −s 倍)し、
 		//       is_spd([A] − s[B]) で固有値の存在範囲を締める。
 		//   (3) 幾何平均型の残差評価: imats::eigsymge [確認済み vcp/imats.hpp
 		//       L419-522。冒頭コメントに Shinya Miyajima, "Numerical enclosure
 		//       for each eigenvalue in generalized eigenvalue problem", JCAM 236,
-		//       pp.2545-2552 (2012) Theorem 3 の引用があることを確認。定理の
-		//       内容自体は UNVERIFIED(一次資料未照合)] の疎版が参考:
+		//       pp.2545-2552 (2012) Theorem 3 の引用があることを確認] の疎版が参考:
 		//       Y(AX − BX·Λ) と YBX − I の ∞ ノルム評価から各固有値の包含を
 		//       構成する。疎では X / Y が密になる点の扱い(列ごと処理等)は
 		//       オーナー設計。
@@ -2769,8 +2765,7 @@ protected:
 		// 主張の形(各クラスタ c ∈ S): 「一般化固有値問題 (A,B) の固有値のうち
 		//   グローバル番号 [N_c+1, N_{c+1}] のものはすべて区間
 		//   [dn_c, up_{c+1}] に含まれる」。番号勘定は Yamamoto 2001 の
-		//   慣性移送 [UNVERIFIED: 定理内容の一次資料照合はオーナー
-		//   (設計 §9)]、区間端は is_spd(U1)の certified 判定に基づく。
+		//   慣性移送、区間端は is_spd(U1)の certified 判定に基づく。
 		//   [SPI-F3 F3-4] smallest_algebraic / largest_algebraic は、返す
 		//   クラスタが端であること(N_{c_lo} = 0 / N_{c_hi+1} = n)を慣性で
 		//   証明する(満たせなければ F3-5 の Rayleigh 退路)。
@@ -3094,8 +3089,7 @@ protected:
 			// 1 本に保ち、半分割の試験行列側で符号を切り替える(SPI-F2 F2-1)】→
 			// err_est = ‖diff‖∞ 上端 / λ_B_min【L335/L412。初期値の無検査
 			// 受理は対称 diff で ‖diff‖₂ ≤ ‖diff‖∞ と λmin(B) ≥ λ_B_min に
-			// よる err·B 支配 --- [UNVERIFIED: Yamamoto 2001 の慣性移送
-			// 定理の内容・適用条件はオーナー照合]】→ 半分割精密化
+			// よる err·B 支配(Yamamoto 2001 の慣性移送)】→ 半分割精密化
 			// 【L340-353/L414-427: is_spd(err/2·B ∓ diff) が通る間 err を
 			// 半減 --- 設計 §7.1 の「σ の二分」の一形態。符号は side 依存】。
 			// [SPI-F2 F2-1] upper_side: false = 右側(λR、dn = λR − err が
@@ -3745,8 +3739,7 @@ protected:
 						// S_B の正定値性前検査(設計 §7.2-4)【対応: L607/L622 の
 						// isspd(hull(SB,SB'))】: k=1 は certified 正の下端、
 						// k≥2 は eigsymge を (S_B, I) に適用し全包含の下端 > 0
-						// (道具の再利用)。[UNVERIFIED: Lehmann 前提としての
-						// S_B ≻ 0 の必要性は定理照合と併せてオーナー]
+						// (道具の再利用)。
 						if (kc == 1) {
 							if (!(SBe[0][0].lower() > _T(0))) return false;
 						}

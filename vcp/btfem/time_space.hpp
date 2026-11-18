@@ -31,7 +31,7 @@ enum time_bc { time_bc_none, time_bc_zero_left };
 template <typename T>
 class time_space {
 public:
-    typedef vcp::matrix<T, vcp::mats<T> > table_type;
+    typedef vcp::matrix<T, vcp::mats2<T> > table_type;
 
     time_space(const time_mesh<T>& tm, int q, time_bc bc)
         : tm_(tm), q_(q), bc_(bc), m_(tm.num_intervals()), ndof_(0), l2g_(),

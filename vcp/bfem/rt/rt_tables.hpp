@@ -736,7 +736,7 @@ rt_basis_table rt_registry<D>::build_basis(int k) {
     const int dim = detail::rt_dof_backend<D>::dim(k);
     rmat S = detail::rt_span_matrix<D>(k);
     rmat V = detail::rt_dof_matrix<D>(k);
-    // exact inversion; singular V would throw std::logic_error (RD-5 wiring)
+    // exact inversion; singular V would throw vcp::domain_error (RD-5 wiring)
     rmat Vinv = detail::solve_exact(std::move(V), rmat::identity(dim));
     rmat C = detail::mul(S, Vinv);
     return detail::rt_table_access::make_basis(D, k, n1, dim, detail::rmat_flat(C));
@@ -803,7 +803,7 @@ rt_flux_table rt_registry<D>::build_flux(const rt_basis_table& C) {
             }
         }
         // exact degree reduction k+1 -> k; a nonzero residual raises
-        // std::logic_error inside solve_consistent (RA-4 generation-time
+        // vcp::domain_error inside solve_consistent (RA-4 generation-time
         // version, internal design 5.2)
         rmat G = detail::solve_consistent(E1, std::move(F));
         for (int j2 = 0; j2 < fck; ++j2)
