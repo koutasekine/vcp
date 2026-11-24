@@ -4,23 +4,18 @@
 // VCP Library is licensed under the BSD 3 - clause "New" or "Revised" License
 //
 // ---------------------------------------------------------------------------
-// License note (3-line summary; full text: docs/spmatrix.md, "外部ライブラリのライセンスに関する注意"):
-//  1. This header itself is BSD; it delegates the sparse Cholesky
-//     factorization to CHOLMOD, whose modules carry DIFFERENT licenses:
-//     Check / Cholesky / Core(Utility) / Partition = LGPL,
-//     Supernodal / MatrixOps / Modify = GPL.  A combined work linking the
-//     default full CHOLMOD build is subject to the GPL conditions; an NGPL
-//     build (GPL modules excluded) is LGPL but simplicial-only.  Which to
-//     choose is the USER's decision; this library does not interfere (no
-//     #error / #warning enforcement -- notification only, design G2).
-//  2. spcmodumar を include もリンクもしないコード(spumar 利用を含む)に
-//     GPL/LGPL の影響は一切ない(code that neither includes nor links
-//     spcmodumar -- including plain spumar users -- is entirely unaffected;
-//     include isolation, machine-checked by acceptance criterion (f)).
-//  3. Dynamic linking against the distro shared library (apt/brew) vs static
-//     linking / redistribution have different obligations under GPL/LGPL;
-//     check the license texts yourself.  This note is informational, not
-//     legal advice.
+// License note (summary; full text: docs/spmatrix.md, "外部ライブラリのライセンスに関する注意"):
+//  1. This header itself is BSD.  It delegates the sparse Cholesky
+//     factorization to CHOLMOD, whose modules carry different licenses
+//     (Check / Cholesky / Core(Utility) / Partition = LGPL-2.1-or-later,
+//     Supernodal / MatrixOps / Modify = GPL-2.0-or-later), and, through
+//     spumar, uses UMFPACK (GPL-2.0-or-later), AMD (BSD-3-Clause) and
+//     ARPACK-NG (BSD).
+//  2. A combined work that uses spcmodumar links UMFPACK and is therefore
+//     subject to the GPL, even with a CHOLMOD build without the GPL modules.
+//  3. Code that neither includes nor links spcmodumar or spumar is not
+//     affected by the GPL or the LGPL.  Check the license texts before
+//     redistribution.  This note is informational, not legal advice.
 // ---------------------------------------------------------------------------
 //
 // spcmodumar.hpp — external-delegation sparse policy adding a CHOLMOD-backed

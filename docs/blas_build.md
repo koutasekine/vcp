@@ -5,17 +5,10 @@ OpenMP、Apple Silicon Mac での OpenBLAS 設定例をまとめます。
 
 ## 対応コンパイラと検証環境
 
-VCP Library は C++11 以降のコンパイラで利用できます。現在、C++11 から
-C++20 までのコンパイルで動作を確認しています。gcc と clang の両方で
-検証しています。
+C++11〜C++20、gcc・clang、Linux・macOS(Apple Silicon を含む)・AMD CPU に対応しています。
+C++23 は簡易的には対応していることを確認済みです。
 
-C++23 についても Ubuntu clang version 18.1.3 と gcc version 13.3.0 で
-コンパイルと実行を確認しています。ただし、これらのコンパイラでは C++23 対応に
-実験的な側面が残るため、ここでは主な確認済み範囲を C++11 から C++20 として
-記載しています。
-
-検証している環境には、Linux、macOS、Apple Silicon Mac、AMD CPU 環境が
-含まれます。BLAS/LAPACK を使う policy では、利用環境に応じて OpenBLAS、
+BLAS/LAPACK を使う policy では、利用環境に応じて OpenBLAS、
 Intel MKL、Apple Accelerate BLAS/LAPACK などを選択できます。ただし、
 精度保証付き数値計算で BLAS の丸めモード変更を使う場合は、後述の
 丸めモード確認を必ず実行してください。

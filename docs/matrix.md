@@ -116,7 +116,7 @@ BLAS/LAPACK を利用する `kv::interval<double>` の区間行列:
 | --- | --- | --- |
 | `vcp::mats2<T>`(推奨) | `vcp::matrix<T, vcp::mats2<T> >` | tblas/tlapack を下請けとして使う汎用の近似計算。インクルード構成で特性が変わる |
 | `vcp::mats<T>`(非推奨) | `vcp::matrix<T, vcp::mats<T> >` | 汎用の密行列計算。`vcp::mats2<T>` に置き換えてください |
-| `vcp::minimats<T>` | `vcp::matrix<T, vcp::minimats<T> >` | 機能を絞った軽量な密行列計算 |
+| `vcp::minimats<T>` | `vcp::matrix<T, vcp::minimats<T> >` | 機能を絞った軽量な密行列計算(`vcp/minimatrix.hpp` を include する) |
 | `vcp::pdblas` | `vcp::matrix<double, vcp::pdblas>` | BLAS/LAPACK を使う高速な近似計算 |
 | `vcp::pddblas` | `vcp::matrix<kv::dd, vcp::pddblas>` | double の BLAS/LAPACK を使う `kv::dd` の高速な近似計算 |
 | `vcp::imats<T>` | `vcp::matrix<kv::interval<T>, vcp::imats<T> >` | 汎用の区間行列計算 |
@@ -517,8 +517,9 @@ backend 選択を共有しています。
 | `-DUSE_VCP_LAPACK` | LAPACK 関数（`dgesv_`、`dsyev_` 等）を `vcp/vlapack/dlapack.hpp` で提供。外部 LAPACK リンク不要 |
 | 両方 | 外部 BLAS/LAPACK のどちらも不要 |
 
-固有ベクトルつきの `eigsym`・`eigsymge` は、`pdblas` と、double 特殊化が有効な `mats2<double>`・`mats2<kv::dd>` では
-分割統治法の `dsyevd_`・`dsygvd_` を呼びます（固有値だけのときは `dsyev_`・`dsygv_`）。
+固有ベクトルつきの `eigsym`・`eigsymge` は、`pdblas` と、double 特殊化が有効な `mats2<double>` では
+分割統治法の `dsyevd_`・`dsygvd_` を呼びます（固有値だけのとき、または作業領域の長さが int に収まらない大きな n のときは `dsyev_`・`dsygv_`）。
+`pddblas` と、kv::dd 特殊化が有効な `mats2<kv::dd>` は、固有値だけのときも内部で固有ベクトルを求めるため、`dsyevd_`・`dsygvd_` を呼びます。
 `-DUSE_VCP_LAPACK` のときの `dsyevd_`・`dsygvd_` は丸めモード指定つきの実装で、
 `dsyev_`・`dsygv_`（QR 法）より遅いことがあります。特殊化を使わない `mats2<T>` は QR 法（`tsyev`・`tsygv`）を使います。
 
@@ -609,7 +610,7 @@ double 精度の近似解を求め、その後 `b - A x` の残差（尾崎ス�
   DOI: <https://doi.org/10.1007/s13160-019-00348-4>
 
 よく離れた固有値では、1 回の反復で正しい桁数がほぼ倍増する（二次収束する）
-ため、通常は 2 回の反復で dd 精度に到達します。近接・重複した固有値は
+ため、2 回の反復で dd 精度に到達することが多いです。近接・重複した固有値は
 組にまとめ、組ごとにシフトした小さな固有値問題を double で解いて固有ベクトルを
 取り直します（2 番目の文献の方法）。反復の後に正規直交化を行い、固有値を
 Rayleigh 商から計算し直して昇順に並べます。反復内の行列積はすべて
@@ -690,7 +691,7 @@ vcp::matrix<I, vcp::imats<kv::dd, vcp::pddblas> > A, b, x;
   `kv::dd` を使うため kv ライブラリの include path も必要です。
 
 線形方程式と固有値問題は、`vcp::mats<kv::dd>` より高速になりやすいです。
-行列積は `dgemm` を数十回呼ぶため、`vcp::pdblas`（double）より遅くなりますが、
+行列積は `dgemm` を数十回呼ぶため、`vcp::pdblas`（double）より遅くなりやすいですが、
 `vcp::mats<kv::dd>` よりは高速になりやすく、丸め誤差も小さくなりやすいです。
 
 ## mats2<T> の詳細
@@ -829,8 +830,8 @@ vcp::matrix<I, vcp::imats<kv::dd, vcp::mats2<kv::dd> > > A, b, x;
 
 | | `vcp::pdblas` / `vcp::pddblas` | `vcp::mats2<T>` |
 | --- | --- | --- |
-| 内部実装 | `vcp/vblas/`・`vcp/vlapack/` | `vcp/tblas/`・`vcp/tlapack/` |
-| 高速化の切り替え方法 | コンパイルフラグ（`-DUSE_VCP_BLAS` 等）または外部 BLAS/LAPACK リンク | インクルードする特殊化ヘッダで切り替え |
+| 内部実装 | 外部 BLAS/LAPACK(`-DUSE_VCP_BLAS`・`-DUSE_VCP_LAPACK` 指定時は `vcp/vblas/`・`vcp/vlapack/`) | `vcp/tblas/`・`vcp/tlapack/` |
+| 下請けの切り替え方法 | リンクする外部 BLAS/LAPACK、またはコンパイルフラグ（`-DUSE_VCP_BLAS` 等） | インクルードする特殊化ヘッダで切り替え |
 | 外部依存（デフォルト） | BLAS/LAPACK またはその代替 | なし（汎用モード） |
 | 対象型 | `double` 固定（pdblas）/ `kv::dd` 固定（pddblas） | 任意の `T`（特殊化は `double` と `kv::dd`） |
 | 動作等価性 | — | モード 2 で `pdblas`、モード 3 で `pddblas` と同等 |

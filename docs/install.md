@@ -188,7 +188,10 @@ bash tools/download_vcp_kv.sh vcp-work
 ├── kv/
 ├── test_matrix/
 ├── test_PDE/
-└── docs/
+├── docs/
+├── tools/
+├── README.md
+└── LICENSE
 ```
 
 展開後、例えば行列クラスの例を確認する場合は次のようにします。

@@ -222,8 +222,8 @@ vcp/vblas/Check_rmatmul_rounding.cpp \
 -o check_rmatmul_rounding_avx512
 ```
 
-MKL や OpenBLAS、MPFR を含む既存の VCP 検証コードと一緒にリンクする場合は、
-プロジェクトルートの `AGENTS.md` にある通常の compile option に従ってください。
+MKL や OpenBLAS、MPFR を含む既存の VCP 検証コードと一緒にリンクする場合の compile option は、
+[blas_build.md](../blas_build.md) を参照してください。
 
 ## 注意
 

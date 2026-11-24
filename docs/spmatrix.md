@@ -1860,7 +1860,7 @@ k ≤ n − 2 のとき):
 - `smallest_algebraic`(既定)や `largest_algebraic` は、固有値が密集している
   側では ARPACK の収束が遅く、既定の `max_iter` では収束しないことがあります。
   零に近い固有値がほしいときは、`smallest_magnitude` を指定するか、
-  `use_shift = true` にしてください(shift-invert になり、速く収束します)。
+  `use_shift = true` にしてください(shift-invert になり、速く収束することがあります)。
 
 `spimats` の注意(詳しくは「`spimats` の詳細」の節):
 
@@ -2273,16 +2273,16 @@ API を呼び出すだけです。
 
 | ライブラリ | ライセンス |
 | --- | --- |
-| UMFPACK + AMD(SuiteSparse) | LGPL-2.1+ |
+| UMFPACK(SuiteSparse) | GPL-2.0-or-later |
+| AMD(SuiteSparse) | BSD-3-Clause |
 | ARPACK-NG | BSD |
 | CHOLMOD(SuiteSparse) | モジュールごとに異なる。Check / Cholesky / Core(Utility) / Partition は LGPL、Supernodal / MatrixOps / Modify は GPL |
 
 - `spumar.hpp` も `spcmodumar.hpp` も include・リンクしないコードは、
-  LGPL・GPL の影響を受けません。`spumar` だけを使うコードは CHOLMOD の
-  GPL の影響を受けません。
-- 通常のフルビルドの CHOLMOD をリンクした結合著作物は GPL の条件に従います。
-  GPL のモジュールを除いたビルドなら LGPL ですが、simplicial 経路だけに
-  なります。どちらを選ぶかは利用者の判断です。
+  LGPL・GPL の影響を受けません。
+- `spumar`・`spcmodumar` は UMFPACK(GPL)をリンクするので、これらを使った
+  結合著作物は GPL の条件に従います。CHOLMOD を GPL のモジュールを除いて
+  ビルドしても、この点は変わりません。
 - 共有ライブラリへの動的リンクか、静的リンク・改変して同梱するかで義務が
   異なります。配布する場合は各ライブラリのライセンス原文を確認して
   ください。

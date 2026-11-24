@@ -4,15 +4,13 @@
 // VCP Library is licensed under the BSD 3 - clause "New" or "Revised" License
 //
 // ---------------------------------------------------------------------------
-// License note (3-line summary; full text: docs/spmatrix.md, "外部ライブラリのライセンスに関する注意"):
+// License note (summary; full text: docs/spmatrix.md, "外部ライブラリのライセンスに関する注意"):
 //  1. This header itself is BSD; it delegates to external backends whose
-//     licenses are: UMFPACK+AMD = LGPL-2.1+ (NOT GPL), ARPACK-NG = BSD.
-//  2. spumar を include もリンクもしないコードに LGPL の影響は一切ない
-//     (code that neither includes nor links spumar is BSD-only, entirely
-//     unaffected by the LGPL).
-//  3. Dynamic linking against the distro shared libraries (apt/brew) imposes
-//     no source-disclosure obligation on your code; check the LGPL text
-//     yourself for static linking / modified redistribution.
+//     licenses are: UMFPACK = GPL-2.0-or-later, AMD = BSD-3-Clause,
+//     ARPACK-NG = BSD.
+//  2. Code that neither includes nor links spumar is not affected by the GPL.
+//  3. A combined work that uses spumar links UMFPACK and is therefore subject
+//     to the GPL; check the license texts before redistribution.
 // ---------------------------------------------------------------------------
 //
 // spumar.hpp — external-delegation sparse policy (UMFPACK + ARPACK),

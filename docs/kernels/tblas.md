@@ -249,7 +249,7 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
   kv の区間比較は「確実に小さい」(`x.sup < y.inf`) の意味論なので重なった区間では
   分岐が選別できず，`tnrm2` は scale が 0 を含む区間になると内部の除算で
   `std::domain_error` を投げうる．
-- tlapack は区間型に**対応しない** (理由は tlapack/README_tlapack.md の
+- tlapack は区間型に**対応しない** (理由は [tlapack.md](tlapack.md) の
   「区間型は対象外」を参照)．
 
 ## 設計上の注意 (要件から導かれる実装方針)

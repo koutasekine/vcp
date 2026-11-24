@@ -9,7 +9,7 @@
 | 慣性の計算 | `vcp/spmats_base/spmats_ldl_impl.hpp` |
 | shift 付き LDLᵀ の handle | `vcp/spmats_base/spmats_ldl_shift.hpp`、`detail/tsparse_sparse_ldl_shift_plan_impl.hpp` |
 
-`spmats` の `ldl`・`inertia`・`chol`・`is_spd`・`ldl_shift_setup` から呼ばれ
+`spmats` の `ldl`・`inertia`・`chol`・`is_spd`・`ldl_shift_setup_with_info` から呼ばれ
 ます。利用者が直接呼ぶことは想定していません。使い方は
 [spmatrix.md](../spmatrix.md) の「LDLᵀ 分解と慣性」「Cholesky 分解」を参照して
 ください。

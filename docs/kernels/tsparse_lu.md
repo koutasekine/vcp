@@ -112,7 +112,7 @@ supernode は、各列のピボットを決めた後で動的に見つけます�
 または `vcp::tgemm`(`reference`)を使います。`kv::dd` で尾崎スキームの
 行列積を使うには、分解を実体化する前に `<vcp/tblas/tblas_dd.hpp>` を include
 します。include しない場合は汎用の行列積を使います(結果は正しく、遅く
-なります)。supernode の幅の上限は `supernode_panel_maxsup`(既定 64)です。
+なることがあります)。supernode の幅の上限は `supernode_panel_maxsup`(既定 64)です。
 
 演算の順が `baseline_gp` と違うので、結果はビット単位では一致しません。
 

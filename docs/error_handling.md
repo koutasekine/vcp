@@ -94,7 +94,7 @@ try {
 
 | 操作 | 例外 |
 | --- | --- |
-| `solve`、`eigs` が収束しない | `vcp::state_error` |
+| `solve`、`eigs` が収束しない(`solve` の直接法の分解に失敗したときを含む) | `vcp::state_error` |
 | `ldl`、`lu`、`chol`、`inertia`、`lu_solve` などで status が `success` 以外 | `vcp::numerical_error` |
 | `lu_solve`、`lu_inverse_row` で、因子・置換・右辺のサイズ(または行番号)が合わない | `vcp::dimension_error` |
 
