@@ -2,7 +2,7 @@
 
 `tlapack` は `vcp/vlapack/rdlapack` (reference LAPACK 3.12.1 由来) と同じ routine
 一覧を template 化した header-only library です．本文書は要素型 `T` に要求する
-演算 (concept 相当) と実装・テストの要点を定めます．BLAS 部分は `vcp/tblas/` を
+演算 (concept 相当) と実装の要点を定めます．BLAS 部分は `vcp/tblas/` を
 呼び出し，**丸めモードは一切意識しません** (rounding_mode 引数なし)．
 **全関数の引数仕様は このドキュメントの「関数リファレンス」節 を参照．**
 
@@ -12,7 +12,7 @@
 
 // A*X = B を kv::dd で解く (column-major, ipiv は 0-based)
 int info = vcp::tgesv(n, nrhs, A, lda, ipiv, B, ldb);   // T は引数から推論される
-int info2 = vcp::tsyev('V', 'U', n, A, lda, w);          // 対称固有値 (kv::dd のまま高精度)
+int info2 = vcp::tsyev('V', 'U', n, A, lda, w);          // 対称固有値 (kv::dd のまま計算)
 
 // using namespace vcp; を使えば vcp:: を省略できる
 using namespace vcp;
@@ -26,11 +26,11 @@ int info3 = tgesv(n, nrhs, A, lda, ipiv, B, ldb);
 | `tlapack.hpp` | umbrella header (これだけ include すればよい) |
 | `tlapack_common.hpp` | 共通基盤 (`tlamch<T>` `tisnan` `f_sign` `pow2i` `ilaenv`) |
 | `tlapack_aux.hpp` | 補助 routine (`tlassq` `tlartg` `tlarfg` `tlarf*` `tlange` 系など) |
-| `tlapack_lu.hpp` `_chol` `_band` `_qr` `_sy` `_eig` `_geev` `_svd` | rdlapack と同じ分割 |
+| `tlapack_lu.hpp` `_chol` `_band` `_qr` `_sy` `_eig` `_eigdc` `_geev` `_svd` | rdlapack と同じ分割 |
 | `tlapack_double.hpp` | `T=double` の明示的特殊化．`dblas_dlapack.hpp` 経由で double LAPACK/BLAS を呼ぶ |
 | `tlapack_dd.hpp` | `T=kv::dd` の明示的特殊化．double LAPACK/BLAS を前処理として使い，`kv::dd` 残差反復で解を改善する |
 
-## 提供予定 routine (rdlapack と同一集合，rd → t に読み替え)
+## 提供 routine (rdlapack と同一集合，rd → t に読み替え)
 
 | 分類 | driver | 計算 routine |
 |---|---|---|
@@ -131,9 +131,9 @@ int info2 = vcp::tsyev<kv::dd>('V', 'U', n, A, lda, w);
 | `tpotrf<kv::dd>` | `uplo` で指定された有効三角から元の対称正定値行列を full symmetric に保存し，`tpotrf<double>` の結果を初期 Cholesky 因子として `kv::dd` 残差補正を行う |
 | `tpotrs<kv::dd>` | Cholesky 分解済み行列に対し，`tpotrs<double>` で初期解を求める．`kv::dd` の Cholesky 因子から元の正定値行列を再構成し，`kv::dd` 残差を double Cholesky 因子で補正する |
 | `tposv<kv::dd>` | `tposv<double>` で Cholesky 分解と初期解を求める．元の `kv::dd` 行列で残差 `R = B - AX` を計算し，double Cholesky 因子を用いた `tpotrs<double>` で補正する |
-| `tsyev<kv::dd>` | `jobz` に関係なく内部では `tsyev<double>('V', ...)` で初期固有値・固有ベクトルを求める．`kv::dd` で `S = X^TAX` と `R = I - X^TX` を計算し，対称固有値分解の残差反復により固有値・固有ベクトルを改善する．`jobz='N'` の場合は精密化済み固有値だけを返す |
+| `tsyev<kv::dd>` | `jobz` に関係なく内部では `tsyev<double>('V', ...)` で初期固有値・固有ベクトルを求める．`kv::dd` で `S = X^TAX` と `R = I - X^TX` を計算し，対称固有値分解の残差反復により固有値・固有ベクトルを改善する．近接・重複した固有値は組にまとめ，組ごとにシフトした部分問題を解いて固有ベクトルを改善する (下記「固有値問題の反復改良」)．固有値は昇順で返す．`jobz='N'` の場合は精密化済み固有値だけを返す |
 | `tsyevd<kv::dd>` `tsygvd<kv::dd>` | `tsyev<kv::dd>`・`tsygv<kv::dd>` と同じ計算 (それらを呼ぶ) |
-| `tsygv<kv::dd>` | `itype=1` について，`uplo` で指定された有効三角から `A` と `B` を full symmetric に保存し，内部で `tsygv<double>(1, 'V', ...)` を初期値として一般化対称固有値問題 `A X = B X Lambda` を `kv::dd` 残差反復で改善する．`jobz='N'` の場合も内部では固有ベクトルを使って固有値を精密化する |
+| `tsygv<kv::dd>` | `itype=1` について，`uplo` で指定された有効三角から `A` と `B` を full symmetric に保存し，内部で `tsygv<double>(1, 'V', ...)` を初期値として一般化対称固有値問題 `A X = B X Lambda` を `kv::dd` 残差反復で改善する (`R = I - X^TBX` を使う同じ反復)．固有値は昇順で返す．`jobz='N'` の場合も内部では固有ベクトルを使って固有値を精密化する |
 
 `tlapack_dd.hpp` は内部で `vcp/tblas/tblas_double.hpp`，
 `vcp/tblas/tblas_dd.hpp`，`vcp/tlapack/tlapack_double.hpp`，`vcp/tlapack/tlapack.hpp`
@@ -164,7 +164,7 @@ int info2 = vcp::tsyev<kv::dd>('V', 'U', n, A, lda, w);
 - 残差計算は `kv::dd` で行うため，条件がよい問題では double 初期解から
   `kv::dd` 精度に近い解へ改善できる．
 - `tblas_dd.hpp` の `tgemm<kv::dd>` 特殊化が有効な場合，残差計算や固有値反復で使う
-  行列積も尾崎スキーム経由で高速化・高精度化される．
+  行列積も尾崎スキームで計算され，高速になりやすく，丸め誤差も小さくなりやすい．
 - `tsyev<kv::dd>` と `tsygv<kv::dd>` は，`jobz='N'` の場合でも内部で固有ベクトルを
   計算して精密化するため，固有値のみの API でも `kv::dd` 精度を狙える．
 - 対称行列入力では `uplo` の有効三角だけを使って full symmetric 行列を構成するため，
@@ -186,13 +186,34 @@ cond(A) * eps_double < 1
 数値的に破綻する場合があります．この場合，`kv::dd` の汎用実装なら解ける問題でも，
 `tlapack_dd.hpp` の特殊化では失敗したり，`kv::dd` 精度まで改善できないことがあります．
 
-固有値問題でも，近接固有値・重複固有値・固有ベクトルが悪条件な場合には，
-double で得た初期固有空間の品質に依存します．`tsyev<kv::dd>` の特殊化は
-`S = X^TAX` と `R = I - X^TX` に基づく残差反復で改善しますが，double 初期解が
-十分な情報を失っている場合には改善が限定されます．
+#### 固有値問題の反復改良
 
-`tsygv<kv::dd>` の特殊化は現在 `itype=1` のみを対象にします．
-`itype=2,3` は未対応であり，呼び出すと引数 error として扱います．
+`tsyev<kv::dd>`・`tsygv<kv::dd>` (と `tsyevd<kv::dd>`・`tsygvd<kv::dd>`) の反復改良は，
+次の文献の Algorithm 2 (RefSyEvCL) に基づきます．
+
+T. Ogita, K. Aishima, "Iterative refinement for symmetric eigenvalue decomposition II:
+clustered eigenvalues", Japan Journal of Industrial and Applied Mathematics, Vol. 36,
+pp. 435-459, 2019, DOI: <https://doi.org/10.1007/s13160-019-00348-4>
+
+- 1 回の反復では，まず全体に対して `S = X^TAX` と `R = I - X^TX` (一般化問題では
+  `R = I - X^TBX`) による更新を行い，次に，近似固有値の差がしきい値以下のものを
+  組にまとめ，組ごとに `A - mu I` (一般化問題では `A - mu B`) を組の固有ベクトルで
+  射影した小さな行列の固有値問題を double で解いて，組の固有ベクトルを取り直します．
+  組の中の反復でも，一般化問題では B 内積 (`R = I - V^TBV`) を使います．
+- 反復は最大 6 回です．更新量が `kv::dd` の丸め単位に対して十分小さくなったとき，
+  または反復を続けられなくなったとき (Algorithm 2 の条件を満たさないとき) に終わります．
+- 反復の後に，正規直交化 `X <- X (I + R/2)` を行い (最大 4 回)，返す固有ベクトルの
+  Rayleigh 商から固有値を計算し直して，昇順に並べます．
+
+これにより，近接固有値・重複固有値を持つ行列でも，残差
+`||A X - B X Lambda||` と正規直交性 `||X^T B X - I||` は `kv::dd` 精度に近い値に
+なりやすいです．ただし，固有値の間隔が非常に小さい組の中の個々の固有ベクトルは，
+もともと一意に定まりにくく (間隔に反比例して摂動に敏感)，個々の固有ベクトルの
+精度は間隔に依存します．また，初期値は double で計算するため，double の固有値計算が
+失敗する問題は扱えません．
+
+`tsygv<kv::dd>` の特殊化は `itype=1` だけに対応します．
+`itype=2,3` を渡すと `vcp::invalid_argument` を投げます．
 `mats2::eigsymge()` は `itype=1` 固定で使うため，この用途では問題ありません．
 
 `tgetri<kv::dd>` は高精度化のため，通常は直前の `tgetrf<kv::dd>` が保存した
@@ -236,14 +257,9 @@ rtmin = sqrt(safmin) など) はすべて `tlamch<T>` の値から T の四則�
 計算するので，追加の要件は生じません．
 
 - `double` / `float` / `long double`: 標準で充足
-- `kv::dd`: kv が特殊化済み (epsilon = 2^-105，min = DBL_MIN，max ≈ DBL_MAX)
+- `kv::dd`: kv が特殊化済み (epsilon = 2^-106，min = DBL_MIN·2^54 (= 2^-968)，max ≈ DBL_MAX)
 - `kv::mpfr<N>`: kv が特殊化済み (epsilon = 2^(1-N)，min/max は mpfr の emin/emax 由来)
 - それ以外の型: 利用者が `std::numeric_limits<T>` を特殊化すれば使用可能
-
-注意 (kv::dd): dd の数値モデルでは min() = DBL_MIN 付近で下位語が underflow
-するため「safmin から max まで一様に相対精度 eps」という LAPACK の前提は
-厳密には成り立ちません．極端な scale の入力 (|x| < 2^-916 程度) では精度が
-落ちる可能性がありますが，通常 scale の入力では問題になりません．
 
 ### R6: NaN 判定 — `x == x` が NaN で false を返すこと (新規)
 
@@ -341,7 +357,7 @@ LAPACK は pivot 選択・収束判定・shift 選択など，ほぼ全 routine 
    block 化の意義は cache でなく BLAS3 化にあるため，同じ値で問題ない．
 5. **file 構成は rdlapack を踏襲**: `tlapack.hpp` (umbrella) +
    `tlapack_common.hpp` / `_aux` / `_lu` / `_chol` / `_band` / `_qr` /
-   `_sy` / `_eig` / `_geev` / `_svd`．
+   `_sy` / `_eig` / `_eigdc` / `_geev` / `_svd`．
 6. **rdlapack の reference との相違点を引き継ぐ**: `tbdsqr` は dqds でなく
    QR 反復，`tgesvd` は基本経路のみ，など (docs/kernels/rdlapack.md 参照)．
 
@@ -359,7 +375,7 @@ LAPACK は pivot 選択・収束判定・shift 選択など，ほぼ全 routine 
 
 ## 実装の詳細 (rdlapack からの移植)
 
-vlapack/rdlapack (約 9,600 行) を以下の規則で機械変換し，特殊箇所を手で書き直した:
+vlapack/rdlapack を以下の規則で機械変換し，特殊箇所を手で書き直した:
 
 - rounding_mode 引数と RoundingGuard を全て除去，BLAS 呼び出しは tblas に置換
 - `double` → `T`，FP literal は `T(int)` と四則から構成 (`0.95` → `T(95)/T(100)` 等)
@@ -379,39 +395,13 @@ vlapack/rdlapack (約 9,600 行) を以下の規則で機械変換し，特殊�
 - rdlapack が reference と異なる点 (tbdsqr は dqds でなく QR 反復，tgesvd は
   基本経路のみ等) はそのまま引き継ぐ
 
-## テスト
-
-以下のテストで検証済み:
-
-1. **T=double を rdlapack (rounding_mode=0) と比較** (86 checks PASS)．
-   gesv/getri/posv/potri/sysv/gbsv/pbsv/trtrs/trtri/geqrf/orgqr/gels/syev/sygv/geev/gesvd
-   について解・固有値・特異値の一致 (tlapack は fma を使わないため bit 一致ではなく
-   許容誤差比較)，LU の pivot 一致，residual・直交性・再構成誤差を確認．
-2. **kv::dd / kv::mpfr<106>** (42 checks PASS)．同じ問題を double と T で解き，
-   解・固有値 (sort 済)・特異値・pivot 列が double の結果と一致すること
-   (型を変えても結果が変わらない)，かつ residual / V^T V - I / A - U S VT が
-   T の精度水準 (< 1e-24) まで落ちること (実際に高精度で解けている) を確認．
-3. **T=double 特殊化の smoke test**:
-   `vcp/tblas/tblas_double.hpp` / `vcp/tlapack/tlapack_double.hpp` の include，
-   `taxpy<double>`，`tgesv<double>`，および `USE_VCP_LAPACK` なしの場合の
-   不足補助 routine (`tlae2<double>` → `dlae2_`) の実体化を確認．
-   さらに `-DUSE_VCP_BLAS -DUSE_VCP_LAPACK` 付きでは，不足補助 routine が
-   template<double> 実装へフォールバックして compile できることを確認．
-4. **T=kv::dd 特殊化の smoke test**:
-   `tlapack_dd.hpp` 単独 include と，高速特殊化 header を先に include した場合の
-   両方で `tgetrf<kv::dd>`，`tgetrs<kv::dd>`，`tgetri<kv::dd>`，
-   `tgesv<kv::dd>`，`tpotrf<kv::dd>`，`tposv<kv::dd>`，
-   `tsyev<kv::dd>`，`tsygv<kv::dd>` が実体化・実行できることを確認．
-   さらに `uplo` の反対三角にゴミ値を入れても `tpotrf<kv::dd>`，
-   `tsyev<kv::dd>`，`tsygv<kv::dd>` が有効三角だけを使うことを確認．
-
 ---
 
 # 関数リファレンス
 
 
-`vcp/tlapack/tlapack.hpp` が提供する全 routine の仕様．設計方針と要素型 T の要件
-(R1–R6) は このドキュメントの「設計方針」節 を参照．アルゴリズムの数学的内容は
+`vcp/tlapack/tlapack.hpp` が提供する全 routine の仕様．要素型 T の要件
+(R1–R7) は「T 型要件」節を，実装の方針は「実装方針 (要件から導かれるもの)」節を参照．アルゴリズムの数学的内容は
 reference LAPACK 3.12.1 の同名 routine (`t` → `d`) に準ずる．
 
 ## 共通仕様
@@ -783,7 +773,7 @@ jobz='N': 固有値のみ (tsterf)，'V': 固有 vector も (tsteqr)．
 (列が w[j] に対応)．INFO > 0: 収束しなかった非対角要素の個数．
 
 `tlapack_double.hpp` を include した `tsyev<double>` の特殊化は，`jobz='V'` のとき分割統治法の
-`dsyevd_` を呼ぶ (`jobz='N'` のときは `dsyev_`)．`-DUSE_VCP_LAPACK` のときの `dsyevd_` は
+`dsyevd_` を呼ぶ (`jobz='N'` のとき，または作業領域の長さが int に収まらない大きな n のときは `dsyev_`)．`-DUSE_VCP_LAPACK` のときの `dsyevd_` は
 丸めモード指定つきの実装 (rdlapack) で，`dsyev_` より遅いことがある．
 
 `tlapack_dd.hpp` を include した `tsyev<kv::dd>` は，`jobz='N'` の場合でも内部では
@@ -804,15 +794,15 @@ B は Cholesky 因子で上書き．INFO > 0: n 以下なら tsyev の失敗，
 n より大なら B が正定値でない (INFO - n が主小行列の位置)．
 
 `tlapack_double.hpp` を include した `tsygv<double>` の特殊化は，`jobz='V'` のとき分割統治法の
-`dsygvd_` を呼ぶ (`jobz='N'` のときは `dsygv_`)．固有値が昇順で返ること，正規化，INFO の意味は
+`dsygvd_` を呼ぶ (`jobz='N'` のとき，または作業領域の長さが int に収まらない大きな n のときは `dsygv_`)．固有値が昇順で返ること，正規化，INFO の意味は
 変わらない．`-DUSE_VCP_LAPACK` のときの `dsygvd_` は丸めモード指定つきの実装 (rdlapack) で，
 `dsygv_` より遅いことがある．
 
-`tlapack_dd.hpp` を include した `tsygv<kv::dd>` の特殊化は，現在 `itype=1`
-(`A*z = lambda*B*z`) のみを対象にする．`jobz='N'` の場合でも内部では固有 vector を
-計算して固有値を改善する．`uplo` の反対三角は入力として読まない．`itype=2,3`
-が必要な場合は，現時点では `tlapack_dd.hpp` を include しない汎用実装を使うか，
-別途特殊化を追加する必要がある．
+`tlapack_dd.hpp` を include した `tsygv<kv::dd>` の特殊化は `itype=1`
+(`A*z = lambda*B*z`) だけに対応し，`itype=2,3` では `vcp::invalid_argument` を投げる．
+`jobz='N'` の場合でも内部では固有 vector を計算して固有値を改善する．`uplo` の反対三角は
+入力として読まない．`itype=2,3` が必要な場合は `tlapack_dd.hpp` を include しない
+汎用実装を使う．
 
 ### tsyevd / tsygvd — driver: 分割統治法
 ```cpp

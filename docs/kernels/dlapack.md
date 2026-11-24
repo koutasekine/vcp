@@ -51,7 +51,6 @@ dlapack の内部は `dlapack → vcp::rdlapack → vcp::rdblas` という **C++
   (使われない，ではなく「呼ぶ経路が存在しない」)．
 - 同一 binary 内で，ユーザコードが直接呼ぶ `dgemm_` / `cblas_dgemm` は
   従来どおり既存 BLAS に解決されます (dblas を emit しない限り)．
-  この共存は `test_dlapack` で検証済みです．
 
 ```text
                  ┌─ dlapack (dgesv_ …) ─→ vcp::rdlapack ─→ vcp::rdblas   ← C++ 直接呼び出し (差し替え不能)
@@ -64,17 +63,16 @@ dlapack の内部は `dlapack → vcp::rdlapack → vcp::rdblas` という **C++
 ### 既存の BLAS の速度の恩恵は受けない
 
 上記の構造の帰結として，dlapack の O(N^3) 部分は常に rdblas (rmatmul 核) で
-実行され，MKL 等の最適化を取り込む手段はありません．目安 (本環境での実測):
-gemm 系は rdblas の方が速い (丸め制御付きで MKL の約 1.5 倍) 一方，
-trmm/trsm 系は MKL の 5〜6 割，非対称固有値 (dgeev) は algorithm 簡略化
-(dlahqr のみ) のため大規模では明確に遅くなります．
+実行され，MKL 等の最適化を取り込む手段はありません．このため，既存の BLAS・LAPACK を
+使う場合より遅いことがあります．非対称固有値 (dgeev) は algorithm を簡略化している
+(dlahqr のみ) ため，大規模な問題では遅くなりやすいです．
 
 ### 使い分けの指針
 
 | 目的 | 構成 |
 |---|---|
 | 全演算の丸めモード保証 (LAPACK 演算) | **dlapack** (または rounding_mode を明示する rdlapack) |
-| 既存 LAPACK + BLAS 部分のみ丸め保証 | 既存 liblapack + **dblas** (検証済み，docs/kernels/rdblas.md 参照) |
+| 既存 LAPACK + BLAS 部分のみ丸め保証 | 既存 liblapack + **dblas** (docs/kernels/rdblas.md 参照) |
 | 性能優先 (丸め保証なし) | 既存 liblapack + MKL 等 (従来どおり) |
 | 丸め保証付き LAPACK と高速 BLAS の同居 | dlapack + MKL を同一 binary にリンク (dblas は emit しない) |
 
@@ -130,12 +128,6 @@ rdlapack が提供する routine の Fortran 互換版です:
 
 複素数・単精度，条件数推定 (`*con`)・反復改良 (`*rfs`)・expert driver は
 rdlapack 同様に提供しません．
-
-## テスト
-
-4 つの丸めモード下で主要 wrapper の結果が rdlapack の直接呼び出しと bit 一致すること，
-ipiv の 1-based 変換，workspace query (LWORK = -1)，丸めモードの保存，
-および同一 binary 内での MKL (`cblas_dgemm`) との共存を確認済み．
 
 ## License
 

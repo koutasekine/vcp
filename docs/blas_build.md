@@ -399,10 +399,17 @@ Homebrew GCC では、通常の `-fopenmp` で OpenMP を有効にできます�
 -DVCP_NOMP
 ```
 
+ただし、`-DUSE_VCP_BLAS`・`-DUSE_VCP_LAPACK` で使う `vcp/vblas/` の BLAS 実装の
+並列化は、`-DVCP_NOMP` では止まりません。
+
 必要に応じて、より細かい単位で次も利用できます。
 
 ```bash
 -DVCP_MATS_NOMP
+-DVCP_TBLAS_NOMP
+-DVCP_SPMATS_NOMP
+-DVCP_SPARSE_NOMP
 -DVCP_FOURIER_NOMP
 -DVCP_LEGENDRE_NOMP
+-DVCP_BFEM_NOMP
 ```

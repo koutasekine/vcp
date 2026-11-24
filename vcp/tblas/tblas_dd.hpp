@@ -28,7 +28,7 @@ inline int ceil_log2(const int k) {
 }
 
 inline int split_shift(const int k) {
-	return (51 + ceil_log2(k) + 1) / 2;
+	return (53 + ceil_log2(k) + 1) / 2;
 }
 
 inline int split_bits(const int k) {

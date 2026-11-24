@@ -2,7 +2,8 @@
 
 `rdblas` は，LAPACK を構築する前提で必要となる double 精度 BLAS の全 routine を，
 丸めモードを指定して計算できる形で提供する header-only library です．
-`rmatmul` と同様に実験的な位置付けで，`vcp::matrix` からは自動では使われません．
+`rmatmul` と同様に実験的な位置付けで，`vcp::matrix` からは，`-DUSE_VCP_BLAS` または `-DUSE_VCP_LAPACK` を指定したときに
+`vcp::pdblas` などのポリシーが `dblas`・`dlapack` を通じて使います (指定しなければ使われません)．
 この上に構築した丸めモード指定付き LAPACK (rdlapack) は兄弟 directory の
 `vcp/vlapack/` にあります (`docs/kernels/rdlapack.md` 参照)．
 
@@ -149,10 +150,6 @@ VCP Library の精度保証付き計算 (`vcp::pidblas`) において，BLAS の
    呼び出し側が事前に設定していた丸めモード (例えば `FE_DOWNWARD`) は
    呼び出し後もそのまま維持されます．
 
-開発時のテスト(`test_rounding_restore` と「1/3 データで全要素 up != down」の test)が
-この 2 点・3 点を検証しています
-(1 thread でも切り替えに失敗すると担当要素が up == down になり検出されます)．
-
 ## 実装方針 (速度)
 
 - **rdgemm**: op(A)/op(B) を連続 buffer に詰め (FP 演算なしの copy)，
@@ -182,21 +179,6 @@ block size は compile 時 macro で調整できます (通常は変更不要):
 -DVBLAS_RDBLAS_TRSM_LEAF=64    (trsm の leaf size)
 ```
 
-### 性能の目安
-
-AVX-512 (16 threads, n = 2000, 同一機で MKL と比較，値は環境依存):
-
-| routine | rdblas (upward) | MKL (nearest) |
-|---|---|---|
-| dgemm | ~380 GFLOPS | ~254 GFLOPS |
-| dsyrk | ~195 GFLOPS | ~222 GFLOPS |
-| dtrsm | ~158 GFLOPS | ~304 GFLOPS |
-| dtrmm | ~144 GFLOPS | ~276 GFLOPS |
-
-rdgemm は丸めモード指定付きでも MKL dgemm より高速です．trmm/trsm 系は
-温存 buffer 経由の更新が増えるため MKL の 5〜6 割程度ですが，
-丸めモードの保証 (MKL にはない) を持ちます．
-
 ## 丸め方向の意味について
 
 各 routine は「全ての浮動小数点演算を指定丸めで実行した結果」を返します．
@@ -206,14 +188,11 @@ rdgemm は丸めモード指定付きでも MKL dgemm より高速です．trmm/
 上向き/下向きの結果は真値を挟む包含にはならないので，
 区間演算としての利用は呼び出し側で定式化してください．
 
-## テストと benchmark
+## SIMD の実装の選び方
 
-AVX2 backend は `-mavx512f -DVCP_USE_AVX512` の代わりに `-mavx2 -mfma`，
-no-SIMD fallback はどちらも付けずにコンパイルします (AVX-512 / AVX2 / no-SIMD の
-3 backend すべてで動作確認済み)．
-
-dblas wrapper は全 34 関数について，4 つの丸めモード下で wrapper の結果が rdblas の
-直接呼び出しと bit 一致すること，丸めモードが保存されることを確認済み．
+x86 では，AVX-512 の実装は `-mavx512f` を，AVX2 の実装は `-mavx2 -mfma` を付けて
+compile すると使われます (`-march=native` などでも有効になります)．どちらも付けなければ
+no-SIMD の実装が使われます．
 
 ## License
 
@@ -228,5 +207,3 @@ reference LAPACK 3.12.1 配布物に含まれる reference BLAS
 - 対象は点 double 行列です (区間行列 backend ではありません)．
 - rdgemm (alpha != 1 / beta != 0)・rdsyrk・rdtrmm などは m x n 程度の
   temp buffer を確保します．巨大行列ではメモリ使用量に注意してください．
-- 丸めモード変更がコンパイラ最適化で無効化されないことは
-  `test_rdblas` の up/down 全要素差 test で backend ごとに確認しています．

@@ -129,7 +129,7 @@ BLAS/LAPACK を利用する `kv::interval<double>` の区間行列:
 
 `vcp::matrix<T>` の default policy は `vcp::mats2<T>` です。
 
-`vcp::mats2<T>` は tblas/tlapack を下請けとして使う近似計算 policy で、
+`vcp::mats2<T>` は tblas/tlapack([kernels/tblas.md](kernels/tblas.md)・[kernels/tlapack.md](kernels/tlapack.md))を下請けとして使う近似計算 policy で、
 `vcp::mats<T>` を継承し、行列積・線形方程式・逆行列・Cholesky 分解・
 対称固有値問題・一般化対称固有値問題をオーバーライドしています。
 インクルードする特殊化ヘッダによって `mats<T>` 相当から `pdblas`・`pddblas`
@@ -187,9 +187,8 @@ typedef kv::interval<kv::dd> I;
 vcp::matrix<I, vcp::imats<kv::dd, vcp::pddblas> > A;
 ```
 
-特に固有値問題では、近似固有対の精度が包含の幅に直結するため、
-既定の `vcp::imats<kv::dd>` より高速になるだけでなく、包含幅も
-小さくなります。詳細と制限は後述の
+特に固有値問題では、既定の `vcp::imats<kv::dd>` より高速になりやすいです。
+詳細と制限は後述の
 「`vcp::pddblas` の詳細」を参照してください。
 
 `kv::interval<double>` で速度も必要な場合は `vcp::pidblas` を使います。
@@ -507,7 +506,7 @@ Newton 法で非線形方程式を解く場合は、`matrix` で残差ベクト�
 
 `-DUSE_VCP_BLAS` または `-DUSE_VCP_LAPACK` をコンパイル時に指定すると、
 `vcp::pdblas`・`vcp::pidblas`・`vcp::pddblas` が外部 BLAS/LAPACK ライブラリを
-必要とせず、`vcp/vblas/dblas.hpp` と `vcp/vlapack/dlapack.hpp` の純 C++ 実装
+必要とせず、`vcp/vblas/dblas.hpp` と `vcp/vlapack/dlapack.hpp` の純 C++ 実装([kernels/vblas.md](kernels/vblas.md)・[kernels/dlapack.md](kernels/dlapack.md))
 （丸めモード対応 BLAS/LAPACK）を内部で使用します。これらの policy は
 共通ヘッダー `vcp/dblas_dlapack.hpp` を経由して、BLAS/LAPACK 宣言と
 backend 選択を共有しています。
@@ -545,7 +544,8 @@ g++ -std=c++20 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND \
   共通ヘッダーです。通常の利用では `vcp/pdblas.hpp`、`vcp/pidblas.hpp`、
   `vcp/pddblas.hpp` をインクルードしてください。
 - VCP Library の精度保証付き計算（`vcp::pidblas`）において、有向丸めで呼ばれる
-  BLAS 関数は `dgemm_` のみです。`vcp/vblas/dblas.hpp` の `dgemm_` は呼び出し時点の
+  BLAS 関数は `dgemm_`・`dgemv_`・`dsyrk_`・`ddot_`（`pdblas` の行列積）です。
+  `vcp/vblas/dblas.hpp` の BLAS 関数はすべて呼び出し時点の
   丸めモードを自動的に読み取るため、`kv::hwround::roundup()` / `rounddown()` で
   丸めモードを設定してから呼び出す既存のコードと正しく連携します。
 
@@ -596,17 +596,29 @@ double 精度の近似解を求め、その後 `b - A x` の残差（尾崎ス�
 代入と残差計算のみを行います。
 
 固有値問題は、まず `dsyevd`（一般化問題は `dsygvd`）で double 精度の
-近似固有対を求め、荻田-相島の反復改良法
-（T. Ogita, K. Aishima, "Iterative refinement for symmetric eigenvalue
-decomposition", Japan Journal of Industrial and Applied Mathematics,
-Vol. 35, pp. 1007-1035, 2018,
-DOI: <https://doi.org/10.1007/s13160-018-0310-3>）で固有値と固有ベクトルを
-同時に高精度化します。1 回の反復で正しい桁数がほぼ倍増する
-（二次収束する）ため、標準では 2 回の反復で dd 精度に到達します。
-反復内の行列積はすべて尾崎スキームで計算します。一般化問題では
-B 内積（`transpose(X) * B * X = I` の正規化）を使う同じ形の反復を
-行います。`eigsym`/`eigsymge` の `itep` 引数は反復回数で、dd 精度を
-確保するため内部では最低 2 回反復します。
+近似固有対を求め、荻田-相島の反復改良法で固有値と固有ベクトルを
+同時に高精度化します。
+
+- T. Ogita, K. Aishima, "Iterative refinement for symmetric eigenvalue
+  decomposition", Japan Journal of Industrial and Applied Mathematics,
+  Vol. 35, pp. 1007-1035, 2018,
+  DOI: <https://doi.org/10.1007/s13160-018-0310-3>
+- T. Ogita, K. Aishima, "Iterative refinement for symmetric eigenvalue
+  decomposition II: clustered eigenvalues", Japan Journal of Industrial and
+  Applied Mathematics, Vol. 36, pp. 435-459, 2019,
+  DOI: <https://doi.org/10.1007/s13160-019-00348-4>
+
+よく離れた固有値では、1 回の反復で正しい桁数がほぼ倍増する（二次収束する）
+ため、通常は 2 回の反復で dd 精度に到達します。近接・重複した固有値は
+組にまとめ、組ごとにシフトした小さな固有値問題を double で解いて固有ベクトルを
+取り直します（2 番目の文献の方法）。反復の後に正規直交化を行い、固有値を
+Rayleigh 商から計算し直して昇順に並べます。反復内の行列積はすべて
+尾崎スキームで計算します。一般化問題では B 内積
+（`transpose(X) * B * X = I` の正規化）を使う同じ形の反復を行います。
+
+`eigsym`/`eigsymge` の `itep` 引数は反復回数の**上限**です。内部では上限を
+`max(6, itep)` 回とし、更新量が dd の丸め単位に対して十分小さくなった時点で
+反復を終えます（指定した回数だけ必ず反復するわけではありません）。
 
 ### 精度保証付き数値計算での利用
 
@@ -636,10 +648,8 @@ vcp::matrix<I, vcp::imats<kv::dd, vcp::pddblas> > A, b, x;
 ため、round-to-nearest を前提とする `kv::dd` 演算や尾崎スキームとも
 干渉しません。
 
-特に固有値問題では、荻田-相島反復により近似固有対が dd 精度まで
-改良されるため、既定の `vcp::imats<kv::dd>` と比べて検証が高速になる
-だけでなく、残差 `||A V - V Lambda||` が小さくなり固有値の包含幅も
-小さくなります。
+特に固有値問題では、既定の `vcp::imats<kv::dd>` と比べて検証が高速に
+なりやすいです。
 
 精度保証付き数値計算で使う場合の留意点:
 
@@ -665,9 +675,11 @@ vcp::matrix<I, vcp::imats<kv::dd, vcp::pddblas> > A, b, x;
   `条件数 × 1e-16 < 1` を満たす問題に限られます。条件数がそれを超える
   問題では、特殊化ヘッダなしの `vcp::mats2<kv::dd>`（dd 精度のままの LU 分解）や
   `kv::mpfr<N>` などの高精度型の利用を検討してください。
-- 同様に、固有値問題でも固有値の分離が double 精度で判別できない
-  （極端にクラスター化した）場合、荻田-相島反復は該当する固有ベクトルを
-  個別には分離できず、その部分の改良は制限されます。
+- 固有値問題で固有値が近接・重複している場合も、残差
+  `||A V - B V Lambda||` と正規直交性 `||V^T B V - I||` は dd 精度に近い値まで
+  改良され、固有値は昇順で返ります。ただし、間隔が非常に小さい固有値の組の中の
+  個々の固有ベクトルは、もともと摂動に敏感で（間隔に反比例）、個々の
+  固有ベクトルの精度は間隔に依存します。
 - 得られた解の精度は、`b - A x` などの残差を `pddblas` の高精度な
   行列積で計算して確認することを推奨します。
 - 行列要素の絶対値が極端に大きい（`1e300` 程度を超える）場合、
@@ -677,11 +689,9 @@ vcp::matrix<I, vcp::imats<kv::dd, vcp::pddblas> > A, b, x;
 - 利用プログラムは BLAS/LAPACK または MKL とリンクする必要があり、
   `kv::dd` を使うため kv ライブラリの include path も必要です。
 
-速度の目安として、`vcp::mats<kv::dd>` との比較で、線形方程式は
-n = 1000 で約 30 倍、対称固有値問題は n = 100 で約 1000 倍以上高速です。
-行列積は `dgemm` 数十回分のコストのため `vcp::pdblas`（double）より
-30〜40 倍程度遅くなりますが、`vcp::mats<kv::dd>` よりは高速で、
-かつ丸め誤差は大幅に小さくなります。
+線形方程式と固有値問題は、`vcp::mats<kv::dd>` より高速になりやすいです。
+行列積は `dgemm` を数十回呼ぶため、`vcp::pdblas`（double）より遅くなりますが、
+`vcp::mats<kv::dd>` よりは高速になりやすく、丸め誤差も小さくなりやすいです。
 
 ## mats2<T> の詳細
 
@@ -720,8 +730,7 @@ x = lss(A, b);
 ```
 
 外部 BLAS/LAPACK は不要です。`vcp/tblas/tblas.hpp` と
-`vcp/tlapack/tlapack.hpp` の汎用 C++ 実装が使われ、精度・速度とも
-`vcp::mats<T>` と同等です。`double` だけでなく `kv::dd`、`kv::mpfr<N>` など
+`vcp/tlapack/tlapack.hpp` の汎用 C++ 実装が使われます。`double` だけでなく `kv::dd`、`kv::mpfr<N>` など
 `tlapack` が対象とする任意の型 `T` で利用できます。
 
 #### モード 2: double BLAS/LAPACK 特殊化（`T=double` のとき `pdblas` 相当）
@@ -777,8 +786,9 @@ x = lss(A, b);
 第 2 テンプレート引数に指定することで、区間演算による精度保証付き数値計算に
 利用できます。
 
-モード 2（double 特殊化有効）の `mats2<double>` は `vcp::pidblas` と同等に
-なります。
+モード 2（double 特殊化有効）の `mats2<double>` を使う
+`imats<double, mats2<double> >` は、`vcp::imats<double, vcp::pdblas>` と
+同じ近似計算の関数を呼びます。
 
 ```cpp
 #include <kv/interval.hpp>
@@ -875,6 +885,7 @@ try {
 | `vcp::index_error` | 添字や部分行列範囲の誤り |
 | `vcp::state_error` | 対応していない行列状態や policy 状態 |
 | `vcp::domain_error` | 対称性など数学的仮定の破れ |
+| `vcp::numerical_error` | 数値計算の失敗（`verification_error`・`backend_error` の親） |
 | `vcp::verification_error` | 精度保証の検証条件の失敗 |
 | `vcp::backend_error` | 外部 backend や下位 routine のエラー |
 | `vcp::blas_error` | BLAS 関連のエラー |
@@ -892,10 +903,14 @@ OpenMP で並列化されます。
 -DVCP_NOMP
 ```
 
-Matrix、Fourier、Legendre など、部分的に無効化する場合:
+ただし、`-DUSE_VCP_BLAS`・`-DUSE_VCP_LAPACK` で使う `vcp/vblas/` の BLAS 実装の
+並列化は、`-DVCP_NOMP` では止まりません。
+
+Matrix、tblas（`mats2<T>` の行列積など）、Fourier、Legendre など、部分的に無効化する場合:
 
 ```bash
 -DVCP_MATS_NOMP
+-DVCP_TBLAS_NOMP
 -DVCP_FOURIER_NOMP
 -DVCP_LEGENDRE_NOMP
 ```

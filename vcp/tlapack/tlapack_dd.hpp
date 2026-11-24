@@ -51,16 +51,29 @@ inline std::vector<kv::dd> to_dd_matrix(const int m, const int n, const double* 
 	return B;
 }
 
+// Frobenius norm.  The entries are divided by the largest absolute value
+// before they are squared, so that the sum of squares neither overflows nor
+// underflows.
 inline double fro_norm(const int m, const int n, const kv::dd* A, const int lda) {
-	long double s = 0.0L;
+	double amax = 0.0;
 	for (int j = 0; j < n; j++) {
 		for (int i = 0; i < m; i++) {
 			const kv::dd& a = A[i + static_cast<std::size_t>(lda) * j];
-			const long double v = static_cast<long double>(a.a1) + static_cast<long double>(a.a2);
+			amax = std::max(amax, std::fabs(a.a1 + a.a2));
+		}
+	}
+	if (amax == 0.0) {
+		return 0.0;
+	}
+	double s = 0.0;
+	for (int j = 0; j < n; j++) {
+		for (int i = 0; i < m; i++) {
+			const kv::dd& a = A[i + static_cast<std::size_t>(lda) * j];
+			const double v = (a.a1 + a.a2) / amax;
 			s += v * v;
 		}
 	}
-	return static_cast<double>(std::sqrt(s));
+	return amax * std::sqrt(s);
 }
 
 inline double max_abs(const int m, const int n, const kv::dd* A, const int lda) {
@@ -421,6 +434,272 @@ inline int refine_cholesky_factor(
 	return 0;
 }
 
+// Indices 0..l-1 ordered so that w is ascending.
+inline std::vector<int> ascending_index(const int l, const kv::dd* w) {
+	std::vector<int> idx(static_cast<std::size_t>(l), 0);
+	for (int i = 0; i < l; i++) {
+		idx[i] = i;
+	}
+	std::stable_sort(idx.begin(), idx.end(), [w](const int a, const int b) { return w[a] < w[b]; });
+	return idx;
+}
+
+// Algorithm 1 (RefSyEv) of T. Ogita, K. Aishima, "Iterative refinement for
+// symmetric eigenvalue decomposition II: clustered eigenvalues", Japan J.
+// Indust. Appl. Math. 36 (2019), 435-459.
+// A is n x n, X is n x l (l <= n) and is replaced by X' = X + X E.  B = 0:
+// R = I - X^T X.  B != 0 (Remark 3): R = I - X^T B X.  lam receives the
+// approximate eigenvalues, enorm = ||E||_F, omega the criterion of line 6
+// (Frobenius norms).
+inline void refsyev(
+	const int n, const int l,
+	const kv::dd* A, const kv::dd* B,
+	kv::dd* X, const int ldx,
+	std::vector<kv::dd>& lam, double& enorm, double& omega
+) {
+	const std::size_t N = static_cast<std::size_t>(n);
+	const std::size_t L = static_cast<std::size_t>(l);
+	std::vector<kv::dd> AX(N * L, kv::dd(0.0));
+	std::vector<kv::dd> R(L * L, kv::dd(0.0));
+	std::vector<kv::dd> S(L * L, kv::dd(0.0));
+	std::vector<kv::dd> E(L * L, kv::dd(0.0));
+	std::vector<kv::dd> XE(N * L, kv::dd(0.0));
+
+	// line 2: R = I - X^T X (or I - X^T B X), line 3: S = X^T A X
+	if (B != 0) {
+		tgemm<kv::dd>('N', 'N', n, l, n, kv::dd(1.0), B, n, X, ldx, kv::dd(0.0), AX.data(), n);
+		tgemm<kv::dd>('T', 'N', l, l, n, kv::dd(-1.0), X, ldx, AX.data(), n, kv::dd(0.0), R.data(), l);
+	}
+	else {
+		tgemm<kv::dd>('T', 'N', l, l, n, kv::dd(-1.0), X, ldx, X, ldx, kv::dd(0.0), R.data(), l);
+	}
+	for (int i = 0; i < l; i++) {
+		R[i + L * i] += kv::dd(1.0);
+	}
+	tgemm<kv::dd>('N', 'N', n, l, n, kv::dd(1.0), A, n, X, ldx, kv::dd(0.0), AX.data(), n);
+	tgemm<kv::dd>('T', 'N', l, l, n, kv::dd(1.0), X, ldx, AX.data(), n, kv::dd(0.0), S.data(), l);
+
+	// line 4: lambda_i = s_ii / (1 - r_ii)
+	lam.assign(L, kv::dd(0.0));
+	for (int i = 0; i < l; i++) {
+		lam[i] = S[i + L * i] / (kv::dd(1.0) - R[i + L * i]);
+	}
+
+	// line 6: omega = 2 (||S - D|| + ||A|| ||R||)
+	std::vector<kv::dd> SD = S;
+	for (int i = 0; i < l; i++) {
+		SD[i + L * i] -= lam[i];
+	}
+	omega = 2.0 * (fro_norm(l, l, SD.data(), l) + fro_norm(n, n, A, n) * fro_norm(l, l, R.data(), l));
+
+	// line 7
+	for (int j = 0; j < l; j++) {
+		for (int i = 0; i < l; i++) {
+			const kv::dd rij = R[i + L * j];
+			const kv::dd gap = lam[j] - lam[i];
+			if (abs_double(gap) > omega) {
+				E[i + L * j] = (S[i + L * j] + lam[j] * rij) / gap;
+			}
+			else {
+				E[i + L * j] = rij / kv::dd(2.0);
+			}
+		}
+	}
+	enorm = fro_norm(l, l, E.data(), l);
+
+	// line 8: X' = X + X E
+	tgemm<kv::dd>('N', 'N', n, l, l, kv::dd(1.0), X, ldx, E.data(), l, kv::dd(0.0), XE.data(), n);
+	for (int j = 0; j < l; j++) {
+		for (int i = 0; i < n; i++) {
+			X[i + static_cast<std::size_t>(ldx) * j] += XE[i + N * j];
+		}
+	}
+}
+
+// Algorithm 2 (RefSyEvCL) of the same paper, one call.  X (n x n) is replaced
+// by X'.  enorm receives ||E||_F of line 2.  Returns false when the algorithm
+// returned at line 3 or line 15 (improvement cannot be expected) or when the
+// double eigensolver of line 11 failed; X then holds the X' of that moment.
+inline bool refsyevcl(
+	const int n,
+	const kv::dd* A, const kv::dd* B,
+	kv::dd* X, const int ldx,
+	std::vector<kv::dd>& lam, double& enorm
+) {
+	const std::size_t N = static_cast<std::size_t>(n);
+	double omega = 0.0;
+	refsyev(n, n, A, B, X, ldx, lam, enorm, omega);   // line 2
+	if (!(enorm < 1.0)) {                             // line 3
+		return false;
+	}
+	// line 4: the index sets J_k of (27) are the runs of the ascending
+	// eigenvalues whose neighbouring differences are at most omega
+	const std::vector<int> idx = ascending_index(n, lam.data());
+	int p = 0;
+	while (p < n) {
+		int q = p;
+		while (q + 1 < n && abs_double(lam[idx[q + 1]] - lam[idx[q]]) <= omega) {
+			q++;
+		}
+		const int nk = q - p + 1;
+		if (nk >= 2) {
+			const std::size_t NK = static_cast<std::size_t>(nk);
+			// line 6: V_k = X'(:, J_k)
+			std::vector<kv::dd> V(N * NK, kv::dd(0.0));
+			for (int c = 0; c < nk; c++) {
+				for (int i = 0; i < n; i++) {
+					V[i + N * c] = X[i + static_cast<std::size_t>(ldx) * idx[p + c]];
+				}
+			}
+			// line 7: mu_k, line 8: A_k = A - mu_k I (Remark 3: A - mu_k B)
+			const kv::dd mu = (lam[idx[p]] + lam[idx[q]]) / kv::dd(2.0);
+			std::vector<kv::dd> Ak(A, A + N * N);
+			if (B != 0) {
+				for (std::size_t x = 0; x < N * N; x++) {
+					Ak[x] -= mu * B[x];
+				}
+			}
+			else {
+				for (int i = 0; i < n; i++) {
+					Ak[i + N * i] -= mu;
+				}
+			}
+			// line 9: C_k = V_k^T A_k V_k, line 10: T_k = fl(C_k), line 11: W_k = eig(T_k)
+			std::vector<kv::dd> AV(N * NK, kv::dd(0.0));
+			std::vector<kv::dd> C(NK * NK, kv::dd(0.0));
+			tgemm<kv::dd>('N', 'N', n, nk, n, kv::dd(1.0), Ak.data(), n, V.data(), n, kv::dd(0.0), AV.data(), n);
+			tgemm<kv::dd>('T', 'N', nk, nk, n, kv::dd(1.0), V.data(), n, AV.data(), n, kv::dd(0.0), C.data(), nk);
+			std::vector<double> Tk = to_double_matrix(nk, nk, C.data(), nk);
+			std::vector<double> wk(NK, 0.0);
+			if (tsyev<double>('V', 'U', nk, Tk.data(), nk, wk.data()) != 0) {
+				return false;
+			}
+			// line 12: V_k = V_k W_k
+			const std::vector<kv::dd> W = to_dd_matrix(nk, nk, Tk.data(), nk);
+			tgemm<kv::dd>('N', 'N', n, nk, nk, kv::dd(1.0), V.data(), n, W.data(), nk, kv::dd(0.0), AV.data(), n);
+			V.swap(AV);
+			// lines 13-17.  Unlike the wording of Remark 3, B is also used here (R = I - V_k^T B V_k).
+			// In addition to the condition of line 17 the loop ends when ||E_k|| no
+			// longer decreases, and after 10 passes.
+			std::vector<kv::dd> lamk;
+			double ek = 0.0;
+			double ekprev = 0.0;
+			double omegak = 0.0;
+			for (int pass = 0; pass < 10; pass++) {
+				refsyev(n, nk, Ak.data(), B, V.data(), n, lamk, ek, omegak);   // line 14
+				if (!(ek < 1.0)) {                                           // line 15
+					return false;
+				}
+				if (ek <= enorm) {                                           // line 17
+					break;
+				}
+				if (pass > 0 && !(ek < ekprev)) {
+					break;
+				}
+				ekprev = ek;
+			}
+			// line 18
+			for (int c = 0; c < nk; c++) {
+				for (int i = 0; i < n; i++) {
+					X[i + static_cast<std::size_t>(ldx) * idx[p + c]] = V[i + N * c];
+				}
+			}
+		}
+		p = q + 1;
+	}
+	return true;
+}
+
+// Refinement of the eigenvectors X (n x n) of A x = lambda x (B = 0) or
+// A x = lambda B x: Algorithm 2 at most 6 times (it ends earlier when
+// ||E|| < 2^-52 after an update, or when Algorithm 2 returned without
+// improvement), orthonormalization steps, Rayleigh quotients, ascending order.
+inline int refine_eigenvectors_clustered(
+	const int n,
+	const kv::dd* A, const kv::dd* B,
+	kv::dd* X, const int ldx,
+	kv::dd* w
+) {
+	if (n == 0) {
+		return 0;
+	}
+	const std::size_t N = static_cast<std::size_t>(n);
+	std::vector<kv::dd> lam;
+	std::vector<kv::dd> Xkeep(N * N, kv::dd(0.0));
+	const int max_iter = 6;
+	for (int iter = 0; iter < max_iter; iter++) {
+		double enorm = 0.0;
+		const bool go_on = refsyevcl(n, A, B, X, ldx, lam, enorm);
+		if (!go_on) {
+			break;
+		}
+		if (enorm < std::ldexp(1.0, -52)) {
+			// the next correction would be below the unit of kv::dd
+			break;
+		}
+	}
+
+	// Steps X = X (I + R / 2), R = I - X^T B X: formula (25) of the paper used for all pairs.
+	// Repeated (at most 4 times) until the R that was used satisfies ||R||_F <= 2^-45.
+	std::vector<kv::dd> AX(N * N, kv::dd(0.0));
+	std::vector<kv::dd> R(N * N, kv::dd(0.0));
+	for (int step = 0; step < 4; step++) {
+		if (B != 0) {
+			tgemm<kv::dd>('N', 'N', n, n, n, kv::dd(1.0), B, n, X, ldx, kv::dd(0.0), AX.data(), n);
+			tgemm<kv::dd>('T', 'N', n, n, n, kv::dd(-1.0), X, ldx, AX.data(), n, kv::dd(0.0), R.data(), n);
+		}
+		else {
+			tgemm<kv::dd>('T', 'N', n, n, n, kv::dd(-1.0), X, ldx, X, ldx, kv::dd(0.0), R.data(), n);
+		}
+		for (int i = 0; i < n; i++) {
+			R[i + N * i] += kv::dd(1.0);
+		}
+		const double rnorm = fro_norm(n, n, R.data(), n);
+		for (std::size_t x = 0; x < N * N; x++) {
+			R[x] = R[x] / kv::dd(2.0);
+		}
+		tgemm<kv::dd>('N', 'N', n, n, n, kv::dd(1.0), X, ldx, R.data(), n, kv::dd(0.0), AX.data(), n);
+		for (int j = 0; j < n; j++) {
+			for (int i = 0; i < n; i++) {
+				X[i + static_cast<std::size_t>(ldx) * j] += AX[i + N * j];
+			}
+		}
+		if (rnorm <= std::ldexp(1.0, -45)) {
+			break;
+		}
+	}
+
+	// Rayleigh quotients of the returned X
+	std::vector<kv::dd> BX;
+	tgemm<kv::dd>('N', 'N', n, n, n, kv::dd(1.0), A, n, X, ldx, kv::dd(0.0), AX.data(), n);
+	if (B != 0) {
+		BX.assign(N * N, kv::dd(0.0));
+		tgemm<kv::dd>('N', 'N', n, n, n, kv::dd(1.0), B, n, X, ldx, kv::dd(0.0), BX.data(), n);
+	}
+	lam.assign(N, kv::dd(0.0));
+	for (int j = 0; j < n; j++) {
+		kv::dd num(0.0);
+		kv::dd den(0.0);
+		for (int i = 0; i < n; i++) {
+			const kv::dd x = X[i + static_cast<std::size_t>(ldx) * j];
+			num += x * AX[i + N * j];
+			den += x * (B != 0 ? BX[i + N * j] : x);
+		}
+		lam[j] = num / den;
+	}
+
+	// ascending order
+	const std::vector<int> idx = ascending_index(n, lam.data());
+	copy_dd_matrix(n, n, X, ldx, Xkeep.data(), n);
+	for (int c = 0; c < n; c++) {
+		w[c] = lam[idx[c]];
+		for (int i = 0; i < n; i++) {
+			X[i + static_cast<std::size_t>(ldx) * c] = Xkeep[i + N * idx[c]];
+		}
+	}
+	return 0;
+}
+
 inline int refine_symmetric_eigenvectors(
 	const char uplo, const int n,
 	const std::vector<kv::dd>& Aorig,
@@ -428,70 +707,7 @@ inline int refine_symmetric_eigenvectors(
 	kv::dd* w
 ) {
 	(void)uplo;
-	if (n == 0) {
-		return 0;
-	}
-	const double anorm = std::max(1.0, fro_norm(n, n, Aorig.data(), n));
-	std::vector<kv::dd> AX(static_cast<std::size_t>(n) * n, kv::dd(0.0));
-	std::vector<kv::dd> R(static_cast<std::size_t>(n) * n, kv::dd(0.0));
-	std::vector<kv::dd> S(static_cast<std::size_t>(n) * n, kv::dd(0.0));
-	std::vector<kv::dd> E(static_cast<std::size_t>(n) * n, kv::dd(0.0));
-	std::vector<kv::dd> XE(static_cast<std::size_t>(n) * n, kv::dd(0.0));
-
-	double prev = 0.0;
-	const int max_iter = 3;
-	for (int iter = 0; iter < max_iter; iter++) {
-		tgemm<kv::dd>('N', 'N', n, n, n, kv::dd(1.0), Aorig.data(), n, X, ldx, kv::dd(0.0), AX.data(), n);
-		tgemm<kv::dd>('T', 'N', n, n, n, kv::dd(1.0), X, ldx, AX.data(), n, kv::dd(0.0), S.data(), n);
-		tgemm<kv::dd>('T', 'N', n, n, n, kv::dd(-1.0), X, ldx, X, ldx, kv::dd(0.0), R.data(), n);
-		for (int i = 0; i < n; i++) {
-			R[i + static_cast<std::size_t>(n) * i] += kv::dd(1.0);
-		}
-		for (int i = 0; i < n; i++) {
-			const kv::dd den = kv::dd(1.0) - R[i + static_cast<std::size_t>(n) * i];
-			w[i] = S[i + static_cast<std::size_t>(n) * i] / den;
-		}
-		std::vector<kv::dd> SD = S;
-		for (int i = 0; i < n; i++) {
-			SD[i + static_cast<std::size_t>(n) * i] -= w[i];
-		}
-		const double delta = 2.0 * (fro_norm(n, n, SD.data(), n) + anorm * fro_norm(n, n, R.data(), n));
-		const double measure = fro_norm(n, n, SD.data(), n) + fro_norm(n, n, R.data(), n);
-		if (measure == 0.0) {
-			break;
-		}
-		if (iter > 0 && measure >= prev * 0.95) {
-			break;
-		}
-		prev = measure;
-
-		std::fill(E.begin(), E.end(), kv::dd(0.0));
-		for (int j = 0; j < n; j++) {
-			for (int i = 0; i < n; i++) {
-				const kv::dd rij = R[i + static_cast<std::size_t>(n) * j];
-				if (i == j) {
-					E[i + static_cast<std::size_t>(n) * j] = rij / kv::dd(2.0);
-				}
-				else {
-					const kv::dd gap = w[j] - w[i];
-					if (abs_double(gap) <= delta) {
-						E[i + static_cast<std::size_t>(n) * j] = rij / kv::dd(2.0);
-					}
-					else {
-						const kv::dd sij = S[i + static_cast<std::size_t>(n) * j];
-						E[i + static_cast<std::size_t>(n) * j] = (sij + w[j] * rij) / gap;
-					}
-				}
-			}
-		}
-		tgemm<kv::dd>('N', 'N', n, n, n, kv::dd(1.0), X, ldx, E.data(), n, kv::dd(0.0), XE.data(), n);
-		for (int j = 0; j < n; j++) {
-			for (int i = 0; i < n; i++) {
-				X[i + static_cast<std::size_t>(ldx) * j] += XE[i + static_cast<std::size_t>(n) * j];
-			}
-		}
-	}
-	return 0;
+	return refine_eigenvectors_clustered(n, Aorig.data(), static_cast<const kv::dd*>(0), X, ldx, w);
 }
 
 inline int refine_generalized_symmetric_eigenvectors(
@@ -501,72 +717,7 @@ inline int refine_generalized_symmetric_eigenvectors(
 	kv::dd* X, const int ldx,
 	kv::dd* w
 ) {
-	if (n == 0) {
-		return 0;
-	}
-	const double anorm = std::max(1.0, fro_norm(n, n, Aorig.data(), n));
-	std::vector<kv::dd> AX(static_cast<std::size_t>(n) * n, kv::dd(0.0));
-	std::vector<kv::dd> BX(static_cast<std::size_t>(n) * n, kv::dd(0.0));
-	std::vector<kv::dd> S(static_cast<std::size_t>(n) * n, kv::dd(0.0));
-	std::vector<kv::dd> G(static_cast<std::size_t>(n) * n, kv::dd(0.0));
-	std::vector<kv::dd> E(static_cast<std::size_t>(n) * n, kv::dd(0.0));
-	std::vector<kv::dd> XE(static_cast<std::size_t>(n) * n, kv::dd(0.0));
-
-	double prev = 0.0;
-	const int max_iter = 4;
-	for (int iter = 0; iter < max_iter; iter++) {
-		tgemm<kv::dd>('N', 'N', n, n, n, kv::dd(1.0), Aorig.data(), n, X, ldx, kv::dd(0.0), AX.data(), n);
-		tgemm<kv::dd>('N', 'N', n, n, n, kv::dd(1.0), Borig.data(), n, X, ldx, kv::dd(0.0), BX.data(), n);
-		tgemm<kv::dd>('T', 'N', n, n, n, kv::dd(1.0), X, ldx, AX.data(), n, kv::dd(0.0), S.data(), n);
-		tgemm<kv::dd>('T', 'N', n, n, n, kv::dd(1.0), X, ldx, BX.data(), n, kv::dd(0.0), G.data(), n);
-		for (int i = 0; i < n; i++) {
-			w[i] = S[i + static_cast<std::size_t>(n) * i] / G[i + static_cast<std::size_t>(n) * i];
-		}
-		for (int idx = 0; idx < n * n; idx++) {
-			G[static_cast<std::size_t>(idx)] = -G[static_cast<std::size_t>(idx)];
-		}
-		for (int i = 0; i < n; i++) {
-			G[i + static_cast<std::size_t>(n) * i] += kv::dd(1.0);
-		}
-
-		std::vector<kv::dd> SD = S;
-		for (int i = 0; i < n; i++) {
-			SD[i + static_cast<std::size_t>(n) * i] -= w[i];
-		}
-		const double delta = 2.0 * (fro_norm(n, n, SD.data(), n) + anorm * fro_norm(n, n, G.data(), n));
-		const double measure = fro_norm(n, n, SD.data(), n) + fro_norm(n, n, G.data(), n);
-		if (measure == 0.0 || (iter > 0 && measure >= prev * 0.95)) {
-			break;
-		}
-		prev = measure;
-
-		std::fill(E.begin(), E.end(), kv::dd(0.0));
-		for (int j = 0; j < n; j++) {
-			for (int i = 0; i < n; i++) {
-				const kv::dd gij = G[i + static_cast<std::size_t>(n) * j];
-				if (i == j) {
-					E[i + static_cast<std::size_t>(n) * j] = gij / kv::dd(2.0);
-				}
-				else {
-					const kv::dd gap = w[j] - w[i];
-					if (abs_double(gap) <= delta) {
-						E[i + static_cast<std::size_t>(n) * j] = gij / kv::dd(2.0);
-					}
-					else {
-						const kv::dd sij = S[i + static_cast<std::size_t>(n) * j];
-						E[i + static_cast<std::size_t>(n) * j] = (sij + w[j] * gij) / gap;
-					}
-				}
-			}
-		}
-		tgemm<kv::dd>('N', 'N', n, n, n, kv::dd(1.0), X, ldx, E.data(), n, kv::dd(0.0), XE.data(), n);
-		for (int j = 0; j < n; j++) {
-			for (int i = 0; i < n; i++) {
-				X[i + static_cast<std::size_t>(ldx) * j] += XE[i + static_cast<std::size_t>(n) * j];
-			}
-		}
-	}
-	return 0;
+	return refine_eigenvectors_clustered(n, Aorig.data(), Borig.data(), X, ldx, w);
 }
 
 } // namespace tlapack_dd_detail

@@ -32,7 +32,9 @@
 #ifndef VCP_PDDBLAS_HPP
 #define VCP_PDDBLAS_HPP
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <vector>
 #include <utility>
 
@@ -55,10 +57,13 @@ namespace vcp {
 			}
 			return r;
 		}
-		// Shift s of the splitting: with rho = ceil(log2(k)) the slice products
-		// summed over k terms remain exact iff 104 + rho - 2*s <= 53.
+		// Shift s of the splitting: a slice entry q = fl((a + sigma) - sigma),
+		// sigma = 2^(e+s), |a| < 2^e, is a multiple of 2^(e+s-53) (for a < 0 the
+		// sum a + sigma lies in [sigma/2, sigma)) and |q| <= 2^e. With
+		// rho = ceil(log2(k)) the slice products summed over k terms remain
+		// exact iff 106 + rho - 2*s <= 53.
 		inline int split_shift(const int k) {
-			return (51 + ceil_log2(k) + 1) / 2;
+			return (53 + ceil_log2(k) + 1) / 2;
 		}
 		// Significant bits carried by one slice
 		inline int split_bits(const int k) {
@@ -209,102 +214,334 @@ namespace vcp {
 			}
 		}
 
-		// One step of the Ogita-Aishima refinement for the symmetric (standard or
-		// generalized) eigenvalue problem. DA / DB are row-wise Ozaki splits of A
-		// and B (DB = NULL for the standard problem B = I). X (n x n, columns are
-		// approximate eigenvectors with X^T B X ~ I) and lam are updated.
+		// Frobenius norm (leading parts) of a dd array. The entries are divided
+		// by the largest absolute value before they are squared, so that the
+		// sum of squares neither overflows nor underflows.
+		static double fnorm(const std::vector< kv::dd >& A) {
+			using std::fabs;
+			double amax = 0.0;
+			for (std::size_t i = 0; i < A.size(); i++) {
+				const double a = fabs(A[i].a1);
+				if (a > amax) amax = a;
+			}
+			if (amax == 0.0) return 0.0;
+			double s = 0.0;
+			for (std::size_t i = 0; i < A.size(); i++) {
+				const double t = A[i].a1 / amax;
+				s += t * t;
+			}
+			return amax * std::sqrt(s);
+		}
+
+		// Indices 0..l-1 ordered so that lam is ascending
+		static std::vector< int > ascending_index(const std::vector< kv::dd >& lam) {
+			std::vector< int > idx(lam.size());
+			for (std::size_t i = 0; i < lam.size(); i++) {
+				idx[i] = static_cast<int>(i);
+			}
+			const kv::dd* w = lam.data();
+			std::stable_sort(idx.begin(), idx.end(), [w](const int a, const int b) { return w[a] < w[b]; });
+			return idx;
+		}
+
+		// Algorithm 1 (RefSyEv) of T. Ogita, K. Aishima, "Iterative refinement
+		// for symmetric eigenvalue decomposition II: clustered eigenvalues",
+		// Japan J. Indust. Appl. Math. 36 (2019), 435-459, for the standard or
+		// generalized problem. DA / DB are row-wise Ozaki splits of A and B
+		// (DB = NULL for the standard problem B = I), anorm = ||A||_F. X (n x l,
+		// columns are approximate eigenvectors with X^T B X ~ I) is replaced by
+		// X + X*E. lam receives the approximate eigenvalues, enorm = ||E||_F,
+		// omega the criterion of line 6 (Frobenius norms).
 		static void oa_step(const std::vector< vcp::pdblas >& DA,
-			const std::vector< vcp::pdblas >* DB,
-			std::vector< kv::dd >& X, std::vector< kv::dd >& lam, const int n) {
+			const std::vector< vcp::pdblas >* DB, const double anorm,
+			std::vector< kv::dd >& X, std::vector< kv::dd >& lam, const int n, const int l,
+			double& enorm, double& omega) {
 			using std::fabs;
 			const kv::dd dd0 = kv::dd(0.0);
-			const int nn = n * n;
+			const int nl = n * l;
+			const int ll = l * l;
 
 			std::vector< vcp::pdblas > DX;
-			pddblas_assist::split_col(X, n, n, DX);
+			pddblas_assist::split_col(X, n, l, DX);
 
 			// AX = A*X,  S = X^T * AX
-			std::vector< kv::dd > AX(nn, dd0);
-			pddblas_assist::ozaki_acc(DA, false, DX, n, n, n, AX);
+			std::vector< kv::dd > AX(nl, dd0);
+			pddblas_assist::ozaki_acc(DA, false, DX, n, l, n, AX);
 			std::vector< vcp::pdblas > DAX;
-			pddblas_assist::split_col(AX, n, n, DAX);
-			std::vector< kv::dd > S(nn, dd0);
-			pddblas_assist::ozaki_acc(DX, true, DAX, n, n, n, S);
+			pddblas_assist::split_col(AX, n, l, DAX);
+			std::vector< kv::dd > S(ll, dd0);
+			pddblas_assist::ozaki_acc(DX, true, DAX, l, l, n, S);
 
 			// G = X^T * B * X
-			std::vector< kv::dd > G(nn, dd0);
+			std::vector< kv::dd > G(ll, dd0);
 			if (DB != NULL) {
-				std::vector< kv::dd > BX(nn, dd0);
-				pddblas_assist::ozaki_acc(*DB, false, DX, n, n, n, BX);
+				std::vector< kv::dd > BX(nl, dd0);
+				pddblas_assist::ozaki_acc(*DB, false, DX, n, l, n, BX);
 				std::vector< vcp::pdblas > DBX;
-				pddblas_assist::split_col(BX, n, n, DBX);
-				pddblas_assist::ozaki_acc(DX, true, DBX, n, n, n, G);
+				pddblas_assist::split_col(BX, n, l, DBX);
+				pddblas_assist::ozaki_acc(DX, true, DBX, l, l, n, G);
 			}
 			else {
-				pddblas_assist::ozaki_acc(DX, true, DX, n, n, n, G);
+				pddblas_assist::ozaki_acc(DX, true, DX, l, l, n, G);
 			}
 
 			// lambda_i = S_ii / (X^T B X)_ii,   R = I - G
-			for (int i = 0; i < n; i++) {
-				lam[i] = S[i + n * i] / G[i + n * i];
+			lam.assign(l, dd0);
+			for (int i = 0; i < l; i++) {
+				lam[i] = S[i + l * i] / G[i + l * i];
 			}
 			std::vector< kv::dd >& R = G;
-			for (int idx = 0; idx < nn; idx++) {
+			for (int idx = 0; idx < ll; idx++) {
 				R[idx] = -R[idx];
 			}
-			for (int i = 0; i < n; i++) {
-				R[i + n * i] += kv::dd(1.0);
+			for (int i = 0; i < l; i++) {
+				R[i + l * i] += kv::dd(1.0);
 			}
 
-			// Threshold delta for nearly multiple eigenvalues
-			double normR = 0.0, offS = 0.0, lmax = 0.0;
-			for (int i = 0; i < n; i++) {
-				double s1 = 0.0, s2 = 0.0;
-				for (int j = 0; j < n; j++) {
-					s1 += fabs(R[i + n * j].a1);
-					if (i != j) s2 += fabs(S[i + n * j].a1);
-				}
-				if (s1 > normR) normR = s1;
-				if (s2 > offS) offS = s2;
-				const double al = fabs(lam[i].a1);
-				if (al > lmax) lmax = al;
+			// omega = 2 (||S - D||_F + ||A||_F ||R||_F)
+			std::vector< kv::dd > SD = S;
+			for (int i = 0; i < l; i++) {
+				SD[i + l * i] -= lam[i];
 			}
-			const double delta = 2.0 * (offS + normR * lmax);
+			omega = 2.0 * (fnorm(SD) + anorm * fnorm(R));
 
 			// E_ij = (S_ij + lambda_j R_ij)/(lambda_j - lambda_i)  (separated case)
 			// E_ij = R_ij/2                                        (otherwise)
-			std::vector< kv::dd > E(nn, dd0);
+			std::vector< kv::dd > E(ll, dd0);
 			const kv::dd half = kv::dd(0.5);
 #ifdef _OPENMP
 #ifndef VCP_MATS_NOMP
 			#pragma omp parallel for
 #endif
 #endif
-			for (int j = 0; j < n; j++) {
-				for (int i = 0; i < n; i++) {
+			for (int j = 0; j < l; j++) {
+				for (int i = 0; i < l; i++) {
 					if (i == j) {
-						E[i + n * i] = R[i + n * i] * half;
+						E[i + l * i] = R[i + l * i] * half;
 					}
 					else {
 						kv::dd d = lam[j] - lam[i];
-						if (fabs(d.a1) > delta) {
-							E[i + n * j] = (S[i + n * j] + lam[j] * R[i + n * j]) / d;
+						if (fabs(d.a1) + fabs(d.a2) > omega) {
+							E[i + l * j] = (S[i + l * j] + lam[j] * R[i + l * j]) / d;
 						}
 						else {
-							E[i + n * j] = R[i + n * j] * half;
+							E[i + l * j] = R[i + l * j] * half;
 						}
 					}
 				}
 			}
+			enorm = fnorm(E);
 
 			// X = X + X*E
 			std::vector< vcp::pdblas > DE, DXr;
-			pddblas_assist::split_col(E, n, n, DE);
-			pddblas_assist::split_row(X, n, n, DXr);
-			std::vector< kv::dd > XE(nn, dd0);
-			pddblas_assist::ozaki_acc(DXr, false, DE, n, n, n, XE);
-			for (int idx = 0; idx < nn; idx++) {
+			pddblas_assist::split_col(E, l, l, DE);
+			pddblas_assist::split_row(X, n, l, DXr);
+			std::vector< kv::dd > XE(nl, dd0);
+			pddblas_assist::ozaki_acc(DXr, false, DE, n, l, l, XE);
+			for (int idx = 0; idx < nl; idx++) {
 				X[idx] += XE[idx];
+			}
+		}
+
+		// Algorithm 2 (RefSyEvCL) of the same paper, one call. Av / Bv are the
+		// matrices (Bv = NULL for the standard problem), DA / DB their row-wise
+		// splits. X (n x n) is replaced by X'. enorm receives ||E||_F of line 2.
+		// Returns false when the algorithm returned at line 3 or line 15
+		// (improvement cannot be expected); X then holds the X' of that moment.
+		static bool oa_cluster_step(const std::vector< kv::dd >& Av, const std::vector< vcp::pdblas >& DA,
+			const std::vector< kv::dd >* Bv, const std::vector< vcp::pdblas >* DB, const double anorm,
+			std::vector< kv::dd >& X, std::vector< kv::dd >& lam, const int n, double& enorm) {
+			using std::fabs;
+			const kv::dd dd0 = kv::dd(0.0);
+			double omega = 0.0;
+			oa_step(DA, DB, anorm, X, lam, n, n, enorm, omega);   // line 2
+			if (!(enorm < 1.0)) return false;                     // line 3
+			// line 4: the index sets J_k of (27) are the runs of the ascending
+			// eigenvalues whose neighbouring differences are at most omega
+			const std::vector< int > idx = ascending_index(lam);
+			int p = 0;
+			while (p < n) {
+				int q = p;
+				while (q + 1 < n) {
+					const kv::dd d = lam[idx[q + 1]] - lam[idx[q]];
+					if (!(fabs(d.a1) + fabs(d.a2) <= omega)) break;
+					q++;
+				}
+				const int nk = q - p + 1;
+				if (nk >= 2) {
+					// line 6: V_k = X'(:, J_k)
+					std::vector< kv::dd > V(n * nk, dd0);
+					for (int c = 0; c < nk; c++) {
+						for (int i = 0; i < n; i++) {
+							V[i + n * c] = X[i + n * idx[p + c]];
+						}
+					}
+					// line 7: mu_k, line 8: A_k = A - mu_k I (Remark 3: A - mu_k B)
+					const kv::dd mu = (lam[idx[p]] + lam[idx[q]]) * kv::dd(0.5);
+					std::vector< kv::dd > Ak = Av;
+					if (Bv != NULL) {
+						for (int x = 0; x < n * n; x++) {
+							Ak[x] -= mu * (*Bv)[x];
+						}
+					}
+					else {
+						for (int i = 0; i < n; i++) {
+							Ak[i + n * i] -= mu;
+						}
+					}
+					std::vector< vcp::pdblas > DAk;
+					pddblas_assist::split_row(Ak, n, n, DAk);
+					const double anormk = fnorm(Ak);
+					// line 9: C_k = V_k^T A_k V_k, line 10: T_k = fl(C_k), line 11: W_k = eig(T_k)
+					std::vector< vcp::pdblas > DV;
+					pddblas_assist::split_col(V, n, nk, DV);
+					std::vector< kv::dd > AV(n * nk, dd0);
+					pddblas_assist::ozaki_acc(DAk, false, DV, n, nk, n, AV);
+					std::vector< vcp::pdblas > DAV;
+					pddblas_assist::split_col(AV, n, nk, DAV);
+					std::vector< kv::dd > C(nk * nk, dd0);
+					pddblas_assist::ozaki_acc(DV, true, DAV, nk, nk, n, C);
+					vcp::pdblas Td, Wd;
+					Td.zeros(nk, nk);
+					for (int j = 0; j < nk; j++) {
+						for (int i = 0; i <= j; i++) {
+							Td.v[i + nk * j] = C[i + nk * j].a1;
+							Td.v[j + nk * i] = C[i + nk * j].a1;
+						}
+					}
+					Td.eigsym(Wd);
+					// line 12: V_k = V_k W_k
+					std::vector< kv::dd > W(nk * nk);
+					for (int i = 0; i < nk * nk; i++) {
+						W[i] = kv::dd(Wd.v[i]);
+					}
+					std::vector< vcp::pdblas > DVr, DW;
+					pddblas_assist::split_row(V, n, nk, DVr);
+					pddblas_assist::split_col(W, nk, nk, DW);
+					std::vector< kv::dd > VW(n * nk, dd0);
+					pddblas_assist::ozaki_acc(DVr, false, DW, n, nk, nk, VW);
+					V.swap(VW);
+					// lines 13-17. Unlike the wording of Remark 3, B is also used here (R = I - V_k^T B V_k).
+					// In addition to the condition of line 17 the loop ends when
+					// ||E_k|| no longer decreases, and after 10 passes.
+					std::vector< kv::dd > lamk;
+					double ek = 0.0, ekprev = 0.0, omegak = 0.0;
+					for (int pass = 0; pass < 10; pass++) {
+						oa_step(DAk, DB, anormk, V, lamk, n, nk, ek, omegak);   // line 14
+						if (!(ek < 1.0)) return false;                        // line 15
+						if (ek <= enorm) break;                               // line 17
+						if (pass > 0 && !(ek < ekprev)) break;
+						ekprev = ek;
+					}
+					// line 18
+					for (int c = 0; c < nk; c++) {
+						for (int i = 0; i < n; i++) {
+							X[i + n * idx[p + c]] = V[i + n * c];
+						}
+					}
+				}
+				p = q + 1;
+			}
+			return true;
+		}
+
+		// Refinement of the eigenvectors X (n x n) of A x = lambda x (Bv = NULL)
+		// or A x = lambda B x: Algorithm 2 at most max(6, itep) times (it ends
+		// earlier when ||E|| < 2^-52 after an update, or when Algorithm 2
+		// returned without improvement), orthonormalization steps, Rayleigh
+		// quotients, ascending order.
+		static void oa_refine(const std::vector< kv::dd >& Av, const std::vector< kv::dd >* Bv,
+			std::vector< kv::dd >& X, std::vector< kv::dd >& lam, const int n, const int itep) {
+			const kv::dd dd0 = kv::dd(0.0);
+			const int nn = n * n;
+			std::vector< vcp::pdblas > DA, DBs;
+			pddblas_assist::split_row(Av, n, n, DA);
+			const std::vector< vcp::pdblas >* DB = NULL;
+			if (Bv != NULL) {
+				pddblas_assist::split_row(*Bv, n, n, DBs);
+				DB = &DBs;
+			}
+			const double anorm = fnorm(Av);
+
+			const int kmax = (itep < 6) ? 6 : itep;
+			std::vector< kv::dd > Xkeep;
+			for (int it = 0; it < kmax; it++) {
+				double enorm = 0.0;
+				const bool go_on = oa_cluster_step(Av, DA, Bv, DB, anorm, X, lam, n, enorm);
+				if (!go_on) break;
+				// the next correction would be below the unit of kv::dd
+				if (enorm < std::ldexp(1.0, -52)) break;
+			}
+
+			// Steps X = X (I + R / 2), R = I - X^T B X: formula (25) of the paper used for all pairs.
+			// Repeated (at most 4 times) until the R that was used satisfies ||R||_F <= 2^-45.
+			for (int step = 0; step < 4; step++) {
+				std::vector< vcp::pdblas > DX;
+				pddblas_assist::split_col(X, n, n, DX);
+				std::vector< kv::dd > R(nn, dd0);
+				if (DB != NULL) {
+					std::vector< kv::dd > BX(nn, dd0);
+					pddblas_assist::ozaki_acc(*DB, false, DX, n, n, n, BX);
+					std::vector< vcp::pdblas > DBX;
+					pddblas_assist::split_col(BX, n, n, DBX);
+					pddblas_assist::ozaki_acc(DX, true, DBX, n, n, n, R);
+				}
+				else {
+					pddblas_assist::ozaki_acc(DX, true, DX, n, n, n, R);
+				}
+				const kv::dd half = kv::dd(0.5);
+				for (int idx = 0; idx < nn; idx++) {
+					R[idx] = -R[idx];
+				}
+				for (int i = 0; i < n; i++) {
+					R[i + n * i] += kv::dd(1.0);
+				}
+				const double rnorm = fnorm(R);
+				for (int idx = 0; idx < nn; idx++) {
+					R[idx] = R[idx] * half;
+				}
+				std::vector< vcp::pdblas > DR, DXr;
+				pddblas_assist::split_col(R, n, n, DR);
+				pddblas_assist::split_row(X, n, n, DXr);
+				std::vector< kv::dd > XR(nn, dd0);
+				pddblas_assist::ozaki_acc(DXr, false, DR, n, n, n, XR);
+				for (int idx = 0; idx < nn; idx++) {
+					X[idx] += XR[idx];
+				}
+				if (rnorm <= std::ldexp(1.0, -45)) break;
+			}
+
+			// Rayleigh quotients of the returned X
+			{
+				std::vector< vcp::pdblas > DX;
+				pddblas_assist::split_col(X, n, n, DX);
+				std::vector< kv::dd > AX(nn, dd0), BX;
+				pddblas_assist::ozaki_acc(DA, false, DX, n, n, n, AX);
+				if (DB != NULL) {
+					BX.assign(nn, dd0);
+					pddblas_assist::ozaki_acc(*DB, false, DX, n, n, n, BX);
+				}
+				lam.assign(n, dd0);
+				for (int j = 0; j < n; j++) {
+					kv::dd num = dd0, den = dd0;
+					for (int i = 0; i < n; i++) {
+						const kv::dd x = X[i + n * j];
+						num += x * AX[i + n * j];
+						den += x * ((DB != NULL) ? BX[i + n * j] : x);
+					}
+					lam[j] = num / den;
+				}
+			}
+
+			// ascending order
+			const std::vector< int > idx = ascending_index(lam);
+			Xkeep = X;
+			const std::vector< kv::dd > lkeep = lam;
+			for (int c = 0; c < n; c++) {
+				lam[c] = lkeep[idx[c]];
+				for (int i = 0; i < n; i++) {
+					X[i + n * c] = Xkeep[i + n * idx[c]];
+				}
 			}
 		}
 
@@ -558,7 +795,9 @@ namespace vcp {
 		}
 
 		// Symmetric eigenvalue problem : dsyev in double precision via the pdblas
-		// policy, then Ogita-Aishima iterative refinement
+		// policy, then Ogita-Aishima iterative refinement (with the treatment of
+		// clustered eigenvalues); itep is an upper bound of the number of
+		// refinement steps (at least 6 are allowed)
 		void eigsym(int itep = 4) override {
 			pddblas V;
 			this->eigsym(V, itep);
@@ -583,14 +822,7 @@ namespace vcp {
 				lam[i] = kv::dd(Ad.v[i + an * i]);
 			}
 
-			std::vector< vcp::pdblas > DA;
-			pddblas_assist::split_row(this->v, an, an, DA);
-
-			// at least 2 refinement steps to reach full dd accuracy
-			const int kmax = (itep < 2) ? 2 : itep;
-			for (int it = 0; it < kmax; it++) {
-				oa_step(DA, NULL, X, lam, an);
-			}
+			oa_refine(this->v, NULL, X, lam, an, itep);
 
 			V.zeros(an, an);
 			V.v = std::move(X);
@@ -636,14 +868,7 @@ namespace vcp {
 				lam[i] = kv::dd(Ad.v[i + an * i]);
 			}
 
-			std::vector< vcp::pdblas > DA, DB;
-			pddblas_assist::split_row(this->v, an, an, DA);
-			pddblas_assist::split_row(B.v, an, an, DB);
-
-			const int kmax = (itep < 2) ? 2 : itep;
-			for (int it = 0; it < kmax; it++) {
-				oa_step(DA, &DB, X, lam, an);
-			}
+			oa_refine(this->v, &B.v, X, lam, an, itep);
 
 			V.zeros(an, an);
 			V.v = std::move(X);

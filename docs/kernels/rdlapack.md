@@ -3,7 +3,8 @@
 `rdlapack` は，reference LAPACK 3.12.1 (BSD license, <https://www.netlib.org/lapack/>)
 の double 精度実数 routine を，BLAS 呼び出しを `rdblas` に置き換えながら C++ へ
 移植した header-only library です．`rmatmul` / `rdblas` と同様に実験的な位置付けで，
-`vcp::matrix` からは自動では使われません．
+`vcp::matrix` からは，`-DUSE_VCP_LAPACK` を指定したときに `vcp::pdblas` などのポリシーが
+`dlapack` を通じて使います (指定しなければ使われません)．
 
 ```cpp
 #include <vcp/vlapack/rdlapack.hpp>
@@ -93,13 +94,14 @@ FP 演算を含まない補助関数 (`dlamch`, `dlaset`, `dlacpy`, `dlaswp`,
 `rdstedc(compz, n, d, e, Z, ldz, rounding_mode)` の引数は `rdsteqr` と同じで，n が 25 以下の
 問題と部分問題は `rdsteqr` で解きます．`rdsygvd` は，固有値計算が失敗したとき (返り値 > 0) は
 固有 vector の逆変換を行いません (reference の `dsygvd` と同じ)．
-丸めモード指定つきの行列積は通常の BLAS より遅いため，rdlapack では分割統治法が QR 法
+丸めモード指定つきの行列積は通常の BLAS より遅いことがあるため，rdlapack では分割統治法が QR 法
 (`rdsyev`・`rdsygv`) より遅いことがあります．
 
 block size は reference の `ilaenv` の既定値 (GETRF/POTRF/SYTRF 64, QR/SYTRD/
 GEBRD/GEHRD 系 32 など) を `vblas_rdlapack_detail::ilaenv` に再現しています．
 O(N^3) 部分は rdblas (内部は rmatmul: AVX-512 / AVX2+FMA / NEON / no-SIMD を
-compile 時に自動選択) が実行します．
+compile 時に自動選択) が実行します．x86 では，SIMD を有効にする option (`-mavx512f`・
+`-mavx2 -mfma`・`-march=native` など) を付けずに compile すると no-SIMD の実装が使われます．
 
 ## reference LAPACK との相違点
 
@@ -111,7 +113,7 @@ compile 時に自動選択) が実行します．
 - `rdgesvd` は基本経路 (A を直接二重対角化) のみで，m ≫ n / n ≫ m 用の
   QR/LQ 前処理経路 (`mnthr` 分岐) は持ちません (演算量のみ異なる)．
 - `rdhseqr` は全 size で `rdlahqr` (double-shift QR) を使います
-  (`dlaqr0` 系 multishift は未移植)．大規模行列では reference より遅くなります．
+  (`dlaqr0` 系 multishift は未移植)．大規模行列では reference より遅くなりやすいです．
 - `rdtrevc` は `howmny = 'A' / 'B'` のみ対応 (`SELECT` 指定は未対応)．
 - `rdlasyf` の `DGEMMTR` (LAPACK 3.12 で導入) は LAPACK 3.11 の dlasyf と同じ
   blocked 更新で代替しています．
@@ -134,21 +136,11 @@ vlapack/   LAPACK 層 (本 library)
 - `rdlapack_aux.hpp` — 補助 routine (Householder/Givens/norm/scale/2x2 固有・特異値)
 - `rdlapack_lu.hpp` / `rdlapack_chol.hpp` / `rdlapack_qr.hpp` — LU / Cholesky / QR 系
 - `rdlapack_eig.hpp` / `rdlapack_svd.hpp` / `rdlapack_geev.hpp` — 固有値 / SVD / 非対称固有値
+- `rdlapack_eigdc.hpp` — 対称固有値の分割統治法 (`rdstedc`・`rdsyevd`・`rdsygvd`)
 - `rdlapack_sy.hpp` / `rdlapack_band.hpp` — Bunch-Kaufman・一般化固有値 / 帯行列
 
 vblas 側の `rdblas*.hpp` の公開関数はすべて `namespace vcp { }` で囲まれています
 (`rmatmul*.hpp` は内部実装であり名前空間の外に置かれています)．
-
-## テスト
-
-主要 driver について
-(1) 最近点丸めでの残差と MKL LAPACKE との比較，
-(2) 上向き/下向きで結果が要素レベルで異なること (丸め変更が全演算に効いている)，
-(3) 呼び出し時の丸めモードに依らず同じ `rounding_mode` 指定で bit 同一の結果に
-なること (ambient 独立性) と呼び出し後の丸めモード復元，を検証済み．
-
-no-SIMD fallback は `-mavx512f -DVCP_USE_AVX512` を外して compile します
-(AVX-512 / no-SIMD の両 backend で ALL PASS を確認済み)．
 
 ## License
 
