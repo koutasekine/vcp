@@ -147,6 +147,7 @@ namespace spmats_ldl_shift_detail {
 		r.nnz_L_static        = _Index(0);
 		r.n_zero_skips        = _Index(0);
 		r.out_of_panel_at     = _Index(-1);
+		r.breakdown_at        = _Index(-1);
 		r.gemm_call_count     = 0;
 		r.gemm_time_ns        = 0;
 		r.growth_log2         = 0;

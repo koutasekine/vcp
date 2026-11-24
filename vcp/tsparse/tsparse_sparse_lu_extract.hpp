@@ -39,10 +39,9 @@
 //         exactly like the solve dispatch.  storage_kind_extracted records
 //         which route produced the output.
 //   - equilibrated factors (Dr or Dc non-empty; produced by
-//     equilibration=true or pivoting=static_mc64 on the GP path) ->
+//     equilibration=true on the GP path) ->
 //     unsupported_options (the scaled extended form P Dr A Dc Q = L U is a
-//     future addition).  The MF7 native-MC64 path is matching-only (empty
-//     Dr/Dc) and extracts fine.
+//     future addition).
 //   - status priority: invalid_factorization > unsupported_options >
 //     unsupported_storage > extraction.
 //   - output CSC columns are sorted ascending by row index; exact zeros in

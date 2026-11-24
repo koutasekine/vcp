@@ -408,7 +408,10 @@ static typename vcp::tsparse_scalar::real_type<_T>::type
 frobenius_norm_value_(const spmats<_T,_Index>& A)
 {
     typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    spmats<_T,_Index> C = A.as_csr();
+    const spmats<_T,_Index>* Cp; spmats<_T,_Index> Cc_storage;
+    if (A.is_finalized() && A.format() == vcp::sparse_csr) { Cp = &A; }
+    else { Cc_storage = A.as_csr(); Cp = &Cc_storage; }
+    const spmats<_T,_Index>& C = *Cp;
     scalar_real_type s(0);
     const std::vector<_T>& val = C.values();
     for (std::size_t i = 0; i < val.size(); i++) {
@@ -884,6 +887,25 @@ static void validate_eig_input_(const spmats<_T,_Index>& A, const char* routine)
 {
     if (A.rowsize() != A.columnsize())
         vcp::throw_error<vcp::dimension_error>(routine, ": matrix must be square");
+}
+
+// ---------------------------------------------------------------------------
+// normalize_eig_result_counts_: the count fields describe the returned arrays.
+//   returned_count         = eigenvalues.size()
+//   returned_complex_count = entries of eigenvalues_imag that are not zero
+//   returned_real_count    = returned_count - returned_complex_count
+// ---------------------------------------------------------------------------
+template <typename _T>
+static eig_result<_T> normalize_eig_result_counts_(eig_result<_T> result)
+{
+    std::size_t complex_entries = 0;
+    for (std::size_t i = 0; i < result.eigenvalues_imag.size(); i++) {
+        if (!(result.eigenvalues_imag[i] == _T(0))) complex_entries++;
+    }
+    result.returned_count = result.eigenvalues.size();
+    result.returned_complex_count = complex_entries;
+    result.returned_real_count = result.returned_count - complex_entries;
+    return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -2512,7 +2534,7 @@ static eig_result<_T> shift_invert_lanczos_eigs_(const spmats<_T,_Index>& self,
                 }
             } pv_fn = {ilu_ptr};
             auto gr = vcp::tsparse_factorization::gmres_solve<_T, av, pv>(
-                av_fn, pv_fn, x, inner_max / 10 + 1, inner_tol, std::min(nn, inner_max));
+                av_fn, pv_fn, x, (inner_max / 10 + 1) * std::min(nn, inner_max), inner_tol, std::min(nn, inner_max));
             (*solve_count)++;
             (*iteration_count) += gr.iterations;
             if (gr.residual_norm > *max_inner_residual) *max_inner_residual = gr.residual_norm;
@@ -2651,7 +2673,7 @@ static eig_result<_T> shift_invert_arnoldi_eigs_(const spmats<_T,_Index>& self,
                 }
             } pv_fn = {ilu_ptr};
             auto gr = vcp::tsparse_factorization::gmres_solve<_T, av, pv>(
-                av_fn, pv_fn, x, inner_max / 10 + 1, inner_tol, std::min(nn, inner_max));
+                av_fn, pv_fn, x, (inner_max / 10 + 1) * std::min(nn, inner_max), inner_tol, std::min(nn, inner_max));
             (*solve_count)++;
             (*iteration_count) += gr.iterations;
             if (gr.residual_norm > *max_inner_residual) *max_inner_residual = gr.residual_norm;
@@ -3382,7 +3404,7 @@ static eig_result<_T> shift_invert_lanczos_eigs_with_prec_(
             } pv_fn = { prec_ptr, &pf, &pm };
             typedef vcp::tsparse_factorization::gmres_result<_T, AV, PV> GR;
             GR gr = vcp::tsparse_factorization::gmres_solve<_T, AV, PV>(
-                av_fn, pv_fn, x, imax / 10 + 1, itol, std::min(nn, imax), true);
+                av_fn, pv_fn, x, (imax / 10 + 1) * std::min(nn, imax), itol, std::min(nn, imax), true);
             (*sc)++;
             (*ic) += gr.iterations;
             if (gr.residual_norm > *mr) *mr = gr.residual_norm;
@@ -3512,7 +3534,7 @@ static eig_result<_T> shift_invert_arnoldi_eigs_with_prec_(
             } pv_fn = { prec_ptr, &pf, &pm };
             typedef vcp::tsparse_factorization::gmres_result<_T, AV, PV> GR;
             GR gr = vcp::tsparse_factorization::gmres_solve<_T, AV, PV>(
-                av_fn, pv_fn, x, imax / 10 + 1, itol, std::min(nn, imax), true);
+                av_fn, pv_fn, x, (imax / 10 + 1) * std::min(nn, imax), itol, std::min(nn, imax), true);
             (*sc)++;
             (*ic) += gr.iterations;
             if (gr.residual_norm > *mr) *mr = gr.residual_norm;
@@ -3724,7 +3746,7 @@ static eig_result<_T> generalized_shift_invert_arnoldi_eigs_with_prec_(
             const std::size_t act_restart = (irestart == 0) ? std::min(nn, std::size_t(30)) : irestart;
             const std::size_t act_max = (imax == 0) ? (act_restart + 1) : imax;
             typedef vcp::tsparse_factorization::gmres_result<_T, AV, PV> GR;
-            GR gr = vcp::tsparse_factorization::gmres_solve<_T, AV, PV>(av_fn, pv_fn, rhs, act_max, itol, act_restart, true);
+            GR gr = vcp::tsparse_factorization::gmres_solve<_T, AV, PV>(av_fn, pv_fn, rhs, act_max * std::min(act_restart, nn), itol, act_restart, true);
             (*sc)++;
             (*ic) += gr.iterations;
             if (gr.residual_norm > *mr) *mr = gr.residual_norm;
@@ -4577,7 +4599,7 @@ eig_result<_T> spmats<_T,_Index>::policy_eigs_with_info(
 {
     const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     if (!A.is_finalized()) A.finalize();
-    return policy_eigs_with_info_impl(k, opt);
+    return normalize_eig_result_counts_<_T>(policy_eigs_with_info_impl(k, opt));
 }
 
 template <typename _T, typename _Index>
@@ -4598,7 +4620,7 @@ eig_result<_T> spmats<_T,_Index>::policy_eigs_with_info(
 {
     const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     if (!A.is_finalized()) A.finalize();
-    return vcp::policy_eigs_with_info<_T,_Index,Prec>(A, k, opt, M);
+    return normalize_eig_result_counts_<_T>(vcp::policy_eigs_with_info<_T,_Index,Prec>(A, k, opt, M));
 }
 
 template <typename _T, typename _Index>
@@ -4610,7 +4632,7 @@ eig_result<_T> spmats<_T,_Index>::policy_generalized_eigs_with_info(
     const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     if (!A.is_finalized()) A.finalize();
     if (!B.is_finalized()) B.finalize();
-    return policy_generalized_eigs_with_info_impl(B, k, opt);
+    return normalize_eig_result_counts_<_T>(policy_generalized_eigs_with_info_impl(B, k, opt));
 }
 
 template <typename _T, typename _Index>
@@ -4634,51 +4656,21 @@ eig_result<_T> spmats<_T,_Index>::policy_generalized_eigs_with_info(
     const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
     if (!A.is_finalized()) A.finalize();
     if (!B.is_finalized()) B.finalize();
-    return vcp::policy_generalized_eigs_with_info<_T,_Index,Prec>(A, B, k, opt, M);
+    return normalize_eig_result_counts_<_T>(vcp::policy_generalized_eigs_with_info<_T,_Index,Prec>(A, B, k, opt, M));
 }
 
 // ===========================================================================
-// Strict policy methods: policy_eig, policy_eigs, policy_generalized_eig,
-// policy_generalized_eigs (and preconditioner overloads).
+// Strict policy methods: policy_eigs, policy_generalized_eigs (and
+// preconditioner overloads).
 // All convergence/count checking lives here, not in spmatrix.hpp.
 //
-// policy_eig / policy_eigs / policy_generalized_eig / policy_generalized_eigs
-// (no Preconditioner) are NVI outers too: they finalize their spmats
-// arguments and delegate to a virtual _impl, even though their _impl bodies
-// only call back into policy_eigs_with_info / policy_generalized_eigs_with_info
-// (already finalize-safe on their own). This keeps all six eigs entry points
-// independently safe and overridable, per spmats_finalize_policy.md §3.
+// policy_eigs / policy_generalized_eigs (no Preconditioner) are NVI outers
+// too: they finalize their spmats arguments and delegate to a virtual _impl,
+// even though their _impl bodies only call back into policy_eigs_with_info /
+// policy_generalized_eigs_with_info (already finalize-safe on their own).
+// This keeps all four eigs entry points independently safe and overridable,
+// per spmats_finalize_policy.md §3.
 // ===========================================================================
-
-template <typename _T, typename _Index>
-eig_result<_T> spmats<_T,_Index>::policy_eig(
-    const eig_options<_T>& opt) const
-{
-    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
-    if (!A.is_finalized()) A.finalize();
-    return policy_eig_impl(opt);
-}
-
-template <typename _T, typename _Index>
-eig_result<_T> spmats<_T,_Index>::policy_eig_impl(
-    const eig_options<_T>& opt) const
-{
-    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
-    typedef typename vcp::tsparse_scalar::real_type<_T>::type scalar_real_type;
-    // default policy: full dense eig is only for real scalar types
-    if (spmatrix_is_complex<_T>::value)
-        vcp::throw_error<vcp::domain_error>("spmats::policy_eig: complex scalar is not supported for full dense eig; use eigs_with_info for complex Hermitian matrices");
-    if (A.rowsize() != A.columnsize())
-        vcp::throw_error<vcp::dimension_error>("spmats::policy_eig: matrix must be square");
-    if (opt.max_iter == 0 || opt.tol <= scalar_real_type(0))
-        vcp::throw_error<vcp::invalid_argument>("spmats::policy_eig: invalid options (max_iter or tol)");
-    if (opt.method != eig_solver_method::dense_fallback_explicit)
-        vcp::throw_error<vcp::invalid_argument>("spmats::policy_eig: full dense eig requires dense_fallback_explicit method");
-    eig_result<_T> result = policy_eigs_with_info(static_cast<std::size_t>(A.rowsize()), opt);
-    if (!result.converged)
-        vcp::throw_error<vcp::state_error>("spmats::policy_eig: eigensolver did not converge");
-    return result;
-}
 
 template <typename _T, typename _Index>
 std::vector<_T> spmats<_T,_Index>::policy_eigs(
@@ -4719,28 +4711,6 @@ std::vector<_T> spmats<_T,_Index>::policy_eigs(
     if (result.returned_real_count < k)
         vcp::throw_error<vcp::state_error>("spmats::policy_eigs(with preconditioner): insufficient eigenvalues returned");
     return result.eigenvalues;
-}
-
-template <typename _T, typename _Index>
-eig_result<_T> spmats<_T,_Index>::policy_generalized_eig(
-    const spmats<_T,_Index>& B,
-    std::size_t k, const eig_options<_T>& opt) const
-{
-    const spmats<_T,_Index>& A = *this;   // WFIX-2: subject is *this
-    if (!A.is_finalized()) A.finalize();
-    if (!B.is_finalized()) B.finalize();
-    return policy_generalized_eig_impl(B, k, opt);
-}
-
-template <typename _T, typename _Index>
-eig_result<_T> spmats<_T,_Index>::policy_generalized_eig_impl(
-    const spmats<_T,_Index>& B,
-    std::size_t k, const eig_options<_T>& opt) const
-{
-    eig_result<_T> result = policy_generalized_eigs_with_info(B, k, opt);
-    if (!result.converged)
-        vcp::throw_error<vcp::state_error>("spmats::policy_generalized_eig: eigensolver did not converge");
-    return result;
 }
 
 template <typename _T, typename _Index>

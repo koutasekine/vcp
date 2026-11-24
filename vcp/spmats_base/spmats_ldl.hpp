@@ -57,6 +57,7 @@ struct ldl_result {
     long long gemm_time_ns;
     int  growth_log2;
     bool growth_valid;
+    Index breakdown_at;                 // static_pivot_breakdown column; -1 = none
 
     ldl_result()
         : status(sparse_ldl_status::internal_error),
@@ -72,7 +73,8 @@ struct ldl_result {
           n_boundary_splits(Index(0)), nnz_L_static(Index(0)),
           n_zero_skips(Index(0)), out_of_panel_at(Index(-1)),
           gemm_call_count(0), gemm_time_ns(0),
-          growth_log2(0), growth_valid(false) {}
+          growth_log2(0), growth_valid(false),
+          breakdown_at(Index(-1)) {}
 };
 
 // ---------------------------------------------------------------------------

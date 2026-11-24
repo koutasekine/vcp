@@ -198,7 +198,6 @@ baseline_sparse_gp_lu_factorize(
     std::vector<Index> L_row_ind_buf, U_row_ind_buf;
     std::vector<T>     L_val_buf,     U_val_buf;
 
-    const real_type threshold        = opt.pivot_threshold;
     const real_type abs_tol          = opt.absolute_pivot_tolerance;
     const bool      do_partial_pivot =
         (opt.pivoting == sparse_lu_pivoting::threshold_partial);
@@ -299,10 +298,9 @@ baseline_sparse_gp_lu_factorize(
 
         // ------------------------------------------------------------------
         // Step 4: Pivot acceptability check (SLU-3 policy)
-        //   pivot is the argmax, so threshold condition is trivially satisfied;
-        //   only the absolute_tol rejection can fire here.
+        //   pivot is the column maximum, so the check is absolute_tol only.
         // ------------------------------------------------------------------
-        if (!sparse_lu_is_acceptable_pivot(pivot_val, pivot_val, threshold, abs_tol)) {
+        if (!sparse_lu_is_acceptable_pivot(pivot_val, abs_tol)) {
             result.success = false;
             result.status  = sparse_lu_status::numerical_singularity;
             for (std::size_t pi = 0u; pi < pattern.size(); ++pi)
@@ -511,7 +509,6 @@ baseline_reference_lu_factorize(
 
     std::vector<Index> row_perm = sparse_lu_identity_permutation(n);
 
-    const real_type threshold = opt.pivot_threshold;
     const real_type abs_tol   = opt.absolute_pivot_tolerance;
     const bool do_partial_pivot =
         (opt.pivoting == sparse_lu_pivoting::threshold_partial);
@@ -539,8 +536,7 @@ baseline_reference_lu_factorize(
 
         const T pivot_val = col_max_val;
 
-        if (!sparse_lu_is_acceptable_pivot(pivot_val, col_max_val,
-                                           threshold, abs_tol)) {
+        if (!sparse_lu_is_acceptable_pivot(pivot_val, abs_tol)) {
             result.success = false;
             result.status  = sparse_lu_status::numerical_singularity;
             return result;

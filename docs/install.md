@@ -259,22 +259,24 @@ include した翻訳単位だけです。これらのライブラリのライセ
 ## 推奨する基本パッケージ
 
 VCP Library 本体はヘッダを配置するだけで利用できますが、実際の数値計算では
-開発環境、Boost、GMP、MPFR を入れておくと便利です。
+開発環境、Boost、GMP、MPFR、BLAS/LAPACK、SuiteSparse、ARPACK-NG を入れておくと便利です。
 
 Ubuntu の例:
 
 ```bash
-sudo apt install build-essential libboost-all-dev libgmp-dev libmpfr-dev
+sudo apt install build-essential libboost-all-dev libgmp-dev libmpfr-dev liblapack-dev libsuitesparse-dev libarpack2-dev
 ```
 
 Rocky Linux などの Red Hat 系 Linux の例:
 
 ```bash
 sudo dnf groupinstall "Development Tools" -y
-sudo dnf install boost-devel -y
-sudo dnf install gmp-devel -y
-sudo dnf install mpfr-devel -y
+sudo dnf install dnf-plugins-core epel-release -y
+sudo dnf config-manager --set-enabled crb
+sudo dnf install boost-devel gmp-devel mpfr-devel lapack-devel suitesparse-devel arpack-devel -y
 ```
+
+`lapack-devel` と `suitesparse-devel` は CRB、`arpack-devel` は EPEL にあるので、先に両方を有効にします。
 
 Ubuntu 22.04 の Boost 1.74 など古い Boost は、uBLAS が C++20 に対応していないため、
 kv を使うコードを `-std=c++20` でコンパイルできないことがあります。その場合は
@@ -284,4 +286,4 @@ BLAS/LAPACK、Intel MKL、OpenBLAS、OpenMP の設定例は
 [blas_build.md](blas_build.md) を参照してください。
 
 旧 `installer/` スクリプトについては
-[legacy_installers.md](legacy_installers.md) にメモを残しています。
+[legacy/legacy_installers.md](legacy/legacy_installers.md) にメモを残しています。

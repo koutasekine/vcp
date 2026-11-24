@@ -886,6 +886,19 @@ inline int tsygv<kv::dd>(const int itype, const char jobz, const char uplo, cons
 	return rinfo != 0 ? rinfo : cinfo;
 }
 
+// Same computation as tsyev<kv::dd> / tsygv<kv::dd>: the double approximation
+// (divide and conquer with eigenvectors) followed by the refinement in kv::dd.
+template <>
+inline int tsyevd<kv::dd>(const char jobz, const char uplo, const int n, kv::dd* A, const int lda, kv::dd* w) {
+	return tsyev<kv::dd>(jobz, uplo, n, A, lda, w);
+}
+
+template <>
+inline int tsygvd<kv::dd>(const int itype, const char jobz, const char uplo, const int n,
+	kv::dd* A, const int lda, kv::dd* B, const int ldb, kv::dd* w) {
+	return tsygv<kv::dd>(itype, jobz, uplo, n, A, lda, B, ldb, w);
+}
+
 } // namespace vcp
 
 #endif // TLAPACK_TLAPACK_DD_HPP

@@ -83,9 +83,18 @@ FP 演算を含まない補助関数 (`dlamch`, `dlaset`, `dlacpy`, `dlaswp`,
 | QR / LQ / QL | — | `rdgeqr2` `rdgeqrf` `rdgelq2` `rdgelqf` `rdorg2r` `rdorgqr` `rdorgl2` `rdorglq` `rdorg2l` `rdorgql` `rdorm2r` `rdormqr` `rdorml2` `rdormlq` `rdorm2l` `rdormql` |
 | 対称固有値 | `rdsyev` | `rdsytd2` `rdlatrd` `rdsytrd` `rdorgtr` `rdormtr` `rdsterf` `rdsteqr` |
 | 一般化対称固有値 | `rdsygv` | `rdsygs2` `rdsygst` |
+| 対称固有値 (分割統治法) | `rdsyevd` `rdsygvd` | `rdstedc` `rdlaed0` `rdlaed1` `rdlaed2` `rdlaed3` `rdlaed4` `rdlaed5` `rdlaed6` `rdlaed7` `rdlaed8` `rdlaed9` `rdlaeda` / `dlamrg` |
 | 非対称固有値 | `rdgeev` | `rdgebal` `rdgebak` `rdgehd2` `rdlahr2` `rdgehrd` `rdorghr` `rdlahqr` `rdhseqr` `rdlaln2` `rdtrevc` |
 | 特異値分解 | `rdgesvd` | `rdgebd2` `rdlabrd` `rdgebrd` `rdorgbr` `rdormbr` `rdbdsqr` |
 | 補助 | — | `rdlassq` `rdlapy2` `rdlapy3` `rdladiv` `rdlartg` `rdlarfg` `rdlarf` `rdlarf1f` `rdlarf1l` `rdlarft` `rdlarfb` `rdlascl` `rdlasr` `rdlae2` `rdlaev2` `rdlas2` `rdlasv2` `rdlanv2` `rdlange` `rdlangb` `rdlansy` `rdlansb` `rdlanst` / `dlamch` `dlaset` `dlacpy` `dlaswp` `dlasrt` `iladlr` `iladlc` |
+
+`rdsyevd`・`rdsygvd` は，固有 vector を分割統治法 (`rdstedc`) で求める driver です
+(引数は `rdsyev`・`rdsygv` と同じ．固有値だけのときは `rdsyev`・`rdsygv` と同じく `rdsterf`)．
+`rdstedc(compz, n, d, e, Z, ldz, rounding_mode)` の引数は `rdsteqr` と同じで，n が 25 以下の
+問題と部分問題は `rdsteqr` で解きます．`rdsygvd` は，固有値計算が失敗したとき (返り値 > 0) は
+固有 vector の逆変換を行いません (reference の `dsygvd` と同じ)．
+丸めモード指定つきの行列積は通常の BLAS より遅いため，rdlapack では分割統治法が QR 法
+(`rdsyev`・`rdsygv`) より遅いことがあります．
 
 block size は reference の `ilaenv` の既定値 (GETRF/POTRF/SYTRF 64, QR/SYTRD/
 GEBRD/GEHRD 系 32 など) を `vblas_rdlapack_detail::ilaenv` に再現しています．

@@ -321,7 +321,7 @@ gmres_result<T, ApplyA, ApplyPrec> gmres_solve(
 	}
 	R tol_eff = tol;
 
-	for (std::size_t outer = 0; outer < max_iter && !result.converged; outer++) {
+	for (std::size_t outer = 0; result.iterations < max_iter && !result.converged; outer++) {
 		// Compute residual r = b - A x
 		std::vector<T> Ax(n, T(0));
 		apply_A(result.x, Ax);
@@ -347,7 +347,7 @@ gmres_result<T, ApplyA, ApplyPrec> gmres_solve(
 		for (std::size_t i = 0; i < n; i++) V[0][i] = z[i] / T(beta);
 
 		std::size_t k = 0;
-		for (; k < m; k++) {
+		for (; k < m && result.iterations < max_iter; k++) {
 			std::vector<T> w(n), wz(n);
 			apply_A(V[k], w);
 			apply_prec(w, wz);
@@ -380,6 +380,7 @@ gmres_result<T, ApplyA, ApplyPrec> gmres_solve(
 			result.residual_norm = tsparse_scalar::abs_value(g[k+1]);
 			if (result.residual_norm <= tol_eff) { k++; result.converged = true; break; }
 		}
+		if (k == 0) break;
 		// Back substitution for H(1:k,1:k) y = g(1:k)
 		std::vector<T> y(k, T(0));
 		for (std::size_t ii = 0; ii < k; ii++) {

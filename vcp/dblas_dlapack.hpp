@@ -208,10 +208,14 @@ extern "C" {
 	void dsterf_(const int*, double*, double*, int*);
 	void dsteqr_(const char*, const int*, double*, double*, double*, const int*, double*, int*);
 	void dsyev_(const char*, const char*, const int*, double*, const int*, double*, double*, const int*, int*);
+	void dsyevd_(const char*, const char*, const int*, double*, const int*, double*,
+		double*, const int*, int*, const int*, int*);
 	void dsygs2_(const int*, const char*, const int*, double*, const int*, const double*, const int*, int*);
 	void dsygst_(const int*, const char*, const int*, double*, const int*, const double*, const int*, int*);
 	void dsygv_(const int*, const char*, const char*, const int*, double*, const int*,
 		double*, const int*, double*, double*, const int*, int*);
+	void dsygvd_(const int*, const char*, const char*, const int*, double*, const int*,
+		double*, const int*, double*, double*, const int*, int*, const int*, int*);
 
 	void dgebd2_(const int*, const int*, double*, const int*, double*, double*, double*, double*, double*, int*);
 	void dgebrd_(const int*, const int*, double*, const int*, double*, double*, double*,

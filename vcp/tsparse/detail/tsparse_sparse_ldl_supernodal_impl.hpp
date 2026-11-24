@@ -219,6 +219,7 @@ void sparse_ldl_supernodal_factorize(
     res.first_zero_pivot = Index(-1);
     res.inconclusive_at = Index(-1);
     res.out_of_panel_at = Index(-1);
+    res.breakdown_at = Index(-1);
     res.n_zero_skips = Index(0);
     res.n_boundary_splits = Index(0);
     res.nnz_L = Index(0);
@@ -356,9 +357,10 @@ void sparse_ldl_supernodal_factorize(
     bool any_zero_pivot = false;
     bool stopped_inconclusive = false;
     bool stopped_out_of_panel = false;
+    bool stopped_breakdown = false;
 
     for (Index s = Index(0); s < nsup; ++s) {
-        if (stopped_inconclusive || stopped_out_of_panel) break;
+        if (stopped_inconclusive || stopped_out_of_panel || stopped_breakdown) break;
         const std::size_t ss = static_cast<std::size_t>(s);
         const Index pa = sn_c0[ss];
         const Index pb = sn_c1[ss];
@@ -566,6 +568,29 @@ void sparse_ldl_supernodal_factorize(
                     }
                     ++res.n_pivots_1x1;
                 } else if (absd <= opt.zero_pivot_tol) {
+                    // Certified zero pivot: same rule as the baseline static
+                    // kernel.  Skip only when every entry below the diagonal
+                    // (updated values) is a certified zero; a certified
+                    // nonzero stops with static_pivot_breakdown, an entry that
+                    // is neither stops with inconclusive_pivot_test.
+                    bool below_nonzero = false;
+                    bool below_uncertain = false;
+                    for (std::size_t p = q + 1u; p < m; ++p) {
+                        const R av = abs(P[p + q * m]);
+                        if (av > opt.zero_pivot_tol) { below_nonzero = true; }
+                        else if (av <= opt.zero_pivot_tol) { /* certified zero */ }
+                        else { below_uncertain = true; }
+                    }
+                    if (below_nonzero) {
+                        res.breakdown_at = j;
+                        stopped_breakdown = true;
+                        break;
+                    }
+                    if (below_uncertain) {
+                        res.inconclusive_at = j;
+                        stopped_inconclusive = true;
+                        break;
+                    }
                     P[q + q * m] = T(1);
                     for (std::size_t p = q + 1u; p < m; ++p) P[p + q * m] = T(0);
                     if (!any_zero_pivot) {
@@ -860,7 +885,7 @@ void sparse_ldl_supernodal_factorize(
             }
         }
 
-        if (stopped_inconclusive || stopped_out_of_panel) break;
+        if (stopped_inconclusive || stopped_out_of_panel || stopped_breakdown) break;
 
         // ---- register this supernode as a future descendant.  After a split
         // its first row is the carried column j, whose update was already
@@ -897,6 +922,10 @@ void sparse_ldl_supernodal_factorize(
         res.D_diag.clear(); res.D_sub.clear(); res.D_block2.clear();
         res.perm.clear();
         res.status = sparse_ldl_status::pivot_out_of_panel;
+        return;
+    }
+    if (stopped_breakdown) {
+        res.status = sparse_ldl_status::static_pivot_breakdown;
         return;
     }
     if (stopped_inconclusive) {

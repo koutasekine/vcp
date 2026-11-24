@@ -102,7 +102,9 @@ wrapper は計算を持たず，次の変換のみを行います:
 4. **WORK/LWORK**: 作業領域は rdlapack が内部確保するため WORK は使用しない．
    `LWORK = -1` (workspace query) のときは計算せず推奨 size を `WORK(1)` に
    返す．それ以外の LWORK の値は**検査せず無視**する (LAPACK は不足時に
-   INFO < 0 を返すが，dlapack では不足という概念がない)
+   INFO < 0 を返すが，dlapack では不足という概念がない)．
+   `dsyevd_`・`dsygvd_`・`dstedc_` は `LWORK = -1` または `LIWORK = -1` のとき，
+   reference LAPACK と同じ長さを `WORK(1)`・`IWORK(1)` に返す
 5. **引数 error**: rdlapack が投げる `vcp::invalid_argument` を catch して
    `INFO = -1` に変換する (LAPACK と異なり，どの引数が不正かは特定しない)．
    `INFO > 0` (特異・非収束等) は LAPACK と同じ意味
@@ -110,7 +112,7 @@ wrapper は計算を持たず，次の変換のみを行います:
    `VLAPACK_DLAPACK_EMIT_SYMBOLS` を定義して include する
    (`__attribute__((used))` 付きの table で全 symbol を weak 発行)
 
-## 提供 routine (78)
+## 提供 routine (81)
 
 rdlapack が提供する routine の Fortran 互換版です:
 
@@ -121,7 +123,7 @@ rdlapack が提供する routine の Fortran 互換版です:
 | 対称不定値 | `dsysv_` `dsytf2_` `dsytrf_` `dsytrs_` |
 | 帯 | `dgbsv_` `dgbtf2_` `dgbtrf_` `dgbtrs_` `dpbsv_` `dpbtf2_` `dpbtrf_` `dpbtrs_` |
 | QR/LQ/QL/最小二乗 | `dgels_` `dgeqr2_` `dgeqrf_` `dgelq2_` `dgelqf_` `dorgqr_` `dorglq_` `dorgql_` `dormqr_` `dormlq_` `dormql_` |
-| 対称固有値 | `dsyev_` `dsytd2_` `dsytrd_` `dorgtr_` `dormtr_` `dsterf_` `dsteqr_` `dsygs2_` `dsygst_` `dsygv_` |
+| 対称固有値 | `dsyev_` `dsyevd_` `dsytd2_` `dsytrd_` `dorgtr_` `dormtr_` `dsterf_` `dsteqr_` `dstedc_` `dsygs2_` `dsygst_` `dsygv_` `dsygvd_` |
 | SVD | `dgesvd_` `dgebd2_` `dgebrd_` `dorgbr_` `dormbr_` `dbdsqr_` |
 | 非対称固有値 | `dgeev_` `dgebal_` `dgebak_` `dgehd2_` `dgehrd_` `dorghr_` `dhseqr_` `dtrevc_` (HOWMNY='A'/'B' のみ) |
 | 補助 | `dlamch_` `dlapy2_` `dlapy3_` `dlassq_` `dlartg_` `dlarfg_` `dlascl_` `dlaset_` `dlacpy_` `dlasrt_` `dlaswp_` `dlange_` `dlangb_` `dlansy_` `dlansb_` `dlanst_` |

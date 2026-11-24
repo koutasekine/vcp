@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <vector>
 
 #include <vcp/dblas_dlapack.hpp>
@@ -369,6 +370,27 @@ inline int tsygv<double>(const int itype, const char jobz, const char uplo, cons
 	int info = 0;
 	int lwork = -1;
 	double query = 0.0;
+	// With eigenvectors: divide and conquer (dsygvd).  dsygv is used when the
+	// workspace length of dsygvd does not fit in int.
+	const long long lwmin = 1LL + 6LL * n + 2LL * n * n;
+	const double imax = static_cast<double>(std::numeric_limits<int>::max());
+	if (tblas_detail::option_is(jobz, 'V') && static_cast<double>(lwmin) <= imax) {
+		int iquery = 0;
+		int liwork = -1;
+		dsygvd_(&itype, &jobz, &uplo, &n, A, &lda, B, &ldb, w, &query, &lwork, &iquery, &liwork, &info);
+		if (info != 0) {
+			return info;
+		}
+		if (query <= imax) {
+			lwork = tlapack_double_detail::work_size(query, std::max(1, static_cast<int>(lwmin)));
+			liwork = std::max(iquery, std::max(1, 3 + 5 * n));
+			std::vector<double> work(static_cast<std::size_t>(lwork));
+			std::vector<int> iwork(static_cast<std::size_t>(liwork));
+			dsygvd_(&itype, &jobz, &uplo, &n, A, &lda, B, &ldb, w, work.data(), &lwork, iwork.data(), &liwork, &info);
+			return info;
+		}
+		lwork = -1;
+	}
 	dsygv_(&itype, &jobz, &uplo, &n, A, &lda, B, &ldb, w, &query, &lwork, &info);
 	if (info != 0) {
 		return info;
@@ -377,6 +399,13 @@ inline int tsygv<double>(const int itype, const char jobz, const char uplo, cons
 	std::vector<double> work(static_cast<std::size_t>(lwork));
 	dsygv_(&itype, &jobz, &uplo, &n, A, &lda, B, &ldb, w, work.data(), &lwork, &info);
 	return info;
+}
+
+// Same computation as tsygv<double> (divide and conquer with eigenvectors).
+template <>
+inline int tsygvd<double>(const int itype, const char jobz, const char uplo, const int n,
+	double* A, const int lda, double* B, const int ldb, double* w) {
+	return tsygv<double>(itype, jobz, uplo, n, A, lda, B, ldb, w);
 }
 
 template <>
@@ -672,6 +701,27 @@ inline int tsyev<double>(const char jobz, const char uplo, const int n, double* 
 	int info = 0;
 	int lwork = -1;
 	double query = 0.0;
+	// With eigenvectors: divide and conquer (dsyevd).  dsyev is used when the
+	// workspace length of dsyevd does not fit in int.
+	const long long lwmin = 1LL + 6LL * n + 2LL * n * n;
+	const double imax = static_cast<double>(std::numeric_limits<int>::max());
+	if (tblas_detail::option_is(jobz, 'V') && static_cast<double>(lwmin) <= imax) {
+		int iquery = 0;
+		int liwork = -1;
+		dsyevd_(&jobz, &uplo, &n, A, &lda, w, &query, &lwork, &iquery, &liwork, &info);
+		if (info != 0) {
+			return info;
+		}
+		if (query <= imax) {
+			lwork = tlapack_double_detail::work_size(query, std::max(1, static_cast<int>(lwmin)));
+			liwork = std::max(iquery, std::max(1, 3 + 5 * n));
+			std::vector<double> work(static_cast<std::size_t>(lwork));
+			std::vector<int> iwork(static_cast<std::size_t>(liwork));
+			dsyevd_(&jobz, &uplo, &n, A, &lda, w, work.data(), &lwork, iwork.data(), &liwork, &info);
+			return info;
+		}
+		lwork = -1;
+	}
 	dsyev_(&jobz, &uplo, &n, A, &lda, w, &query, &lwork, &info);
 	if (info != 0) {
 		return info;
@@ -680,6 +730,12 @@ inline int tsyev<double>(const char jobz, const char uplo, const int n, double* 
 	std::vector<double> work(static_cast<std::size_t>(lwork));
 	dsyev_(&jobz, &uplo, &n, A, &lda, w, work.data(), &lwork, &info);
 	return info;
+}
+
+// Same computation as tsyev<double> (divide and conquer with eigenvectors).
+template <>
+inline int tsyevd<double>(const char jobz, const char uplo, const int n, double* A, const int lda, double* w) {
+	return tsyev<double>(jobz, uplo, n, A, lda, w);
 }
 
 template <>

@@ -70,6 +70,7 @@
 //   tgels                                  (最小二乗)
 //   tgetri tpotri ttrtri                   (逆行列)
 //   tsyev  tsygv                           (対称固有値)
+//   tsyevd tsygvd                          (対称固有値, 分割統治法)
 //   tgeev                                  (非対称固有値)
 //   tgesvd                                 (特異値分解)
 // 各分解・補助 routine は各 header を参照．
@@ -84,5 +85,6 @@
 #include "tlapack_geev.hpp"
 #include "tlapack_sy.hpp"
 #include "tlapack_band.hpp"
+#include <vcp/tlapack/tlapack_eigdc.hpp>
 
 #endif // TLAPACK_TLAPACK_HPP

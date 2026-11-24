@@ -32,6 +32,9 @@
 #ifndef VCP_PDBLAS_HPP
 #define VCP_PDBLAS_HPP
 
+#include <algorithm>
+#include <limits>
+
 #include <vcp/mats.hpp>
 #include <vcp/dblas_dlapack.hpp>
 
@@ -258,15 +261,41 @@ namespace vcp {
 
 			pdblas E;
 			E.zeros(an, 1);
-			dsyev_(VV, U, &an, &this->v.front(), &an, &E.v.front(), &lw, &m1, &info);
-			if (info != 0) {
-				throw vcp::lapack_error("dsyev", info, "eigsym: dsyev workspace query failed");
+
+			// Divide and conquer (dsyevd).  dsyev is used when the workspace
+			// length of dsyevd does not fit in int.
+			bool done = false;
+			const long long lwmin = 1LL + 6LL * an + 2LL * an * an;
+			const double imax = static_cast<double>(std::numeric_limits<int>::max());
+			if (static_cast<double>(lwmin) <= imax) {
+				int liw, liwork;
+				dsyevd_(VV, U, &an, &this->v.front(), &an, &E.v.front(), &lw, &m1, &liw, &m1, &info);
+				if (info != 0) {
+					throw vcp::lapack_error("dsyevd", info, "eigsym: dsyevd workspace query failed");
+				}
+				if (lw <= imax) {
+					lwork = std::max(int(lw), static_cast<int>(lwmin));
+					liwork = std::max(liw, 3 + 5 * an);
+					std::vector<double> work(lwork);
+					std::vector<int> iwork(liwork);
+					dsyevd_(VV, U, &an, &this->v.front(), &an, &E.v.front(), work.data(), &lwork, iwork.data(), &liwork, &info);
+					if (info != 0) {
+						throw vcp::lapack_error("dsyevd", info, "eigsym: dsyevd failed");
+					}
+					done = true;
+				}
 			}
-			lwork = int(lw);
-			std::vector<double> work(lwork);
-			dsyev_(VV, U, &an, &this->v.front(), &an, &E.v.front(), work.data(), &lwork, &info);
-			if (info != 0) {
-				throw vcp::lapack_error("dsyev", info, "eigsym: dsyev failed");
+			if (!done) {
+				dsyev_(VV, U, &an, &this->v.front(), &an, &E.v.front(), &lw, &m1, &info);
+				if (info != 0) {
+					throw vcp::lapack_error("dsyev", info, "eigsym: dsyev workspace query failed");
+				}
+				lwork = int(lw);
+				std::vector<double> work(lwork);
+				dsyev_(VV, U, &an, &this->v.front(), &an, &E.v.front(), work.data(), &lwork, &info);
+				if (info != 0) {
+					throw vcp::lapack_error("dsyev", info, "eigsym: dsyev failed");
+				}
 			}
 			V = (*this);
 			this->zeros(an, an);
@@ -346,15 +375,40 @@ namespace vcp {
 				pdblas W;
 				W.zeros(static_cast<int>(this->row), 1);
 
-				dsygv_(&itype, jbobz, uplo, &n, &this->v.front(), &lda, &B.v.front(), &ldb, &W.v.front(), &lw, &m1, &info);
-				if (info != 0) {
-					throw vcp::lapack_error("dsygv", info, "eigsymge: dsygv workspace query failed");
+				// Divide and conquer (dsygvd).  dsygv is used when the workspace
+				// length of dsygvd does not fit in int.
+				bool done = false;
+				const long long lwmin = 1LL + 6LL * n + 2LL * n * n;
+				const double imax = static_cast<double>(std::numeric_limits<int>::max());
+				if (static_cast<double>(lwmin) <= imax) {
+					int liw, liwork;
+					dsygvd_(&itype, jbobz, uplo, &n, &this->v.front(), &lda, &B.v.front(), &ldb, &W.v.front(), &lw, &m1, &liw, &m1, &info);
+					if (info != 0) {
+						throw vcp::lapack_error("dsygvd", info, "eigsymge: dsygvd workspace query failed");
+					}
+					if (lw <= imax) {
+						lwork = std::max(int(lw), static_cast<int>(lwmin));
+						liwork = std::max(liw, 3 + 5 * n);
+						std::vector<double> work(lwork);
+						std::vector<int> iwork(liwork);
+						dsygvd_(&itype, jbobz, uplo, &n, &this->v.front(), &lda, &B.v.front(), &ldb, &W.v.front(), work.data(), &lwork, iwork.data(), &liwork, &info);
+						if (info != 0) {
+							throw vcp::lapack_error("dsygvd", info, "eigsymge: dsygvd failed");
+						}
+						done = true;
+					}
 				}
-				lwork = int(lw);
-				std::vector<double> work(lwork);
-				dsygv_(&itype, jbobz, uplo, &n, &this->v.front(), &lda, &B.v.front(), &ldb, &W.v.front(), work.data(), &lwork, &info);
-				if (info != 0) {
-					throw vcp::lapack_error("dsygv", info, "eigsymge: dsygv failed");
+				if (!done) {
+					dsygv_(&itype, jbobz, uplo, &n, &this->v.front(), &lda, &B.v.front(), &ldb, &W.v.front(), &lw, &m1, &info);
+					if (info != 0) {
+						throw vcp::lapack_error("dsygv", info, "eigsymge: dsygv workspace query failed");
+					}
+					lwork = int(lw);
+					std::vector<double> work(lwork);
+					dsygv_(&itype, jbobz, uplo, &n, &this->v.front(), &lda, &B.v.front(), &ldb, &W.v.front(), work.data(), &lwork, &info);
+					if (info != 0) {
+						throw vcp::lapack_error("dsygv", info, "eigsymge: dsygv failed");
+					}
 				}
 				V = (*this);
 				this->zeros(static_cast<int>(this->row), static_cast<int>(this->row));

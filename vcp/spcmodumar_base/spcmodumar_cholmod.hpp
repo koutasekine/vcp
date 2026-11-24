@@ -148,6 +148,7 @@ namespace spcmodumar_detail {
 		case sparse_chol_ordering::amd:
 			cholmod_ordering = CHOLMOD_AMD; return true;
 		case sparse_chol_ordering::rcm:
+		case sparse_chol_ordering::nested_dissection_ml:
 			cholmod_ordering = CHOLMOD_GIVEN; return true;
 		case sparse_chol_ordering::nested_dissection:
 			cholmod_ordering = CHOLMOD_NESDIS; return true;
@@ -261,6 +262,7 @@ namespace spcmodumar_detail {
 		case sparse_chol_ordering::rcm:
 		case sparse_chol_ordering::amd:
 		case sparse_chol_ordering::nested_dissection:
+		case sparse_chol_ordering::nested_dissection_ml:
 			break;
 		default:
 			out.status = sparse_chol_status::invalid_options;
@@ -347,6 +349,22 @@ namespace spcmodumar_detail {
 				return out;
 			}
 		}
+		else if (resolved == sparse_chol_ordering::nested_dissection_ml) {
+			// VCP multilevel nested dissection on the same pattern, sent to
+			// CHOLMOD as a given permutation (as rcm); ndml_* as in the
+			// native kernel (negative = library default).
+			sparse_order_ndml_params ndml_prm;
+			if (opt.ndml_coarsen_stop >= 0) ndml_prm.coarsen_stop = opt.ndml_coarsen_stop;
+			if (opt.ndml_fm_passes    >= 0) ndml_prm.fm_passes    = opt.ndml_fm_passes;
+			if (opt.ndml_balance_pct  >= 0) ndml_prm.balance_pct  = opt.ndml_balance_pct;
+			if (opt.ndml_leaf_size    >= 0) ndml_prm.leaf_size    = opt.ndml_leaf_size;
+			rcm_perm = sparse_lu_nested_dissection_ml_ordering<Index>(n, C.col_ptr, C.row_ind, ndml_prm);
+			if (!sparse_chol_detail::sparse_chol_verify_permutation_<Index>(
+				n, rcm_perm)) {
+				out.status = sparse_chol_status::internal_error;
+				return out;
+			}
+		}
 
 		// ---- 6. CHOLMOD delegation (SS2-6) -------------------------------
 		// Lower-triangle CSC (r >= c only; strictly-upper stored entries are
@@ -400,7 +418,8 @@ namespace spcmodumar_detail {
 		Aview.packed = 1;
 
 		cholmod_factor_guard Lf(cm);
-		if (resolved == sparse_chol_ordering::rcm) {
+		if (resolved == sparse_chol_ordering::rcm
+		    || resolved == sparse_chol_ordering::nested_dissection_ml) {
 			Lf.adopt(cholmod_analyze_p(&Aview, rcm_perm.data(),
 				static_cast<int*>(0), 0, cm));
 		} else {

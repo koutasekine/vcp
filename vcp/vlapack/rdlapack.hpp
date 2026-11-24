@@ -67,6 +67,7 @@
 //   rdgels                                      (最小二乗)
 //   rdgetri rdpotri rdtrtri                     (逆行列)
 //   rdsyev  rdsygv                              (対称固有値)
+//   rdsyevd rdsygvd                             (対称固有値, 分割統治法)
 //   rdgeev                                      (非対称固有値)
 //   rdgesvd                                     (特異値分解)
 // 各分解・補助 routine は各 header を参照．
@@ -81,5 +82,6 @@
 #include "rdlapack_geev.hpp"
 #include "rdlapack_sy.hpp"
 #include "rdlapack_band.hpp"
+#include <vcp/vlapack/rdlapack_eigdc.hpp>
 
 #endif // VBLAS_RDLAPACK_HPP

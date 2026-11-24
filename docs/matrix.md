@@ -518,6 +518,11 @@ backend 選択を共有しています。
 | `-DUSE_VCP_LAPACK` | LAPACK 関数（`dgesv_`、`dsyev_` 等）を `vcp/vlapack/dlapack.hpp` で提供。外部 LAPACK リンク不要 |
 | 両方 | 外部 BLAS/LAPACK のどちらも不要 |
 
+固有ベクトルつきの `eigsym`・`eigsymge` は、`pdblas` と、double 特殊化が有効な `mats2<double>`・`mats2<kv::dd>` では
+分割統治法の `dsyevd_`・`dsygvd_` を呼びます（固有値だけのときは `dsyev_`・`dsygv_`）。
+`-DUSE_VCP_LAPACK` のときの `dsyevd_`・`dsygvd_` は丸めモード指定つきの実装で、
+`dsyev_`・`dsygv_`（QR 法）より遅いことがあります。特殊化を使わない `mats2<T>` は QR 法（`tsyev`・`tsygv`）を使います。
+
 MKL や OpenBLAS がない環境でも次のようにコンパイルできます。
 
 ```bash
@@ -570,8 +575,8 @@ vcp::matrix<kv::dd, vcp::pddblas> A, b, x;
 | 線形方程式 `lss(A, b)` | double の LU 分解（`dgetrf`/`dgetrs`）+ Newton 法型の残差反復 |
 | 逆行列 `inv(A)` | 単位行列を右辺とする上記の残差反復 |
 | Cholesky 分解 `Cholesky(A)` | double の `dpotrf` + 残差反復による Cholesky factor の改良 |
-| 対称固有値問題 `eigsym` | double の `dsyev` + 荻田-相島の反復改良法 |
-| 一般化対称固有値問題 `eigsymge` | double の `dsygv` + 荻田-相島の反復改良法（B 内積版） |
+| 対称固有値問題 `eigsym` | double の `dsyevd` + 荻田-相島の反復改良法 |
+| 一般化対称固有値問題 `eigsymge` | double の `dsygvd` + 荻田-相島の反復改良法（B 内積版） |
 
 行列積は尾崎スキーム
 （K. Ozaki, T. Ogita, S. Oishi, S. M. Rump,
@@ -590,7 +595,7 @@ double 精度の近似解を求め、その後 `b - A x` の残差（尾崎ス�
 収束するまで繰り返します。LU 分解は最初の 1 回だけで、反復中は前進後退
 代入と残差計算のみを行います。
 
-固有値問題は、まず `dsyev`（一般化問題は `dsygv`）で double 精度の
+固有値問題は、まず `dsyevd`（一般化問題は `dsygvd`）で double 精度の
 近似固有対を求め、荻田-相島の反復改良法
 （T. Ogita, K. Aishima, "Iterative refinement for symmetric eigenvalue
 decomposition", Japan Journal of Industrial and Applied Mathematics,
@@ -763,8 +768,8 @@ x = lss(A, b);
 | 線形方程式 `lss(A, b)` | tlapack 汎用 `tgesv<T>` | LAPACK `dgesv_` | double 初期解 + kv::dd 残差反復 |
 | 逆行列 `inv(A)` | tlapack 汎用 `tgetrf/tgetri<T>` | LAPACK `dgetrf_/dgetri_` | double LU + kv::dd 残差反復 |
 | Cholesky 分解 | tlapack 汎用 `tpotrf<T>` | LAPACK `dpotrf_` | double Cholesky + kv::dd 残差補正 |
-| 対称固有値 `eigsym` | tlapack 汎用 `tsyev<T>` | LAPACK `dsyev_` | double 初期固有対 + kv::dd 残差反復 |
-| 一般化対称固有値 `eigsymge` | tlapack 汎用 `tsygv<T>` | LAPACK `dsygv_` | double 初期固有対 + kv::dd 残差反復 |
+| 対称固有値 `eigsym` | tlapack 汎用 `tsyev<T>`（QR 法） | LAPACK `dsyevd_`（固有ベクトルつき、分割統治法）・`dsyev_`（固有値のみ） | double 初期固有対（`dsyevd_`）+ kv::dd 残差反復 |
+| 一般化対称固有値 `eigsymge` | tlapack 汎用 `tsygv<T>`（QR 法） | LAPACK `dsygvd_`（固有ベクトルつき、分割統治法）・`dsygv_`（固有値のみ） | double 初期固有対（`dsygvd_`）+ kv::dd 残差反復 |
 
 ### 精度保証付き数値計算での利用
 

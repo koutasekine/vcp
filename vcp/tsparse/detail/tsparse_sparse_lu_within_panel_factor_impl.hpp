@@ -215,6 +215,7 @@ pivot_decision select_threshold_pivot(
 {
     typedef sparse_lu_scalar_policy<T> scalar_pol;
     typedef typename scalar_pol::real_type real_type;
+    (void)opt;
 
     const Index R  = work.rows;
     const Index ld = work.ld;
@@ -268,7 +269,8 @@ pivot_decision select_threshold_pivot(
         decision = pivot_decision::inconclusive;
     } else {
         // acceptable if abs(diag) >= threshold * max_abs
-        decision = scalar_pol::acceptable_pivot(diag_val, max_abs, opt.pivot_threshold);
+        decision = scalar_pol::acceptable_pivot(
+            diag_val, max_abs, sparse_lu_detail::sparse_lu_partial_pivot_ratio<real_type>());
     }
 
     if (decision == pivot_decision::acceptable) {

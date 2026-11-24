@@ -21,7 +21,7 @@
 //   * Opt-in: runs only when opt.iterative_refinement == true.  When false this
 //     reduces to a single fac.solve(b) -- byte-identical to the default path.
 //   * Standalone: never modifies the factorization; pure post-process.  Works
-//     with any pivoting mode (default threshold_partial, static_mc64, ...).
+//     with any pivoting mode (default threshold_partial, ...).
 //   * Deterministic + bounded: always stops by maxit; the non-convergence guard
 //     stops as soon as the residual fails to decrease (no divergence/loop).
 //   * No-harm: tracks the BEST iterate (minimum residual) and returns it, so a

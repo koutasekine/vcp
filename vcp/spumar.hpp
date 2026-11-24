@@ -277,7 +277,9 @@ namespace vcp {
 		//     tolerance opt.tol/10 against the first preconditioned residual
 		//     (gmres_solve relative = true, M1-1), inner_max = min(n, 100),
 		//     restart min(n, inner_max), outer inner_max/10 + 1 (the base
-		//     values).  S is applied as a product only, never factorized.
+		//     values; gmres_solve counts Arnoldi steps, so max_iter =
+		//     (inner_max/10 + 1) * min(n, inner_max)).  S is applied as a
+		//     product only, never factorized.
 		//   honesty (M1-5): a non-converged inner GMRES or a throwing M.apply
 		//     cannot stop ARPACK inside OP; it is counted, the best GMRES
 		//     iterate is returned to ARPACK, and after the drive the result
@@ -1325,7 +1327,7 @@ namespace vcp {
 				PV pv = { M, &pf, &pm };
 				typedef vcp::tsparse_factorization::gmres_result<double, AV, PV> GR;
 				const GR gr = vcp::tsparse_factorization::gmres_solve<double, AV, PV>(
-					av, pv, rhs, inner_max / 10 + 1, tol, std::min(nn, inner_max), true);
+					av, pv, rhs, (inner_max / 10 + 1) * std::min(nn, inner_max), tol, std::min(nn, inner_max), true);
 				if (gr.residual_norm > *max_resid) *max_resid = gr.residual_norm;
 				bool ok = true;
 				if (pf) { ok = false; if (reason->empty()) *reason = pm; }

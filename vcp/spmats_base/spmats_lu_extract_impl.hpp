@@ -417,8 +417,14 @@ lu_apply_result spmats<_T, _Index>::policy_lu_solve_with_info_impl(
 		const std::size_t un = static_cast<std::size_t>(n);
 
 		// structural contracts (P-9; index-level + the L unit-diagonal read)
-		const spmats<_T, _Index> Lc = L.as_csc();
-		const spmats<_T, _Index> Uc = U.as_csc();
+		const spmats<_T, _Index>* Lp; spmats<_T, _Index> Lc_storage;
+		if (L.is_finalized() && L.format() == vcp::sparse_csc) { Lp = &L; }
+		else { Lc_storage = L.as_csc(); Lp = &Lc_storage; }
+		const spmats<_T, _Index>* Up; spmats<_T, _Index> Uc_storage;
+		if (U.is_finalized() && U.format() == vcp::sparse_csc) { Up = &U; }
+		else { Uc_storage = U.as_csc(); Up = &Uc_storage; }
+		const spmats<_T, _Index>& Lc = *Lp;
+		const spmats<_T, _Index>& Uc = *Up;
 		if (!spmats_lu_extract_detail::is_permutation_<_Index>(n, p) ||
 		    !spmats_lu_extract_detail::is_permutation_<_Index>(n, q) ||
 		    !spmats_lu_extract_detail::check_unit_lower_<_T, _Index>(Lc, n) ||

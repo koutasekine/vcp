@@ -137,7 +137,12 @@ enum class sparse_ldl_status {
     not_symmetric,            // symmetry of the input could not be certified
     invalid_options,          // colamd/pivot_threshold!=0/unimplemented method etc.
     invalid_input,            // n<0, malformed CSC, ...
-    internal_error            // implementation bug / unexpected state (P3 net)
+    internal_error,           // implementation bug / unexpected state (P3 net)
+    static_pivot_breakdown    // pivoting = none: certified zero pivot with a
+                              // certified nonzero entry below it in the same
+                              // (updated) column.  Skipping that column would
+                              // break the congruence of A and D, so the
+                              // factorization stops; see breakdown_at.
 };
 
 inline const char* sparse_ldl_status_to_string(sparse_ldl_status s) {
@@ -151,6 +156,7 @@ inline const char* sparse_ldl_status_to_string(sparse_ldl_status s) {
     case sparse_ldl_status::invalid_options:         return "invalid_options";
     case sparse_ldl_status::invalid_input:           return "invalid_input";
     case sparse_ldl_status::internal_error:          return "internal_error";
+    case sparse_ldl_status::static_pivot_breakdown:  return "static_pivot_breakdown";
     }
     return "unknown";
 }
@@ -310,6 +316,10 @@ struct sparse_ldl_result {
     bool supernodal_fell_back;
     sparse_ldl_status fallback_from;
 
+    // Column (current label) where pivoting = none stopped with
+    // static_pivot_breakdown; -1 = none.
+    Index breakdown_at;
+
     sparse_ldl_result()
         : status(sparse_ldl_status::internal_error),
           n_pivots_1x1(Index(0)), n_pivots_2x2(Index(0)),
@@ -331,7 +341,8 @@ struct sparse_ldl_result {
           flops_padded_lo(0u), flops_padded_hi(0u),
           flops_true_lo(0u), flops_true_hi(0u),
           supernodal_fell_back(false),
-          fallback_from(sparse_ldl_status::success) {}
+          fallback_from(sparse_ldl_status::success),
+          breakdown_at(Index(-1)) {}
 };
 
 // ---------------------------------------------------------------------------

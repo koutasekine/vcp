@@ -175,6 +175,8 @@ void sparse_ldl_sparse_bk_factorize(
 
     bool any_zero_pivot = false;
     bool stopped_inconclusive = false;
+    bool stopped_breakdown = false;
+    res.breakdown_at = Index(-1);
 
     // SLDL-SP SP-1: static (exchange-free) mode.  Selected at the TOP of the
     // pivot loop below; the dynamic BK code path is not modified by it, so
@@ -337,6 +339,31 @@ void sparse_ldl_sparse_bk_factorize(
                 col_block_of[k] = bid;
                 ++res.n_pivots_1x1;
             } else if (absd <= opt.zero_pivot_tol) {
+                // Certified zero pivot.  The column may be skipped only when
+                // every entry below the diagonal (updated values) is a
+                // certified zero: then A and D stay congruent.  A certified
+                // nonzero entry stops with static_pivot_breakdown; an entry
+                // that is neither stops with inconclusive_pivot_test.
+                bool below_nonzero = false;
+                bool below_uncertain = false;
+                for (std::size_t t = 0; t < sa.size(); ++t) {
+                    const std::size_t i = static_cast<std::size_t>(sa[t]);
+                    if (i <= k) continue;
+                    const R av = abs(wa[i]);
+                    if (av > opt.zero_pivot_tol) { below_nonzero = true; }
+                    else if (av <= opt.zero_pivot_tol) { /* certified zero */ }
+                    else { below_uncertain = true; }
+                }
+                if (below_nonzero) {
+                    res.breakdown_at = static_cast<Index>(k);
+                    stopped_breakdown = true;
+                    break;
+                }
+                if (below_uncertain) {
+                    res.inconclusive_at = static_cast<Index>(k);
+                    stopped_inconclusive = true;
+                    break;
+                }
                 if (!any_zero_pivot) {
                     res.first_zero_pivot = static_cast<Index>(k);
                     any_zero_pivot = true;
@@ -527,6 +554,10 @@ void sparse_ldl_sparse_bk_factorize(
         }
     }
 
+    if (stopped_breakdown) {
+        res.status = sparse_ldl_status::static_pivot_breakdown;
+        return;
+    }
     if (stopped_inconclusive) {
         res.status = sparse_ldl_status::inconclusive_pivot_test;
         return;

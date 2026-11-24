@@ -160,14 +160,27 @@ Bunch–Kaufman のピボット選択は、パネルの中でだけ交換しま�
 1×1 のピボットの絶対値、または 2×2 のピボットの行列式の絶対値が
 `zero_pivot_tol`(既定 0)以下と言えるときは、その列を零のピボットとして
 飛ばして数え、分解を最後まで続けます。このとき `status` は `zero_pivot`、
-最初の列は `first_zero_pivot` です。`none` で、零とも零でないとも言えない
-ピボットがあると `inconclusive_pivot_test` で止まります。
+最初の列は `first_zero_pivot` です。
+
+`none` では、ピボットが零と言えるとき、その列の対角より下の成分(そこまでの
+更新を反映した値)をすべて調べてから、次のように決めます。
+
+- すべてが零(絶対値が `zero_pivot_tol` 以下)と言えるとき:その列を零の
+  ピボットとして飛ばして数え、分解を続ける。
+- 零でないと言える成分が 1 つでもあるとき:分解を止めて
+  `static_pivot_breakdown` を返し、止めた列を `breakdown_at` に記録する。
+  交換なしではこの列を消去できないためです。
+- 上のどちらとも言えないとき(零とも零でないとも言えない成分がある):
+  `inconclusive_pivot_test` で止まる。
+
+ピボット自身が零とも零でないとも言えないときも、`inconclusive_pivot_test` で
+止まります。
 
 `bk` で `zero_pivot_tol = 0` のとき、零のピボットになるのは、残りの第 k 列が
 対角も含めてすべて零のときだけです(規則 2〜5 で選ぶピボットは零になり
 ません)。その列は消去しなくても分解は正しく、零の固有値 1 つに対応します。
-`none` では、対角が零ならその列に非零があっても飛ばすので、そのときの
-L D Lᵀ は Pᵀ A P と一致しません。
+`none` で飛ばす列も、上の規則により対角より下がすべて零の列だけなので、
+同じことが言えます。
 
 ### オプション
 
@@ -196,6 +209,7 @@ L D Lᵀ は Pᵀ A P と一致しません。
 | `n_pivots_1x1`、`n_pivots_2x2` | 使ったピボットの数(飛ばした零のピボットを除く) |
 | `first_zero_pivot` | 最初の零のピボットの列(なければ −1) |
 | `inconclusive_at` | 判定できずに止まった列(なければ −1) |
+| `breakdown_at` | `static_pivot_breakdown` で止まった列(なければ −1) |
 | `structural_empty_at` | 最初の空の行・列(なければ −1) |
 | `nnz_L` | L の格納数 |
 | `ordering_used`、`method_used` | 実際に使った並べ替えと方法 |
@@ -213,6 +227,7 @@ L D Lᵀ は Pᵀ A P と一致しません。
 | `not_symmetric` | 対称と言えない |
 | `invalid_options`、`invalid_input` | オプション・入力の誤り |
 | `internal_error` | 想定外の例外 |
+| `static_pivot_breakdown` | `pivoting = none` で、零のピボットの列の対角より下に零でない成分があり、分解を止めた |
 
 `sparse_ldl_status_to_string` で文字列にできます。
 
@@ -237,9 +252,9 @@ LDLᵀ 分解をしてから `policy_inertia_from_block_diagonal` で D を数�
 最後に、正・負・零の数の和が n であることを確かめます。
 
 `inertia` の結果の `ldl_status` には、内部の LDLᵀ 分解の status が入ります。
-`pivoting = none` で `ldl_status` が `zero_pivot` のときは、上で述べたとおり
-分解が成り立たないので、`status` が `success` でも数えた値は A の慣性と
-一致するとは限りません。
+`ldl_status` が `success` か `zero_pivot` のときだけ D を数えます。それ以外
+(`pivoting = none` の `static_pivot_breakdown` を含む)は、数えずに
+`factorization_failed` を返します。
 
 ## shift 付き LDLᵀ の handle
 
@@ -265,10 +280,10 @@ A − σB(B を省けば A − σI)の慣性を、多くの σ について調�
 
 handle の既定のオプション(`vcp::ldl_shift_default_options<T>()`)は
 `supernodal` × `none` です。`none` ではピボットの交換がないので、記号分解を
-すべての σ で使い回せます。`inertia_at` の結果(`ldl_shift_inertia_result`)
-の `inertia.ldl_status` が
-`zero_pivot` のときは、慣性の節で述べたとおり、数えた値が A − σB の慣性と
-一致するとは限りません。handle は作った後は読み取り専用で、作業領域を
+すべての σ で使い回せます。ある σ で交換なしの分解ができないときは、
+`inertia_at` の結果(`ldl_shift_inertia_result`)の `inertia.ldl_status` が
+`static_pivot_breakdown` になり、`status` は `factorization_failed` です。
+handle は作った後は読み取り専用で、作業領域を
 呼び出しごとに渡せば、異なる σ を並列に計算できます。ある σ での失敗は
 handle を無効にしません。
 

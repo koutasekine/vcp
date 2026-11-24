@@ -297,7 +297,10 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_jacobi_with_info_(
 			vcp::throw_error<vcp::numerical_error>("spmats::solve_jacobi: zero diagonal");
 		}
 	}
-	spmats<_T,_Index> A = A_in.as_csr();
+	const spmats<_T,_Index>* Ap; spmats<_T,_Index> Ac_storage;
+	if (A_in.is_finalized() && A_in.format() == vcp::sparse_csr) { Ap = &A_in; }
+	else { Ac_storage = A_in.as_csr(); Ap = &Ac_storage; }
+	const spmats<_T,_Index>& A = *Ap;
 	std::vector<_T> x(static_cast<std::size_t>(n), _T(0));
 	std::vector<_T> next(static_cast<std::size_t>(n), _T(0));
 	linear_solve_result<_T> result;
@@ -352,7 +355,10 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_gauss_seidel_with_info_
 			vcp::throw_error<vcp::numerical_error>("spmats::solve_gauss_seidel: zero diagonal");
 		}
 	}
-	spmats<_T,_Index> A = A_in.as_csr();
+	const spmats<_T,_Index>* Ap; spmats<_T,_Index> Ac_storage;
+	if (A_in.is_finalized() && A_in.format() == vcp::sparse_csr) { Ap = &A_in; }
+	else { Ac_storage = A_in.as_csr(); Ap = &Ac_storage; }
+	const spmats<_T,_Index>& A = *Ap;
 	const std::vector<_Index>& outer = A.outer_index();
 	const std::vector<_Index>& inner = A.inner_index();
 	const std::vector<_T>& val = A.values();
@@ -409,7 +415,10 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_cg_with_info_(
 			vcp::throw_error<vcp::domain_error>("spmats::solve_cg: matrix must be symmetric");
 		}
 	}
-	spmats<_T,_Index> A = A_in.as_csr();
+	const spmats<_T,_Index>* Ap; spmats<_T,_Index> Ac_storage;
+	if (A_in.is_finalized() && A_in.format() == vcp::sparse_csr) { Ap = &A_in; }
+	else { Ac_storage = A_in.as_csr(); Ap = &Ac_storage; }
+	const spmats<_T,_Index>& A = *Ap;
 	const std::size_t n = b.size();
 	std::vector<_T> x(n, _T(0));
 	std::vector<_T> r = b;
@@ -465,7 +474,10 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_bicgstab_with_info_(
 	const preconditioner_type prec_type) const
 {
 	typedef typename vcp::tsparse_scalar::real_type<_T>::type real_type;
-	spmats<_T,_Index> A = A_in.as_csr();
+	const spmats<_T,_Index>* Ap; spmats<_T,_Index> Ac_storage;
+	if (A_in.is_finalized() && A_in.format() == vcp::sparse_csr) { Ap = &A_in; }
+	else { Ac_storage = A_in.as_csr(); Ap = &Ac_storage; }
+	const spmats<_T,_Index>& A = *Ap;
 	const std::size_t n = b.size();
 	const std::vector<_T> inv_diag =
 		spmats_lss_detail::make_jacobi_inv_diag_lss<_T,_Index>(A, prec_type, "spmats::solve_bicgstab");
@@ -473,6 +485,8 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_bicgstab_with_info_(
 		spmats_lss_detail::apply_left_prec_lss(b, inv_diag, prec_type);
 	const vcp::tsparse_solvers::residual_control<_T> control =
 		vcp::tsparse_solvers::make_residual_control(b, tol, use_relative_residual);
+	const vcp::tsparse_solvers::residual_control<_T> pcontrol =
+		vcp::tsparse_solvers::make_residual_control(pb, tol, use_relative_residual);
 	std::vector<_T> x(n, _T(0));
 	std::vector<_T> r = pb;
 	std::vector<_T> r_hat = r;
@@ -505,13 +519,18 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_bicgstab_with_info_(
 		std::vector<_T> s(n);
 		for (std::size_t i = 0; i < n; i++) s[i] = r[i] - _T(alpha) * v[i];
 		const real_type snorm = spmats_lss_detail::norm_value_lss<_T,_Index>(s);
-		if (snorm <= control.threshold) {
-			for (std::size_t i = 0; i < n; i++) x[i] += _T(alpha) * p[i];
-			current_residual = spmats_lss_detail::residual_norm_lss<_T,_Index>(A, x, b);
-			result.residual_norm = current_residual;
-			result.iterations = iter;
-			result.converged = current_residual <= control.threshold;
-			break;
+		if (snorm <= pcontrol.threshold) {
+			std::vector<_T> xh(n);
+			for (std::size_t i = 0; i < n; i++) xh[i] = x[i] + _T(alpha) * p[i];
+			const real_type half_residual = spmats_lss_detail::residual_norm_lss<_T,_Index>(A, xh, b);
+			if (half_residual <= control.threshold) {
+				x.swap(xh);
+				current_residual = half_residual;
+				result.residual_norm = current_residual;
+				result.iterations = iter;
+				result.converged = true;
+				break;
+			}
 		}
 		const std::vector<_T> t = spmats_lss_detail::apply_prec_op_lss<_T,_Index>(A, s, inv_diag, prec_type);
 		const real_type tt = spmats_lss_detail::dot_value_lss<_T,_Index>(t, t);
@@ -548,7 +567,10 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_gmres_with_info_(
 {
 	typedef typename vcp::tsparse_scalar::real_type<_T>::type real_type;
 	if (restart == 0) vcp::throw_error<vcp::invalid_argument>("spmats::solve_gmres: restart must be positive");
-	spmats<_T,_Index> A = A_in.as_csr();
+	const spmats<_T,_Index>* Ap; spmats<_T,_Index> Ac_storage;
+	if (A_in.is_finalized() && A_in.format() == vcp::sparse_csr) { Ap = &A_in; }
+	else { Ac_storage = A_in.as_csr(); Ap = &Ac_storage; }
+	const spmats<_T,_Index>& A = *Ap;
 	const std::size_t n = b.size();
 	const std::vector<_T> inv_diag =
 		spmats_lss_detail::make_jacobi_inv_diag_lss<_T,_Index>(A, prec_type, "spmats::solve_gmres");
@@ -556,6 +578,8 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_gmres_with_info_(
 		spmats_lss_detail::apply_left_prec_lss(b, inv_diag, prec_type);
 	const vcp::tsparse_solvers::residual_control<_T> control =
 		vcp::tsparse_solvers::make_residual_control(b, tol, use_relative_residual);
+	const vcp::tsparse_solvers::residual_control<_T> pcontrol =
+		vcp::tsparse_solvers::make_residual_control(pb, tol, use_relative_residual);
 	std::vector<_T> x(n, _T(0));
 	linear_solve_result<_T> result;
 	result.x = x;
@@ -587,6 +611,7 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_gmres_with_info_(
 		g[0] = _T(beta);
 		for (std::size_t i = 0; i < n; i++) V[0][i] = r[i] / _T(beta);
 		std::size_t m = 0;
+		bool x_updated = false;
 		for (; m < mmax && result.iterations < max_iter; m++) {
 			std::vector<_T> w = spmats_lss_detail::apply_prec_op_lss<_T,_Index>(A, V[m], inv_diag, prec_type);
 			for (std::size_t j = 0; j <= m; j++) {
@@ -623,7 +648,7 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_gmres_with_info_(
 			result.iterations++;
 			const real_type projected_residual = vcp::tsparse_scalar::abs_value(g[m + 1]);
 			result.residual_norm = projected_residual;
-			if (projected_residual <= control.threshold) {
+			if (projected_residual <= pcontrol.threshold) {
 				m++;
 				std::vector<_T> y = spmats_lss_detail::solve_upper_tri_lss<_T,_Index>(H, g, m);
 				for (std::size_t j = 0; j < m; j++)
@@ -631,12 +656,13 @@ linear_solve_result<_T> spmats<_T, _Index>::policy_solve_gmres_with_info_(
 				current_residual = spmats_lss_detail::residual_norm_lss<_T,_Index>(A, x, b);
 				result.residual_norm = current_residual;
 				result.converged = current_residual <= control.threshold;
+				x_updated = true;
 				break;
 			}
 			if (!(hnext > vcp::tsparse_scalar::epsilon<real_type>())) { m++; break; }
 		}
 		if (m == 0) break;
-		if (!result.converged) {
+		if (!x_updated) {
 			std::vector<_T> y = spmats_lss_detail::solve_upper_tri_lss<_T,_Index>(H, g, m);
 			for (std::size_t j = 0; j < m; j++)
 				for (std::size_t i = 0; i < n; i++) x[i] += V[j][i] * y[j];

@@ -725,7 +725,10 @@ stokes_divfree_interval_basis<T, DP> stokes_divfree_build_basis(
 // named at imats::eigsymge (JCAM 236 (2012), its Theorem 3, enclosures in
 // the order of the approximate eigenvalues, overlapping ones merged) and on
 // the point side returning the approximate eigenvalues ascending (mats2:
-// tsygv -> tsyev -> tsteqr, which sorts ascending).  The exact pencil of the
+// tsygv, which returns them ascending on every path: tsyev -> tsteqr sorts
+// ascending, and the double specialization computes the eigenvectors with
+// dsygvd, which also returns them ascending).  The exact
+// pencil of the
 // true mesh (A*, M*, T*) lies inside the interval pencil, so its eigenvalues
 // are enclosed.
 //

@@ -1003,7 +1003,10 @@ protected:
 		// 格納しない(spmats invariant。対角欠落は chol の certified 0 ピボット
 		// = not_positive_definite で正しく false 側に倒れる)。
 		auto build_shifted = [&](const _T& shift, PT_& As) {
-			const PT_ Ac = Awork.as_csr();
+			const PT_* Ap; PT_ Ac_storage;
+			if (Awork.is_finalized() && Awork.format() == vcp::sparse_csr) { Ap = &Awork; }
+			else { Ac_storage = Awork.as_csr(); Ap = &Ac_storage; }
+			const PT_& Ac = *Ap;
 			const std::vector<index_type>& outerv = Ac.outer_index();
 			const std::vector<index_type>& innerv = Ac.inner_index();
 			const std::vector<_T>& valv = Ac.values();
@@ -1292,7 +1295,7 @@ public:
 	template <class Matrix>
 	bool policy_is_symmetric(const Matrix& A) const {
 		if (A.rowsize() != A.columnsize()) return false;
-		const base_type Acsr = A.as_csr();   // [SPI-F3 F3-11] as_csr() は基底型を返す(Matrix = spimats でもコンパイル可)
+		const auto Acsr = A.as_csr();   // [SPI-F3 F3-11] as_csr() は基底型を返す(Matrix = spimats でもコンパイル可)。spmatrix では spmatrix を返す
 		const std::vector<index_type>& outerv = Acsr.outer_index();
 		const std::vector<index_type>& innerv = Acsr.inner_index();
 		const std::vector<interval_type>& val = Acsr.values();
@@ -1390,7 +1393,6 @@ protected:
 		p.method = o.method;
 		p.ordering = o.ordering;
 		p.pivoting = o.pivoting;
-		p.pivot_threshold = o.pivot_threshold.upper();
 		p.absolute_pivot_tolerance = o.absolute_pivot_tolerance.upper();
 		p.zero_tolerance = o.zero_tolerance.upper();
 		p.near_zero_tolerance = o.near_zero_tolerance.upper();
@@ -1399,9 +1401,6 @@ protected:
 		p.blas_min_block_size = o.blas_min_block_size;
 		p.supernode_relaxation = o.supernode_relaxation;
 		p.panel_size = o.panel_size;
-		p.growth_threshold = o.growth_threshold.upper();
-		p.static_pivot_perturbation = o.static_pivot_perturbation.upper();
-		p.compute_condition_estimate = o.compute_condition_estimate;
 		p.iterative_refinement_max_iterations = o.iterative_refinement_max_iterations;
 		p.iterative_refinement_tolerance = o.iterative_refinement_tolerance.upper();
 		p.supernodal_numeric_diagnostic_leftlooking = o.supernodal_numeric_diagnostic_leftlooking;
@@ -1681,8 +1680,11 @@ protected:
 
 			// r = [A]·xh − [b](フロー: r。R2 mul_im_v で [A]·xh を包含し
 			// [b] を区間減算。xh は点・[A] [b] は区間)
+			const base_type* Ap; base_type Ac_storage;
+			if (this->is_finalized() && this->format() == vcp::sparse_csr) { Ap = static_cast<const base_type*>(this); }
+			else { Ac_storage = static_cast<const base_type&>(*this).as_csr(); Ap = &Ac_storage; }
 			std::vector<interval_type> r(n);
-			this->mul_im_v(xh, r);                         // [確認済み R2: 残差 A x~ 用]
+			vcp::spimats_kernel::mul_im_v(*Ap, xh, r);     // [確認済み R2: 残差 A x~ 用]
 			for (std::size_t i = 0; i < n; i++) {
 				r[i] -= b[i];
 			}
@@ -1724,7 +1726,7 @@ protected:
 				// mul_v_im 生配列オーバーロード用の finalize 済み CSR
 				// (コピーは全体で 1 回 --- D-7。旧経路はループ内の公開
 				// mul_v_im が毎回 as_csr() コピーを払っていた)。
-				const base_type Acsr = static_cast<const base_type&>(*this).as_csr();
+				const base_type& Acsr = *Ap;
 				const std::vector<index_type>& u3_ao = Acsr.outer_index();
 				const std::vector<index_type>& u3_ai = Acsr.inner_index();
 				const std::vector<interval_type>& u3_av = Acsr.values();
@@ -1807,14 +1809,25 @@ protected:
 				if (caught.load()) std::rethrow_exception(eptr);
 			}
 #else
+			vcp::spmats_lu_extract_detail::prepared_lu_factors_<_T, index_type> Fprep;
+			{
+				const vcp::lu_apply_status ps =
+					vcp::spmats_lu_extract_detail::prepare_lu_factors_<_T, index_type>(
+						Lf, Uf, pperm, qperm, Fprep);
+				if (!(ps == vcp::lu_apply_status::success)) {
+					vcp::throw_error<vcp::verification_error>(
+						"spimats::policy_lss_with_info: inverse-row extraction failed (no claim)");
+				}
+			}
 			for (std::size_t i = 0; i < n; i++) {
 				// 6.2-1: Ri = (Am⁻¹)_i を取り出す(転置三角解・P/Q 込み
 				// [確認済み spmats.hpp L1533-1536: row_i(A^{-1})^T =
 				// P^T L^{-T} U^{-T} Q^T e_i])。失敗は verification_error 側
 				// (設計 6.2-1)。
-				const lu_apply_result rres = Am.policy_lu_inverse_row_with_info(
-					Lf, Uf, pperm, qperm, static_cast<index_type>(i), Ri);
-				if (!(rres.status == vcp::lu_apply_status::success)) {
+				const vcp::lu_apply_status rst =
+					vcp::spmats_lu_extract_detail::lu_inverse_row_core_<_T, index_type>(
+						Fprep, static_cast<index_type>(i), Ri);
+				if (!(rst == vcp::lu_apply_status::success)) {
 					vcp::throw_error<vcp::verification_error>(
 						"spimats::policy_lss_with_info: inverse-row extraction failed (no claim)");
 				}
@@ -1832,7 +1845,7 @@ protected:
 				// 6.2-3: RiA = Ri·[A](R2 mul_v_im --- ヘッダコメント自体が
 				// 「RA − I の行ごと構成」用と明記 [確認済み
 				// spimats_mixed_ops.hpp L15])。
-				this->mul_v_im(Ri, RiA);
+				vcp::spimats_kernel::mul_v_im(Ri, *Ap, RiA);
 				// RiA[i] から【厳密な 1】を減算 → G = RA − I の第 i 行
 				// (I は厳密。整数 1 の混合減算は kv acceptable_n 経路で
 				// 厳密 --- SR-1、R-3)。
@@ -1947,8 +1960,6 @@ protected:
 	// -------------------------------------------------------------------
 	// override #2(設計 §3): 標準固有値は B = I の転送層。
 	// U4 相当の記入はない(設計 §11: U4 = B=I 転送、記入なし)。
-	// 基底 policy_eig_impl(全固有値)は policy_eigs_with_info(rowsize) 経由で
-	// ここに自動到達する [確認済み spmats_eigs.hpp L4683]。
 	// -------------------------------------------------------------------
 	// >>> SPM-A2 [spimats: multi-RHS verified lss, 併設] <<<
 	// 単一右辺コア(policy_lss_with_info_impl、SPI-U3)と同じ定理・同じ量を、
@@ -2008,11 +2019,60 @@ protected:
 					"spimats::policy_lss_multi_with_info: LU factorization of mid(A) failed (see last_verify_info)");
 			}
 		}
+		// 列のループの前に、L・U(CSC)と A(CSR)を「そのまま読める」形にそろえる(1 回だけ)。
+		// *this と因子の持ち方は変えない。満たしていない行列だけ局所の複製を使う。
+		const spmats<_T, index_type>* Lp; spmats<_T, index_type> Lc_storage;
+		if (Lf.is_finalized() && Lf.format() == vcp::sparse_csc) { Lp = &Lf; }
+		else { Lc_storage = Lf.as_csc(); Lp = &Lc_storage; }
+		const spmats<_T, index_type>* Up; spmats<_T, index_type> Uc_storage;
+		if (Uf.is_finalized() && Uf.format() == vcp::sparse_csc) { Up = &Uf; }
+		else { Uc_storage = Uf.as_csc(); Up = &Uc_storage; }
+		const base_type* Ap; base_type Ac_storage;
+		if (this->is_finalized() && this->format() == vcp::sparse_csr) { Ap = static_cast<const base_type*>(this); }
+		else { Ac_storage = static_cast<const base_type&>(*this).as_csr(); Ap = &Ac_storage; }
 		std::vector<std::vector<_T> > xh(m);
+#if VCP_SPMATS_USE_OPENMP
+		{
+			std::atomic<bool> caught(false);
+			std::exception_ptr eptr;
+			const std::ptrdiff_t pm = static_cast<std::ptrdiff_t>(m);
+			const bool par_on =
+				(m >= 2)
+				&& (m * (Lp->values().size() + Up->values().size()) >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+				&& !omp_in_parallel();
+#pragma omp parallel if(par_on)
+			{
+#pragma omp for schedule(static)
+				for (std::ptrdiff_t cp = 0; cp < pm; cp++) {
+					try {
+						const std::size_t c = static_cast<std::size_t>(cp);
+						std::vector<_T> bmid;
+						vcp::mid_for_approximation(B[c], bmid);
+						const lu_apply_result sres = Amid.policy_lu_solve_with_info(*Lp, *Up, pperm, qperm, bmid, xh[c]);
+						if (!(sres.status == vcp::lu_apply_status::success)) {
+							vcp::throw_error<vcp::state_error>(
+								"spimats::policy_lss_multi_with_info: LU forward solve for xh failed (see last_verify_info)");
+						}
+						if (xh[c].size() != n) {
+							vcp::throw_error<vcp::state_error>(
+								"spimats::policy_lss_multi_with_info: approximate solution has wrong dimension");
+						}
+					}
+					catch (...) {
+						bool expected = false;
+						if (caught.compare_exchange_strong(expected, true)) {
+							eptr = std::current_exception();
+						}
+					}
+				}
+			}
+			if (caught.load()) std::rethrow_exception(eptr);
+		}
+#else
 		for (std::size_t c = 0; c < m; c++) {
 			std::vector<_T> bmid;
 			vcp::mid_for_approximation(B[c], bmid);
-			const lu_apply_result sres = Amid.policy_lu_solve_with_info(Lf, Uf, pperm, qperm, bmid, xh[c]);
+			const lu_apply_result sres = Amid.policy_lu_solve_with_info(*Lp, *Up, pperm, qperm, bmid, xh[c]);
 			if (!(sres.status == vcp::lu_apply_status::success)) {
 				vcp::throw_error<vcp::state_error>(
 					"spimats::policy_lss_multi_with_info: LU forward solve for xh failed (see last_verify_info)");
@@ -2022,6 +2082,7 @@ protected:
 					"spimats::policy_lss_multi_with_info: approximate solution has wrong dimension");
 			}
 		}
+#endif
 		last_verify_info.ap_lss_result.x = xh[m - 1];   // 記録(最後の列)
 
 		{
@@ -2029,12 +2090,44 @@ protected:
 			const _AP& Am = Amid;
 			// 6.1: 残差 r_c = [A]·xh_c − [b_c](列ごと。単一右辺コアと同一の演算列)
 			std::vector<std::vector<interval_type> > r(m, std::vector<interval_type>(n));
+#if VCP_SPMATS_USE_OPENMP
+			{
+				std::atomic<bool> caught(false);
+				std::exception_ptr eptr;
+				const std::ptrdiff_t pm = static_cast<std::ptrdiff_t>(m);
+				const bool par_on =
+					(m >= 2)
+					&& (m * Ap->values().size() >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+					&& !omp_in_parallel();
+#pragma omp parallel if(par_on)
+				{
+#pragma omp for schedule(static)
+					for (std::ptrdiff_t cp = 0; cp < pm; cp++) {
+						try {
+							const std::size_t c = static_cast<std::size_t>(cp);
+							vcp::spimats_kernel::mul_im_v(*Ap, xh[c], r[c]);
+							for (std::size_t i = 0; i < n; i++) {
+								r[c][i] -= B[c][i];
+							}
+						}
+						catch (...) {
+							bool expected = false;
+							if (caught.compare_exchange_strong(expected, true)) {
+								eptr = std::current_exception();
+							}
+						}
+					}
+				}
+				if (caught.load()) std::rethrow_exception(eptr);
+			}
+#else
 			for (std::size_t c = 0; c < m; c++) {
-				this->mul_im_v(xh[c], r[c]);
+				vcp::spimats_kernel::mul_im_v(*Ap, xh[c], r[c]);
 				for (std::size_t i = 0; i < n; i++) {
 					r[c][i] -= B[c][i];
 				}
 			}
+#endif
 			// 器: Rir[c][i] = Ri·r_c(列ごと)、RiAe[i] = abs 済み行和(共有)
 			std::vector<std::vector<interval_type> > Rir(m, std::vector<interval_type>(n));
 			std::vector<interval_type> RiAe(n);
@@ -2057,7 +2150,7 @@ protected:
 							"spimats::policy_lss_multi_with_info: inverse-row extraction failed (no claim)");
 					}
 				}
-				const base_type Acsr = static_cast<const base_type&>(*this).as_csr();
+				const base_type& Acsr = *Ap;
 				const std::vector<index_type>& u3_ao = Acsr.outer_index();
 				const std::vector<index_type>& u3_ai = Acsr.inner_index();
 				const std::vector<interval_type>& u3_av = Acsr.values();
@@ -2126,11 +2219,22 @@ protected:
 #else
 			std::vector<_T> Ri;                            // R = Am⁻¹ の第 i 行
 			std::vector<interval_type> RiA;                // Ri·[A](横ベクトル、行ごとに再利用)
+			vcp::spmats_lu_extract_detail::prepared_lu_factors_<_T, index_type> Fprep;
+			{
+				const vcp::lu_apply_status ps =
+					vcp::spmats_lu_extract_detail::prepare_lu_factors_<_T, index_type>(
+						Lf, Uf, pperm, qperm, Fprep);
+				if (!(ps == vcp::lu_apply_status::success)) {
+					vcp::throw_error<vcp::verification_error>(
+						"spimats::policy_lss_multi_with_info: inverse-row extraction failed (no claim)");
+				}
+			}
 			for (std::size_t i = 0; i < n; i++) {
 				// 6.2-1: Ri = (Am⁻¹)_i を取り出す(1 回)
-				const lu_apply_result rres = Am.policy_lu_inverse_row_with_info(
-					Lf, Uf, pperm, qperm, static_cast<index_type>(i), Ri);
-				if (!(rres.status == vcp::lu_apply_status::success)) {
+				const vcp::lu_apply_status rst =
+					vcp::spmats_lu_extract_detail::lu_inverse_row_core_<_T, index_type>(
+						Fprep, static_cast<index_type>(i), Ri);
+				if (!(rst == vcp::lu_apply_status::success)) {
 					vcp::throw_error<vcp::verification_error>(
 						"spimats::policy_lss_multi_with_info: inverse-row extraction failed (no claim)");
 				}
@@ -2143,7 +2247,7 @@ protected:
 					Rir[c][i] = acc;
 				}
 				// 6.2-3: RiA = Ri·[A](1 回)
-				this->mul_v_im(Ri, RiA);
+				vcp::spimats_kernel::mul_v_im(Ri, *Ap, RiA);
 				RiA[i] -= 1;
 				for (std::size_t j = 0; j < n; j++) {
 					RiA[j] = abs(RiA[j]);
@@ -2174,6 +2278,56 @@ protected:
 					"spimats::policy_lss_multi_with_info: ||RA - I||_inf >= 1, verification failed (no claim; see last_verify_info.lss_g_norm_sup)");
 			}
 			// 列ごとの誤差評価(6.3-3 〜 6.3-6。単一右辺コアと同一の演算列)
+			_T tnorm_sup_last = _T(0);   // 最後の列の Tnorm の上端(記録用。ループの外で書く)
+#if VCP_SPMATS_USE_OPENMP
+			{
+				std::atomic<bool> caught(false);
+				std::exception_ptr eptr;
+				const std::ptrdiff_t pm = static_cast<std::ptrdiff_t>(m);
+				const bool par_on =
+					(m >= 2)
+					&& (m * n >= static_cast<std::size_t>(VCP_SPMATS_OMP_THRESHOLD))
+					&& !omp_in_parallel();
+#pragma omp parallel if(par_on)
+				{
+#pragma omp for schedule(static)
+					for (std::ptrdiff_t cp = 0; cp < pm; cp++) {
+						try {
+							const std::size_t c = static_cast<std::size_t>(cp);
+							// 6.3-3: Tnorm_c = max_i abs(Rir[c][i])(abs と max を 1 ループに融合)
+							Rir[c][0] = abs(Rir[c][0]);
+							interval_type Tnorm = Rir[c][0];
+							for (std::size_t i = 1; i < n; i++) {
+								Rir[c][i] = abs(Rir[c][i]);
+								if (Rir[c][i].upper() > Tnorm.upper()) Tnorm = Rir[c][i];
+							}
+							if (c == m - 1) tnorm_sup_last = Tnorm.upper();
+							// 6.3-4: beta_c = Tnorm_c / (1 − Gnorm)
+							const interval_type beta = Tnorm / (1 - Gnorm);
+							// 6.3-5 / 6.3-6: err_c[i] = abs(Rir[c][i]) + beta_c · RiAe[i]、x_c[i] = xh_c[i] + [−eu, eu]
+							out[c].x.resize(n);
+							for (std::size_t i = 0; i < n; i++) {
+								const interval_type e = Rir[c][i] + beta * RiAe[i];
+								const _T eu = e.upper();
+								if (!(eu >= _T(0))) {
+									vcp::throw_error<vcp::verification_error>(
+										"spimats::policy_lss_multi_with_info: error bound is not a nonnegative number (no claim)");
+								}
+								out[c].x[i] = xh[c][i] + interval_type(-eu, eu);
+							}
+							out[c].solution = out[c].x;
+						}
+						catch (...) {
+							bool expected = false;
+							if (caught.compare_exchange_strong(expected, true)) {
+								eptr = std::current_exception();
+							}
+						}
+					}
+				}
+				if (caught.load()) std::rethrow_exception(eptr);
+			}
+#else
 			for (std::size_t c = 0; c < m; c++) {
 				// 6.3-3: Tnorm_c = max_i abs(Rir[c][i])(abs と max を 1 ループに融合)
 				Rir[c][0] = abs(Rir[c][0]);
@@ -2182,7 +2336,7 @@ protected:
 					Rir[c][i] = abs(Rir[c][i]);
 					if (Rir[c][i].upper() > Tnorm.upper()) Tnorm = Rir[c][i];
 				}
-				last_verify_info.lss_t_norm_sup = Tnorm.upper();   // 記録(最後の列)
+				if (c == m - 1) tnorm_sup_last = Tnorm.upper();
 				// 6.3-4: beta_c = Tnorm_c / (1 − Gnorm)
 				const interval_type beta = Tnorm / (1 - Gnorm);
 				// 6.3-5 / 6.3-6: err_c[i] = abs(Rir[c][i]) + beta_c · RiAe[i]、x_c[i] = xh_c[i] + [−eu, eu]
@@ -2198,6 +2352,8 @@ protected:
 				}
 				out[c].solution = out[c].x;
 			}
+#endif
+			last_verify_info.lss_t_norm_sup = tnorm_sup_last;   // 記録(最後の列)
 			last_verify_info.stage = 4;                    // 成功
 			return out;
 		}

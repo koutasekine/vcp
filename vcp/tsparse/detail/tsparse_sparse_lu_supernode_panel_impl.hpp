@@ -149,8 +149,8 @@ struct supernode_panel_factorize_result {
 //
 // Preconditions (caller ensures -- the dispatch in tsparse_sparse_lu.hpp):
 //   - A_csc is the column-permuted effective matrix (default pivoting path);
-//   - opt.pivoting is none / diagonal / threshold_partial (static_mc64 and
-//     equilibration are answered not_implemented at the dispatch, D-6);
+//   - opt.pivoting is none / diagonal / threshold_partial
+//     (equilibration is answered not_implemented at the dispatch, D-6);
 //   - col_perm / inv_col_perm are valid permutations of size n.
 // ---------------------------------------------------------------------------
 template <class T, class Index>
@@ -222,7 +222,6 @@ supernode_panel_lu_factorize(
     const std::size_t gemm_min_width =
         dd_blocked_gate ? 2u * opt.blas_min_block_size : 1u;
 
-    const real_type threshold        = opt.pivot_threshold;
     const real_type abs_tol          = opt.absolute_pivot_tolerance;
     const bool      do_partial_pivot =
         (opt.pivoting == sparse_lu_pivoting::threshold_partial);
@@ -622,8 +621,7 @@ supernode_panel_lu_factorize(
                 col_max   = sparse_lu_scalar_policy<T>::abs_value(x[sj]);
             }
 
-            if (!sparse_lu_is_acceptable_pivot(pivot_val, pivot_val,
-                                               threshold, abs_tol)) {
+            if (!sparse_lu_is_acceptable_pivot(pivot_val, abs_tol)) {
                 result.success = false;
                 result.status  = sparse_lu_status::numerical_singularity;
                 return result;

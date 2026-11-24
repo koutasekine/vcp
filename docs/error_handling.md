@@ -96,6 +96,7 @@ try {
 | --- | --- |
 | `solve`、`eigs` が収束しない | `vcp::state_error` |
 | `ldl`、`lu`、`chol`、`inertia`、`lu_solve` などで status が `success` 以外 | `vcp::numerical_error` |
+| `lu_solve`、`lu_inverse_row` で、因子・置換・右辺のサイズ(または行番号)が合わない | `vcp::dimension_error` |
 
 `_with_info` 版でも、行列が正方でない、右辺のサイズが合わないといった
 誤った使い方には例外を投げます(`vcp::dimension_error` など)。

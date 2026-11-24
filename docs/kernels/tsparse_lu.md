@@ -75,7 +75,7 @@ if (fac.valid()) {
 | `baseline_gp` | 列ごとの left-looking 法(Gilbert–Peierls の方法) |
 | `supernode_panel` | supernode とパネルによる left-looking 法(SuperLU の構成) |
 | `supernodal` | multifrontal 法(オプトイン) |
-| `auto_select` | `supernode_panel`。ただし `pivoting = static_mc64` または `equilibration = true` のときは `baseline_gp` |
+| `auto_select` | `supernode_panel`。ただし `equilibration = true` のときは `baseline_gp` |
 
 `baseline_gp` と `supernode_panel` の結果は、同じ形の CSC の L・U と置換で
 持ち、解法・反復改良・因子の抽出は共通です。`supernodal` の結果は
@@ -121,9 +121,8 @@ supernode は、各列のピボットを決めた後で動的に見つけます�
 multifrontal 法です。supernode ごとに密な frontal 行列を組み立て(A の要素と、
 子の frontal 行列から送られた寄与の和)、ピボットのブロックの LU 分解、
 2 回の三角行列の解法、1 回の行列積で Schur 補行列を計算し、それを親の
-frontal 行列へ送ります。行の並べ替えは `baseline_gp` の分解(または
-`static_mc64` の matching)で決めたものを使い、frontal 行列の中では対角を
-ピボットにします。零に近いピボットがあると、この経路の結果は使わず、
+frontal 行列へ送ります。行の並べ替えは `baseline_gp` の分解で決めたものを
+使い、frontal 行列の中では対角をピボットにします。零に近いピボットがあると、この経路の結果は使わず、
 `baseline_gp` の結果を使います。
 
 関係するオプション(`supernodal_self_symbolic`、`supernodal_inplace_frontal`、
@@ -136,34 +135,16 @@ frontal 行列へ送ります。行の並べ替えは `baseline_gp` の分解(�
 | --- | --- |
 | `threshold_partial`(既定) | 各列で、作業ベクトルの未確定の行のうち絶対値が最大の要素をピボットにする(部分ピボット選択) |
 | `none`、`diagonal` | 対角の位置をそのままピボットにする |
-| `static_mc64` | MC64 型の静的ピボット選択(下記)の後、`threshold_partial` で分解する |
 
 ピボットの絶対値が `absolute_pivot_tolerance`(既定 0)より大きいと言えない
 とき、分解は `numerical_singularity` で止まります。この判定は「大きいと
 言えるときだけ通す」形なので、区間型では 0 を含むピボットは割り算の前に
 はじかれます。
 
-`pivot_threshold`(既定 0.1)は、`supernodal` の一部の経路だけが読みます。
-`baseline_gp` と `supernode_panel` では、絶対値最大の要素を選ぶので使いません。
-
-### `static_mc64`
-
-鞍点型の行列 [A Bᵀ; B 0] のように対角に零がある行列のための前処理です。
-
-1. 二部グラフの最大積の完全 matching を求める。これは、費用
-   c_ij = log(max_i |a_ij|) − log|a_ij| の最小費用の割当て問題と同じで、
-   最短増加路法(Jonker–Volgenant の形)で解く。完全 matching がなければ
-   `structural_singularity`。
-2. 割当て問題の双対変数 u, v から、Dr = exp(u)、Dc = exp(v)/max_i|a_ij| を作る。
-   matching の要素の絶対値は 1、その他は 1 以下になる。スケールが有限で
-   正でないときは、スケールを使わない(matching だけを使う)。
-3. B = P_static Dr A Dc Q を `threshold_partial` で分解する。解法では
-   P_static、Dr、Dc、Q を戻すので、残差は元の A で測る。
-
-`baseline_gp` の経路では、費用を密な n × n の配列で持ちます(メモリは
-O(n²))。`supernodal` の一部の経路では、非零の位置だけを使う版を使います。
-絶対値が正と言えない要素(0 を含む区間など)は、matching では非零と
-みなしません。
+`threshold_partial` は、`baseline_gp` と `supernode_panel` では絶対値最大の
+要素を選びます。`supernodal` の一部の経路は、対角の要素の絶対値が列の最大の
+0.1 倍以上のときに対角をそのまま使います(0.1 は内部の定数で、オプションでは
+変えられません)。
 
 ## 平衡化(`equilibration`)
 
@@ -172,8 +153,7 @@ O(n²))。`supernodal` の一部の経路では、非零の位置だけを使う
 - Dr[i] = 1 / max_j |a_ij|(零の行では 1)
 - Dc[j] = 1 / max_i |Dr[i] a_ij|(零の列では 1)
 
-`static_mc64` とは同時に使えません(`invalid_input`)。`supernode_panel` を
-明示した場合は `not_implemented` です。
+`supernode_panel` を明示した場合は `not_implemented` です。
 
 ## 解法と反復改良
 
@@ -224,8 +204,7 @@ if (ex.status == vcp::sparse_lu_extract_status::success) {
 `spmats` の `lu` / `lu_with_info` はこの関数を使います。規約は
 P A Q = L U、置換ベクトルは new→old で、MATLAB の `[L,U,P,Q] = lu(A)` と
 同じ向きです。各列の行添字は昇順で、厳密零は格納しません。
-平衡化や `baseline_gp` の経路の `static_mc64` で Dr・Dc を使った分解は、
-`unsupported_options` を返します。
+平衡化で Dr・Dc を使った分解は、`unsupported_options` を返します。
 
 ## 逆行列の行・列
 
@@ -260,7 +239,6 @@ CSC の L・U も残っている場合だけ使えます。
 | `ordering` | `auto_select` | 列の並べ替え |
 | `pivoting` | `threshold_partial` | ピボット選択 |
 | `absolute_pivot_tolerance` | 0 | ピボットの絶対値の下限 |
-| `pivot_threshold` | 0.1 | `supernodal` の一部の経路のピボットの閾値。[0, 1] の外は `invalid_input` |
 | `zero_tolerance`、`near_zero_tolerance` | ε、√ε | `supernodal` の経路で、零・零に近いピボットを判定する閾値 |
 | `equilibration` | `false` | 平衡化 |
 | `iterative_refinement` | `true` | 反復改良 |
@@ -271,11 +249,9 @@ CSC の L・U も残っている場合だけ使えます。
 | `panel_gemm_kernel` | `blocked` | `supernode_panel` の行列積 |
 | `blas_min_block_size` | 16 | `supernode_panel` で行列積を使う大きさの目安 |
 | `supernode_relaxation` | 0 | supernode をまとめる緩和の量(0 はまとめない) |
-| `compute_condition_estimate` | `false` | `true` にすると `not_implemented` |
 | `ndml_*` | −1 | `nested_dissection_ml` のパラメータ |
 
-ε は `vcp::tsparse_scalar::epsilon<real_type>()` です。`growth_threshold` と
-`static_pivot_perturbation` は、現在どの経路からも読まれません。
+ε は `vcp::tsparse_scalar::epsilon<real_type>()` です。
 
 ## 結果の情報
 
@@ -299,6 +275,6 @@ CSC の L・U も残っている場合だけ使えます。
 | `invalid_input` | 正方でない、オプションの範囲外 |
 | `not_implemented` | 実装していないオプションの組み合わせ |
 | `numerical_singularity` | ピボットが `absolute_pivot_tolerance` より大きいと言えない |
-| `structural_singularity` | `static_mc64` で完全 matching がない |
+| `structural_singularity` | 現在はどの経路も返さない |
 | `memory_allocation_failed` | メモリ不足 |
 | `internal_error` | 想定外の例外 |

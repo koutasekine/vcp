@@ -43,6 +43,7 @@ int info3 = tgesv(n, nrhs, A, lda, ipiv, B, ldb);
 | QR / LQ / QL | — | `tgeqr2` `tgeqrf` `tgelq2` `tgelqf` `torg2r` `torgqr` `torgl2` `torglq` `torg2l` `torgql` `torm2r` `tormqr` `torml2` `tormlq` `torm2l` `tormql` |
 | 対称固有値 | `tsyev` | `tsytd2` `tlatrd` `tsytrd` `torgtr` `tormtr` `tsterf` `tsteqr` |
 | 一般化対称固有値 | `tsygv` | `tsygs2` `tsygst` |
+| 対称固有値 (分割統治法) | `tsyevd` `tsygvd` | `tstedc` `tlaed0` `tlaed1` `tlaed2` `tlaed3` `tlaed4` `tlaed5` `tlaed6` `tlaed7` `tlaed8` `tlaed9` `tlaeda` `tlamrg` |
 | 非対称固有値 | `tgeev` | `tgebal` `tgebak` `tgehd2` `tlahr2` `tgehrd` `torghr` `tlahqr` `thseqr` `tlaln2` `ttrevc` |
 | 特異値分解 | `tgesvd` | `tgebd2` `tlabrd` `tgebrd` `torgbr` `tormbr` `tbdsqr` |
 | 補助 | — | `tlassq` `tlapy2` `tlapy3` `tladiv` `tlartg` `tlarfg` `tlarf` `tlarf1f` `tlarf1l` `tlarft` `tlarfb` `tlascl` `tlasr` `tlae2` `tlaev2` `tlas2` `tlasv2` `tlanv2` `tlange` `tlangb` `tlansy` `tlansb` `tlanst` `tlamch` `tlaset` `tlacpy` `tlaswp` `tlasrt` `ilatlr` `ilatlc` |
@@ -131,6 +132,7 @@ int info2 = vcp::tsyev<kv::dd>('V', 'U', n, A, lda, w);
 | `tpotrs<kv::dd>` | Cholesky 分解済み行列に対し，`tpotrs<double>` で初期解を求める．`kv::dd` の Cholesky 因子から元の正定値行列を再構成し，`kv::dd` 残差を double Cholesky 因子で補正する |
 | `tposv<kv::dd>` | `tposv<double>` で Cholesky 分解と初期解を求める．元の `kv::dd` 行列で残差 `R = B - AX` を計算し，double Cholesky 因子を用いた `tpotrs<double>` で補正する |
 | `tsyev<kv::dd>` | `jobz` に関係なく内部では `tsyev<double>('V', ...)` で初期固有値・固有ベクトルを求める．`kv::dd` で `S = X^TAX` と `R = I - X^TX` を計算し，対称固有値分解の残差反復により固有値・固有ベクトルを改善する．`jobz='N'` の場合は精密化済み固有値だけを返す |
+| `tsyevd<kv::dd>` `tsygvd<kv::dd>` | `tsyev<kv::dd>`・`tsygv<kv::dd>` と同じ計算 (それらを呼ぶ) |
 | `tsygv<kv::dd>` | `itype=1` について，`uplo` で指定された有効三角から `A` と `B` を full symmetric に保存し，内部で `tsygv<double>(1, 'V', ...)` を初期値として一般化対称固有値問題 `A X = B X Lambda` を `kv::dd` 残差反復で改善する．`jobz='N'` の場合も内部では固有ベクトルを使って固有値を精密化する |
 
 `tlapack_dd.hpp` は内部で `vcp/tblas/tblas_double.hpp`，
@@ -780,6 +782,10 @@ jobz='N': 固有値のみ (tsterf)，'V': 固有 vector も (tsteqr)．
 出力: `w` (長さ n) に固有値が**昇順**，jobz='V' なら A に正規直交固有 vector
 (列が w[j] に対応)．INFO > 0: 収束しなかった非対角要素の個数．
 
+`tlapack_double.hpp` を include した `tsyev<double>` の特殊化は，`jobz='V'` のとき分割統治法の
+`dsyevd_` を呼ぶ (`jobz='N'` のときは `dsyev_`)．`-DUSE_VCP_LAPACK` のときの `dsyevd_` は
+丸めモード指定つきの実装 (rdlapack) で，`dsyev_` より遅いことがある．
+
 `tlapack_dd.hpp` を include した `tsyev<kv::dd>` は，`jobz='N'` の場合でも内部では
 固有 vector を計算し，`kv::dd` 残差反復で固有値を改善する．`jobz='N'` では
 改善済み固有値だけを返し，固有 vector は返さない．`uplo` の反対三角は入力として
@@ -797,11 +803,48 @@ itype=1: A\*z = λ\*B\*z，2: A\*B\*z = λ\*z，3: B\*A\*z = λ\*z (B は対称�
 B は Cholesky 因子で上書き．INFO > 0: n 以下なら tsyev の失敗，
 n より大なら B が正定値でない (INFO - n が主小行列の位置)．
 
+`tlapack_double.hpp` を include した `tsygv<double>` の特殊化は，`jobz='V'` のとき分割統治法の
+`dsygvd_` を呼ぶ (`jobz='N'` のときは `dsygv_`)．固有値が昇順で返ること，正規化，INFO の意味は
+変わらない．`-DUSE_VCP_LAPACK` のときの `dsygvd_` は丸めモード指定つきの実装 (rdlapack) で，
+`dsygv_` より遅いことがある．
+
 `tlapack_dd.hpp` を include した `tsygv<kv::dd>` の特殊化は，現在 `itype=1`
 (`A*z = lambda*B*z`) のみを対象にする．`jobz='N'` の場合でも内部では固有 vector を
 計算して固有値を改善する．`uplo` の反対三角は入力として読まない．`itype=2,3`
 が必要な場合は，現時点では `tlapack_dd.hpp` を include しない汎用実装を使うか，
 別途特殊化を追加する必要がある．
+
+### tsyevd / tsygvd — driver: 分割統治法
+```cpp
+template <typename T>
+int tsyevd(const char jobz, const char uplo, const int n, T* A, const int lda, T* w);
+int tsygvd(const int itype, const char jobz, const char uplo, const int n,
+	T* A, const int lda, T* B, const int ldb, T* w);
+```
+引数と出力は `tsyev`・`tsygv` と同じ．jobz='V' のとき，固有 vector を分割統治法 (`tstedc`) で
+求める (jobz='N' は `tsterf`)．`tsygvd` は，固有値計算が失敗したとき (INFO > 0) は固有 vector の
+逆変換を行わない．
+
+**前提**: 分割統治法 (`tstedc`・`tsyevd`・`tsygvd` と `tlaed*`) は，近い 2 数の差が相対精度で
+求まる (IEEE の演算のように，近い 2 数の減算で桁を失わない) 型を前提にしている．double・
+float・long double・`kv::mpfr<N>` はこれを満たす．**`kv::dd` の加減算は満たさない**ので，
+`tlapack_dd.hpp` を include せずに `tstedc<kv::dd>`・`tsyevd<kv::dd>`・`tsygvd<kv::dd>` を
+直接呼ぶと，固有値が密集・重複する行列で固有 vector の正規直交性が `kv::dd` の精度に届かない
+ことがあり，まれに収束せず INFO > 0 を返す．`kv::dd` では `tsyev`・`tsygv` (QR 法) を使うか，
+`tlapack_dd.hpp` の特殊化 (double の分割統治法 + `kv::dd` の残差反復) を使う．
+`mats2` (型によらない実装) は QR 法の `tsyev`・`tsygv` を呼ぶ．
+
+`tlapack_double.hpp` の `tsyevd<double>`・`tsygvd<double>` は `tsyev<double>`・`tsygv<double>` と
+同じ計算 (`dsyevd_`・`dsygvd_`)，`tlapack_dd.hpp` の `tsyevd<kv::dd>`・`tsygvd<kv::dd>` は
+`tsyev<kv::dd>`・`tsygv<kv::dd>` と同じ計算である．
+
+### tstedc — 三重対角行列の固有値・固有 vector (分割統治法)
+```cpp
+template <typename T>
+int tstedc(const char compz, const int n, T* d, T* e, T* Z, const int ldz);
+```
+引数と出力は `tsteqr` と同じ．n が 25 以下の問題と部分問題は `tsteqr` で解く．
+INFO > 0: 行と列が INFO/(n+1) から INFO%(n+1) の部分行列の固有値が求まらなかった．
 
 ### tsytrd / tsytd2 / tlatrd — 三重対角化
 ```cpp

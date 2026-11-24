@@ -664,6 +664,82 @@ inline void dsyev_(const char* jobz, const char* uplo, const int* n, double* a, 
 	)
 }
 
+// 三重対角の分割統治．LWORK = -1 または LIWORK = -1 のとき，reference LAPACK と同じ
+// 長さを work[0], iwork[0] に返す (計算はしない)
+inline void dstedc_(const char* compz, const int* n, double* d, double* e, double* z, const int* ldz,
+	double* work, const int* lwork, int* iwork, const int* liwork, int* info) {
+	*info = 0;
+	if (*lwork == -1 || *liwork == -1) {
+		const double dn = static_cast<double>(*n);
+		const bool wantv = (*compz == 'V' || *compz == 'v');
+		const bool wanti = (*compz == 'I' || *compz == 'i');
+		double lwmin = 1.0;
+		double liwmin = 1.0;
+		if (*n <= 1 || !(wantv || wanti)) {
+			lwmin = 1.0;
+			liwmin = 1.0;
+		}
+		else if (*n <= vblas_rdlapack_detail::eigdc_smlsiz) {
+			lwmin = 2.0 * (dn - 1.0);
+			liwmin = 1.0;
+		}
+		else {
+			int lgn = 0;
+			while ((1 << lgn) < *n) {
+				lgn = lgn + 1;
+			}
+			if (wantv) {
+				lwmin = 1.0 + 3.0 * dn + 2.0 * dn * lgn + 4.0 * dn * dn;
+				liwmin = 6.0 + 6.0 * dn + 5.0 * dn * lgn;
+			}
+			else {
+				lwmin = 1.0 + 4.0 * dn + dn * dn;
+				liwmin = 3.0 + 5.0 * dn;
+			}
+		}
+		work[0] = lwmin;
+		iwork[0] = static_cast<int>(liwmin);
+		return;
+	}
+	(void)work;
+	(void)iwork;
+	VLAPACK_DLAPACK_TRY(
+		*info = vcp::rdstedc(*compz, *n, d, e, z, *ldz, vlapack_dlapack_detail::current_rounding_mode());
+	)
+}
+
+// 対称固有値問題 (固有 vector は分割統治)．LWORK = -1 または LIWORK = -1 のとき，
+// reference LAPACK と同じ長さを work[0], iwork[0] に返す (計算はしない)
+inline void dsyevd_(const char* jobz, const char* uplo, const int* n, double* a, const int* lda,
+	double* w, double* work, const int* lwork, int* iwork, const int* liwork, int* info) {
+	*info = 0;
+	if (*lwork == -1 || *liwork == -1) {
+		const double dn = static_cast<double>(*n);
+		double lopt = 1.0;
+		int liopt = 1;
+		if (*n > 1) {
+			double lwmin;
+			if (*jobz == 'V' || *jobz == 'v') {
+				liopt = 3 + 5 * *n;
+				lwmin = 1.0 + 6.0 * dn + 2.0 * dn * dn;
+			}
+			else {
+				liopt = 1;
+				lwmin = 2.0 * dn + 1.0;
+			}
+			lopt = std::max(lwmin, 2.0 * dn + dn * vblas_rdlapack_detail::ilaenv(1, "SYTRD", *n, -1, -1, -1));
+		}
+		work[0] = lopt;
+		iwork[0] = liopt;
+		return;
+	}
+	(void)work;
+	(void)iwork;
+	VLAPACK_DLAPACK_TRY(
+		*info = vcp::rdsyevd(*jobz, *uplo, *n, a, *lda, w, vlapack_dlapack_detail::current_rounding_mode());
+	)
+}
+
 inline void dsygs2_(const int* itype, const char* uplo, const int* n, double* a, const int* lda,
 	const double* b, const int* ldb, int* info) {
 	VLAPACK_DLAPACK_TRY(
@@ -689,6 +765,40 @@ inline void dsygv_(const int* itype, const char* jobz, const char* uplo, const i
 	(void)work;
 	VLAPACK_DLAPACK_TRY(
 		*info = vcp::rdsygv(*itype, *jobz, *uplo, *n, a, *lda, b, *ldb, w,
+			vlapack_dlapack_detail::current_rounding_mode());
+	)
+}
+
+// 一般化対称固有値問題 (固有 vector は分割統治)．LWORK = -1 または LIWORK = -1 のとき，
+// reference LAPACK と同じ長さを work[0], iwork[0] に返す (計算はしない)
+inline void dsygvd_(const int* itype, const char* jobz, const char* uplo, const int* n,
+	double* a, const int* lda, double* b, const int* ldb, double* w,
+	double* work, const int* lwork, int* iwork, const int* liwork, int* info) {
+	*info = 0;
+	if (*lwork == -1 || *liwork == -1) {
+		const double dn = static_cast<double>(*n);
+		double lwmin = 1.0;
+		int liwmin = 1;
+		if (*n <= 1) {
+			liwmin = 1;
+			lwmin = 1.0;
+		}
+		else if (*jobz == 'V' || *jobz == 'v') {
+			liwmin = 3 + 5 * *n;
+			lwmin = 1.0 + 6.0 * dn + 2.0 * dn * dn;
+		}
+		else {
+			liwmin = 1;
+			lwmin = 2.0 * dn + 1.0;
+		}
+		work[0] = lwmin;
+		iwork[0] = liwmin;
+		return;
+	}
+	(void)work;
+	(void)iwork;
+	VLAPACK_DLAPACK_TRY(
+		*info = vcp::rdsygvd(*itype, *jobz, *uplo, *n, a, *lda, b, *ldb, w,
 			vlapack_dlapack_detail::current_rounding_mode());
 	)
 }
@@ -944,10 +1054,13 @@ __attribute__((used)) static const emit_fn emit_table[] = {
 	reinterpret_cast<emit_fn>(dormtr_),
 	reinterpret_cast<emit_fn>(dsterf_),
 	reinterpret_cast<emit_fn>(dsteqr_),
+	reinterpret_cast<emit_fn>(dstedc_),
 	reinterpret_cast<emit_fn>(dsyev_),
+	reinterpret_cast<emit_fn>(dsyevd_),
 	reinterpret_cast<emit_fn>(dsygs2_),
 	reinterpret_cast<emit_fn>(dsygst_),
 	reinterpret_cast<emit_fn>(dsygv_),
+	reinterpret_cast<emit_fn>(dsygvd_),
 	reinterpret_cast<emit_fn>(dgebd2_),
 	reinterpret_cast<emit_fn>(dgebrd_),
 	reinterpret_cast<emit_fn>(dorgbr_),

@@ -17,9 +17,9 @@ GPG key の扱いは時間とともに変わるため、OS 別の実行可能 in
 - 開発環境、Boost、GMP、MPFR は distribution の package manager で
   導入します。
 - BLAS/LAPACK、OpenBLAS、Intel MKL、OpenMP の設定は
-  [blas_build.md](blas_build.md) を参照します。
+  [blas_build.md](../blas_build.md) を参照します。
 - GitHub archive や tar の展開に慣れていない場合は、
-  [../tools/download_vcp_kv.sh](../tools/download_vcp_kv.sh) を使えます。
+  [../../tools/download_vcp_kv.sh](../../tools/download_vcp_kv.sh) を使えます。
 
 旧 installer script で行っていた有用な処理のうち、`kv/` と `vcp/` を
 同じ親ディレクトリに展開する部分だけを `tools/download_vcp_kv.sh` として

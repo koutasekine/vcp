@@ -37,7 +37,7 @@
 //
 // Static pivoting:
 //   row_perm is inherited from the CSC bootstrap (baseline GP pivot order, plus
-//   any MC64 static pivoting / equilibration already applied). The front pivot
+//   any equilibration already applied). The front pivot
 //   block uses its diagonal entries; no cross-supernode row swaps are performed,
 //   which keeps the prebuilt symbolic structure (row_indices / U_segments) valid.
 //   A zero / near-zero diagonal pivot is a safe failure (true_numeric_source

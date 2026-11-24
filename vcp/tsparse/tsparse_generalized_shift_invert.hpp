@@ -155,7 +155,7 @@ public:
 
         typedef vcp::tsparse_factorization::gmres_result<value_type, AV, PV> gr_t;
         gr_t gr = vcp::tsparse_factorization::gmres_solve<value_type, AV, PV>(
-            av, pv, rhs, actual_max, inner_tol_, actual_restart);
+            av, pv, rhs, actual_max * std::min(actual_restart, n_), inner_tol_, actual_restart);
 
         linear_solves_++;
         inner_iterations_ += gr.iterations;

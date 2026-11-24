@@ -1759,7 +1759,10 @@ namespace vcp {
 			if (tol <= scalar_real_type(0))
 				vcp::throw_error<vcp::invalid_argument>("spmats::is_symmetric: tol must be positive");
 			if (row != column) return false;
-			spmats A = this->as_csr();
+			const spmats* Ap; spmats Ac_storage;
+			if (this->is_finalized() && this->format() == vcp::sparse_csr) { Ap = this; }
+			else { Ac_storage = this->as_csr(); Ap = &Ac_storage; }
+			const spmats& A = *Ap;
 			const std::vector<_Index>& outer = A.outer;
 			const std::vector<_Index>& inner = A.inner;
 			const std::vector<_T>& val = A.value;
@@ -2104,15 +2107,10 @@ namespace vcp {
 		// Policy methods: eigenvalue strict (throwing on failure)
 		// These own all convergence/count checking; spmatrix.hpp does none.
 		//
-		// policy_eig / policy_eigs / policy_generalized_eig /
-		// policy_generalized_eigs (no Preconditioner): NVI pattern, same rule
-		// as above (outer never overridden, override the _impl).
+		// policy_eigs / policy_generalized_eigs (no Preconditioner): NVI
+		// pattern, same rule as above (outer never overridden, override the
+		// _impl).
 		// ------------------------------------------------------------------
-		eig_result<_T> policy_eig(
-			const eig_options<_T>& opt) const;
-		virtual eig_result<_T> policy_eig_impl(
-			const eig_options<_T>& opt) const;
-
 		std::vector<_T> policy_eigs(
 			std::size_t k,
 			const eig_options<_T>& opt) const;
@@ -2124,13 +2122,6 @@ namespace vcp {
 		std::vector<_T> policy_eigs(
 			std::size_t k,
 			const eig_options<_T>& opt, const Prec& M) const;
-
-		eig_result<_T> policy_generalized_eig(
-			const spmats<_T,_Index>& B,
-			std::size_t k, const eig_options<_T>& opt) const;
-		virtual eig_result<_T> policy_generalized_eig_impl(
-			const spmats<_T,_Index>& B,
-			std::size_t k, const eig_options<_T>& opt) const;
 
 		std::vector<_T> policy_generalized_eigs(
 			const spmats<_T,_Index>& B,

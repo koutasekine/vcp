@@ -586,7 +586,10 @@ void mul_im_v(const spmats<kv::interval<_T>, _Index>& IA,
 		vcp::throw_error<vcp::dimension_error>("spimats_kernel::mul_im_v: dimension mismatch");
 	}
 	if (!IA.is_finalized()) IA.finalize();
-	const spmats<kv::interval<_T>, _Index> Ac = IA.as_csr();
+	const spmats<kv::interval<_T>, _Index>* Ap; spmats<kv::interval<_T>, _Index> Ac_storage;
+	if (IA.is_finalized() && IA.format() == vcp::sparse_csr) { Ap = &IA; }
+	else { Ac_storage = IA.as_csr(); Ap = &Ac_storage; }
+	const spmats<kv::interval<_T>, _Index>& Ac = *Ap;
 	const std::vector<_Index>& ao = Ac.outer_index();
 	const std::vector<_Index>& ai = Ac.inner_index();
 	const std::vector<kv::interval<_T> >& av = Ac.values();
@@ -696,7 +699,10 @@ void mul_v_im(const std::vector<_TP>& x,
 		vcp::throw_error<vcp::dimension_error>("spimats_kernel::mul_v_im: dimension mismatch");
 	}
 	if (!IA.is_finalized()) IA.finalize();
-	const spmats<kv::interval<_T>, _Index> Ac = IA.as_csr();
+	const spmats<kv::interval<_T>, _Index>* Ap; spmats<kv::interval<_T>, _Index> Ac_storage;
+	if (IA.is_finalized() && IA.format() == vcp::sparse_csr) { Ap = &IA; }
+	else { Ac_storage = IA.as_csr(); Ap = &Ac_storage; }
+	const spmats<kv::interval<_T>, _Index>& Ac = *Ap;
 	const std::vector<_Index>& ao = Ac.outer_index();
 	const std::vector<_Index>& ai = Ac.inner_index();
 	const std::vector<kv::interval<_T> >& av = Ac.values();

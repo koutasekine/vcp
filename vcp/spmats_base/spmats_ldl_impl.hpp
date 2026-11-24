@@ -56,6 +56,7 @@ namespace spmats_ldl_detail {
 		out.nnz_L_static        = r.nnz_L_static;
 		out.n_zero_skips        = r.n_zero_skips;
 		out.out_of_panel_at     = r.out_of_panel_at;
+		out.breakdown_at        = r.breakdown_at;
 		out.gemm_call_count     = r.gemm_call_count;
 		out.gemm_time_ns        = r.gemm_time_ns;
 		out.growth_log2         = r.growth_log2;

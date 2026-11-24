@@ -46,7 +46,7 @@ enum class sparse_lu_method {
     // definition, referenced by BOTH sparse_lu_numeric and
     // sparse_lu_factorize_with_info).  Resolution rule (full text):
     //   auto_select -> supernode_panel, EXCEPT when
-    //     pivoting == static_mc64 || equilibration
+    //     equilibration
     //   in which case -> baseline_gp (the supernode_panel path answers
     //   those option sets with not_implemented; auto keeps solving them).
     // supernodal is NEVER selected by auto_select.
@@ -54,7 +54,7 @@ enum class sparse_lu_method {
     // pre-D1 default path; (ii) panel_gemm_kernel = reference restores the
     // pre-K1 GEMM kernel; (iii) heavy scalar types (e.g. mpfr, a few
     // percent slower on supernode_panel, accepted by D-3) should use (i).
-    // Extension point: once supernode_panel implements static_mc64 /
+    // Extension point: once supernode_panel implements
     // equilibration, widening the promotion is just removing the condition
     // in resolve_auto_method.
     auto_select,
@@ -90,8 +90,7 @@ enum class sparse_lu_ordering {
 enum class sparse_lu_pivoting {
     none,
     diagonal,
-    threshold_partial,
-    static_mc64
+    threshold_partial
 };
 
 enum class sparse_lu_status {
@@ -258,7 +257,6 @@ struct sparse_lu_options {
     sparse_lu_ordering ordering;
     sparse_lu_pivoting pivoting;
 
-    real_type pivot_threshold;
     real_type absolute_pivot_tolerance;  // absolute threshold for pivot acceptance
     real_type zero_tolerance;
     real_type near_zero_tolerance;
@@ -269,11 +267,6 @@ struct sparse_lu_options {
     std::size_t blas_min_block_size;
     std::size_t supernode_relaxation;
     std::size_t panel_size;
-
-    real_type growth_threshold;
-    real_type static_pivot_perturbation;
-
-    bool compute_condition_estimate;
 
     // O4.1a: iterative refinement (IR) controls (opt-in; only read when
     // iterative_refinement == true).  These fields are additive and do NOT
@@ -349,7 +342,6 @@ struct sparse_lu_options {
         : method(sparse_lu_method::auto_select),
           ordering(sparse_lu_ordering::auto_select),
           pivoting(sparse_lu_pivoting::threshold_partial),
-          pivot_threshold(real_type(1e-1)),
           absolute_pivot_tolerance(real_type(0)),
           zero_tolerance(vcp::tsparse_scalar::epsilon<real_type>()),
           near_zero_tolerance(
@@ -364,10 +356,6 @@ struct sparse_lu_options {
           // exactly (directive SLU-14R.5 §3 L1 / §7).
           supernode_relaxation(0),
           panel_size(8),
-          growth_threshold(real_type(1e4)),
-          static_pivot_perturbation(
-              vcp::tsparse_scalar::sqrt_value(vcp::tsparse_scalar::epsilon<real_type>())),
-          compute_condition_estimate(false),
           iterative_refinement_max_iterations(20),
           iterative_refinement_tolerance(
               vcp::tsparse_scalar::epsilon<real_type>()),
@@ -1194,7 +1182,7 @@ void sparse_lu_validate_pivot_parameters(Real threshold, Real absolute_tol)
 {
     if (threshold < Real(0) || threshold > Real(1)) {
         vcp::throw_error<vcp::invalid_argument>(
-            "sparse_lu: pivot_threshold must be in [0, 1]");
+            "sparse_lu: threshold must be in [0, 1]");
     }
     if (absolute_tol < Real(0)) {
         vcp::throw_error<vcp::invalid_argument>(
@@ -1226,6 +1214,33 @@ bool sparse_lu_is_acceptable_pivot(
     if (!(abs_pivot > absolute_tol)) return false;
     return abs_pivot >= threshold * abs_colmax;
 }
+
+// Absolute-tolerance-only form, for the call sites where the pivot is itself
+// the column maximum: returns true iff abs_value(pivot) > absolute_tol (the
+// same certified direction as condition 1 above).
+// Throws invalid_argument if absolute_tol < 0.
+template <class T>
+bool sparse_lu_is_acceptable_pivot(
+    const T& pivot,
+    typename sparse_lu_scalar_policy<T>::real_type absolute_tol)
+{
+    typedef typename sparse_lu_scalar_policy<T>::real_type Real;
+    sparse_lu_validate_pivot_parameters(Real(0), absolute_tol);
+    const Real abs_pivot = sparse_lu_scalar_policy<T>::abs_value(pivot);
+    return abs_pivot > absolute_tol;
+}
+
+namespace sparse_lu_detail {
+
+// Relative threshold of the within-panel pivot acceptance test
+// (abs(pivot) >= ratio * column_max; select_threshold_pivot).  Internal
+// constant; not an option.
+template <class Real>
+inline Real sparse_lu_partial_pivot_ratio() {
+    return Real(1e-1);
+}
+
+} // namespace sparse_lu_detail
 
 // ===========================================================================
 // sparse_lu_dense_kernel<T>  -- SLU-8R.1 dense kernel adapter
@@ -2363,9 +2378,8 @@ namespace sparse_lu_detail {
 
 // validate_symbolic_options: checks pivot params, ordering, pivoting, method,
 // and future feature flags.
-// Returns invalid_input for invalid pivot_threshold / absolute_pivot_tolerance.
-// Returns not_implemented for explicitly requested unimplemented features
-// (equilibration, compute_condition_estimate).  iterative_refinement (O4.1a) is
+// Returns invalid_input for invalid absolute_pivot_tolerance.
+// iterative_refinement (O4.1a) is
 // accepted: it is a solve-time post-process and does not affect factorization.
 // rcm/amd/colamd orderings are all implemented
 // column pre-permutations and are accepted.
@@ -2382,9 +2396,6 @@ inline sparse_lu_status validate_symbolic_options(
 {
     typedef typename sparse_lu_options<T>::real_type Real;
     // Validate numeric pivot parameters first: invalid_input before not_implemented.
-    if (opt.pivot_threshold < Real(0) || opt.pivot_threshold > Real(1)) {
-        return sparse_lu_status::invalid_input;
-    }
     if (opt.absolute_pivot_tolerance < Real(0)) {
         return sparse_lu_status::invalid_input;
     }
@@ -2394,19 +2405,9 @@ inline sparse_lu_status validate_symbolic_options(
     // note is corrected/withdrawn by the O3/O4 roadmap §0; colamd is now a
     // pattern-only A^T A column ordering.  All ordering modes are accepted for
     // both the supernodal and baseline branches; no ordering mode is rejected.
-    // Pivoting Track O4: static_mc64 is an implemented, opt-in static pivoting
-    // (MC64 maximum-weight matching + Dr/Dc scaling -> zero-free diagonal, then
-    // the existing threshold partial pivoting refines on the matched matrix).
-    // The default pivoting (threshold_partial) is untouched (S-C).  No pivoting
-    // mode is rejected here.
+    // No pivoting mode is rejected here.
     // O4.2a: equilibration is implemented for baseline_gp / natural|amd|colamd /
-    // threshold_partial.  It is incompatible with static_mc64 because both paths
-    // own Dr/Dc in storage; the composition rule is undefined until a later task.
-    // Default (false) passes through; static_mc64 combination is rejected.
-    if (opt.equilibration &&
-        opt.pivoting == sparse_lu_pivoting::static_mc64) {
-        return sparse_lu_status::invalid_input;
-    }
+    // threshold_partial.  Default (false) passes through.
     // O4.1a: iterative_refinement is un-stubbed.  It is a SOLVE-TIME post-process
     // (sparse_lu_solve_refined) that reuses the factorization and does NOT change
     // the factorization or the default solve path; the flag is therefore accepted
@@ -2418,9 +2419,6 @@ inline sparse_lu_status validate_symbolic_options(
     if (opt.iterative_refinement &&
         opt.iterative_refinement_tolerance < Real(0)) {
         return sparse_lu_status::invalid_input;
-    }
-    if (opt.compute_condition_estimate) {
-        return sparse_lu_status::not_implemented;
     }
     return sparse_lu_status::success;
 }
@@ -2442,21 +2440,21 @@ inline sparse_lu_status validate_options(const sparse_lu_options<T>& opt) {
 // sparse_lu_factorize_with_info" (spmats_eigs.hpp).
 //
 // Rule: auto_select -> supernode_panel, EXCEPT when
-//   pivoting == static_mc64 || equilibration
+//   equilibration
 // (option sets the supernode_panel dispatch answers with not_implemented)
 // -> baseline_gp, so every option set that solved before the promotion keeps
 // solving (STOP-1 ruling; auto keeps its "always solvable" semantics).
 // Explicit method requests pass through unchanged; supernodal is NEVER
 // produced by resolution.  opt itself is never modified (local resolution).
 //
-// Extension point: once the supernode_panel path implements static_mc64 /
+// Extension point: once the supernode_panel path implements
 // equilibration, widening the promotion is just removing the condition below.
 template <class T>
 inline sparse_lu_method resolve_auto_method(const sparse_lu_options<T>& opt) {
     if (opt.method != sparse_lu_method::auto_select) {
         return opt.method;
     }
-    if (opt.pivoting == sparse_lu_pivoting::static_mc64 || opt.equilibration) {
+    if (opt.equilibration) {
         return sparse_lu_method::baseline_gp;
     }
     return sparse_lu_method::supernode_panel;
@@ -2606,15 +2604,8 @@ void sparse_lu_validate_etree_reach_inputs(
 #include <vcp/tsparse/detail/tsparse_sparse_lu_supernode_panel_impl.hpp>
 
 // ===========================================================================
-// O4: MC64 / static pivoting (zero-free diagonal; saddle-point solvability).
-// Injected after the numeric helpers; uses csc_storage, sparse_lu_scalar_policy,
-// and the identity/inverse permutation helpers.
-// ===========================================================================
-#include <vcp/tsparse/detail/tsparse_sparse_lu_mc64_impl.hpp>
-
-// ===========================================================================
 // O4.2a: Two-sided max-norm equilibration helper.
-// Injected after mc64; uses csc_storage, tsparse_scalar, convert helpers.
+// Uses csc_storage, tsparse_scalar, convert helpers.
 // ===========================================================================
 #include <vcp/tsparse/detail/tsparse_sparse_lu_equilibration_impl.hpp>
 
@@ -4447,13 +4438,6 @@ sparse_lu_symbolic_with_info(
 // factorization result with row_perm/Dr/Dc finalized:
 //   - default pivoting: A_eff = column-permuted A (byte-identical to the prior
 //     inline path); row_perm = the dynamic pivoting permutation; Dr/Dc empty.
-//   - pivoting == static_mc64 (O4): A_eff = P_static * Dr * A * Dc * Qc with a
-//     zero-free diagonal; the numeric runs with threshold partial pivoting and
-//     the returned row_perm is the static MC64 permutation COMPOSED with the
-//     dynamic pivoting (final_row_perm[new] = p_static[dynamic_row_perm[new]]),
-//     with Dr/Dc installed in original coordinates.  A structurally singular
-//     system (no perfect matching) returns pre_fail with structural_singularity
-//     (S-D safe failure); a numerically singular B fails inside the numeric.
 // ---------------------------------------------------------------------------
 namespace sparse_lu_detail {
 
@@ -4463,16 +4447,12 @@ struct effective_numeric_outcome {
     typedef typename Matrix::index_type Index;
     typedef typename vcp::tsparse_scalar::real_type<T>::type real_type;
 
-    bool                                          pre_fail;
-    sparse_lu_status                              pre_status;
     csc_storage<T, Index>                         A_eff;     // matrix that was factored
     baseline_reference_factorize_result<T, Index> num;
     real_type                                     max_abs_A;
 
     effective_numeric_outcome()
-        : pre_fail(false),
-          pre_status(sparse_lu_status::success),
-          max_abs_A(real_type(0)) {}
+        : max_abs_A(real_type(0)) {}
 };
 
 template <class Matrix>
@@ -4488,48 +4468,12 @@ run_effective_baseline_numeric(
     effective_numeric_outcome<Matrix> r;
     const Index n = sym.n;
 
-    if (opt.pivoting == sparse_lu_pivoting::static_mc64) {
-        // O4: MC64 maximum-weight matching + Dr/Dc scaling -> zero-free diagonal.
-        const csc_storage<T, Index> A_nat = sparse_lu_make_csc_storage(A);
-        sparse_lu_mc64_transform<T, Index> tf =
-            sparse_lu_mc64_make_transform(A_nat, n, sym.col_perm);
-        if (!tf.success) {
-            // No perfect matching: structurally singular -> safe failure (S-D).
-            r.pre_fail   = true;
-            r.pre_status = tf.status;
-            return r;
-        }
-        r.A_eff     = tf.B;
-        r.max_abs_A = sparse_lu_max_abs_csc(r.A_eff);
-
-        // Numeric runs on the matched matrix with the existing threshold partial
-        // pivoting (roadmap §3.2): the static matching gives a zero-free diagonal;
-        // dynamic pivoting refines for stability.
-        sparse_lu_options<T> opt_internal = opt;
-        opt_internal.pivoting = sparse_lu_pivoting::threshold_partial;
-        r.num = baseline_sparse_gp_lu_factorize(
-            r.A_eff, n, sym.col_perm, sym.inv_col_perm, opt_internal);
-
-        if (r.num.success) {
-            // Compose static + dynamic row permutations and install Dr/Dc so the
-            // solve un-permutes/un-scales back to the ORIGINAL system (S-A/S-B).
-            const std::vector<Index> composed =
-                sparse_lu_mc64_compose_row_perm(tf.p_static, r.num.storage.row_perm);
-            r.num.storage.row_perm     = composed;
-            r.num.storage.inv_row_perm = sparse_lu_inverse_permutation(composed);
-            r.num.storage.Dr           = tf.Dr;
-            r.num.storage.Dc           = tf.Dc;
-        }
-        return r;
-    }
-
     // O4.2a: equilibration path (opt-in; default is byte-identical).
     // Computes two-sided max-norm scaling Dr/Dc from original A, builds
     // Aeq = diag(Dr)*A*diag(Dc), then applies the column ordering permutation
     // and runs the existing baseline GP numeric.  Dr/Dc are stored in original
     // (unpermuted) coordinates so solve_baseline_storage's existing un-apply
     // (Step 1: rhs1=Dr*b, Step 6: x=Dc*x_orig) works without modification.
-    // static_mc64 is already excluded by validate_symbolic_options.
     if (opt.equilibration) {
         const csc_storage<T, Index> A_nat = sparse_lu_make_csc_storage(A);
         std::vector<T> Dr, Dc;
@@ -4555,155 +4499,6 @@ run_effective_baseline_numeric(
     r.num = baseline_sparse_gp_lu_factorize(
         r.A_eff, n, sym.col_perm, sym.inv_col_perm, opt);
     return r;
-}
-
-// ===========================================================================
-// SLU-MF7: GP-less native MC64 supernodal path.
-//
-// Diagnosis (SLU investigation): method=supernodal currently runs the full
-// baseline GP numeric factorization (~60% of wall) whose L/U values are then
-// COMPLETELY UNUSED by the native multifrontal driver (it rebuilds the frontal
-// matrices from A_eff).  The only essential thing GP supplies is the row
-// permutation (pivot order).  The MC64 maximum-product matching already supplies
-// a zero-free, large-magnitude diagonal ordering (O4, existing asset), so the GP
-// numeric can be skipped entirely on the native path.
-//
-// Dr/Dc scaling is intentionally FORGONE on the native path.  The native §18.2
-// solve indexes Dr/Dc in ORIGINAL coordinates (Step 1: rhs=Dr*b, Step 6:
-// x=Dc*x_orig) while the multifrontal residual gate / a_eff_lookup index them in
-// POST-PIVOT (new) coordinates; under a non-identity row/column permutation a
-// single stored Dr/Dc vector cannot be consistent for both.  The matching alone
-// (placing the largest-magnitude entries on the diagonal) carries the dominant
-// stability benefit; numerically hard / badly-scaled systems that the matching
-// cannot factor are caught by the residual acceptance gate and fall back to the
-// full GP+MC64 path (Dr/Dc baked into B, un-applied by the CSC solve), which is
-// retained unchanged as the safety net.
-// ===========================================================================
-
-// build_mc64_skeleton_storage -- partition-only supernodal storage.
-//
-// Carries ONLY the supernode partition (from symbolic), the MC64 static row
-// permutation as row_perm, and the fill-reducing column ordering as col_perm.
-// Dr/Dc are left empty (see header).  Consumed exclusively as the `templ`
-// partition source by build_supernodal_self_symbolic_storage, which rebuilds
-// row_indices / U_segments / panels from A_eff; panels here stay empty.
-// ---------------------------------------------------------------------------
-template <class T, class Index>
-supernodal_lu_storage<T, Index>
-build_mc64_skeleton_storage(
-    Index                                       n,
-    const sparse_lu_supernode_symbolic<Index>&  sym_info,
-    const std::vector<Index>&                   p_static,
-    const std::vector<Index>&                   col_perm,
-    const std::vector<Index>&                   inv_col_perm)
-{
-    static_assert(std::is_signed<Index>::value,
-                  "build_mc64_skeleton_storage: Index must be signed");
-    supernodal_lu_storage<T, Index> skel;
-    if (n <= Index(0)) return skel;
-    if (!sym_info.valid || sym_info.supernode_ptr.size() < 2u) return skel;
-    if (static_cast<Index>(p_static.size()) != n) return skel;
-
-    const std::size_t nsup = sym_info.supernode_ptr.size() - 1u;
-    skel.supernodes.resize(nsup);
-    for (std::size_t s = 0u; s < nsup; ++s) {
-        const Index cb = sym_info.supernode_ptr[s];
-        const Index ce = sym_info.supernode_ptr[s + 1u];
-        if (cb < Index(0) || ce <= cb ||
-            static_cast<std::size_t>(ce) > static_cast<std::size_t>(n)) {
-            return supernodal_lu_storage<T, Index>(); // invalid partition -> invalid skeleton
-        }
-        supernode_desc<Index>& d = skel.supernodes[s];
-        d.first_col = cb;
-        d.num_cols  = ce - cb;
-    }
-    skel.row_perm     = p_static;
-    skel.inv_row_perm = sparse_lu_inverse_permutation(p_static);
-    skel.col_perm     = col_perm;
-    skel.inv_col_perm = inv_col_perm;
-    // Dr / Dc intentionally empty (matching-only native path).
-    skel.valid                   = true;
-    skel.source_of_truth_storage = false; // partition skeleton, not a numeric source
-    skel.bootstrapped_from_csc   = false;
-    skel.true_numeric_source     = false;
-    return skel;
-}
-
-// native_mc64_supernodal_outcome -- result of the GP-less native attempt.
-//   ok:              a complete native supernodal numeric source was produced.
-//   matching_failed: MC64 found no perfect matching (structurally singular).
-//   storage / tns:   the (possibly failed) self-symbolic storage + numeric stats.
-template <class T, class Index>
-struct native_mc64_supernodal_outcome {
-    bool                            ok;
-    bool                            matching_failed;
-    supernodal_lu_storage<T, Index> storage;
-    supernodal_true_numeric_stats<
-        typename vcp::tsparse_scalar::real_type<T>::type> tns;
-    native_mc64_supernodal_outcome() : ok(false), matching_failed(false) {}
-};
-
-// try_build_native_mc64_supernodal -- MC64 matching + self-symbolic + in-place
-// multifrontal numeric, with NO baseline GP numeric.  Returns ok=true only when
-// the residual acceptance gate accepts the A_eff-origin storage
-// (storage.true_numeric_source == true).  Any failure leaves ok=false so the
-// caller can fall through to the existing GP path (safety net).
-// ---------------------------------------------------------------------------
-template <class Matrix>
-native_mc64_supernodal_outcome<typename Matrix::value_type,
-                               typename Matrix::index_type>
-try_build_native_mc64_supernodal(
-    const Matrix& A,
-    const sparse_lu_symbolic_result<typename Matrix::index_type>& sym,
-    const sparse_lu_options<typename Matrix::value_type>& opt)
-{
-    typedef typename Matrix::value_type T;
-    typedef typename Matrix::index_type Index;
-    native_mc64_supernodal_outcome<T, Index> out;
-
-    const Index n = sym.n;
-    if (n <= Index(0)) return out;            // trivial -> let GP path handle it
-    if (!sym.supernode_info.valid) return out;
-
-    // 1. MC64 maximum-product matching: supplies the static row permutation
-    //    p_static (zero-free diagonal).  The native path is matching-only -- it
-    //    never uses Dr/Dc or the assembled B (MF7 §1.3) -- so SLU-MF8 computes the
-    //    matching with the sparse heap-SSP path (sparse_lu_mc64_match_native),
-    //    which produces the SAME p_static without building any dense n*n cost
-    //    matrix (O(n+nnz) memory).  The dense sparse_lu_mc64_make_transform is left
-    //    untouched for the non-native GP+MC64 path that does consume B/Dr/Dc.
-    const csc_storage<T, Index> A_nat = sparse_lu_make_csc_storage(A);
-    sparse_lu_detail::sparse_lu_mc64_matching<Index> mt =
-        sparse_lu_detail::sparse_lu_mc64_match_native(A_nat, n, sym.col_perm);
-    if (!mt.success) { out.matching_failed = true; return out; }
-
-    // 2. Native effective matrix = column-permuted A (original rows, no scaling).
-    //    The matched diagonal is reached through row_perm = p_static; structurally
-    //    identical to the default native path's A_eff.
-    const csc_storage<T, Index> A_eff = sparse_lu_make_permuted_csc_storage(A, sym);
-
-    // 3. Partition-only skeleton carrying p_static as the row permutation.
-    supernodal_lu_storage<T, Index> skel =
-        build_mc64_skeleton_storage<T, Index>(
-            n, sym.supernode_info, mt.p_static, sym.col_perm, sym.inv_col_perm);
-    if (!skel.valid) return out;
-
-    // 4. Self-symbolic dense-front structure from A_eff (GP-independent).
-    supernodal_lu_storage<T, Index> ss =
-        build_supernodal_self_symbolic_storage(A_eff, skel, n);
-    if (!ss.valid) return out;
-
-    // 5. In-place multifrontal numeric directly from A_eff (no GP L/U).  The
-    //    in-place driver does not read csc_lu ((void)csc_lu); pass an empty one.
-    baseline_lu_storage<T, Index> empty_csc;
-    out.tns = sparse_lu_factorize_supernodal_numeric_source(
-                  A_eff, empty_csc, ss, opt);
-    out.storage = ss;
-    if (!out.tns.success || !ss.true_numeric_source) {
-        return out;           // residual / structural failure -> GP fallback
-    }
-    out.ok = true;
-    return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -4817,15 +4612,13 @@ sparse_lu_numeric(
             sparse_lu_detail::resolve_auto_method(opt);
         // SLU-SP1 Phase 2: supernode_panel numeric (left-looking
         // supernode-panel factorization; design §2; default since SLU-D1).
-        // Default-pivoting path only: static_mc64 (D-6: the new path is
-        // MC64-independent) and equilibration are answered with an honest
+        // Default-pivoting path only: equilibration is answered with an honest
         // not_implemented (explicit requests only -- auto_select resolves
         // those option sets to baseline_gp above).  The result is baseline
         // CSC storage, so the existing solve / IR / LUX consumers work
         // unchanged; method_used reports supernode_panel.
         if (resolved_method == sparse_lu_method::supernode_panel) {
-            if (opt.pivoting == sparse_lu_pivoting::static_mc64 ||
-                opt.equilibration) {
+            if (opt.equilibration) {
                 info.success = false;
                 info.status  = sparse_lu_status::not_implemented;
                 info.method_used = resolved_method;
@@ -4861,58 +4654,10 @@ sparse_lu_numeric(
             return fac;
         }
 
-        // SLU-MF7: GP-less native MC64 supernodal path.  For method=supernodal
-        // with static_mc64 matching + self-symbolic + in-place frontal, build the
-        // factor directly from the MC64 matching + multifrontal numeric, skipping
-        // the baseline GP numeric entirely.  On any failure (no matching,
-        // structural inconsistency, residual rejection) fall through to the
-        // existing GP path below (safety net; also re-handles MC64 safe-failure).
-        if (opt.method == sparse_lu_method::supernodal &&
-            opt.pivoting == sparse_lu_pivoting::static_mc64 &&
-            opt.supernodal_self_symbolic &&
-            opt.supernodal_inplace_frontal &&
-            !opt.supernodal_numeric_diagnostic_leftlooking) {
-            sparse_lu_detail::native_mc64_supernodal_outcome<T, Index> mf7 =
-                sparse_lu_detail::try_build_native_mc64_supernodal(A, sym, opt);
-            if (mf7.ok) {
-                sparse_lu_info<T, Index> ninfo;
-                ninfo.success = true;
-                ninfo.status  = sparse_lu_status::success;
-                ninfo.n       = n;
-                // SLU-L1 L-3: MF7 native path diagnostics.  Structural nnz per
-                // D-3 (padding-excluded stored entries; see the helper's note on
-                // the value-based MATLAB nnz difference, unverified).
-                // growth_factor is NOT computed on this path (D-4): it stays at
-                // its default; computing it would need a max|U| scan (L-2+).
-                ninfo.method_used = sparse_lu_method::supernodal;
-                {
-                    const sparse_lu_detail::supernodal_structural_nnz_result<T, Index>
-                        snnz = sparse_lu_detail::sparse_lu_supernodal_structural_nnz_(
-                            mf7.storage);
-                    ninfo.nnz_L = snnz.nnz_L;
-                    ninfo.nnz_U = snnz.nnz_U;
-                }
-                fac.set_info_(ninfo);
-                fac.set_supernode_info_(sym.supernode_info);
-                fac.set_supernodal_storage_info_(mf7.storage);
-                fac.set_true_numeric_info_(mf7.tns, mf7.storage);
-                fac.set_supernodal_solve_info_();
-                return fac;
-            }
-            // else: fall through to the GP path below.
-        }
-
-        // O4: build the effective matrix and run the baseline numeric.  For
-        // pivoting=static_mc64 this is B = P_static*Dr*A*Dc*Qc (zero-free
-        // diagonal) with the row permutation composed and Dr/Dc installed;
-        // otherwise it is the column-permuted A exactly as before.
+        // O4: build the effective matrix and run the baseline numeric
+        // (the column-permuted A, or the equilibrated one).
         sparse_lu_detail::effective_numeric_outcome<Matrix> eff =
             sparse_lu_detail::run_effective_baseline_numeric(A, sym, opt);
-        if (eff.pre_fail) {
-            info.status = eff.pre_status;   // MC64 structural singularity (safe)
-            fac.set_info_(info);
-            return fac;
-        }
         const csc_storage<T, Index>& A_csc = eff.A_eff;
         const real_type max_abs_A = eff.max_abs_A;
         sparse_lu_detail::baseline_reference_factorize_result<T, Index>& num_result =
@@ -5069,8 +4814,7 @@ sparse_lu_factorize_with_info(
         // Symbolic phase: builds an identity col_perm skeleton for explicit
         // natural and a fill-reducing col_perm for rcm/amd/colamd/nd/ndml
         // (auto_select resolves to nested_dissection_ml inside
-        // sparse_lu_symbolic, D-4). static_mc64 is
-        // handled later in the numeric effective-matrix path.
+        // sparse_lu_symbolic, D-4).
         sparse_lu_symbolic_result<Index> sym = sparse_lu_symbolic(A, opt);
         if (!sym.success) {
             info.status = sym.status;
@@ -5087,8 +4831,7 @@ sparse_lu_factorize_with_info(
         // wiring as the matching branch in sparse_lu_numeric -- see there;
         // default since SLU-D1, auto_select resolved by the same helper).
         if (resolved_method == sparse_lu_method::supernode_panel) {
-            if (opt.pivoting == sparse_lu_pivoting::static_mc64 ||
-                opt.equilibration) {
+            if (opt.equilibration) {
                 info.success = false;
                 info.status  = sparse_lu_status::not_implemented;
                 info.method_used = resolved_method;
@@ -5124,55 +4867,10 @@ sparse_lu_factorize_with_info(
             return fac;
         }
 
-        // SLU-MF7: GP-less native MC64 supernodal path (see sparse_lu_numeric and
-        // try_build_native_mc64_supernodal).  Skips the baseline GP numeric when
-        // method=supernodal + static_mc64 + self-symbolic + in-place frontal; on
-        // any failure falls through to the GP path below (safety net).
-        if (opt.method == sparse_lu_method::supernodal &&
-            opt.pivoting == sparse_lu_pivoting::static_mc64 &&
-            opt.supernodal_self_symbolic &&
-            opt.supernodal_inplace_frontal &&
-            !opt.supernodal_numeric_diagnostic_leftlooking) {
-            sparse_lu_detail::native_mc64_supernodal_outcome<T, Index> mf7 =
-                sparse_lu_detail::try_build_native_mc64_supernodal(A, sym, opt);
-            if (mf7.ok) {
-                sparse_lu_info<T, Index> ninfo;
-                ninfo.success = true;
-                ninfo.status  = sparse_lu_status::success;
-                ninfo.n       = info.n;
-                // SLU-L1 L-3: MF7 native path diagnostics (same as the matching
-                // block in sparse_lu_numeric).  Structural nnz per D-3;
-                // growth_factor NOT computed on this path (D-4).
-                ninfo.method_used = sparse_lu_method::supernodal;
-                {
-                    const sparse_lu_detail::supernodal_structural_nnz_result<T, Index>
-                        snnz = sparse_lu_detail::sparse_lu_supernodal_structural_nnz_(
-                            mf7.storage);
-                    ninfo.nnz_L = snnz.nnz_L;
-                    ninfo.nnz_U = snnz.nnz_U;
-                }
-                fac.set_info_(ninfo);
-                fac.set_supernode_info_(sym.supernode_info);
-                fac.set_supernodal_storage_info_(mf7.storage);
-                fac.set_true_numeric_info_(mf7.tns, mf7.storage);
-                fac.set_supernodal_solve_info_();
-                return fac;
-            }
-            // else: fall through to the GP path below.
-        }
-
         // O4: build the effective matrix and run the baseline numeric.  Default
-        // pivoting -> column-permuted A (byte-identical to before).  static_mc64
-        // -> B = P_static*Dr*A*Dc*Qc with zero-free diagonal; row permutation
-        // composed (static x dynamic) and Dr/Dc installed so the solve recovers
-        // the ORIGINAL system.  No perfect matching -> safe failure (S-D).
+        // pivoting -> column-permuted A (byte-identical to before).
         sparse_lu_detail::effective_numeric_outcome<Matrix> eff =
             sparse_lu_detail::run_effective_baseline_numeric(A, sym, opt);
-        if (eff.pre_fail) {
-            info.status = eff.pre_status;
-            fac.set_info_(info);
-            return fac;
-        }
         const csc_storage<T, Index>& A_csc = eff.A_eff;
 
         // Track max_abs(A_effective) for growth_factor = max|U| / max|A_eff|.

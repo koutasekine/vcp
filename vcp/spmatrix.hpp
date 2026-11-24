@@ -988,6 +988,10 @@ namespace vcp {
 			std::vector<_T> x;
 			const lu_apply_result result = this->policy_lu_solve_with_info(
 				static_cast<const _P&>(L), static_cast<const _P&>(U), p, q, b, x);
+			if (result.status == lu_apply_status::dimension_mismatch) {
+				vcp::throw_error<vcp::dimension_error>(
+					"spmatrix::lu_solve: dimension mismatch (factors, permutations or right-hand side)");
+			}
 			if (result.status != lu_apply_status::success) {
 				vcp::throw_error<vcp::numerical_error>(
 					"spmatrix::lu_solve: failed with status ",
@@ -1011,6 +1015,10 @@ namespace vcp {
 			std::vector<_T> row;
 			const lu_apply_result result = this->policy_lu_inverse_row_with_info(
 				static_cast<const _P&>(L), static_cast<const _P&>(U), p, q, i, row);
+			if (result.status == lu_apply_status::dimension_mismatch) {
+				vcp::throw_error<vcp::dimension_error>(
+					"spmatrix::lu_inverse_row: dimension mismatch (factors, permutations or row index)");
+			}
 			if (result.status != lu_apply_status::success) {
 				vcp::throw_error<vcp::numerical_error>(
 					"spmatrix::lu_inverse_row: failed with status ",
@@ -1236,37 +1244,10 @@ namespace vcp {
 		// Eigenvalue API — all delegate to policy (no result checking here)
 		// ---------------------------------------------------------------
 
-		// Full dense eig (strict): policy_eig owns convergence checking
-		eig_result<_T> eig(const eig_options_type& options) const {
-			validate_eig_input("spmatrix::eig");
-			return this->policy_eig(options);
-		}
-
-		// Full dense eig (non-strict / diagnostic)
-		eig_result<_T> eig_with_info(const eig_options_type& options) const {
-			validate_eig_input("spmatrix::eig");
-			if (options.max_iter == 0 || options.tol <= scalar_real_type(0))
-				vcp::throw_error<vcp::invalid_argument>("spmatrix::eig: invalid iteration option");
-			if (options.method != eig_solver_method::dense_fallback_explicit)
-				vcp::throw_error<vcp::invalid_argument>("spmatrix::eig: full dense eig requires dense_fallback_explicit");
-			return this->policy_eigs_with_info(
-				static_cast<std::size_t>(rowsize()), options);
-		}
-
 		eig_options_type default_eigs_options() const {
 			eig_options_type options;
 			options.structure = matrix_structure_hint::auto_detect;
 			return options;
-		}
-
-		static eig_options_type dense_eigs_options() {
-			eig_options_type options;
-			options.method = eig_solver_method::dense_fallback_explicit;
-			return options;
-		}
-
-		std::vector<_T> eigvals(const eig_options_type& options) const {
-			return eig(options).eigenvalues;
 		}
 
 		// eigs(k): shorthand for eigs(k, default)
@@ -1276,6 +1257,7 @@ namespace vcp {
 
 		// eigs(k, opt): strict — policy_eigs decides convergence
 		std::vector<_T> eigs(const std::size_t k, const eig_options_type& options) const {
+			eig_refuse_complex_pairs_(options, "spmatrix::eigs");
 			return this->policy_eigs(k, options);
 		}
 
@@ -1290,24 +1272,9 @@ namespace vcp {
 				k, options);
 		}
 
-		// Full generalized eig (strict, returns eigenvalue vector)
-		std::vector<_T> eig(const spmatrix& B) const {
-			validate_eig_input("spmatrix::eig(A,B)");
-			return this->policy_generalized_eigs(
-				static_cast<const _P&>(B),
-				static_cast<std::size_t>(rowsize()), eig_options_type());
-		}
-
-		// Full generalized eig (strict, returns eig_result)
-		eig_result<_T> eig(const spmatrix& B, const eig_options_type& options) const {
-			validate_eig_input("spmatrix::eig(A,B)");
-			return this->policy_generalized_eig(
-				static_cast<const _P&>(B),
-				static_cast<std::size_t>(rowsize()), options);
-		}
-
 		// Partial generalized eigs (strict): policy_generalized_eigs decides convergence
 		std::vector<_T> eigs(const spmatrix& B, const std::size_t k, const eig_options_type& options = eig_options_type()) const {
+			eig_refuse_complex_pairs_(options, "spmatrix::eigs(A,B)");
 			return this->policy_generalized_eigs(
 				static_cast<const _P&>(B), k, options);
 		}
@@ -1325,6 +1292,7 @@ namespace vcp {
 		template <class Preconditioner>
 		std::vector<_T> eigs(const std::size_t k, const eig_options_type& options,
 		                     const Preconditioner& M) const {
+			eig_refuse_complex_pairs_(options, "spmatrix::eigs");
 			return this->policy_eigs(k, options, M);
 		}
 
@@ -1338,6 +1306,7 @@ namespace vcp {
 		template <class Preconditioner>
 		std::vector<_T> eigs(const spmatrix& B, const std::size_t k,
 		                     const eig_options_type& options, const Preconditioner& M) const {
+			eig_refuse_complex_pairs_(options, "spmatrix::eigs(A,B)");
 			return this->policy_generalized_eigs(
 				static_cast<const _P&>(B), k, options, M);
 		}
@@ -1450,6 +1419,24 @@ namespace vcp {
 			for (int i = 0; i < m; ++i) {
 				E(i, 0) = r.eigenvalues[static_cast<std::size_t>(i)];
 			}
+		}
+
+		// The forms that return only a vector / a matrix of real eigenvalues
+		// cannot carry the imaginary parts of complex-conjugate pairs.
+		static void eig_refuse_complex_pairs_(const eig_options_type& opt, const char* routine) {
+			if (opt.allow_complex_pairs)
+				vcp::throw_error<vcp::invalid_argument>(routine, ": allow_complex_pairs = true is not supported by the forms that return only the eigenvalues; use eigs_with_info (the imaginary parts are in eigenvalues_imag)");
+		}
+
+		// The judgment of the strict member eigs (policy_eigs): converged and
+		// at least min(k, n) values returned; otherwise vcp::state_error.
+		static void eig_require_converged_(const eig_result<_T>& r, const std::size_t k, const index_type n, const char* routine) {
+			if (!r.converged)
+				vcp::throw_error<vcp::state_error>(routine, ": eigensolver did not converge");
+			const std::size_t nn = static_cast<std::size_t>(n);
+			const std::size_t k_eff = (k < nn) ? k : nn;
+			if (r.returned_real_count < k_eff)
+				vcp::throw_error<vcp::state_error>(routine, ": insufficient eigenvalues returned");
 		}
 
 		// V (n x m) <- eigenvectors of an eig_result, column c = eigenvectors[c].
@@ -1751,24 +1738,34 @@ namespace vcp {
 		template <class _PD>
 		friend void eigs(const spmatrix& A, matrix<_T, _PD>& E, const std::size_t k,
 		                 const eig_options_type& opt = eig_options_type()) {
-			eig_pack_(A.eigs_with_info(k, opt), E);
+			eig_refuse_complex_pairs_(opt, "eigs(spmatrix, E)");
+			const eig_result<_T> r = A.eigs_with_info(k, opt);
+			eig_require_converged_(r, k, A.rowsize(), "eigs(spmatrix, E)");
+			eig_pack_(r, E);
 		}
 		template <class _PD>
 		friend void eigs(const spmatrix& A, matrix<_T, _PD>& E, matrix<_T, _PD>& V, const std::size_t k,
 		                 const eig_options_type& opt = eig_options_type()) {
+			eig_refuse_complex_pairs_(opt, "eigs(spmatrix, E, V)");
 			const eig_result<_T> r = A.eigs_with_info(k, opt);
+			eig_require_converged_(r, k, A.rowsize(), "eigs(spmatrix, E, V)");
 			eig_pack_(r, E);
 			eig_pack_vectors_(r, A.rowsize(), V);
 		}
 		template <class _PD>
 		friend void eigs(const spmatrix& A, const spmatrix& B, matrix<_T, _PD>& E, const std::size_t k,
 		                 const eig_options_type& opt = eig_options_type()) {
-			eig_pack_(A.eigs_with_info(B, k, opt), E);
+			eig_refuse_complex_pairs_(opt, "eigs(spmatrix, spmatrix, E)");
+			const eig_result<_T> r = A.eigs_with_info(B, k, opt);
+			eig_require_converged_(r, k, A.rowsize(), "eigs(spmatrix, spmatrix, E)");
+			eig_pack_(r, E);
 		}
 		template <class _PD>
 		friend void eigs(const spmatrix& A, const spmatrix& B, matrix<_T, _PD>& E, matrix<_T, _PD>& V,
 		                 const std::size_t k, const eig_options_type& opt = eig_options_type()) {
+			eig_refuse_complex_pairs_(opt, "eigs(spmatrix, spmatrix, E, V)");
 			const eig_result<_T> r = A.eigs_with_info(B, k, opt);
+			eig_require_converged_(r, k, A.rowsize(), "eigs(spmatrix, spmatrix, E, V)");
 			eig_pack_(r, E);
 			eig_pack_vectors_(r, A.rowsize(), V);
 		}
@@ -1934,11 +1931,6 @@ namespace vcp {
 		}
 		friend spmatrix ltransmul(const spmatrix& A) {
 			return A.transpose() * A;
-		}
-
-	private:
-		void validate_eig_input(const char* routine) const {
-			if (rowsize() != columnsize()) vcp::throw_error<vcp::dimension_error>(routine, ": matrix must be square");
 		}
 	};
 
