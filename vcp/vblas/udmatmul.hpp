@@ -40,7 +40,7 @@
 #include <vector>
 
 #include <immintrin.h>
-#include <omp.h>
+#include "rdblas_omp.hpp"
 
 
 namespace vblas_udmatmul_detail {
@@ -138,7 +138,7 @@ inline std::string read_model_name() {
 }
 
 inline CpuInfo detect_cpu_info() {
-	CpuInfo info = {0, 0, 0, std::max(1, omp_get_num_procs()), std::max(1, omp_get_max_threads()), read_model_name()};
+	CpuInfo info = {0, 0, 0, std::max(1, vblas_omp_detail::num_procs()), std::max(1, vblas_omp_detail::max_threads()), read_model_name()};
 
 	for (int index = 0; index < 16; index++) {
 		const std::string base = "/sys/devices/system/cpu/cpu0/cache/index" + std::to_string(index) + "/";
@@ -173,7 +173,7 @@ inline const CpuInfo& cpu_info() {
 }
 
 inline int limited_threads(const int requested) {
-	return std::max(1, std::min(requested, std::max(1, omp_get_max_threads())));
+	return std::max(1, std::min(requested, std::max(1, vblas_omp_detail::max_threads())));
 }
 
 inline int default_thread_cap(const CpuInfo& info) {
@@ -647,7 +647,9 @@ inline void compute_packed_ic_column_tile(
 }
 
 inline void udmatmul_direct(const int m, const int n, const int k, double* A, double* B, double* CU, double* CD, const Blocking& blocking) {
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel for collapse(2) schedule(static) num_threads(blocking.threads)
+#endif
 	for (int jr = 0; jr < k; jr += NR) {
 		for (int ir = 0; ir < m; ir += MR) {
 			const int nr = std::min(NR, k - jr);
@@ -677,9 +679,11 @@ inline void udmatmul_packed_m_only(const int m, const int n, const int k, double
 	const std::size_t packed_a_stride = (static_cast<std::size_t>(max_mb_padded) * max_pb + 7) / 8 * 8;
 	std::unique_ptr<double[]> packed_a_all(new double[packed_a_stride * static_cast<std::size_t>(blocking.threads)]);
 
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(blocking.threads)
+#endif
 	{
-		double* const packed_a = packed_a_all.get() + packed_a_stride * static_cast<std::size_t>(omp_get_thread_num());
+		double* const packed_a = packed_a_all.get() + packed_a_stride * static_cast<std::size_t>(vblas_omp_detail::region_thread_id());
 		std::fill(packed_a, packed_a + packed_a_stride, 0.0);
 
 		for (int pc = 0; pc < n; pc += blocking.kc) {
@@ -688,13 +692,17 @@ inline void udmatmul_packed_m_only(const int m, const int n, const int k, double
 			for (int jcg = 0; jcg < k; jcg += blocking.nc_group) {
 				const int ng = std::min(blocking.nc_group, k - jcg);
 
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp single
+#endif
 				{
 					packed_b.resize(static_cast<std::size_t>(pb) * ng);
 					pack_b_panel(n, pb, ng, B + pc + static_cast<std::size_t>(n) * jcg, packed_b.data());
 				}
 
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 				for (int ic = 0; ic < m; ic += blocking.mc) {
 					compute_packed_ic_block(m, pb, ng, ic, pc, jcg, blocking, A, packed_b.data(), packed_a, CU, CD);
 				}
@@ -714,9 +722,11 @@ inline void udmatmul_packed_2d(const int m, const int n, const int k, double* A,
 	const std::size_t packed_a_stride = (static_cast<std::size_t>(max_mb_padded) * max_pb + 7) / 8 * 8;
 	std::unique_ptr<double[]> packed_a_all(new double[packed_a_stride * static_cast<std::size_t>(blocking.threads)]);
 
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(blocking.threads)
+#endif
 	{
-		double* const packed_a = packed_a_all.get() + packed_a_stride * static_cast<std::size_t>(omp_get_thread_num());
+		double* const packed_a = packed_a_all.get() + packed_a_stride * static_cast<std::size_t>(vblas_omp_detail::region_thread_id());
 		std::fill(packed_a, packed_a + packed_a_stride, 0.0);
 
 		for (int pc = 0; pc < n; pc += blocking.kc) {
@@ -725,13 +735,17 @@ inline void udmatmul_packed_2d(const int m, const int n, const int k, double* A,
 			for (int jcg = 0; jcg < k; jcg += blocking.nc_group) {
 				const int ng = std::min(blocking.nc_group, k - jcg);
 
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp single
+#endif
 				{
 					packed_b.resize(static_cast<std::size_t>(pb) * ng);
 					pack_b_panel(n, pb, ng, B + pc + static_cast<std::size_t>(n) * jcg, packed_b.data());
 				}
 
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for collapse(2) schedule(static)
+#endif
 				for (int jc_offset = 0; jc_offset < ng; jc_offset += blocking.column_tile) {
 					for (int ic = 0; ic < m; ic += blocking.mc) {
 						const int nb = std::min(blocking.column_tile, ng - jc_offset);

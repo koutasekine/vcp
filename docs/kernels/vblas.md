@@ -42,7 +42,7 @@
   - AVX2 / AVX-512 の FMA backend と同じ丸め付き積和の性質を保つため、
     scalar 計算でも `std::fma()` を使います。そのため、環境によっては
     software 実装や関数呼び出しのコストが支配的になり、SIMD backend より
-    大幅に遅くなります。
+    遅くなることがあります。
 - `udmatmul.hpp`
   - AVX-512 専用の古い実験用実装です。
   - 上向き丸め結果 `CU` と下向き丸め結果 `CD` を 1 回の呼び出しで
@@ -138,6 +138,10 @@ environment の丸めモードは、`rmatmul` の終了後も維持されるよ�
 丸めモードは、呼び出し前の状態に戻ります。OpenMP worker thread についても、
 各 parallel region に入った時点の丸めモードへ戻します。
 
+OpenMP を使わない build (`-fopenmp` なし，または `-DVCP_NOMP`・`-DVCP_RDBLAS_NOMP`) では、
+worker thread を作らず、呼び出し元のスレッド 1 本が同じ手順 (丸めモードの保存、
+設定、計算、復元) で計算します。
+
 ## ブロック化
 
 block size の導出は `rmatmul_common.hpp` の共通実装が行い、cache size と
@@ -197,7 +201,7 @@ udmatmul(m, n, k, A, B, CU, CD);
 プロジェクトルートから実行する場合の AVX2 実装の確認例です。
 
 ```bash
-g++ -I. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 -m64 \
+g++ -I. -std=c++20 -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND -O3 -m64 \
 -mavx2 -mfma \
 vcp/vblas/Check_rmatmul_rounding.cpp \
 -lpthread \
@@ -212,8 +216,8 @@ vcp/vblas/Check_rmatmul_rounding.cpp \
 AVX-512 実装を使う場合は、AVX-512 用の compile option を追加します。
 
 ```bash
-g++ -I. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 -m64 \
--mavx512f -DVCP_USE_AVX512 \
+g++ -I. -std=c++20 -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND -O3 -m64 \
+-mavx512f \
 vcp/vblas/Check_rmatmul_rounding.cpp \
 -lpthread \
 -lm \
@@ -222,16 +226,18 @@ vcp/vblas/Check_rmatmul_rounding.cpp \
 -o check_rmatmul_rounding_avx512
 ```
 
+`-fopenmp` を付けずにビルドすることもできます。この場合は 1 スレッドで計算します。
+`-fopenmp` を付けたまま `vcp/vblas/` の並列化だけを止めるときは `-DVCP_RDBLAS_NOMP` を、
+VCP 全体の並列化を止めるときは `-DVCP_NOMP` を定義します。
+
 MKL や OpenBLAS、MPFR を含む既存の VCP 検証コードと一緒にリンクする場合の compile option は、
 [blas_build.md](../blas_build.md) を参照してください。
 
 ## 注意
 
 - 対象は点 double 行列です。一般の区間行列 backend ではありません。
-- VCP Library の精度保証付き計算（`vcp::pidblas`）において、BLAS の
-  有向丸め（上向き／下向き）が必要な演算は `dgemm_` のみです。
-  `ddot_`、`dsymm_`、`dgemv_`、`dsyrk_` などは最近点丸め（デフォルト）
-  で呼ばれます。LAPACK 関数（`dgetrf_`、`dsyev_` 等）も同様に最近点丸めで
-  使用されます。
+- VCP Library の精度保証付き計算（`vcp::pidblas`）において、有向丸め
+  （上向き／下向き）で呼ばれる BLAS 関数は `dgemm_`・`dgemv_`・`dsyrk_`・`ddot_`
+  （`pdblas` の行列積）です。
 - `rmatmul` / `rdblas` の直接利用については、`vcp/` と `docs/` 以下の
   文書も参照してください。

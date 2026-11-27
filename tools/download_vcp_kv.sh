@@ -116,13 +116,13 @@ echo "Created: ${folderpath}"
 echo
 echo "Basic matrix example:"
 echo "  cd ${folderpath}/test_matrix"
-echo "  g++ -std=c++11 -I.. test_matrix.cpp"
+echo "  g++ -std=c++11 -ffp-contract=off -frounding-math -I.. test_matrix.cpp"
 echo
 echo "If you use BLAS/LAPACK, check that BLAS respects rounding mode changes."
 echo "Example with OpenBLAS:"
 echo "  cd ${folderpath}/test_matrix"
-echo "  g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out"
-echo "  g++ -I.. -std=c++11 -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out"
+echo "  g++ -I.. -std=c++11 -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out"
+echo "  g++ -I.. -std=c++11 -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out"
 echo
 echo "For Intel MKL or other BLAS/LAPACK settings, see:"
 echo "  ${folderpath}/docs/blas_build.md"

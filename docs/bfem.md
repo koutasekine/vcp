@@ -26,6 +26,10 @@ bfem は有限要素空間と、行列・ベクトル・多項式量を作る部
 部品も、Navier–Stokes 方程式のソルバではなく、速度・圧力の空間と行列を作る
 部品です。
 
+自由度の番号とメッシュの番号(頂点・要素・辺・面)は `int` です。組み立てた
+疎行列の添字の型は、疎行列の policy の添字の型(既定は `std::int64_t`)ですが、
+1 つの空間の自由度の数は `int` に収まる必要があります(2³¹ − 1 まで)。
+
 ## 必要なヘッダ
 
 | 用途 | ヘッダ |
@@ -550,13 +554,13 @@ bfem はヘッダだけで使えます。`vcp/` を含むディレクトリを i
 ([install.md](install.md))。
 
 ```bash
-g++ -std=c++20 -O3 -DNDEBUG -I/path/to/libs example.cpp -fopenmp
+g++ -std=c++20 -O3 -march=native -ffp-contract=off -frounding-math -DNDEBUG -I/path/to/libs example.cpp -fopenmp
 ```
 
 区間型・誤差定数を使う場合は、kv の include path と MPFR も必要です。
 
 ```bash
-g++ -std=c++20 -O3 -DNDEBUG -DKV_FASTROUND -I/path/to/libs example.cpp -lmpfr -fopenmp
+g++ -std=c++20 -O3 -march=native -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND -I/path/to/libs example.cpp -lmpfr -fopenmp
 ```
 
 ## よくある失敗

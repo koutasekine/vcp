@@ -61,6 +61,9 @@ namespace vcp {
 template <typename T>
 inline int tsytd2(const char uplo, const int n, T* A, const int lda,
 	T* d, T* e, T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::sytd2(uplo, n, A, lda, d, e, tau);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -185,6 +188,9 @@ inline void tlatrd(const char uplo, const int n, const int nb, T* A, const int l
 template <typename T>
 inline int tsytrd(const char uplo, const int n, T* A, const int lda,
 	T* d, T* e, T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::sytrd(uplo, n, A, lda, d, e, tau);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -245,6 +251,9 @@ inline int tsytrd(const char uplo, const int n, T* A, const int lda,
 template <typename T>
 inline int torgtr(const char uplo, const int n, T* A, const int lda,
 	const T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::orgtr(uplo, n, A, lda, tau);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -292,6 +301,9 @@ inline int torgtr(const char uplo, const int n, T* A, const int lda,
 template <typename T>
 inline int tormtr(const char side, const char uplo, const char trans, const int m, const int n,
 	const T* A, const int lda, const T* tau, T* C, const int ldc) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::ormtr(side, uplo, trans, m, n, A, lda, tau, C, ldc);
+	}
 	namespace detail = tlapack_detail;
 	const bool left = detail::option_is(side, 'L');
 	const bool upper = detail::option_is(uplo, 'U');
@@ -320,6 +332,9 @@ inline int tormtr(const char side, const char uplo, const char trans, const int 
 // d, e は 1-based の Fortran 流 index で記述 (access は [idx-1])
 template <typename T>
 inline int tsterf(const int n, T* d, T* e) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::sterf(n, d, e);
+	}
 	namespace detail = tlapack_detail;
 	if (n < 0) {
 		detail::tlapack_error("tsterf: invalid n");
@@ -561,6 +576,9 @@ L150:
 template <typename T>
 inline int tsteqr(const char compz, const int n, T* d, T* e,
 	T* Z, const int ldz) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::steqr(compz, n, d, e, Z, ldz);
+	}
 	namespace detail = tlapack_detail;
 	int icompz;
 	if (detail::option_is(compz, 'N')) {
@@ -877,6 +895,9 @@ L160:
 template <typename T>
 inline int tsyev(const char jobz, const char uplo, const int n, T* A, const int lda,
 	T* w) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::syev(jobz, uplo, n, A, lda, w);
+	}
 	namespace detail = tlapack_detail;
 	const bool wantz = detail::option_is(jobz, 'V');
 	const bool lower = detail::option_is(uplo, 'L');

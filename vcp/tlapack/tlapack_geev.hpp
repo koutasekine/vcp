@@ -64,6 +64,9 @@ namespace vcp {
 template <typename T>
 inline int tgebal(const char job, const int n, T* A, const int lda,
 	int& ilo, int& ihi, T* scale) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gebal(job, n, A, lda, ilo, ihi, scale);
+	}
 	namespace detail = tlapack_detail;
 	if (!detail::option_is(job, 'N') && !detail::option_is(job, 'P') &&
 		!detail::option_is(job, 'S') && !detail::option_is(job, 'B')) {
@@ -222,6 +225,9 @@ inline int tgebal(const char job, const int n, T* A, const int lda,
 template <typename T>
 inline int tgebak(const char job, const char side, const int n, const int ilo, const int ihi,
 	const T* scale, const int m, T* V, const int ldv) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gebak(job, side, n, ilo, ihi, scale, m, V, ldv);
+	}
 	namespace detail = tlapack_detail;
 	const bool rightv = detail::option_is(side, 'R');
 	const bool leftv = detail::option_is(side, 'L');
@@ -276,6 +282,9 @@ inline int tgebak(const char job, const char side, const int n, const int ilo, c
 template <typename T>
 inline int tgehd2(const int n, const int ilo, const int ihi, T* A, const int lda,
 	T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gehd2(n, ilo, ihi, A, lda, tau);
+	}
 	namespace detail = tlapack_detail;
 	if (n < 0 || ilo < 1 || ilo > std::max(1, n) || ihi < std::min(ilo, n) || ihi > n ||
 		lda < std::max(1, n)) {
@@ -347,6 +356,9 @@ inline void tlahr2(const int n, const int k, const int nb, T* A, const int lda,
 template <typename T>
 inline int tgehrd(const int n, const int ilo, const int ihi, T* A, const int lda,
 	T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gehrd(n, ilo, ihi, A, lda, tau);
+	}
 	namespace detail = tlapack_detail;
 	if (n < 0 || ilo < 1 || ilo > std::max(1, n) || ihi < std::min(ilo, n) || ihi > n ||
 		lda < std::max(1, n)) {
@@ -399,6 +411,9 @@ inline int tgehrd(const int n, const int ilo, const int ihi, T* A, const int lda
 template <typename T>
 inline int torghr(const int n, const int ilo, const int ihi, T* A, const int lda,
 	const T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::orghr(n, ilo, ihi, A, lda, tau);
+	}
 	namespace detail = tlapack_detail;
 	if (n < 0 || ilo < 1 || ilo > std::max(1, n) || ihi < std::min(ilo, n) || ihi > n ||
 		lda < std::max(1, n)) {
@@ -717,6 +732,9 @@ L20:
 template <typename T>
 inline int thseqr(const char job, const char compz, const int n, const int ilo, const int ihi,
 	T* H, const int ldh, T* wr, T* wi, T* Z, const int ldz) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::hseqr(job, compz, n, ilo, ihi, H, ldh, wr, wi, Z, ldz);
+	}
 	namespace detail = tlapack_detail;
 	const bool wantt = detail::option_is(job, 'S');
 	const bool initz = detail::option_is(compz, 'I');
@@ -1025,6 +1043,9 @@ inline int tlaln2(const bool ltrans, const int na, const int nw, const T& smin, 
 template <typename T>
 inline int ttrevc(const char side, const char howmny, const int n, const T* Tf, const int ldt,
 	T* VL, const int ldvl, T* VR, const int ldvr, const int mm, int& m) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::trevc(side, howmny, n, Tf, ldt, VL, ldvl, VR, ldvr, mm, m);
+	}
 	namespace detail = tlapack_detail;
 	const bool bothv = detail::option_is(side, 'B');
 	const bool rightv = detail::option_is(side, 'R') || bothv;
@@ -1512,6 +1533,9 @@ inline int ttrevc(const char side, const char howmny, const int n, const T* Tf, 
 template <typename T>
 inline int tgeev(const char jobvl, const char jobvr, const int n, T* A, const int lda,
 	T* wr, T* wi, T* VL, const int ldvl, T* VR, const int ldvr) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::geev(jobvl, jobvr, n, A, lda, wr, wi, VL, ldvl, VR, ldvr);
+	}
 	namespace detail = tlapack_detail;
 	const bool wantvl = detail::option_is(jobvl, 'V');
 	const bool wantvr = detail::option_is(jobvr, 'V');

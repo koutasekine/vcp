@@ -2,8 +2,9 @@
 
 `rdblas` は，LAPACK を構築する前提で必要となる double 精度 BLAS の全 routine を，
 丸めモードを指定して計算できる形で提供する header-only library です．
-`rmatmul` と同様に実験的な位置付けで，`vcp::matrix` からは，`-DUSE_VCP_BLAS` または `-DUSE_VCP_LAPACK` を指定したときに
-`vcp::pdblas` などのポリシーが `dblas`・`dlapack` を通じて使います (指定しなければ使われません)．
+`vcp::matrix` からは，`-DUSE_VCP_BLAS` または `-DUSE_VCP_LAPACK` を指定したときに
+`vcp::pdblas` などのポリシーが `dblas`・`dlapack` を通じて使います．特殊化ヘッダを include しない
+`double` の tblas・tlapack (`vcp::mats2<double>` の既定の動作) からも呼ばれます．
 この上に構築した丸めモード指定付き LAPACK (rdlapack) は兄弟 directory の
 `vcp/vlapack/` にあります (`docs/kernels/rdlapack.md` 参照)．
 
@@ -84,6 +85,8 @@ std::fesetround(FE_TONEAREST);
   `KV_FASTROUND` 無効時は通常の `std::fegetround()` を使います．
 - 通常の BLAS と異なり，OpenMP の全 worker thread でも同じ丸めが保証され，
   計算後は各 thread の丸めモードが呼び出し前の状態へ復元されます．
+- OpenMP を使わない build (下の「OpenMP の制御」) では，呼び出した thread 1 本が
+  同じ手順 (丸めモードの保存，設定，計算，復元) で計算します．
 - 丸めモードの変更を行わない関数 (`dcopy_` `dswap_` `idamax_`) は
   rdblas の同名関数をそのまま呼びます．`idamax_` の返り値だけは
   Fortran BLAS に合わせて 1-based index に直しています (`n <= 0` 等では 0)．
@@ -111,22 +114,21 @@ std::fesetround(FE_TONEAREST);
 実際の切り替えは `vcp/dblas_dlapack.hpp` に集約されており，`pdblas` 系 header は
 この共通ヘッダーを通して BLAS/LAPACK の宣言を受け取ります．
 
-VCP Library の精度保証付き計算 (`vcp::pidblas`) において，BLAS の
-有向丸め（上向き／下向き）が必要な演算は **`dgemm_` のみ**です．
-`vcp::pidblas` の区間行列積では，`kv::hwround::roundup()` または
-`kv::hwround::rounddown()` で丸めモードを切り替えてから
-`vcp::pdblas::mulmm()` を呼び出し，その内部で `dgemm_` が実行されます．
-`ddot_`・`dsymm_`・`dgemv_`・`dsyrk_` などは最近点丸め（デフォルト）で
-呼ばれます．LAPACK 関数（`dgetrf_`・`dsyev_` 等）も最近点丸めのみで
-使用されます．`dblas.hpp` の `dgemm_` は，呼び出し時点の丸めモードを
-読み取って `vcp::rdgemm` に渡すため，この呼び出しパターンで正しく
-有向丸めが適用されることを確認しています．
+VCP Library の精度保証付き計算 (`vcp::pidblas`) において，有向丸め
+（上向き／下向き）で呼ばれる BLAS 関数は `dgemm_`・`dgemv_`・`dsyrk_`・`ddot_`
+(`pdblas` の行列積) です．`vcp::pidblas` の区間行列積では，
+`kv::hwround::roundup()` または `kv::hwround::rounddown()` で丸めモードを
+切り替えてから `vcp::pdblas::mulmm()`・`mulltmm()` を呼び出し，その内部で
+これらが実行されます．`dblas.hpp` の BLAS 関数は，呼び出し時点の丸めモードを
+読み取って `vcp::rdgemm` などに渡すため，この呼び出しパターンで正しく
+有向丸めが適用されます．
 
 ## ファイル構成
 
 - `rdblas.hpp` — 入口 (これだけ include すればよい)
 - `rdblas_common.hpp` — 丸めモード guard (RAII)・thread 数決定・
   alpha/beta epilogue・pack (copy / transpose copy) などの共通基盤
+- `rdblas_omp.hpp` — OpenMP を使うかどうかの判定 (`VCP_NOMP`・`VCP_RDBLAS_NOMP`) と，使わないときの代わりの関数
 - `rdblas_level1.hpp` / `rdblas_level2.hpp` / `rdblas_level3.hpp` — 各 level の実装
 - `dblas.hpp` — 通常の BLAS interface (Fortran 互換 wrapper，上記参照)
 
@@ -162,7 +164,7 @@ VCP Library の精度保証付き計算 (`vcp::pidblas`) において，BLAS の
 - **rdsyrk / rdsyr2k**: `op(A)^T` を一度だけ連続 buffer に作り，行 band ごとに
   1 回の `rmatmul` + 三角 epilogue で更新します (band 方式)．
   band ごとの再 pack は左オペランド (band x k) のみで，余分な flops は
-  band 対角 tile の半分 (全体の数 %) だけです．
+  band 対角 tile の半分だけです．
 - **rdtrmm / rdtrsm**: 再帰 2 分割で off-diagonal block を rdgemm に帰着します．
   trmm の leaf は三角 block を 0 詰め dense に展開して rmatmul で計算
   (0 との fma は結果を変えないため正当)，trsm の leaf は OpenMP 並列の
@@ -193,6 +195,19 @@ block size は compile 時 macro で調整できます (通常は変更不要):
 x86 では，AVX-512 の実装は `-mavx512f` を，AVX2 の実装は `-mavx2 -mfma` を付けて
 compile すると使われます (`-march=native` などでも有効になります)．どちらも付けなければ
 no-SIMD の実装が使われます．
+
+## OpenMP の制御
+
+rdblas・rmatmul・udmatmul は，`-fopenmp` を付けて compile し，下の macro を
+定義しないときだけ OpenMP で並列に計算します．
+
+- `-DVCP_NOMP`: VCP 全体の OpenMP を止めます (rdblas も止まります)．
+- `-DVCP_RDBLAS_NOMP`: `vcp/vblas/` (rdblas・rmatmul・udmatmul) の OpenMP だけを止めます．
+- `-DVCP_TBLAS_NOMP`: tblas の OpenMP を止める macro ですが，特殊化ヘッダを include しない `double` の tblas が rdblas を
+  呼ぶため，`-DVCP_RDBLAS_NOMP` も定義されます．
+
+`-fopenmp` を付けない compile でも build できます．`-fopenmp` が無いとき，または上の
+macro を定義したときは，`<omp.h>` を include せず，呼び出した thread 1 本で計算します．
 
 ## License
 

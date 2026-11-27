@@ -49,7 +49,7 @@ BLAS/LAPACK を使う `kv::dd` の高速近似計算:
 #include <vcp/matrix_assist.hpp>
 ```
 
-`vcp::mats2<T>`（tblas/tlapack 汎用実装。追加依存なし）:
+`vcp::mats2<T>`（特殊化ヘッダなし。追加依存なし）:
 
 ```cpp
 #include <vcp/mats2.hpp>
@@ -141,6 +141,76 @@ vcp::matrix<double, vcp::mats2<double> > B;
 ```
 
 この 2 つは同じ policy を使います。
+
+### 層の構成
+
+`vcp::matrix` は、利用者が使う行列クラス、計算の方法を決める policy、policy が計算を
+任せるカーネルの 3 つの層でできています。実線は計算を渡す先、点線は継承
+（元の policy → それを継承した policy）を表します。
+
+```mermaid
+flowchart LR
+  subgraph U["ユーザー層"]
+    M["vcp::matrix"]
+  end
+
+  subgraph P["ポリシー層"]
+    mats["mats(総称のループ)"]
+    mats2["mats2(既定)"]
+    pdblas["pdblas(double)"]
+    pddblas["pddblas(kv::dd)"]
+    imats["imats(区間)"]
+    pidblas["pidblas(double の区間)"]
+    pidfma["pidblas_fma"]
+  end
+
+  subgraph K["カーネル層"]
+    tblas["tblas / tlapack(型によらない)"]
+    tdd["tblas_dd / tlapack_dd(kv::dd の特殊化)"]
+    tdouble["tblas_double / tlapack_double(double の特殊化)"]
+    dbl["dblas_dlapack.hpp(BLAS/LAPACK の宣言)"]
+    rd["rdblas / rdlapack(VCP の実装)"]
+    rmat["rmatmul"]
+    ifma["ifma.hpp"]
+    ext["外部の BLAS/LAPACK(MKL・OpenBLAS など)"]
+  end
+
+  M --> mats
+  M --> mats2
+  M --> pdblas
+  M --> pddblas
+  M --> imats
+  M --> pidblas
+  M --> pidfma
+
+  mats -. 継承 .-> mats2
+  mats -. 継承 .-> pdblas
+  mats -. 継承 .-> pddblas
+  mats -. 継承 .-> imats
+  imats -. 継承 .-> pidblas
+  pidblas -. 継承 .-> pidfma
+
+  imats -->|近似計算は点のポリシー| mats2
+  pidblas -->|近似計算と丸めつきの行列積| pdblas
+  pddblas -->|double の計算| pdblas
+  pidfma --> ifma
+
+  mats2 --> tblas
+  tblas -->|double、特殊化ヘッダなし| rd
+  tblas -->|double、特殊化ヘッダあり| tdouble
+  tblas -->|kv::dd、特殊化ヘッダあり| tdd
+  tdd -->|double の行列積など| tblas
+  tdd -->|tlapack_dd は double の特殊化を取り込む| tdouble
+  tdouble --> dbl
+  pdblas --> dbl
+  dbl -->|USE_VCP_BLAS / USE_VCP_LAPACK あり| rd
+  dbl -->|なし| ext
+  rd --> rmat
+```
+
+`vcp::minimats<T>` と `vcp::matrix<bool>` は、図に入れていません。カーネルの詳細は
+[kernels/tblas.md](kernels/tblas.md)・[kernels/tlapack.md](kernels/tlapack.md)・
+[kernels/rdblas.md](kernels/rdblas.md)・[kernels/rdlapack.md](kernels/rdlapack.md) を参照してください。
 
 ## policy の選び方
 
@@ -521,12 +591,12 @@ backend 選択を共有しています。
 分割統治法の `dsyevd_`・`dsygvd_` を呼びます（固有値だけのとき、または作業領域の長さが int に収まらない大きな n のときは `dsyev_`・`dsygv_`）。
 `pddblas` と、kv::dd 特殊化が有効な `mats2<kv::dd>` は、固有値だけのときも内部で固有ベクトルを求めるため、`dsyevd_`・`dsygvd_` を呼びます。
 `-DUSE_VCP_LAPACK` のときの `dsyevd_`・`dsygvd_` は丸めモード指定つきの実装で、
-`dsyev_`・`dsygv_`（QR 法）より遅いことがあります。特殊化を使わない `mats2<T>` は QR 法（`tsyev`・`tsygv`）を使います。
+`dsyev_`・`dsygv_`（QR 法）より遅いことがあります。`double` 以外の型で特殊化を使わない `mats2<T>` は QR 法（`tsyev`・`tsygv`）を使います。
 
 MKL や OpenBLAS がない環境でも次のようにコンパイルできます。
 
 ```bash
-g++ -std=c++20 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND \
+g++ -std=c++20 -I/path/to/libs -O3 -march=native -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND \
     -DUSE_VCP_BLAS -DUSE_VCP_LAPACK \
     example.cpp -lmpfr -fopenmp
 ```
@@ -719,10 +789,12 @@ x = lss(A, b);
 `mats2<T>` の最大の特徴は、**どの特殊化ヘッダをインクルードするかによって
 計算の実装が変わる**点です。`mats2.hpp` と `matrix.hpp` は特殊化ヘッダを
 インクルードしないため、利用者が明示的に選択します。特殊化ヘッダは任意です。
-インクルードしなくても汎用実装で動き、外部 BLAS/LAPACK をリンクして
-特殊化ヘッダをインクルードすると高速になります。
+インクルードしないとき、`T=double` は VCP の double BLAS/LAPACK
+(`vcp/vblas/` の rdblas と `vcp/vlapack/` の rdlapack)で、`double` 以外の型は
+汎用実装で動きます。どちらも外部 BLAS/LAPACK は不要です。外部 BLAS/LAPACK を
+リンクして特殊化ヘッダをインクルードすると、その BLAS/LAPACK が使われます。
 
-#### モード 1: 汎用実装（追加依存なし）
+#### モード 1: 特殊化ヘッダなし（追加依存なし）
 
 ```cpp
 #include <vcp/mats2.hpp>
@@ -730,9 +802,10 @@ x = lss(A, b);
 #include <vcp/matrix_assist.hpp>
 ```
 
-外部 BLAS/LAPACK は不要です。`vcp/tblas/tblas.hpp` と
-`vcp/tlapack/tlapack.hpp` の汎用 C++ 実装が使われます。`double` だけでなく `kv::dd`、`kv::mpfr<N>` など
-`tlapack` が対象とする任意の型 `T` で利用できます。
+外部 BLAS/LAPACK は不要です。`T=double` のときは、`vcp/tblas/tblas.hpp` と
+`vcp/tlapack/tlapack.hpp` が VCP の double BLAS/LAPACK(`vcp/vblas/` の rdblas と
+`vcp/vlapack/` の rdlapack)を呼びます。`kv::dd`、`kv::mpfr<N>` など、`double` 以外で
+`tlapack` が対象とする型 `T` のときは、tblas・tlapack の汎用 C++ 実装が使われます。
 
 #### モード 2: double BLAS/LAPACK 特殊化（`T=double` のとき `pdblas` 相当）
 
@@ -771,15 +844,15 @@ x = lss(A, b);
 
 `mats2<T>` が tblas/tlapack を通じて呼び出す演算は以下の通りです。
 
-| 演算 | 汎用実装（モード 1） | double 特殊化（モード 2） | kv::dd 特殊化（モード 3） |
-| --- | --- | --- | --- |
-| 行列積 `A * B` | tblas 汎用 `tgemm<T>` | BLAS `dgemm_` | 尾崎スキーム（`tgemm<kv::dd>`）|
-| `transpose(A)*A` | tblas 汎用 `tsyrk<T>` | BLAS `dsyrk_` | 尾崎スキーム（`tsyrk<kv::dd>`）|
-| 線形方程式 `lss(A, b)` | tlapack 汎用 `tgesv<T>` | LAPACK `dgesv_` | double 初期解 + kv::dd 残差反復 |
-| 逆行列 `inv(A)` | tlapack 汎用 `tgetrf/tgetri<T>` | LAPACK `dgetrf_/dgetri_` | double LU + kv::dd 残差反復 |
-| Cholesky 分解 | tlapack 汎用 `tpotrf<T>` | LAPACK `dpotrf_` | double Cholesky + kv::dd 残差補正 |
-| 対称固有値 `eigsym` | tlapack 汎用 `tsyev<T>`（QR 法） | LAPACK `dsyevd_`（固有ベクトルつき、分割統治法）・`dsyev_`（固有値のみ） | double 初期固有対（`dsyevd_`）+ kv::dd 残差反復 |
-| 一般化対称固有値 `eigsymge` | tlapack 汎用 `tsygv<T>`（QR 法） | LAPACK `dsygvd_`（固有ベクトルつき、分割統治法）・`dsygv_`（固有値のみ） | double 初期固有対（`dsygvd_`）+ kv::dd 残差反復 |
+| 演算 | モード 1、`T=double` | モード 1、`double` 以外(汎用実装) | double 特殊化（モード 2） | kv::dd 特殊化（モード 3） |
+| --- | --- | --- | --- | --- |
+| 行列積 `A * B` | rdblas `rdgemm` | tblas 汎用 `tgemm<T>` | BLAS `dgemm_` | 尾崎スキーム（`tgemm<kv::dd>`）|
+| `transpose(A)*A` | rdblas `rdsyrk` | tblas 汎用 `tsyrk<T>` | BLAS `dsyrk_` | 尾崎スキーム（`tsyrk<kv::dd>`）|
+| 線形方程式 `lss(A, b)` | rdlapack `rdgesv` | tlapack 汎用 `tgesv<T>` | LAPACK `dgesv_` | double 初期解 + kv::dd 残差反復 |
+| 逆行列 `inv(A)` | rdlapack `rdgetrf/rdgetri` | tlapack 汎用 `tgetrf/tgetri<T>` | LAPACK `dgetrf_/dgetri_` | double LU + kv::dd 残差反復 |
+| Cholesky 分解 | rdlapack `rdpotrf` | tlapack 汎用 `tpotrf<T>` | LAPACK `dpotrf_` | double Cholesky + kv::dd 残差補正 |
+| 対称固有値 `eigsym` | rdlapack `rdsyevd`（固有ベクトルつき、分割統治法）・`rdsyev`（固有値のみ） | tlapack 汎用 `tsyev<T>`（QR 法） | LAPACK `dsyevd_`（固有ベクトルつき、分割統治法）・`dsyev_`（固有値のみ） | double 初期固有対（`dsyevd_`）+ kv::dd 残差反復 |
+| 一般化対称固有値 `eigsymge` | rdlapack `rdsygvd`（固有ベクトルつき、分割統治法）・`rdsygv`（固有値のみ） | tlapack 汎用 `tsygv<T>`（QR 法） | LAPACK `dsygvd_`（固有ベクトルつき、分割統治法）・`dsygv_`（固有値のみ） | double 初期固有対（`dsygvd_`）+ kv::dd 残差反復 |
 
 ### 精度保証付き数値計算での利用
 
@@ -904,17 +977,24 @@ OpenMP で並列化されます。
 -DVCP_NOMP
 ```
 
-ただし、`-DUSE_VCP_BLAS`・`-DUSE_VCP_LAPACK` で使う `vcp/vblas/` の BLAS 実装の
-並列化は、`-DVCP_NOMP` では止まりません。
+`-DVCP_NOMP` は、`vcp/vblas/` の BLAS 実装（`-DUSE_VCP_BLAS`・`-DUSE_VCP_LAPACK` のときと、
+特殊化ヘッダを include しない `double` の tblas・tlapack から呼ばれるとき）の並列化も止めます。
 
-Matrix、tblas（`mats2<T>` の行列積など）、Fourier、Legendre など、部分的に無効化する場合:
+Matrix、tblas（`mats2<T>` の行列積など）、rdblas（`vcp/vblas/`）、Fourier、Legendre など、部分的に無効化する場合:
 
 ```bash
 -DVCP_MATS_NOMP
 -DVCP_TBLAS_NOMP
+-DVCP_RDBLAS_NOMP
 -DVCP_FOURIER_NOMP
 -DVCP_LEGENDRE_NOMP
 ```
+
+`-DVCP_TBLAS_NOMP` は `-DVCP_RDBLAS_NOMP` も定義します（特殊化ヘッダを include しない `double` の tblas・tlapack は
+`vcp/vblas/` の実装を呼ぶため）。
+
+これらのマクロが止めるのは、VCP の中の OpenMP です。外部の BLAS/LAPACK（MKL・OpenBLAS など）に
+渡した計算の並列化は止まりません。その BLAS の設定（スレッド数の環境変数など）で制御してください。
 
 外側の利用者コードで OpenMP 並列化を行う場合は、内側の VCP ループを
 無効化することで nested OpenMP を避けられます。

@@ -2406,6 +2406,9 @@ L50:
 template <typename T>
 inline int tsyevd(const char jobz, const char uplo, const int n, T* A, const int lda,
 	T* w) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::syevd(jobz, uplo, n, A, lda, w);
+	}
 	namespace detail = tlapack_detail;
 	const bool wantz = detail::option_is(jobz, 'V');
 	const bool lower = detail::option_is(uplo, 'L');
@@ -2473,6 +2476,9 @@ inline int tsyevd(const char jobz, const char uplo, const int n, T* A, const int
 template <typename T>
 inline int tsygvd(const int itype, const char jobz, const char uplo, const int n,
 	T* A, const int lda, T* B, const int ldb, T* w) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::sygvd(itype, jobz, uplo, n, A, lda, B, ldb, w);
+	}
 	namespace detail = tlapack_detail;
 	const bool wantz = detail::option_is(jobz, 'V');
 	const bool upper = detail::option_is(uplo, 'U');

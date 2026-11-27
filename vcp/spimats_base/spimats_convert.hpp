@@ -275,7 +275,7 @@ void point_to_interval(const std::vector<_T>& v,
 // 単位行列構成。対角 [1,1] は全ての対象スカラー型で厳密表現可能。
 // assign_csr により born-finalized CSR で構成する。
 template <typename _T, typename _Index>
-void identity_interval(const _Index n, spmats<kv::interval<_T>, _Index>& IB)
+void identity_interval(const typename std::common_type<_Index>::type n, spmats<kv::interval<_T>, _Index>& IB)
 {
 	if (n < 0) {
 		vcp::throw_error<vcp::invalid_argument>(

@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <ostream>
 #include <cstddef>
+#include <cstdint>
 #include <cmath>
 #include <complex>
 #include <limits>
@@ -25,6 +26,21 @@
 #include <vcp/vcp_converter.hpp>
 
 namespace vcp {
+
+	// The dense matrix (vcp::matrix) is indexed by int.  Every operation
+	// that carries a dimension of a sparse matrix over to a dense matrix
+	// (sparse x dense, dense x sparse, the dense results of lss and eigs)
+	// passes that dimension through this function once, at its entry: a
+	// dimension that does not fit int is refused with vcp::dimension_error
+	// instead of being truncated.
+	template <typename _Index>
+	inline int sparse_dimension_to_dense(const _Index n, const char* routine) {
+		if (n < 0 || static_cast<unsigned long long>(n) > static_cast<unsigned long long>((std::numeric_limits<int>::max)())) {
+			vcp::throw_error<vcp::dimension_error>(routine,
+				": the dimension ", n, " does not fit the int index of the dense matrix");
+		}
+		return static_cast<int>(n);
+	}
 
 	// SPC-3: forward declaration only.  spmatrix.hpp must NOT include
 	// matrix.hpp (design SPC-3_design.md v1.1 S3-2, mirror of the SPC-2
@@ -363,23 +379,23 @@ namespace vcp {
 		// ANY braced selector = submatrix: A({1},{2}), A(1,{2}), A({1},2)
 		// are 1x1 spmatrix, A(1,2) is the element.
 		// -----------------------------------------------------------------
-		spmatrix submatrix(const std::initializer_list<int>& list1,
-		                   const std::initializer_list<int>& list2) const {
+		spmatrix submatrix(const std::initializer_list<index_type>& list1,
+		                   const std::initializer_list<index_type>& list2) const {
 			spmatrix B;
 			_P::submat(static_cast<_P&>(B), list1, list2);
 			return B;
 		}
 
 		// const sugar -- pure forwarding to submatrix (extraction)
-		spmatrix operator()(const std::initializer_list<int>& list1,
-		                    const std::initializer_list<int>& list2) const {
+		spmatrix operator()(const std::initializer_list<index_type>& list1,
+		                    const std::initializer_list<index_type>& list2) const {
 			return this->submatrix(list1, list2);
 		}
 		// mixed forms (S11): the int is wrapped as the single selector {i}
-		spmatrix operator()(const int i, const std::initializer_list<int>& list2) const {
+		spmatrix operator()(const index_type i, const std::initializer_list<index_type>& list2) const {
 			return this->submatrix({i}, list2);
 		}
-		spmatrix operator()(const std::initializer_list<int>& list1, const int j) const {
+		spmatrix operator()(const std::initializer_list<index_type>& list1, const index_type j) const {
 			return this->submatrix(list1, {j});
 		}
 
@@ -391,17 +407,17 @@ namespace vcp {
 		// side delete stored entries; nonzero scalar fill DENSIFIES the
 		// block) and the lifetime warning (`auto x = A({..},{..});`
 		// captures the proxy, not an spmatrix).
-		spmatrix_block< _T, _P > operator()(const std::initializer_list<int>& list1, const std::initializer_list<int>& list2);
-		spmatrix_block< _T, _P > operator()(const int i, const std::initializer_list<int>& list2);
-		spmatrix_block< _T, _P > operator()(const std::initializer_list<int>& list1, const int j);
+		spmatrix_block< _T, _P > operator()(const std::initializer_list<index_type>& list1, const std::initializer_list<index_type>& list2);
+		spmatrix_block< _T, _P > operator()(const index_type i, const std::initializer_list<index_type>& list2);
+		spmatrix_block< _T, _P > operator()(const std::initializer_list<index_type>& list1, const index_type j);
 
 		void sort_coo() { _P::sort_coo(); }
 		void normalize_coo() { _P::normalize_coo(); }
 		// SPM-A1 (A1-1): dense-style eye(n) -- REPLACES the current content
 		// by the n x n identity (resize -> diagonal _T(1) by add -> finalize),
 		// the same meaning as matrix::eye.
-		void eye(const int n) {
-			const index_type nn = static_cast<index_type>(n);
+		void eye(const index_type n) {
+			const index_type nn = n;
 			this->resize(nn, nn);
 			this->reserve(nn);
 			for (index_type i = 0; i < nn; ++i) {
@@ -411,8 +427,8 @@ namespace vcp {
 		}
 		// SPM-A3 (S-9): A.zeros(r, c) -- dense-style alias; an r x c matrix
 		// with no stored entries (resize already discards the storage).
-		void zeros(const int r, const int c) {
-			this->resize(static_cast<index_type>(r), static_cast<index_type>(c));
+		void zeros(const index_type r, const index_type c) {
+			this->resize(r, c);
 			this->finalize();
 		}
 		void finalize() { _P::finalize(); }
@@ -1442,9 +1458,10 @@ namespace vcp {
 		// V (n x m) <- eigenvectors of an eig_result, column c = eigenvectors[c].
 		template <class _PD>
 		static void eig_pack_vectors_(const eig_result<_T>& r, const index_type n, matrix<_T, _PD>& V) {
+			const int nd = sparse_dimension_to_dense(n, "spmatrix: eigs (eigenvectors as a dense matrix)");
 			const int m = static_cast<int>(r.eigenvectors.size());
 			const std::size_t nn = static_cast<std::size_t>(n);
-			V.zeros(static_cast<int>(n), m);
+			V.zeros(nd, m);
 			for (int c = 0; c < m; ++c) {
 				const std::vector<_T>& x = r.eigenvectors[static_cast<std::size_t>(c)];
 				const std::size_t len = x.size() < nn ? x.size() : nn;
@@ -1476,6 +1493,7 @@ namespace vcp {
 				vcp::throw_error<vcp::dimension_error>(
 					"spmatrix: operator*(spmatrix, matrix): dimension mismatch");
 			}
+			const int rows_d = sparse_dimension_to_dense(A.rowsize(), "spmatrix: operator*(spmatrix, matrix)");
 			const spmatrix C = A.as_csr();
 			const index_type rows = C.rowsize();
 			const int cols = B.columnsize();
@@ -1483,7 +1501,7 @@ namespace vcp {
 			const std::vector<index_type>& inner = C.inner_index();
 			const std::vector<_T>& val = C.values();
 			matrix<_T, _PD> R;
-			R.zeros(static_cast<int>(rows), cols);
+			R.zeros(rows_d, cols);
 			for (index_type i = 0; i < rows; ++i) {
 				for (index_type k = outer[static_cast<std::size_t>(i)];
 				     k < outer[static_cast<std::size_t>(i) + 1]; ++k) {
@@ -1505,6 +1523,7 @@ namespace vcp {
 				vcp::throw_error<vcp::dimension_error>(
 					"spmatrix: operator*(matrix, spmatrix): dimension mismatch");
 			}
+			const int cols_d = sparse_dimension_to_dense(A.columnsize(), "spmatrix: operator*(matrix, spmatrix)");
 			const spmatrix C = A.as_csr();
 			const index_type rows = C.rowsize();
 			const int brows = B.rowsize();
@@ -1512,7 +1531,7 @@ namespace vcp {
 			const std::vector<index_type>& inner = C.inner_index();
 			const std::vector<_T>& val = C.values();
 			matrix<_T, _PD> R;
-			R.zeros(brows, static_cast<int>(C.columnsize()));
+			R.zeros(brows, cols_d);
 			for (index_type i = 0; i < rows; ++i) {
 				for (index_type k = outer[static_cast<std::size_t>(i)];
 				     k < outer[static_cast<std::size_t>(i) + 1]; ++k) {
@@ -1682,8 +1701,10 @@ namespace vcp {
 		friend void lss(const spmatrix& A, const spmatrix& B, matrix<_T, _PD>& X) {
 			if (A.rowsize() != B.rowsize())
 				vcp::throw_error<vcp::dimension_error>("lss(spmatrix, spmatrix): dimension mismatch");
+			const int xr = sparse_dimension_to_dense(A.columnsize(), "lss(spmatrix, spmatrix)");
+			const int xc = sparse_dimension_to_dense(B.columnsize(), "lss(spmatrix, spmatrix)");
 			const std::vector<std::vector<_T> > Xc = A.policy_lss_multi(spmatrix_columns_(B), linear_solve_options_type());
-			X.zeros(static_cast<int>(A.columnsize()), static_cast<int>(Xc.size()));
+			X.zeros(xr, xc);
 			for (std::size_t c = 0; c < Xc.size(); ++c)
 				for (std::size_t i = 0; i < Xc[c].size(); ++i) X(static_cast<int>(i), static_cast<int>(c)) = Xc[c][i];
 		}
@@ -1925,9 +1946,9 @@ namespace vcp {
 			C.powsm(Ta);
 			return C;
 		}
-		friend int length(const spmatrix& A) {
+		friend index_type length(const spmatrix& A) {
 			using std::max;
-			return static_cast<int>(max(A.rowsize(), A.columnsize()));
+			return max(A.rowsize(), A.columnsize());
 		}
 		friend spmatrix ltransmul(const spmatrix& A) {
 			return A.transpose() * A;
@@ -2057,10 +2078,10 @@ namespace vcp {
 		// the normalized selectors as {} / {start, stride, last} (identical
 		// selections by construction; the values came from int selectors).
 		operator spmatrix< _T, _P >() const {
-			const int r0 = static_cast<int>(r0_), rs = static_cast<int>(rs_);
-			const int rl = static_cast<int>(r0_ + (rn_ - 1) * rs_);
-			const int c0 = static_cast<int>(c0_), cs = static_cast<int>(cs_);
-			const int cl = static_cast<int>(c0_ + (cn_ - 1) * cs_);
+			const index_type r0 = r0_, rs = rs_;
+			const index_type rl = r0_ + (rn_ - 1) * rs_;
+			const index_type c0 = c0_, cs = cs_;
+			const index_type cl = c0_ + (cn_ - 1) * cs_;
 			if (rfull_ && cfull_) {
 				return A_.submatrix({}, {});
 			}
@@ -2102,7 +2123,7 @@ namespace vcp {
 	// helpers as spmats::submat (single validation implementation on the
 	// sparse side); the mixed forms wrap the int as the single selector {i}.
 	template <typename _T, class _P>
-	spmatrix_block< _T, _P > spmatrix< _T, _P >::operator()(const std::initializer_list<int>& list1, const std::initializer_list<int>& list2) {
+	spmatrix_block< _T, _P > spmatrix< _T, _P >::operator()(const std::initializer_list<index_type>& list1, const std::initializer_list<index_type>& list2) {
 		_P::submat_check_sizes_(list1, list2);
 		const typename _P::submat_axis_ ra = _P::submat_normalize_(list1, this->rowsize(), true);
 		const typename _P::submat_axis_ ca = _P::submat_normalize_(list2, this->columnsize(), false);
@@ -2111,11 +2132,11 @@ namespace vcp {
 			ca.start, ca.stride, ca.count, ca.full);
 	}
 	template <typename _T, class _P>
-	spmatrix_block< _T, _P > spmatrix< _T, _P >::operator()(const int i, const std::initializer_list<int>& list2) {
+	spmatrix_block< _T, _P > spmatrix< _T, _P >::operator()(const index_type i, const std::initializer_list<index_type>& list2) {
 		return (*this)({i}, list2);
 	}
 	template <typename _T, class _P>
-	spmatrix_block< _T, _P > spmatrix< _T, _P >::operator()(const std::initializer_list<int>& list1, const int j) {
+	spmatrix_block< _T, _P > spmatrix< _T, _P >::operator()(const std::initializer_list<index_type>& list1, const index_type j) {
 		return (*this)(list1, {j});
 	}
 
@@ -2202,7 +2223,7 @@ namespace vcp {
 		return vercat(C, args...);
 	}
 
-	template <typename _T, typename _Index = int> class spmatrix_builder {
+	template <typename _T, typename _Index = std::int64_t> class spmatrix_builder {
 	public:
 		typedef _T value_type;
 		typedef _Index index_type;

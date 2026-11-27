@@ -8,6 +8,7 @@
 #ifndef VCP_TSPARSE_OPERATOR_HPP
 #define VCP_TSPARSE_OPERATOR_HPP
 
+#include <cstdint>
 #include <functional>
 #include <vector>
 
@@ -15,7 +16,7 @@
 
 namespace vcp {
 
-	template <typename _T, typename _Index = int> class linear_operator {
+	template <typename _T, typename _Index = std::int64_t> class linear_operator {
 	public:
 		typedef _T value_type;
 		typedef _Index index_type;
@@ -44,7 +45,7 @@ namespace vcp {
 		const SparseMatrix* A_;
 	};
 
-	template <typename _T, typename _Index = int> class function_linear_operator : public linear_operator<_T, _Index> {
+	template <typename _T, typename _Index = std::int64_t> class function_linear_operator : public linear_operator<_T, _Index> {
 	public:
 		typedef _T value_type;
 		typedef _Index index_type;

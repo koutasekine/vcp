@@ -40,35 +40,76 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <utility>
 #include <vector>
 
 #include <vcp/spmats.hpp>
+#include <vcp/spumar_base/spumar_convert.hpp>
 
 namespace vcp {
 namespace spcmodumar_detail {
+
+	// =====================================================================
+	// cholmod_api<_Index>: the CHOLMOD entry points for the index type
+	// _Index.  Only _Index = std::int64_t (cholmod_l_*, CHOLMOD_LONG)
+	// exists; any other index type is a compile error.  native_index is the index type the
+	// CHOLMOD arrays of that interface hold.
+	// =====================================================================
+	template <typename _Index> struct cholmod_api;
+
+	// The 64-bit index type declared by <suitesparse/cholmod.h> is read off
+	// the permutation argument of cholmod_l_analyze_p (SuiteSparse 5.x:
+	// SuiteSparse_long = long, 7.x: int64_t).  Declaration only; never called.
+	template <typename _R, typename _A, typename _I, typename... _Rest>
+	_I cholmod_l_index_of_(_R (*)(_A, _I*, _Rest...));
+
+	template <>
+	struct cholmod_api<std::int64_t> {
+		typedef decltype(cholmod_l_index_of_(&cholmod_l_analyze_p)) native_index;
+		static int itype() { return CHOLMOD_LONG; }
+		static native_index* arg(std::int64_t* p) {
+			return spumar_detail::suitesparse_index_cast<native_index>(p);
+		}
+		static int start(cholmod_common* c) { return cholmod_l_start(c); }
+		static int finish(cholmod_common* c) { return cholmod_l_finish(c); }
+		static int free_factor(cholmod_factor** f, cholmod_common* c) { return cholmod_l_free_factor(f, c); }
+		static int free_sparse(cholmod_sparse** a, cholmod_common* c) { return cholmod_l_free_sparse(a, c); }
+		static cholmod_factor* analyze(cholmod_sparse* a, cholmod_common* c) { return cholmod_l_analyze(a, c); }
+		static cholmod_factor* analyze_given(cholmod_sparse* a, std::int64_t* perm, cholmod_common* c) {
+			return cholmod_l_analyze_p(a, arg(perm), static_cast<native_index*>(0), 0, c);
+		}
+		static int factorize(cholmod_sparse* a, cholmod_factor* f, cholmod_common* c) { return cholmod_l_factorize(a, f, c); }
+		// simplicial / packed / monotonic LL'
+		static int to_simplicial_ll(cholmod_factor* f, cholmod_common* c) {
+			return cholmod_l_change_factor(CHOLMOD_REAL, /*to_ll*/1, /*to_super*/0,
+				/*to_packed*/1, /*to_monotonic*/1, f, c);
+		}
+		static cholmod_sparse* factor_to_sparse(cholmod_factor* f, cholmod_common* c) { return cholmod_l_factor_to_sparse(f, c); }
+	};
 
 	// =====================================================================
 	// RAII guards (design SS2-8: cholmod_finish / free are guaranteed on
 	// every path by scope, never by manual calls on each early return).
 	// =====================================================================
 
-	// cholmod_common start/finish guard.  int32 API (cholmod_start), D-13.
-	class cholmod_env {
+	// cholmod_common start/finish guard (cholmod_l_start / cholmod_l_finish).
+	template <typename _Index>
+	class cholmod_env_basic {
 	public:
-		cholmod_env() : started_(false) {
-			started_ = (cholmod_start(&common_) == 1);
+		cholmod_env_basic() : started_(false) {
+			started_ = (cholmod_api<_Index>::start(&common_) == 1);
 			common_.print = 0;   // SPCM-F1: suppress CHOLMOD console messages -- failures are
 			                     // reported through the VCP status mapping (D-11), and the
 			                     // base policy is silent on npd; keep observable behaviour
 			                     // aligned across policies.
 		}
-		~cholmod_env() {
-			if (started_) cholmod_finish(&common_);
+		~cholmod_env_basic() {
+			if (started_) cholmod_api<_Index>::finish(&common_);
 		}
-		cholmod_env(const cholmod_env&) = delete;
-		cholmod_env& operator=(const cholmod_env&) = delete;
+		cholmod_env_basic(const cholmod_env_basic&) = delete;
+		cholmod_env_basic& operator=(const cholmod_env_basic&) = delete;
 
 		bool ok() const { return started_; }
 		cholmod_common* common() { return &common_; }
@@ -79,19 +120,20 @@ namespace spcmodumar_detail {
 	};
 
 	// cholmod_factor lifetime guard.
-	class cholmod_factor_guard {
+	template <typename _Index>
+	class cholmod_factor_guard_basic {
 	public:
-		explicit cholmod_factor_guard(cholmod_common* c)
+		explicit cholmod_factor_guard_basic(cholmod_common* c)
 			: factor_(0), common_(c) {}
-		~cholmod_factor_guard() { reset(); }
-		cholmod_factor_guard(const cholmod_factor_guard&) = delete;
-		cholmod_factor_guard& operator=(const cholmod_factor_guard&) = delete;
+		~cholmod_factor_guard_basic() { reset(); }
+		cholmod_factor_guard_basic(const cholmod_factor_guard_basic&) = delete;
+		cholmod_factor_guard_basic& operator=(const cholmod_factor_guard_basic&) = delete;
 
 		void adopt(cholmod_factor* f) { reset(); factor_ = f; }
 		cholmod_factor* get() const { return factor_; }
 		void reset() {
 			if (factor_ != 0) {
-				cholmod_free_factor(&factor_, common_);
+				cholmod_api<_Index>::free_factor(&factor_, common_);
 				factor_ = 0;
 			}
 		}
@@ -102,19 +144,20 @@ namespace spcmodumar_detail {
 	};
 
 	// cholmod_sparse lifetime guard (for cholmod_factor_to_sparse output).
-	class cholmod_sparse_guard {
+	template <typename _Index>
+	class cholmod_sparse_guard_basic {
 	public:
-		explicit cholmod_sparse_guard(cholmod_common* c)
+		explicit cholmod_sparse_guard_basic(cholmod_common* c)
 			: sparse_(0), common_(c) {}
-		~cholmod_sparse_guard() { reset(); }
-		cholmod_sparse_guard(const cholmod_sparse_guard&) = delete;
-		cholmod_sparse_guard& operator=(const cholmod_sparse_guard&) = delete;
+		~cholmod_sparse_guard_basic() { reset(); }
+		cholmod_sparse_guard_basic(const cholmod_sparse_guard_basic&) = delete;
+		cholmod_sparse_guard_basic& operator=(const cholmod_sparse_guard_basic&) = delete;
 
 		void adopt(cholmod_sparse* s) { reset(); sparse_ = s; }
 		cholmod_sparse* get() const { return sparse_; }
 		void reset() {
 			if (sparse_ != 0) {
-				cholmod_free_sparse(&sparse_, common_);
+				cholmod_api<_Index>::free_sparse(&sparse_, common_);
 				sparse_ = 0;
 			}
 		}
@@ -192,16 +235,17 @@ namespace spcmodumar_detail {
 	// the analyze stage, before this map is reached.
 	// inconclusive_pivot_test is NEVER produced on the delegation path
 	// (double-only, D-11; stated in the contract).
+	template <typename _Index>
 	inline sparse_chol_status map_cholmod_outcome_(
 		const int common_status, const std::size_t minor, const std::size_t n,
-		int& failure_at)
+		_Index& failure_at)
 	{
 		failure_at = -1;
 		if (common_status == CHOLMOD_OK && minor == n) {
 			return sparse_chol_status::success;
 		}
 		if (common_status == CHOLMOD_NOT_POSDEF && minor < n) {
-			failure_at = static_cast<int>(minor);
+			failure_at = static_cast<_Index>(minor);
 			return sparse_chol_status::not_positive_definite;
 		}
 		return sparse_chol_status::internal_error;
@@ -222,13 +266,16 @@ namespace spcmodumar_detail {
 	//   * the returned factor is structurally checked (lower-triangular,
 	//     ascending rows) at the boundary copy.
 	// =====================================================================
-	inline chol_result<double, int> cholmod_chol_delegate_(
-		const spmats<double, int>& A,
-		spmats<double, int>& L,
-		std::vector<int>& perm,
+	template <typename _Index>
+	inline chol_result<double, _Index> cholmod_chol_delegate_(
+		const spmats<double, _Index>& A,
+		spmats<double, _Index>& L,
+		std::vector<_Index>& perm,
 		const chol_options<double>& opt)
 	{
-		typedef int Index;
+		typedef _Index Index;
+		typedef cholmod_api<_Index> api;
+		typedef typename api::native_index native_index;
 		chol_result<double, Index> out;   // status defaults to internal_error
 		out.ordering_used = opt.ordering;
 		out.method_used   = opt.method;
@@ -273,7 +320,7 @@ namespace spcmodumar_detail {
 		// in CHOLMOD 5.x (no CHOLMOD_HAS_PARTITION macro): it is applied at
 		// the analyze stage below via CHOLMOD_NOT_INSTALLED.
 
-		// ---- 2. input validation, CSC form, int32 guard (SS2-2, D-13) ----
+		// ---- 2. input validation, CSC form, index-range guard (SS2-2, D-13) ----
 		// spmats -> full CSC via the same conversion helper as the native
 		// dispatch (spmats_chol_impl.hpp).  NOTE (recorded): the
 		// spumar_convert.hpp asset (umfpack_csc_view) is an UMFPACK-shaped
@@ -286,9 +333,9 @@ namespace spcmodumar_detail {
 			return out;
 		}
 		if (C.values.size() > static_cast<std::size_t>(
-			std::numeric_limits<int>::max())) {
-			// int32 API guard (D-13): n fits by construction (Index = int,
-			// checked >= 0 above); nnz is guarded here.
+			std::numeric_limits<Index>::max())) {
+			// index-range guard of the API (D-13): n
+			// fits by construction (checked >= 0 above); nnz is guarded here.
 			out.status = sparse_chol_status::invalid_input;
 			return out;
 		}
@@ -370,8 +417,8 @@ namespace spcmodumar_detail {
 		// Lower-triangle CSC (r >= c only; strictly-upper stored entries are
 		// ignored, same read scope as the native numeric stage, SS1.2) for
 		// the stype = -1 view (D-13).
-		std::vector<int>    lo_ptr(static_cast<std::size_t>(n) + 1u, 0);
-		std::vector<int>    lo_ind;
+		std::vector<Index>  lo_ptr(static_cast<std::size_t>(n) + 1u, 0);
+		std::vector<Index>  lo_ind;
 		std::vector<double> lo_val;
 		{
 			lo_ind.reserve(C.row_ind.size());
@@ -385,11 +432,11 @@ namespace spcmodumar_detail {
 						lo_val.push_back(C.values[static_cast<std::size_t>(k)]);
 					}
 				}
-				lo_ptr[c + 1u] = static_cast<int>(lo_ind.size());
+				lo_ptr[c + 1u] = static_cast<Index>(lo_ind.size());
 			}
 		}
 
-		cholmod_env env;
+		cholmod_env_basic<Index> env;
 		if (!env.ok()) {
 			out.status = sparse_chol_status::internal_error;
 			return out;
@@ -401,29 +448,28 @@ namespace spcmodumar_detail {
 		cm->nmethods   = 1;               // single method, no fallback chain
 		cm->method[0].ordering = cm_ordering;
 
-		cholmod_sparse Aview;             // non-owning view, int32/real/double
+		cholmod_sparse Aview;             // non-owning view, itype of the API/real/double
 		Aview.nrow  = static_cast<std::size_t>(n);
 		Aview.ncol  = static_cast<std::size_t>(n);
 		Aview.nzmax = lo_ind.size();
-		Aview.p = static_cast<void*>(lo_ptr.data());
-		Aview.i = static_cast<void*>(lo_ind.empty() ? static_cast<int*>(0) : lo_ind.data());
+		Aview.p = static_cast<void*>(api::arg(lo_ptr.data()));
+		Aview.i = static_cast<void*>(lo_ind.empty() ? static_cast<native_index*>(0) : api::arg(lo_ind.data()));
 		Aview.nz = 0;
 		Aview.x = static_cast<void*>(lo_val.empty() ? static_cast<double*>(0) : lo_val.data());
 		Aview.z = 0;
 		Aview.stype  = -1;                // symmetric, LOWER stored (D-13)
-		Aview.itype  = CHOLMOD_INT;
+		Aview.itype  = api::itype();
 		Aview.xtype  = CHOLMOD_REAL;
 		Aview.dtype  = CHOLMOD_DOUBLE;
 		Aview.sorted = 1;                 // ascending rows per column (CSC)
 		Aview.packed = 1;
 
-		cholmod_factor_guard Lf(cm);
+		cholmod_factor_guard_basic<Index> Lf(cm);
 		if (resolved == sparse_chol_ordering::rcm
 		    || resolved == sparse_chol_ordering::nested_dissection_ml) {
-			Lf.adopt(cholmod_analyze_p(&Aview, rcm_perm.data(),
-				static_cast<int*>(0), 0, cm));
+			Lf.adopt(api::analyze_given(&Aview, rcm_perm.data(), cm));
 		} else {
-			Lf.adopt(cholmod_analyze(&Aview, cm));
+			Lf.adopt(api::analyze(&Aview, cm));
 		}
 		if (Lf.get() == 0 || cm->status < CHOLMOD_OK) {
 			if (resolved == sparse_chol_ordering::nested_dissection &&
@@ -437,7 +483,7 @@ namespace spcmodumar_detail {
 			return out;
 		}
 
-		const int fac_rc = cholmod_factorize(&Aview, Lf.get(), cm);
+		const int fac_rc = api::factorize(&Aview, Lf.get(), cm);
 
 		// method_used: what ACTUALLY ran (D-8/D-9), from L->is_super.  Read
 		// right after factorize -- the extraction below converts the factor
@@ -447,7 +493,7 @@ namespace spcmodumar_detail {
 			: sparse_chol_method::simplicial_uplooking;
 
 		// ---- 7. status / minor mapping (SS2-7, D-11) ---------------------
-		int failure_at = -1;
+		Index failure_at = -1;
 		const sparse_chol_status mapped = map_cholmod_outcome_(
 			cm->status, Lf.get()->minor, static_cast<std::size_t>(n), failure_at);
 		if (mapped != sparse_chol_status::success) {
@@ -465,13 +511,13 @@ namespace spcmodumar_detail {
 		// ---- success: perm read-back + verification (D-4) ----------------
 		std::vector<Index> perm_out(static_cast<std::size_t>(n));
 		{
-			const int* p = static_cast<const int*>(Lf.get()->Perm);
+			const native_index* p = static_cast<const native_index*>(Lf.get()->Perm);
 			if (p == 0 && n > 0) {
 				out.status = sparse_chol_status::internal_error;
 				return out;
 			}
 			for (std::size_t i = 0; i < static_cast<std::size_t>(n); ++i) {
-				perm_out[i] = p[i];
+				perm_out[i] = static_cast<Index>(p[i]);
 			}
 		}
 		if (!sparse_chol_detail::sparse_chol_verify_permutation_<Index>(n, perm_out)) {
@@ -481,18 +527,17 @@ namespace spcmodumar_detail {
 
 		// ---- factor extraction (D-12): simplicial / packed / monotonic
 		// LL', then CSC copy-out ------------------------------------------
-		if (cholmod_change_factor(CHOLMOD_REAL, /*to_ll*/1, /*to_super*/0,
-			/*to_packed*/1, /*to_monotonic*/1, Lf.get(), cm) == 0 ||
+		if (api::to_simplicial_ll(Lf.get(), cm) == 0 ||
 			cm->status < CHOLMOD_OK) {
 			out.status = sparse_chol_status::internal_error;
 			return out;
 		}
-		cholmod_sparse_guard Ls(cm);
-		Ls.adopt(cholmod_factor_to_sparse(Lf.get(), cm));
+		cholmod_sparse_guard_basic<Index> Ls(cm);
+		Ls.adopt(api::factor_to_sparse(Lf.get(), cm));
 		if (Ls.get() == 0 || cm->status < CHOLMOD_OK ||
 			Ls.get()->nrow != static_cast<std::size_t>(n) ||
 			Ls.get()->ncol != static_cast<std::size_t>(n) ||
-			Ls.get()->itype != CHOLMOD_INT ||
+			Ls.get()->itype != api::itype() ||
 			Ls.get()->xtype != CHOLMOD_REAL ||
 			Ls.get()->dtype != CHOLMOD_DOUBLE ||
 			Ls.get()->packed == 0) {
@@ -506,33 +551,33 @@ namespace spcmodumar_detail {
 		// NOT stored (spmats explicit-zero invariant; materialized stored
 		// count <= backend stored count).
 		{
-			const int*    sp = static_cast<const int*>(Ls.get()->p);
-			const int*    si = static_cast<const int*>(Ls.get()->i);
+			const native_index* sp = static_cast<const native_index*>(Ls.get()->p);
+			const native_index* si = static_cast<const native_index*>(Ls.get()->i);
 			const double* sx = static_cast<const double*>(Ls.get()->x);
 			const std::size_t un = static_cast<std::size_t>(n);
 
-			out.nnz_L = sp[un];   // backend stored count (pre zero-drop)
+			out.nnz_L = static_cast<Index>(sp[un]);   // backend stored count (pre zero-drop)
 
 			std::vector<Index>  l_ptr(un + 1u, Index(0));
 			std::vector<Index>  l_ind;
 			std::vector<double> l_val;
 			l_ind.reserve(static_cast<std::size_t>(sp[un]));
 			l_val.reserve(static_cast<std::size_t>(sp[un]));
-			std::vector<std::pair<int, double> > colbuf;
+			std::vector<std::pair<Index, double> > colbuf;
 			for (std::size_t j = 0; j < un; ++j) {
 				colbuf.clear();
 				bool ascending = true;
-				int prev = -1;
-				for (int k = sp[j]; k < sp[j + 1u]; ++k) {
-					const int r = si[static_cast<std::size_t>(k)];
-					if (r < static_cast<int>(j) || r >= n) {
+				Index prev = -1;
+				for (native_index k = sp[j]; k < sp[j + 1u]; ++k) {
+					const Index r = static_cast<Index>(si[static_cast<std::size_t>(k)]);
+					if (r < static_cast<Index>(j) || r >= n) {
 						// not lower triangular / out of range: never accept
 						out.status = sparse_chol_status::internal_error;
 						return out;
 					}
 					if (r <= prev) ascending = false;
 					prev = r;
-					colbuf.push_back(std::pair<int, double>(
+					colbuf.push_back(std::pair<Index, double>(
 						r, sx[static_cast<std::size_t>(k)]));
 				}
 				if (!ascending) {

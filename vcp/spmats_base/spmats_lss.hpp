@@ -909,8 +909,8 @@ lu_factor_handle<_T,_Index> spmats<_T, _Index>::policy_lu_factorize_with_info(
 // failure is a non-valid handle; misuse (vcp::error) keeps its throwing
 // contract; the final std::exception net returns a non-valid handle with
 // n recorded (same P3 pattern as the other policies).  Designated
-// replacement point for external-backend policies (spumar override is out
-// of scope for LSS-1; the default implementation runs its own SLU there).
+// replacement point for external-backend policies (spumar overrides it:
+// UMFPACK factors stored in the handle; this default runs its own SLU).
 // ---------------------------------------------------------------------------
 template <typename _T, typename _Index>
 lu_factor_handle<_T,_Index> spmats<_T, _Index>::policy_lu_factorize_with_info_impl(

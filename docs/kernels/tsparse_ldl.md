@@ -22,8 +22,8 @@
 #include <vcp/tsparse/tsparse_sparse_ldl.hpp>
 
 vcp::sparse_ldl_options<double> opt;
-vcp::sparse_ldl_result<double, int> r =
-    vcp::sparse_ldl_factorize_with_info(n, col_ptr, row_ind, val, opt);
+vcp::sparse_ldl_result<double, std::int64_t> r =
+    vcp::sparse_ldl_factorize_with_info(n, col_ptr, row_ind, val, opt);   // n と配列の添字は std::int64_t
 // r.L_col_ptr, r.L_row_ind, r.L_val(単位下三角、対角の 1 も格納、CSC)
 // r.D_diag, r.D_sub, r.D_block2(1×1・2×2 のブロック対角)
 // r.perm(new→old)
@@ -295,8 +295,8 @@ handle を無効にしません。
 #include <vcp/tsparse/tsparse_sparse_chol.hpp>
 
 vcp::sparse_chol_options<double> opt;
-vcp::sparse_chol_result<double, int> r =
-    vcp::sparse_chol_factorize_with_info(n, col_ptr, row_ind, val, opt);
+vcp::sparse_chol_result<double, std::int64_t> r =
+    vcp::sparse_chol_factorize_with_info(n, col_ptr, row_ind, val, opt);   // n と配列の添字は std::int64_t
 // r.L_col_ptr, r.L_row_ind, r.L_val(下三角、正の対角を格納、CSC)、r.perm
 ```
 

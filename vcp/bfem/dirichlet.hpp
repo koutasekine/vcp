@@ -143,7 +143,8 @@ private:
     struct collector {
         const dirichlet_reduction* self;
         detail::coo_buffer<T>* buf;
-        void operator()(int i, int j, const T& v) const {
+        template <typename I>
+        void operator()(I i, I j, const T& v) const {
             int ri = self->to_reduced_[static_cast<std::size_t>(i)];
             int rj = self->to_reduced_[static_cast<std::size_t>(j)];
             if (ri >= 0 && rj >= 0) buf->push(ri, rj, v);
@@ -154,17 +155,19 @@ private:
     struct row_collector {
         const dirichlet_reduction* self;
         detail::coo_buffer<T>* buf;
-        void operator()(int i, int j, const T& v) const {
+        template <typename I>
+        void operator()(I i, I j, const T& v) const {
             int ri = self->to_reduced_[static_cast<std::size_t>(i)];
-            if (ri >= 0) buf->push(ri, j, v);
+            if (ri >= 0) buf->push(ri, static_cast<int>(j), v);
         }
     };
     struct col_collector {
         const dirichlet_reduction* self;
         detail::coo_buffer<T>* buf;
-        void operator()(int i, int j, const T& v) const {
+        template <typename I>
+        void operator()(I i, I j, const T& v) const {
             int rj = self->to_reduced_[static_cast<std::size_t>(j)];
-            if (rj >= 0) buf->push(i, rj, v);
+            if (rj >= 0) buf->push(static_cast<int>(i), rj, v);
         }
     };
 };

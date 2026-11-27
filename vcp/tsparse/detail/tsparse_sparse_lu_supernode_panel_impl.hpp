@@ -22,9 +22,9 @@
 // are kv-agnostic -- is NOT included here.  A TU that wants the fast dd
 // path must include <vcp/tblas/tblas_dd.hpp> before instantiating the
 // factorization; otherwise the generic reference tgemm is used (correct,
-// slower).  gemv/ger/trsm are NEVER called on this path; the supernode
-// diagonal-block solve is scalar by design (width <= maxsup; measured by
-// trsm_time_ns for the T-7 / STOP-6 gate).
+// slower).  The supernode diagonal-block solve is ONE ttrsm<T> call per
+// (supernode, panel) on a copy of the block (width <= maxsup; measured by
+// trsm_time_ns).  gemv/ger are not called on this path.
 //
 // ---------------------------------------------------------------------------
 // Algorithm summary (Phase 3)
@@ -49,8 +49,8 @@
 //           K's column range are pivotal, hence stable -- into a contiguous
 //           nc x w_p buffer, ZERO-PADDED for inactive columns (Li 2005
 //           §2.3);
-//        b. scalar unit-lower triangular solve with K's diagonal block per
-//           active column (D-4: allowed, measured);
+//        b. unit-lower triangular solve with K's diagonal block: ONE
+//           ttrsm<T> call on a contiguous copy of the block;
 //        c. ONE tgemm<T> call: C = L(ext rows, K) * U_frag  (m = |ext|,
 //           n = w_p, k = |K|); a scalar fallback handles thin updates
 //           (k == 1 or m*k below opt.blas_min_block_size);
@@ -122,7 +122,7 @@ struct supernode_panel_factorize_result {
     std::size_t slot_element_count;     // diagnostics: total structural column slots
 
     // Phase 3 (T-7 / STOP-6 evidence):
-    std::size_t trsm_time_ns;           // scalar diagonal-block solve time
+    std::size_t trsm_time_ns;           // diagonal-block solve time (gather + ttrsm)
     std::size_t gemm_time_ns;           // tgemm call time
     std::size_t gemm_call_count;        // number of tgemm calls
     std::size_t gemm_flop_count;        // 2*m*n*k summed over tgemm calls
@@ -195,32 +195,10 @@ supernode_panel_lu_factorize(
     //     mpfr, dd in a TU that did not include tblas_dd.hpp): the 65536x
     //     gate below keeps the (reference) GEMM off -- every small-block
     //     call was measured a pure loss at reference speed (SLU-SP1 §6-3).
-    // SLU-K1 Phase 3 re-tune (kv::dd with the opt-in blocked-Ozaki kernel,
-    // i.e. vcp::tblas_blocked::has_blocked_kernel<T> and kernel=blocked):
-    // measured against the scalar member-column dd axpy on the panel
-    // shapes (n=8, full-dd data, sluk1_09, i7-11700, ratio scalar/ozaki):
-    //     tier          k=4    k=8    k=16   k=32   break-even
-    //     -O2           0.38   0.52   0.69   0.82   (none; 0.89 max)
-    //     -O3 -m64      0.35   0.61   0.90   1.13   k >= 32
-    //     -O3 native    0.65   1.16   1.70   2.20   k >= 8
-    // One compile-time gate must serve every tier, so the DEFAULT fires
-    // only in the all-tier-safe region: nc >= 2*blas_min_block_size (= 32)
-    // AND m*nc >= 64*blas_min_block_size (= 1024).  -march=native users
-    // reach the native-optimal region (k >= 8) by setting
-    // blas_min_block_size = 4.  kernel=reference keeps the pre-K1 gate
-    // EXACTLY (T-1 byte identity).
-    const bool dd_blocked_gate =
-        !std::is_floating_point<T>::value &&
-        vcp::tblas_blocked::has_blocked_kernel<T>::value &&
-        (opt.panel_gemm_kernel == sparse_lu_panel_gemm_kernel::blocked);
     const std::size_t gemm_min_elems =
         std::is_floating_point<T>::value
             ? opt.blas_min_block_size
-            : dd_blocked_gate
-                ? opt.blas_min_block_size * 64u
-                : opt.blas_min_block_size * 65536u;
-    const std::size_t gemm_min_width =
-        dd_blocked_gate ? 2u * opt.blas_min_block_size : 1u;
+            : opt.blas_min_block_size * 65536u;
 
     const real_type abs_tol          = opt.absolute_pivot_tolerance;
     const bool      do_partial_pivot =
@@ -275,6 +253,7 @@ supernode_panel_lu_factorize(
     std::vector<Index> dfs_stack;
     std::vector<Index> reach_sups;
     std::vector<T>     frag_B;        // nc x w_p zero-padded U fragments
+    std::vector<T>     diag_L;        // nc x nc copy of a diagonal block (ttrsm)
     std::vector<T>     gemm_C;        // m x w_p GEMM result
     std::vector<char>  frag_active;   // per panel column activity
 
@@ -359,8 +338,8 @@ supernode_panel_lu_factorize(
 
         // ==============================================================
         // 2. Panel update (design §2.2): per supernode K in ascending
-        //    order -- gather zero-padded U fragments, scalar diagonal-block
-        //    solve, ONE tgemm, scatter into the panel workspace.
+        //    order -- gather zero-padded U fragments, ONE ttrsm with the
+        //    diagonal block, ONE tgemm, scatter into the panel workspace.
         // ==============================================================
         for (std::size_t rs = 0u; rs < reach_sups.size(); ++rs) {
             const Index       s  = reach_sups[rs];
@@ -412,8 +391,7 @@ supernode_panel_lu_factorize(
             const std::size_t sm_pre = static_cast<std::size_t>(
                 (m > Index(0)) ? m : Index(0));
             const bool use_gemm =
-                (m > Index(0)) && (sm_pre * snc >= gemm_min_elems) &&
-                (snc >= gemm_min_width);
+                (m > Index(0)) && (sm_pre * snc >= gemm_min_elems);
             if (!use_gemm) {
                 ++result.scalar_update_count;
                 for (std::size_t jj = 0u; jj < w_p; ++jj) {
@@ -446,7 +424,7 @@ supernode_panel_lu_factorize(
                 continue;
             }
 
-            // ----- 2a/2b. gather + scalar trisolve per active column -----
+            // ----- 2a/2b. gather, then ONE ttrsm with K's diagonal block -----
             frag_B.assign(snc * w_p, T(0));
             frag_active.assign(w_p, 0);
             bool any_active = false;
@@ -473,27 +451,44 @@ supernode_panel_lu_factorize(
                 for (Index c = Index(0); c < nc_eff; ++c)
                     u[static_cast<std::size_t>(c)] =
                         x[static_cast<std::size_t>(fc + c)];
-                // unit-lower solve with K's diagonal block:
+            }
+            if (any_active) {
+                // unit-lower solve with K's diagonal block.  In the trapezoid
+                // the block sits one row up:
                 //   L(fc+c, fc+c') = vals[c'*ld + (c-1)]  (c > c')
+                // so it is copied to a contiguous nc x nc array (strictly
+                // lower part; the unit diagonal is not referenced) and the
+                // zero-padded fragments are solved by one ttrsm.
+                diag_L.assign(snc * snc, T(0));
                 for (Index cp = Index(0); cp < nc_eff; ++cp) {
-                    const T uc = u[static_cast<std::size_t>(cp)];
-                    if (sparse_lu_scalar_policy<T>::is_exact_zero(uc)) continue;
                     const std::size_t base =
                         static_cast<std::size_t>(cp) * static_cast<std::size_t>(ld);
                     for (Index c = cp + Index(1); c < nc_eff; ++c) {
-                        u[static_cast<std::size_t>(c)] -=
-                            vals[base + static_cast<std::size_t>(c - Index(1))] * uc;
+                        diag_L[static_cast<std::size_t>(cp) * snc +
+                               static_cast<std::size_t>(c)] =
+                            vals[base + static_cast<std::size_t>(c - Index(1))];
                     }
                 }
-                // write back the solved U segment + mark (rows are < jcol,
+                ttrsm<T>('L', 'L', 'N', 'U',
+                         static_cast<int>(nc_eff), static_cast<int>(w_p),
+                         T(1), diag_L.data(), static_cast<int>(nc_eff),
+                         frag_B.data(), static_cast<int>(nc_eff));
+                // write back the solved U segments + mark (rows are < jcol,
                 // stable; stored later as U entries of column j2)
-                for (Index c = Index(0); c < nc_eff; ++c) {
-                    const Index r = fc + c;
-                    const std::size_t sr = static_cast<std::size_t>(r);
-                    x[sr] = u[static_cast<std::size_t>(c)];
-                    if (mk[sr] != j2) {
-                        mk[sr] = j2;
-                        patterns[jj].push_back(r);
+                for (std::size_t jj = 0u; jj < w_p; ++jj) {
+                    if (!frag_active[jj]) continue;
+                    const Index j2 = jcol + static_cast<Index>(jj);
+                    T*     x  = &W[jj * un];
+                    Index* mk = &mark_p[jj * un];
+                    const T* u = &frag_B[jj * snc];
+                    for (Index c = Index(0); c < nc_eff; ++c) {
+                        const Index r = fc + c;
+                        const std::size_t sr = static_cast<std::size_t>(r);
+                        x[sr] = u[static_cast<std::size_t>(c)];
+                        if (mk[sr] != j2) {
+                            mk[sr] = j2;
+                            patterns[jj].push_back(r);
+                        }
                     }
                 }
             }
@@ -503,35 +498,18 @@ supernode_panel_lu_factorize(
             if (!any_active) continue;
 
             // ----- 2c. one GEMM per (supernode, panel) -----
-            // SLU-K1 kernel selector (design D-2): reference = the pre-K1
-            // vcp::tgemm<T> call, byte-identical by construction (T-1);
-            // blocked = vcp::tblas_blocked::gemm<T> (double blocked, other
-            // scalars forward verbatim to the reference inside it).
             const std::size_t sm = static_cast<std::size_t>(m);
             {
                 gemm_C.resize(sm * w_p);
                 const clock_type::time_point t_g0 = clock_type::now();
-                if (opt.panel_gemm_kernel ==
-                        sparse_lu_panel_gemm_kernel::blocked) {
-                    vcp::tblas_blocked::gemm<T>('N', 'N',
-                         static_cast<int>(m), static_cast<int>(w_p),
-                         static_cast<int>(nc_eff),
-                         T(1),
-                         vals.data() + static_cast<std::size_t>(nc_eff - Index(1)),
-                         static_cast<int>(ld),
-                         frag_B.data(), static_cast<int>(nc_eff),
-                         T(0), gemm_C.data(), static_cast<int>(m));
-                }
-                else {
-                    tgemm<T>('N', 'N',
-                         static_cast<int>(m), static_cast<int>(w_p),
-                         static_cast<int>(nc_eff),
-                         T(1),
-                         vals.data() + static_cast<std::size_t>(nc_eff - Index(1)),
-                         static_cast<int>(ld),
-                         frag_B.data(), static_cast<int>(nc_eff),
-                         T(0), gemm_C.data(), static_cast<int>(m));
-                }
+                tgemm<T>('N', 'N',
+                     static_cast<int>(m), static_cast<int>(w_p),
+                     static_cast<int>(nc_eff),
+                     T(1),
+                     vals.data() + static_cast<std::size_t>(nc_eff - Index(1)),
+                     static_cast<int>(ld),
+                     frag_B.data(), static_cast<int>(nc_eff),
+                     T(0), gemm_C.data(), static_cast<int>(m));
                 result.gemm_time_ns += static_cast<std::size_t>(
                     std::chrono::duration_cast<std::chrono::nanoseconds>(
                         clock_type::now() - t_g0).count());

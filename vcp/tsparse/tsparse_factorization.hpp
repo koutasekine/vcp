@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <sstream>
 #include <stdexcept>
@@ -27,7 +28,7 @@ namespace tsparse_factorization {
 // L has unit diagonal (implicit), U has explicit diagonal
 // Combined storage: lu_val[k] is L below diagonal, U on/above diagonal
 // ---------------------------------------------------------------------------
-template <typename T, typename Index = int>
+template <typename T, typename Index = std::int64_t>
 struct ilu0_data {
 	typedef T value_type;
 	typedef Index index_type;

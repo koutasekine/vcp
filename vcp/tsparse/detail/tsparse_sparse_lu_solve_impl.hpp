@@ -320,4 +320,63 @@ sparse_lu_make_baseline_factor_for_testing(
     return fac;
 }
 
+// ===========================================================================
+// sparse_lu_make_factor_from_baseline_storage
+// Builds a factor object from L / U / permutations computed OUTSIDE this
+// library (external-backend policies).  Same structural validation as the
+// testing hook above; info() is filled like the testing hook, with
+// method_used recorded from the argument.  Fields the external backend does
+// not provide (growth_factor etc.) keep those values and carry no meaning.
+// ===========================================================================
+template <class T, class Index>
+sparse_lu_factorization<T, Index>
+sparse_lu_make_factor_from_baseline_storage(
+    Index n,
+    const baseline_lu_storage<T, Index>& storage,
+    sparse_lu_method method_used)
+{
+    static_assert(std::is_signed<Index>::value,
+                  "sparse_lu_make_factor_from_baseline_storage: Index must be signed");
+
+    sparse_lu_detail::validate_baseline_lu_storage_for_solve(storage, n);
+
+    sparse_lu_factorization<T, Index> fac;
+    fac.set_baseline_storage_for_internal_use_(n, storage);
+    sparse_lu_info<T, Index> info = fac.info();
+    info.method_used = method_used;
+    fac.set_info_(info);
+    return fac;
+}
+
+// ===========================================================================
+// sparse_lu_make_failed_factor
+// Companion of sparse_lu_make_factor_from_baseline_storage for a failed
+// external factorization: a non-valid factor object that records the failure
+// status, n and method_used (no factor storage).  status must not be success.
+// ===========================================================================
+template <class T, class Index>
+sparse_lu_factorization<T, Index>
+sparse_lu_make_failed_factor(
+    Index n,
+    sparse_lu_status status,
+    sparse_lu_method method_used)
+{
+    static_assert(std::is_signed<Index>::value,
+                  "sparse_lu_make_failed_factor: Index must be signed");
+
+    if (status == sparse_lu_status::success) {
+        vcp::throw_error<vcp::invalid_argument>(
+            "sparse_lu_make_failed_factor: status must not be success");
+    }
+
+    sparse_lu_factorization<T, Index> fac;
+    sparse_lu_info<T, Index> info;
+    info.success     = false;
+    info.status      = status;
+    info.n           = n;
+    info.method_used = method_used;
+    fac.set_info_(info);
+    return fac;
+}
+
 #endif // VCP_TSPARSE_SPARSE_LU_SOLVE_IMPL_HPP

@@ -5,8 +5,7 @@ OpenMP、Apple Silicon Mac での OpenBLAS 設定例をまとめます。
 
 ## 対応コンパイラと検証環境
 
-C++11〜C++20、gcc・clang、Linux・macOS(Apple Silicon を含む)・AMD CPU に対応しています。
-C++23 は簡易的には対応していることを確認済みです。
+C++11〜C++23、gcc・clang、Linux・macOS(Apple Silicon を含む)・AMD CPU に対応しています。
 
 BLAS/LAPACK を使う policy では、利用環境に応じて OpenBLAS、
 Intel MKL、Apple Accelerate BLAS/LAPACK などを選択できます。ただし、
@@ -33,7 +32,7 @@ kv を使うコードを `-std=c++20` でコンパイルできないことがあ
 [install.md](install.md) を参照してください。
 
 ```bash
-g++ -std=c++20 -I/path/to/libs example.cpp
+g++ -std=c++20 -ffp-contract=off -frounding-math -I/path/to/libs example.cpp
 ```
 
 区間演算を使う場合は、別途取得した kv ライブラリの include path も
@@ -41,20 +40,24 @@ g++ -std=c++20 -I/path/to/libs example.cpp
 この場合は include path を 1 つ指定するだけで済みます。
 
 ```bash
-g++ -std=c++20 -I/path/to/libs example.cpp
+g++ -std=c++20 -ffp-contract=off -frounding-math -I/path/to/libs example.cpp
 ```
 
 BLAS/LAPACK を使う場合:
 
 ```bash
-g++ -std=c++20 -I/path/to/libs example.cpp -llapack -lblas
+g++ -std=c++20 -ffp-contract=off -frounding-math -I/path/to/libs example.cpp -llapack -lblas
 ```
 
 OpenMP、MPFR、GMP も使う場合:
 
 ```bash
-g++ -std=c++20 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND example.cpp -llapack -lblas -lmpfr -lgmp -fopenmp
+g++ -std=c++20 -I/path/to/libs -O3 -march=native -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND example.cpp -llapack -lblas -lmpfr -lgmp -fopenmp
 ```
+
+`-march=native` は、ビルドする機体の CPU の命令(AVX2・AVX-512 など)を有効にします。
+`double` の行列の計算は、既定では VCP の実装(rdblas)で行い、このフラグで SIMD の実装が
+使われます。ビルドした実行ファイルは、命令の種類が違う CPU の機体では動かないことがあります。
 
 ## Intel MKL を使う場合
 
@@ -121,7 +124,7 @@ MKL を精度保証付き計算で使う場合は、丸めモードの変更が�
 
 ```bash
 source /opt/intel/oneapi/setvars.sh
-g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 -m64 <filename.cpp> -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp
+g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 -march=native -ffp-contract=off -frounding-math -m64 <filename.cpp> -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp
 ```
 
 この例では `-lblas` と `-llapack` を指定していません。MKL を使う意図を
@@ -143,10 +146,10 @@ OpenBLAS や Apple LAPACK を使う例:
 
 ```bash
 cd test_matrix
-g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp
+g++ -I.. -std=c++20 -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp
 ./a.out
 
-g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp
+g++ -I.. -std=c++20 -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp
 ./a.out
 ```
 
@@ -161,8 +164,8 @@ Intel MKL を使う場合の確認例:
 echo "Check for BLAS rounding mode changes: Please wait..."
 source /opt/intel/oneapi/setvars.sh
 cd test_matrix
-g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pdblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
-g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pidblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
+g++ -I.. -std=c++20 -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pdblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
+g++ -I.. -std=c++20 -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND -O3 -m64 Check_pidblas_rounding.cpp -L${MKLROOT}/lib/intel64 -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_intel_thread -lmkl_core -liomp5 -lpthread -lm -ldl -lmpfr -fopenmp && ./a.out
 ```
 
 成功すると、丸めモード変更可能であることを示すメッセージが表示されます。
@@ -364,13 +367,13 @@ OpenBLAS、Apple LAPACK、MPFR、GMP、OpenMP を使う場合の例です。
 Apple Clang:
 
 ```bash
-clang++ -I.. -std=gnu++14 -O3 -Xpreprocessor -fopenmp Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -lomp
+clang++ -I.. -std=gnu++14 -ffp-contract=off -frounding-math -O3 -Xpreprocessor -fopenmp Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -lomp
 ```
 
 Homebrew GCC:
 
 ```bash
-g++-14 -I.. -O3 -fopenmp Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp
+g++-14 -I.. -ffp-contract=off -frounding-math -O3 -fopenmp Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp
 ```
 
 この構成では、`-lopenblas` で丸めモード変更可能な OpenBLAS を明示的に
@@ -392,17 +395,30 @@ Homebrew GCC では、通常の `-fopenmp` で OpenMP を有効にできます�
 -DVCP_NOMP
 ```
 
-ただし、`-DUSE_VCP_BLAS`・`-DUSE_VCP_LAPACK` で使う `vcp/vblas/` の BLAS 実装の
-並列化は、`-DVCP_NOMP` では止まりません。
+`-DVCP_NOMP` は、`vcp/vblas/` の BLAS 実装(rdblas・rmatmul・udmatmul。
+`-DUSE_VCP_BLAS`・`-DUSE_VCP_LAPACK` のときと、特殊化ヘッダを include しない `double` の tblas・tlapack から
+呼ばれるとき)の並列化も止めます。`vcp/vblas/` だけを止めるときは
+`-DVCP_RDBLAS_NOMP` を定義します。rdlapack(`vcp/vlapack/`)は自前の並列化を
+持たず、呼び出す rdblas が `-DVCP_RDBLAS_NOMP` で止まります。
 
 必要に応じて、より細かい単位で次も利用できます。
 
 ```bash
 -DVCP_MATS_NOMP
 -DVCP_TBLAS_NOMP
+-DVCP_RDBLAS_NOMP
 -DVCP_SPMATS_NOMP
 -DVCP_SPARSE_NOMP
 -DVCP_FOURIER_NOMP
 -DVCP_LEGENDRE_NOMP
 -DVCP_BFEM_NOMP
 ```
+
+`-DVCP_TBLAS_NOMP` は `-DVCP_RDBLAS_NOMP` も定義します(特殊化ヘッダを include しない `double` の tblas・tlapack は
+`vcp/vblas/` の実装を呼ぶため)。
+
+`vcp/vblas/`・`vcp/vlapack/` は、`-fopenmp` を付けなくてもビルドできます。
+`-fopenmp` が無いとき、または `-DVCP_NOMP`・`-DVCP_RDBLAS_NOMP` を定義したときは、
+`<omp.h>` を include せず、呼び出したスレッド 1 本で計算します。この場合、
+OpenMP のライブラリ(`-liomp5`・`-lgomp`・`-lomp`)をリンクする必要はありません
+(ほかに OpenMP を使うコードが無いとき)。

@@ -10,7 +10,8 @@ Legendre 基底(`vcp/ldbase.hpp`)、Fourier 級数、Newton 法も含みます�
 - GitHub: <https://github.com/koutasekine/vcp>
 - 旧 Web サイト: <https://verified.computation.jp/>
   現在の更新は GitHub に移行しており、この Web サイトは legacy information として
-  参照してください。
+  参照してください。GitHub 以前の更新履歴は
+  [docs/legacy/pre_github_history.md](docs/legacy/pre_github_history.md) にあります。
 - 論文: Kouta Sekine, Mitsuhiro T. Nakao, and Shin'ichi Oishi,
   "Numerical verification methods for a system of elliptic PDEs, and their
   software library", NOLTA, IEICE, Vol. 12, No. 1, pp. 41-74, 2021.
@@ -57,17 +58,17 @@ PDE の例は `test_PDE/` にあります。`test_PDE/test_Emden.cpp` が入口�
 ## 依存ライブラリ
 
 最小の `vcp::matrix<double>` と `vcp::spmatrix<double>` は、C++11 コンパイラだけで
-利用できます。C++11 から C++20 までのコンパイルで、gcc と clang の両方で
-動作を確認しています。Apple Silicon Mac や AMD 環境でも検証しており、
-Intel 専用ではありません。選択する policy やスカラー型によって、次の依存が
+利用できます。C++11〜C++23、gcc・clang、Linux・macOS(Apple Silicon を含む)・AMD CPU に対応しています。
+選択する policy やスカラー型によって、次の依存が
 必要になります。
 
 | 用途 | 主な依存 |
 | --- | --- |
-| `vcp::mats2<T>`、`vcp::spmats<T>`、`vcp::spimats<T>` | 追加依存なし |
+| `vcp::mats2<T>`、`vcp::spmats<T>` | 追加依存なし |
+| `vcp::spimats<T>` | 別途取得した kv ライブラリ(区間演算) |
 | `vcp::pdblas`, `vcp::pidblas` | BLAS/LAPACK または Intel MKL(`-DUSE_VCP_BLAS -DUSE_VCP_LAPACK` 指定時は不要) |
 | `vcp::pddblas` | 上に加えて kv ライブラリ(`kv::dd`) |
-| `vcp::mats2<double>`・`vcp::mats2<kv::dd>` の特殊化ヘッダ | BLAS/LAPACK または Intel MKL |
+| `vcp::mats2<double>`・`vcp::mats2<kv::dd>` の特殊化ヘッダ | BLAS/LAPACK または Intel MKL(`-DUSE_VCP_BLAS -DUSE_VCP_LAPACK` 指定時は不要) |
 | `vcp::spumar` | UMFPACK(SuiteSparse)、ARPACK-NG |
 | `vcp::spcmodumar` | UMFPACK・CHOLMOD(SuiteSparse)、ARPACK-NG |
 | 区間演算、`kv::dd` | 別途取得した kv ライブラリ |
@@ -90,15 +91,22 @@ kv を使うコードを `-std=c++20` でコンパイルできないことがあ
 指定します。kv ライブラリを使う場合は、`vcp/` と `kv/` を同じ親ディレクトリに
 置くのが推奨の配置です。
 
+VCP を使うコードは、`-ffp-contract=off -frounding-math` を必ず付けてコンパイルします。
+理由は [docs/install.md](docs/install.md) の「必須のコンパイルオプション」を参照してください。
+
 ```bash
-g++ -std=c++20 -I/path/to/libs example.cpp
+g++ -std=c++20 -ffp-contract=off -frounding-math -I/path/to/libs example.cpp
 ```
 
 OpenMP・BLAS/LAPACK・MPFR も使う典型的な例:
 
 ```bash
-g++ -std=c++20 -I/path/to/libs -O3 -DNDEBUG -DKV_FASTROUND example.cpp -llapack -lblas -lmpfr -fopenmp
+g++ -std=c++20 -I/path/to/libs -O3 -march=native -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND example.cpp -llapack -lblas -lmpfr -fopenmp
 ```
+
+`-march=native` は、ビルドする機体の CPU の命令(AVX2・AVX-512 など)を有効にします。
+`double` の行列の計算は、既定では VCP の実装(rdblas)で行い、このフラグで SIMD の実装が
+使われます。ビルドした実行ファイルは、命令の種類が違う CPU の機体では動かないことがあります。
 
 外部 BLAS/LAPACK がない環境では、`-DUSE_VCP_BLAS -DUSE_VCP_LAPACK` を指定すると
 VCP 内部の実装を代わりに使います。MKL、OpenBLAS、macOS などの具体例は
@@ -194,17 +202,26 @@ try {
 -DVCP_NOMP
 ```
 
+`-DVCP_NOMP` は、`vcp/vblas/` の BLAS 実装(`-DUSE_VCP_BLAS`・`-DUSE_VCP_LAPACK` のときと、
+特殊化ヘッダを include しない `double` の tblas・tlapack から呼ばれるとき)の並列化も止めます。
+
 部分ごとに止めることもできます。
 
 | マクロ | 止める部分 |
 | --- | --- |
 | `VCP_MATS_NOMP` | 密行列の policy |
-| `VCP_TBLAS_NOMP` | tblas |
+| `VCP_TBLAS_NOMP` | tblas(`VCP_RDBLAS_NOMP` も定義します) |
+| `VCP_RDBLAS_NOMP` | `vcp/vblas/` の BLAS 実装(rdblas) |
 | `VCP_SPMATS_NOMP` | 疎行列の policy(spmats・spimats とその下請け) |
 | `VCP_SPARSE_NOMP` | 疎行列のカーネル(tsparse) |
 | `VCP_FOURIER_NOMP` | Fourier 級数 |
 | `VCP_LEGENDRE_NOMP` | Legendre 基底 |
 | `VCP_BFEM_NOMP` | bfem・btfem |
+
+これらのマクロが止めるのは、VCP の中の OpenMP です。外部の BLAS/LAPACK(MKL・OpenBLAS など)に
+渡した計算の並列化は止まりません。その BLAS の設定(スレッド数の環境変数など)で制御してください。
+疎行列の LU・LDLᵀ 分解は中で密行列の BLAS(tblas)を使うので、その並列化は `VCP_TBLAS_NOMP`・
+`VCP_RDBLAS_NOMP`(または `VCP_NOMP`)と、外部の BLAS の設定に従います。
 
 ## ライセンス
 

@@ -70,8 +70,8 @@
 // eig_result / eig_options only (NOT vcp/spmatrix.hpp: this header is also
 // included from the spmats_eigs dispatch layer, which spmatrix.hpp includes
 // after the spmats class definition — a spmatrix.hpp include here would be
-// circular; spmats_eigs_types.hpp is the self-contained type surface)
-#include <vcp/spmats_base/spmats_eigs_types.hpp>
+// circular; tsparse_eigs_types.hpp is the self-contained type surface)
+#include <vcp/tsparse/tsparse_eigs_types.hpp>
 #include <vcp/tsparse/tsparse_scalar.hpp>
 #include <vcp/tsparse/tsparse_eigs.hpp>
 #include <vcp/tsparse/tsparse_eigen_selection.hpp>
@@ -732,7 +732,7 @@ krylov_schur_result<T> krylov_schur_eigs_with_diagnostics(
     // relation/orthonormality invariants; the option only labels the result.
     const int orth_passes = 2;
     const R eps = vcp::tsparse_scalar::epsilon<R>();
-    R floor_tol = eps * R(static_cast<int>(n) + 1);
+    R floor_tol = eps * R(static_cast<double>(n) + 1.0);
     {
         const R t4 = tol * vcp::tsparse_scalar::decimal_power_negative<R>(4);
         if (t4 > floor_tol) floor_tol = t4;

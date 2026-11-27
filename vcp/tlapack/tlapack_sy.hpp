@@ -63,6 +63,9 @@ namespace vcp {
 // Bunch-Kaufman 分解 (unblocked)．ipiv は 1-based 符号付き
 template <typename T>
 inline int tsytf2(const char uplo, const int n, T* A, const int lda, int* ipiv) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::sytf2(uplo, n, A, lda, ipiv);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -536,6 +539,9 @@ inline int tlasyf(const char uplo, const int n, const int nb, int& kb, T* A, con
 // Bunch-Kaufman 分解 (blocked)．ipiv は 1-based 符号付き
 template <typename T>
 inline int tsytrf(const char uplo, const int n, T* A, const int lda, int* ipiv) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::sytrf(uplo, n, A, lda, ipiv);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -608,6 +614,9 @@ inline int tsytrf(const char uplo, const int n, T* A, const int lda, int* ipiv) 
 template <typename T>
 inline int tsytrs(const char uplo, const int n, const int nrhs, const T* A, const int lda,
 	const int* ipiv, T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::sytrs(uplo, n, nrhs, A, lda, ipiv, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -748,6 +757,9 @@ inline int tsytrs(const char uplo, const int n, const int nrhs, const T* A, cons
 template <typename T>
 inline int tsysv(const char uplo, const int n, const int nrhs, T* A, const int lda,
 	int* ipiv, T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::sysv(uplo, n, nrhs, A, lda, ipiv, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	if (!detail::option_is(uplo, 'U') && !detail::option_is(uplo, 'L')) {
 		detail::tlapack_error("tsysv: invalid uplo");
@@ -767,6 +779,9 @@ inline int tsysv(const char uplo, const int n, const int nrhs, T* A, const int l
 template <typename T>
 inline int tsygs2(const int itype, const char uplo, const int n, T* A, const int lda,
 	const T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::sygs2(itype, uplo, n, A, lda, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (itype < 1 || itype > 3) {
@@ -851,6 +866,9 @@ inline int tsygs2(const int itype, const char uplo, const int n, T* A, const int
 template <typename T>
 inline int tsygst(const int itype, const char uplo, const int n, T* A, const int lda,
 	const T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::sygst(itype, uplo, n, A, lda, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (itype < 1 || itype > 3) {
@@ -948,6 +966,9 @@ inline int tsygst(const int itype, const char uplo, const int n, T* A, const int
 template <typename T>
 inline int tsygv(const int itype, const char jobz, const char uplo, const int n,
 	T* A, const int lda, T* B, const int ldb, T* w) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::sygv(itype, jobz, uplo, n, A, lda, B, ldb, w);
+	}
 	namespace detail = tlapack_detail;
 	const bool wantz = detail::option_is(jobz, 'V');
 	const bool upper = detail::option_is(uplo, 'U');

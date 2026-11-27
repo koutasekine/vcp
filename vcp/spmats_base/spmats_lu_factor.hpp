@@ -29,7 +29,8 @@ template <typename _T, typename _Index> class spmats;
 
 namespace spmats_lu_factor_detail {
 	// Sole writer of lu_factor_handle private state (befriended below).
-	// Used only by the policy implementations in spmats_base/spmats_lss.hpp.
+	// Used only by the policy implementations in spmats_base/spmats_lss.hpp
+	// and spumar.hpp.
 	struct handle_access;
 } // namespace spmats_lu_factor_detail
 

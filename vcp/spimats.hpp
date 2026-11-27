@@ -435,7 +435,7 @@ public:
 	// spd_options<_T> に写す)。spmatrix<kv::interval<_T>, spimats<_T>>::is_spd から
 	// 到達する。既存の公開 is_spd 2 本と last_verify_info の記録は不変(spmatrix 経由
 	// でも従来どおり last_verify_info に残る)。
-	virtual bool policy_is_spd_impl(const spd_options<kv::interval<_T> >& bopt) const {
+	virtual bool policy_is_spd_impl(const spd_options<kv::interval<_T> >& bopt) const override {
 		spd_options<_T> opt;
 		opt.nosymcheck = bopt.nosymcheck;
 		opt.ordering = bopt.ordering;

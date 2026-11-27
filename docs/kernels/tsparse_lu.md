@@ -12,8 +12,8 @@
 #include <vcp/tsparse/tsparse_sparse_lu.hpp>
 
 vcp::sparse_lu_options<double> opt;
-vcp::sparse_lu_factorization<double, int> fac =
-    vcp::sparse_lu_factorize_with_info(A, opt);   // A は vcp::spmats<double>
+vcp::sparse_lu_factorization<double, std::int64_t> fac =
+    vcp::sparse_lu_factorize_with_info(A, opt);   // A は vcp::spmats<double>(添字は std::int64_t)
 if (fac.valid()) {
     std::vector<double> x = fac.solve(b);
     // 反復改良付きの解
@@ -108,11 +108,15 @@ supernode は、各列のピボットを決めた後で動的に見つけます�
    スカラーの演算で更新する。
 4. パネルの中の各列を、`baseline_gp` と同じ順で 1 列ずつ分解する。
 
-行列積には `vcp::tblas_blocked::gemm`(`panel_gemm_kernel = blocked`、既定)
-または `vcp::tgemm`(`reference`)を使います。`kv::dd` で尾崎スキームの
-行列積を使うには、分解を実体化する前に `<vcp/tblas/tblas_dd.hpp>` を include
-します。include しない場合は汎用の行列積を使います(結果は正しく、遅く
-なることがあります)。supernode の幅の上限は `supernode_panel_maxsup`(既定 64)です。
+ブロックが大きいときの行列積は `vcp::tgemm`、三角行列の解法は `vcp::ttrsm` で
+計算します。疎 LU のブロックは小さいことが多く、小さいブロックでは、行列積を
+呼ぶよりスカラーの演算のほうが速いことがあります(`kv::dd` の尾崎スキーム
+(`<vcp/tblas/tblas_dd.hpp>`)も、小さいブロックでは遅くなることがあります)。
+このため、小さいブロックはスカラーの演算で更新します。行列積に切り替える
+大きさは、浮動小数点型(`float`・`double`・`long double`)とそれ以外の型で
+変えています。
+
+supernode の幅の上限は `supernode_panel_maxsup`(既定 64)です。
 
 演算の順が `baseline_gp` と違うので、結果はビット単位では一致しません。
 
@@ -193,7 +197,7 @@ k = 1, 2, ..., iterative_refinement_max_iterations(既定 20)について:
 ```cpp
 #include <vcp/tsparse/tsparse_sparse_lu_extract.hpp>
 
-vcp::sparse_lu_extracted<double, int> ex = vcp::sparse_lu_extract_factors(fac);
+vcp::sparse_lu_extracted<double, std::int64_t> ex = vcp::sparse_lu_extract_factors(fac);
 if (ex.status == vcp::sparse_lu_extract_status::success) {
     // ex.L_col_ptr, ex.L_row_ind, ex.L_val(単位下三角、対角の 1 も格納)
     // ex.U_col_ptr, ex.U_row_ind, ex.U_val
@@ -211,10 +215,10 @@ P A Q = L U、置換ベクトルは new→old で、MATLAB の `[L,U,P,Q] = lu(A
 ```cpp
 #include <vcp/tsparse/tsparse_sparse_lu_inverse_row.hpp>
 
-vcp::sparse_lu_inverse_row_extractor<double, int> R(fac);
-vcp::sparse_lu_inverse_row_result<double, int> r = R.extract(i);   // A⁻¹ の第 i 行
-vcp::sparse_lu_inverse_col_extractor<double, int> C(fac);
-vcp::sparse_lu_inverse_col_result<double, int> c = C.extract(j);   // A⁻¹ の第 j 列
+vcp::sparse_lu_inverse_row_extractor<double, std::int64_t> R(fac);
+vcp::sparse_lu_inverse_row_result<double, std::int64_t> r = R.extract(i);   // A⁻¹ の第 i 行
+vcp::sparse_lu_inverse_col_extractor<double, std::int64_t> C(fac);
+vcp::sparse_lu_inverse_col_result<double, std::int64_t> c = C.extract(j);   // A⁻¹ の第 j 列
 ```
 
 A⁻¹ ≈ Dc Q U⁻¹ L⁻¹ P Dr から、1 行(1 列)だけを求めます。
@@ -246,7 +250,6 @@ CSC の L・U も残っている場合だけ使えます。
 | `iterative_refinement_tolerance` | ε | 反復改良の目標の相対残差 |
 | `panel_size` | 8 | `supernode_panel` のパネルの幅 |
 | `supernode_panel_maxsup` | 64 | `supernode_panel` の supernode の幅の上限 |
-| `panel_gemm_kernel` | `blocked` | `supernode_panel` の行列積 |
 | `blas_min_block_size` | 16 | `supernode_panel` で行列積を使う大きさの目安 |
 | `supernode_relaxation` | 0 | supernode をまとめる緩和の量(0 はまとめない) |
 | `ndml_*` | −1 | `nested_dissection_ml` のパラメータ |

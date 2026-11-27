@@ -445,7 +445,8 @@ private:
     struct both_collector {
         const linear_reduction* self;
         detail::coo_buffer<T>* buf;
-        void operator()(int i, int j, const T& v) const {
+        template <typename I>
+        void operator()(I i, I j, const T& v) const {
             const std::vector<std::pair<int, long long> >& wi =
                 self->weights_[static_cast<std::size_t>(i)];
             const std::vector<std::pair<int, long long> >& wj =
@@ -462,24 +463,26 @@ private:
     struct row_collector {
         const linear_reduction* self;
         detail::coo_buffer<T>* buf;
-        void operator()(int i, int j, const T& v) const {
+        template <typename I>
+        void operator()(I i, I j, const T& v) const {
             const std::vector<std::pair<int, long long> >& wi =
                 self->weights_[static_cast<std::size_t>(i)];
             for (std::size_t a = 0; a < wi.size(); ++a) {
-                if (wi[a].second == 1LL) buf->push(wi[a].first, j, v);
-                else buf->push(wi[a].first, j, v * wfac(wi[a].second));
+                if (wi[a].second == 1LL) buf->push(wi[a].first, static_cast<int>(j), v);
+                else buf->push(wi[a].first, static_cast<int>(j), v * wfac(wi[a].second));
             }
         }
     };
     struct col_collector {
         const linear_reduction* self;
         detail::coo_buffer<T>* buf;
-        void operator()(int i, int j, const T& v) const {
+        template <typename I>
+        void operator()(I i, I j, const T& v) const {
             const std::vector<std::pair<int, long long> >& wj =
                 self->weights_[static_cast<std::size_t>(j)];
             for (std::size_t b = 0; b < wj.size(); ++b) {
-                if (wj[b].second == 1LL) buf->push(i, wj[b].first, v);
-                else buf->push(i, wj[b].first, v * wfac(wj[b].second));
+                if (wj[b].second == 1LL) buf->push(static_cast<int>(i), wj[b].first, v);
+                else buf->push(static_cast<int>(i), wj[b].first, v * wfac(wj[b].second));
             }
         }
     };
@@ -488,7 +491,8 @@ private:
     struct q_both_collector {
         const linear_reduction* self;
         detail::coo_buffer<T>* buf;
-        void operator()(int i, int j, const T& v) const {
+        template <typename I>
+        void operator()(I i, I j, const T& v) const {
             const std::vector<qentry>& wi =
                 self->qweights_[static_cast<std::size_t>(i)];
             const std::vector<qentry>& wj =
@@ -510,24 +514,26 @@ private:
     struct q_row_collector {
         const linear_reduction* self;
         detail::coo_buffer<T>* buf;
-        void operator()(int i, int j, const T& v) const {
+        template <typename I>
+        void operator()(I i, I j, const T& v) const {
             const std::vector<qentry>& wi =
                 self->qweights_[static_cast<std::size_t>(i)];
             for (std::size_t a = 0; a < wi.size(); ++a) {
-                if (wi[a].one) buf->push(wi[a].col, j, v);
-                else buf->push(wi[a].col, j, v * wi[a].w);
+                if (wi[a].one) buf->push(wi[a].col, static_cast<int>(j), v);
+                else buf->push(wi[a].col, static_cast<int>(j), v * wi[a].w);
             }
         }
     };
     struct q_col_collector {
         const linear_reduction* self;
         detail::coo_buffer<T>* buf;
-        void operator()(int i, int j, const T& v) const {
+        template <typename I>
+        void operator()(I i, I j, const T& v) const {
             const std::vector<qentry>& wj =
                 self->qweights_[static_cast<std::size_t>(j)];
             for (std::size_t b = 0; b < wj.size(); ++b) {
-                if (wj[b].one) buf->push(i, wj[b].col, v);
-                else buf->push(i, wj[b].col, v * wj[b].w);
+                if (wj[b].one) buf->push(static_cast<int>(i), wj[b].col, v);
+                else buf->push(static_cast<int>(i), wj[b].col, v * wj[b].w);
             }
         }
     };

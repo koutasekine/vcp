@@ -227,8 +227,8 @@ public:
     // ---- the reduced pencil Z^T blockdiag(K) Z (section (iii)) ----
     template <typename T, class DP, class SP>
     vcp::matrix<T, DP> reduce_pencil(const vcp::spmatrix<T, SP>& K) const {
-        if (static_cast<int>(K.rowsize()) != n_reduced_ ||
-            static_cast<int>(K.columnsize()) != n_reduced_)
+        if (K.rowsize() != n_reduced_ ||
+            K.columnsize() != n_reduced_)
             vcp::throw_error<vcp::invalid_argument>(
                 "bfem::vcr1_divfree_basis::reduce_pencil: K must be n_r x n_r "
                 "(the scalar Dirichlet-reduced matrix)");

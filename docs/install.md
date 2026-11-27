@@ -59,7 +59,7 @@ flowchart LR
 `/home/user/libs` です。
 
 ```bash
-g++ -std=c++20 -I/home/user/libs example.cpp
+g++ -std=c++20 -ffp-contract=off -frounding-math -I/home/user/libs example.cpp
 ```
 
 `#include <vcp/matrix.hpp>` に対して、コンパイラは次のファイルを探します。
@@ -79,7 +79,7 @@ g++ -std=c++20 -I/home/user/libs example.cpp
 次のように `vcp/` ディレクトリそのものを include path に指定しないでください。
 
 ```bash
-g++ -std=c++20 -I/home/user/libs/vcp example.cpp
+g++ -std=c++20 -ffp-contract=off -frounding-math -I/home/user/libs/vcp example.cpp
 ```
 
 この指定だと、`#include <vcp/matrix.hpp>` に対してコンパイラは次を探します。
@@ -127,7 +127,7 @@ include path は 1 つで済みます。
 この場合のコンパイル例:
 
 ```bash
-g++ -std=c++20 -I/home/user/libs example.cpp
+g++ -std=c++20 -ffp-contract=off -frounding-math -I/home/user/libs example.cpp
 ```
 
 コンパイラから見える必要があるファイルは次の 2 つです。
@@ -155,7 +155,7 @@ project-root/
 
 ```bash
 cd test_matrix
-g++ -std=c++20 -I.. test_matrix.cpp
+g++ -std=c++20 -ffp-contract=off -frounding-math -I.. test_matrix.cpp
 ```
 
 ここで `..` は `vcp/` と `kv/` を含む親ディレクトリを指します。
@@ -198,7 +198,7 @@ bash tools/download_vcp_kv.sh vcp-work
 
 ```bash
 cd ~/vcp-work/test_matrix
-g++ -std=c++20 -I.. test_matrix.cpp
+g++ -std=c++20 -ffp-contract=off -frounding-math -I.. test_matrix.cpp
 ```
 
 BLAS/LAPACK を使う場合は、BLAS の演算が丸めモード変更を反映するかも
@@ -206,8 +206,8 @@ BLAS/LAPACK を使う場合は、BLAS の演算が丸めモード変更を反映
 
 ```bash
 cd ~/vcp-work/test_matrix
-g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out
-g++ -I.. -std=c++20 -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out
+g++ -I.. -std=c++20 -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND -O3 Check_pdblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out
+g++ -I.. -std=c++20 -ffp-contract=off -frounding-math -DNDEBUG -DKV_FASTROUND -O3 Check_pidblas_rounding.cpp -llapack -lopenblas -lmpfr -lgmp -fopenmp && ./a.out
 ```
 
 Intel MKL やその他の BLAS/LAPACK を使う場合は、リンクオプションや
@@ -228,7 +228,9 @@ oneAPI/MKL の環境設定が異なります。[blas_build.md](blas_build.md) �
 | --- | --- |
 | 区間演算 | kv ライブラリ |
 | `kv::mpfr` | MPFR |
-| `vcp::pdblas`, `vcp::pidblas` | BLAS/LAPACK または Intel MKL |
+| `vcp::pdblas`, `vcp::pidblas` | BLAS/LAPACK または Intel MKL(`-DUSE_VCP_BLAS -DUSE_VCP_LAPACK` 指定時は不要) |
+| `vcp::pddblas` | 上に加えて kv ライブラリ(`kv::dd`) |
+| `vcp::mats2<double>`・`vcp::mats2<kv::dd>` の特殊化ヘッダ | BLAS/LAPACK または Intel MKL(`-DUSE_VCP_BLAS -DUSE_VCP_LAPACK` 指定時は不要) |
 | `vcp::spumar` | UMFPACK(SuiteSparse)、ARPACK-NG |
 | `vcp::spcmodumar` | UMFPACK・CHOLMOD(SuiteSparse)、ARPACK-NG |
 | OpenMP を使うビルド | OpenMP 対応コンパイラとリンクオプション |
@@ -259,6 +261,28 @@ include した翻訳単位だけです。これらのライブラリのライセ
 [spmatrix.md](spmatrix.md) の「外部ライブラリのライセンスに関する注意」を
 参照してください。
 
+## 必須のコンパイルオプション
+
+VCP を使うコードは、次の 2 つを必ず付けてコンパイルします。
+
+```bash
+-ffp-contract=off -frounding-math
+```
+
+- `-ffp-contract=off` は、コンパイラが `a*b+c` の形の計算を 1 つの命令(FMA)にまとめることを止めます。
+  VCP と kv の区間演算や `kv::dd` の演算は、演算が 1 つずつ、書いたとおりに丸められることを前提にしています。
+- `-frounding-math` は、丸めモードを実行のときに切り替えることを、コンパイラに伝えます。
+
+FMA の命令は、x86 では `-march=native`・`-mfma`・`-mavx512f` などを付けたとき、
+Apple Silicon では何も付けなくても使われます。そのため、最適化の有無や機体によらず、常に付けてください。
+
+VCP の `double` の行列積(rdblas)の SIMD の実装と、外部の BLAS は、このオプションを付けても FMA を使います。
+
+コンパイラは、この 2 つのオプションを指定できるものを使ってください。gcc と clang は、どちらも指定できます。
+
+kv のコンパイルオプション(丸めモードの切り替え方を選ぶ `-DKV_FASTROUND` など)は、
+kv の説明 <https://verifiedby.me/kv/rounding/index.html> を参照してください。
+
 ## 推奨する基本パッケージ
 
 VCP Library 本体はヘッダを配置するだけで利用できますが、実際の数値計算では
@@ -284,6 +308,11 @@ sudo dnf install boost-devel gmp-devel mpfr-devel lapack-devel suitesparse-devel
 Ubuntu 22.04 の Boost 1.74 など古い Boost は、uBLAS が C++20 に対応していないため、
 kv を使うコードを `-std=c++20` でコンパイルできないことがあります。その場合は
 `-std=c++17` を指定するか、新しい Boost を使ってください。
+
+最適化つきでビルドするときは、`-O3` に加えて `-march=native` を付けることを勧めます。
+`-march=native` は、ビルドする機体の CPU の命令(AVX2・AVX-512 など)を有効にします。
+`double` の行列の計算は、既定では VCP の実装(rdblas)で行い、このフラグで SIMD の実装が
+使われます。ビルドした実行ファイルは、命令の種類が違う CPU の機体では動かないことがあります。
 
 BLAS/LAPACK、Intel MKL、OpenBLAS、OpenMP の設定例は
 [blas_build.md](blas_build.md) を参照してください。

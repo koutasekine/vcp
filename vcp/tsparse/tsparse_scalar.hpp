@@ -73,6 +73,22 @@ namespace vcp {
 			return sqrt_value(x * x + y * y);
 		}
 
+		// Absolute value of std::complex<R> for a real type R that is not a
+		// built-in floating-point type (kv::interval, kv::dd, kv::mpfr, ...):
+		// sqrt(pow(re, 2) + pow(im, 2)) with R's own pow (integer exponent) and
+		// sqrt.  The squares are left to pow so that the square of an interval
+		// containing zero has lower bound zero.
+		// std::abs(std::complex<R>) is not called for such R (the standard
+		// leaves it unspecified; libc++ implements it with std::hypot, which
+		// does not accept R).  No scaling: re^2 + im^2 may overflow where a
+		// scaled formula would not.  std::complex<float / double / long double>
+		// and non-complex types keep using the abs_value above.
+		template <typename R>
+		inline typename std::enable_if<!std::is_floating_point<R>::value, R>::type abs_value(const std::complex<R>& x) {
+			using std::pow;
+			return sqrt_value(pow(x.real(), 2) + pow(x.imag(), 2));
+		}
+
 		// SLU-GT1 D4: std::numeric_limits<T> がプライマリテンプレート(未特殊化)
 		// かどうかの検出。プライマリテンプレートは必ず is_specialized (= false) を
 		// 定義する。一方、is_specialized を省略するユーザ特殊化(kv::dd,

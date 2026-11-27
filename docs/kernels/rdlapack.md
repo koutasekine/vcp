@@ -2,9 +2,10 @@
 
 `rdlapack` は，reference LAPACK 3.12.1 (BSD license, <https://www.netlib.org/lapack/>)
 の double 精度実数 routine を，BLAS 呼び出しを `rdblas` に置き換えながら C++ へ
-移植した header-only library です．`rmatmul` / `rdblas` と同様に実験的な位置付けで，
+移植した header-only library です．
 `vcp::matrix` からは，`-DUSE_VCP_LAPACK` を指定したときに `vcp::pdblas` などのポリシーが
-`dlapack` を通じて使います (指定しなければ使われません)．
+`dlapack` を通じて使います．特殊化ヘッダを include しない `double` の tlapack
+(`vcp::mats2<double>` の既定の動作) からも呼ばれます．
 
 ```cpp
 #include <vcp/vlapack/rdlapack.hpp>
@@ -102,6 +103,11 @@ GEBRD/GEHRD 系 32 など) を `vblas_rdlapack_detail::ilaenv` に再現して�
 O(N^3) 部分は rdblas (内部は rmatmul: AVX-512 / AVX2+FMA / NEON / no-SIMD を
 compile 時に自動選択) が実行します．x86 では，SIMD を有効にする option (`-mavx512f`・
 `-mavx2 -mfma`・`-march=native` など) を付けずに compile すると no-SIMD の実装が使われます．
+
+rdlapack 自身は OpenMP を使いません．並列に計算するのは，呼び出す rdblas だけです．
+rdblas の OpenMP は `-DVCP_NOMP` か `-DVCP_RDBLAS_NOMP` で止まり，`-fopenmp` を付けない
+compile でも build できます ([rdblas.md](rdblas.md) の「OpenMP の制御」)．
+rdlapack 用の macro はありません．
 
 ## reference LAPACK との相違点
 

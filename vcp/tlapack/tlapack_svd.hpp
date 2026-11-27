@@ -64,6 +64,9 @@ namespace vcp {
 template <typename T>
 inline int tgebd2(const int m, const int n, T* A, const int lda,
 	T* d, T* e, T* tauq, T* taup) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gebd2(m, n, A, lda, d, e, tauq, taup);
+	}
 	namespace detail = tlapack_detail;
 	if (m < 0 || n < 0 || lda < std::max(1, m)) {
 		detail::tlapack_error("tgebd2: invalid argument");
@@ -198,6 +201,9 @@ inline void tlabrd(const int m, const int n, const int nb, T* A, const int lda,
 template <typename T>
 inline int tgebrd(const int m, const int n, T* A, const int lda,
 	T* d, T* e, T* tauq, T* taup) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gebrd(m, n, A, lda, d, e, tauq, taup);
+	}
 	namespace detail = tlapack_detail;
 	if (m < 0 || n < 0 || lda < std::max(1, m)) {
 		detail::tlapack_error("tgebrd: invalid argument");
@@ -247,6 +253,9 @@ inline int tgebrd(const int m, const int n, T* A, const int lda,
 template <typename T>
 inline int torgbr(const char vect, const int m, const int n, const int k,
 	T* A, const int lda, const T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::orgbr(vect, m, n, k, A, lda, tau);
+	}
 	namespace detail = tlapack_detail;
 	const bool wantq = detail::option_is(vect, 'Q');
 	if (!wantq && !detail::option_is(vect, 'P')) {
@@ -308,6 +317,9 @@ inline int torgbr(const char vect, const int m, const int n, const int k,
 template <typename T>
 inline int tormbr(const char vect, const char side, const char trans, const int m, const int n, const int k,
 	const T* A, const int lda, const T* tau, T* C, const int ldc) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::ormbr(vect, side, trans, m, n, k, A, lda, tau, C, ldc);
+	}
 	namespace detail = tlapack_detail;
 	const bool applyq = detail::option_is(vect, 'Q');
 	const bool left = detail::option_is(side, 'L');
@@ -357,6 +369,9 @@ template <typename T>
 inline int tbdsqr(const char uplo, const int n, const int ncvt, const int nru, const int ncc,
 	T* d, T* e, T* VT, const int ldvt, T* U, const int ldu,
 	T* C, const int ldc) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::bdsqr(uplo, n, ncvt, nru, ncc, d, e, VT, ldvt, U, ldu, C, ldc);
+	}
 	namespace detail = tlapack_detail;
 	const bool lower = detail::option_is(uplo, 'L');
 	if (!detail::option_is(uplo, 'U') && !lower) {
@@ -758,6 +773,9 @@ template <typename T>
 inline int tgesvd(const char jobu, const char jobvt, const int m, const int n,
 	T* A, const int lda, T* s, T* U, const int ldu,
 	T* VT, const int ldvt) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gesvd(jobu, jobvt, m, n, A, lda, s, U, ldu, VT, ldvt);
+	}
 	namespace detail = tlapack_detail;
 	const int minmn = std::min(m, n);
 	const bool wntua = detail::option_is(jobu, 'A');

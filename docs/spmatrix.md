@@ -74,7 +74,7 @@ int main() {
 コンパイルの例(`/path/to/libs` は `vcp/` を置いたディレクトリ):
 
 ```bash
-g++ -std=c++20 -I/path/to/libs example.cpp
+g++ -std=c++20 -ffp-contract=off -frounding-math -I/path/to/libs example.cpp
 ```
 
 ### 必要なヘッダとコンパイル
@@ -178,6 +178,55 @@ vcp::spmatrix<double, vcp::spcmodumar> B;
 policy ごとの違いは「早見表」の節にまとめ、機能ごとの節の「policy ごとの違い」に
 詳しく書いています。各 policy の内部で使われる下請けは [kernels/sparse_layers.md](kernels/sparse_layers.md) を参照してください。
 
+`vcp::spmatrix` は、利用者が使う行列クラス、計算の方法を決める policy、policy が計算を
+任せるカーネルの 3 つの層でできています。次の図で、実線は計算を渡す先、点線は継承
+(元の policy → それを継承した policy)を表します。継承した policy は、自分で
+置き換えていない計算を、元の policy と同じ先に渡します。図の `tblas / tlapack` から
+先は、[matrix.md](matrix.md) の「層の構成」の図のカーネル層と同じです。
+
+```mermaid
+flowchart LR
+  subgraph U["ユーザー層"]
+    S["vcp::spmatrix"]
+  end
+
+  subgraph P["ポリシー層"]
+    spmats["spmats(既定)"]
+    spumar["spumar(double)"]
+    spcmod["spcmodumar(double)"]
+    spimats["spimats(区間)"]
+  end
+
+  subgraph K["カーネル層"]
+    tsparse["tsparse(格納・積・LU・LDLᵀ・Cholesky・固有値・反復法)"]
+    dense["tblas / tlapack(密なブロックの計算)"]
+    umf["UMFPACK"]
+    arp["ARPACK"]
+    chol["CHOLMOD"]
+  end
+
+  subgraph D["密行列のポリシー"]
+    dp["imats など(区間の密行列)"]
+  end
+
+  S --> spmats
+  S --> spumar
+  S --> spcmod
+  S --> spimats
+
+  spmats -. 継承 .-> spumar
+  spumar -. 継承 .-> spcmod
+  spmats -. 継承 .-> spimats
+
+  spmats --> tsparse
+  tsparse --> dense
+  spumar -->|線形方程式・LU 分解| umf
+  spumar -->|固有値| arp
+  spcmod -->|Cholesky 分解| chol
+  spimats -->|AP: 近似計算は点のポリシー| spmats
+  spimats -->|DP: 小さい区間の密行列の固有値問題| dp
+```
+
 ### 目次
 
 - [早見表](#早見表)
@@ -228,7 +277,7 @@ policy ごとの違いは「早見表」の節にまとめ、機能ごとの節�
 | 密行列・他の型との変換 | VCP の実装 | VCP の実装 | VCP の実装 | VCP の実装(点から区間への変換は包含を保つ) |
 | `solve` / `solve_with_info` / `lss` / `lss_with_info` | VCP の実装(解法は `method`。既定は疎 LU) | UMFPACK に委譲 | UMFPACK に委譲 | 保証つき(解の包含) |
 | `solve_cg` などの短縮形 | VCP の実装(その解法) | UMFPACK に委譲 | UMFPACK に委譲 | 保証つき(解の包含) |
-| `lu_factorize_with_info`(ハンドル) | VCP の実装 | VCP の実装 | VCP の実装 | 区間演算で実行(保証の主張なし) |
+| `lu_factorize_with_info`(ハンドル) | VCP の実装 | 分解を UMFPACK に委譲(解くのは VCP の実装) | 分解を UMFPACK に委譲(解くのは VCP の実装) | 区間演算で実行(保証の主張なし) |
 | `lu` / `lu_with_info` | VCP の実装 | UMFPACK に委譲 | UMFPACK に委譲 | 区間演算で実行(保証の主張なし) |
 | `lu_solve` / `lu_inverse_row` | VCP の実装 | VCP の実装 | VCP の実装 | 区間演算で実行(保証の主張なし) |
 | `ldl` / `ldl_with_info` / `inertia` / `ldl_shift_setup_with_info` | VCP の実装 | VCP の実装 | VCP の実装 | 区間演算で実行(保証の主張なし) |
@@ -397,7 +446,7 @@ spmatrix 2 x 3, nnz = 2
 
 | 呼び方 | 戻り値の型 | 内容 | 失敗のとき |
 | --- | --- | --- | --- |
-| `vcp::spmatrix_builder<T, Index> b(rows, cols);` | --- | rows×cols の組み立て器(`Index` を省略すると `int`) | --- |
+| `vcp::spmatrix_builder<T, Index> b(rows, cols);` | --- | rows×cols の組み立て器(`Index` を省略すると `std::int64_t`) | --- |
 | `b.reserve(n)` | `void` | 格納数の予約 | 添字の型で表せない数は `vcp::invalid_argument` |
 | `b.add(i, j, v)` | `void` | (i, j) に v を足す | `A.add` と同じ |
 | `b.set(i, j, v)` | `void` | (i, j) を v で上書きする | `A.set` と同じ |
@@ -405,8 +454,18 @@ spmatrix 2 x 3, nnz = 2
 | `b.finalize_csc()` | `vcp::spmatrix<T, vcp::spmats<T, Index> >` | CSC 形式の行列を返す | --- |
 
 `vcp::spmatrix` は、型の別名を持っています。添字の型は `index_type` です
-(既定は `int`)。変更する場合は `vcp::spmats<T, long long>` のように policy の
+(既定は `std::int64_t`)。変更する場合は `vcp::spmats<T, int>` のように policy の
 第 2 テンプレート引数で指定します。添字型は符号付き整数である必要があります。
+
+- 行数・列数・`nnz()` などの戻り値、`eye`・`zeros`・`submatrix` の引数、
+  `lu`・`ldl`・`chol` が返す置換(`std::vector<index_type>`)は、添字の型です。
+  `int` の値や整数の定数は、そのまま引数に書けます(`A.eye(100)`、
+  `A.submatrix({0, 2}, {3, 4})`、`int n = 100; A.eye(n);`)。置換を受ける変数は
+  `std::vector<vcp::spmatrix<T>::index_type> p;` のように添字の型で宣言します。
+- 密行列(`vcp::matrix`)の添字は `int` です。疎行列と密行列の積、密な右辺・
+  密な結果を使う `lss`、固有ベクトルを密行列で受ける `eigs` は、関係する
+  次元が `int` に収まるときだけ計算します。収まらないときは
+  `vcp::dimension_error` を投げます(「密行列・他の型との変換」の節)。
 
 | 別名 | 内容 |
 | --- | --- |
@@ -502,7 +561,7 @@ spmatrix 2 x 3, nnz = 2
 | 集約 | `max(A)` | `spmatrix` | --- |
 | 集約 | `min(A)` | `spmatrix` | --- |
 | 集約 | `sum(A)` | `spmatrix` | --- |
-| 集約 | `length(A)` | `int` | --- |
+| 集約 | `length(A)` | `index_type` | --- |
 | ノルム | `normone(A)` | `spmatrix`(1×1) | --- |
 | ノルム | `norminf(A)` | `spmatrix`(1×1) | --- |
 | ノルム | `normtwo(A)` | `spmatrix`(1×1) | --- |
@@ -608,6 +667,10 @@ vcp::spmatrix<kv::interval<double>, vcp::spimats<double> > IA = A;   // 点区�
   `kv::interval<double>` へは元の値を含む幅のある区間)。
 - 区間から点への変換は、区間の中点を取ります。中点が零になった要素
   (たとえば `[-1, 1]`)は格納されません。
+- 密行列(`vcp::matrix`)の添字は `int` です。疎行列の次元を密行列に持ち込む
+  演算(疎行列 × 密行列、密行列 × 疎行列、疎な右辺の解を密行列で受ける
+  `lss(A, B, X)`、固有ベクトルを密行列で受ける `eigs`)は、その次元が `int` に
+  収まらないとき、値を切り詰めずに `vcp::dimension_error` を投げます。
 
 ### policy ごとの違い
 
@@ -772,11 +835,10 @@ auto r = A.solve_with_info(b, opt);
 | `absolute_pivot_tolerance` | 0 | ピボットを受け入れる絶対値の閾値 |
 | `zero_tolerance` | 機械イプシロン | 零とみなす閾値 |
 | `near_zero_tolerance` | 機械イプシロンの平方根 | 零に近いとみなす閾値 |
-| `blas_min_block_size` | 16 | 密ブロックの演算に切り替える最小の幅 |
+| `blas_min_block_size` | 16 | 密ブロックの行列積に切り替える大きさの目安 |
 | `supernode_relaxation` | 0 | スーパーノードの緩和(0 は併合しない) |
 | `panel_size` | 8 | パネルの幅 |
 | `supernode_panel_maxsup` | 64 | `method = supernode_panel` のスーパーノードの幅の上限 |
-| `panel_gemm_kernel` | `blocked` | `method = supernode_panel` の行列積の実装。`reference` / `blocked` |
 | `supernodal_numeric_diagnostic_leftlooking` | `false` | `method = supernodal` の数値分解を、診断用の実装に切り替える |
 | `supernodal_self_symbolic` | `false` | `method = supernodal` の構造の作り方を切り替える |
 | `supernodal_inplace_frontal` | `false` | `method = supernodal` のフロントの更新の方法を切り替える |
@@ -846,7 +908,7 @@ auto r = A.solve_with_info(b, opt);
 | `solve` / `solve_with_info` / `lss` / `lss_with_info` | VCP の実装。解法は `method` | UMFPACK に委譲(直接法) | `spumar` と同じ | 保証つき。解の包含を返す |
 | 短縮形(`solve_cg` など) | その解法で解く | UMFPACK に委譲(名前の解法は使わない) | `spumar` と同じ | 保証つき(名前の解法は使わない) |
 | 複数の右辺 | 疎 LU なら分解 1 回を全部の列で使う | UMFPACK の分解 1 回を全部の列で使う | `spumar` と同じ | 分解 1 回を全部の列で使う |
-| `lu_factorize_with_info` | VCP の実装 | VCP の実装(UMFPACK に委譲しない) | `spumar` と同じ | 区間演算で実行(保証の主張なし) |
+| `lu_factorize_with_info` | VCP の実装 | 分解を UMFPACK に委譲。ハンドルで解くのは VCP の実装 | `spumar` と同じ | 区間演算で実行(保証の主張なし) |
 | 結果の `method` | 使った解法(`auto_select` は `sparse_lu` になる) | 指定した値のまま(既定なら `auto_select`) | `spumar` と同じ | 指定した値のまま |
 | 結果の `iterations` | 反復回数、または反復改良の回数 | UMFPACK が行った反復改良の回数 | `spumar` と同じ | 0 |
 | 解けなかったとき | `converged = false` | `converged = false`(解は零ベクトル) | `spumar` と同じ | 例外(`_with_info` でも) |
@@ -864,8 +926,10 @@ auto r = A.solve_with_info(b, opt);
 | `preconditioner` | 共役勾配法・BiCGSTAB 法・GMRES 法で効く | 無視される | 無視される | 無視される |
 | `sparse_lu` の全部の欄 | 疎 LU で効く | 無視される(UMFPACK の設定は「`spumar` の詳細」の節) | 無視される | 無視される |
 
-`lu_factorize_with_info(opt)` の `sparse_lu_options` は、4 つの policy とも
-VCP の疎 LU に渡ります。
+`lu_factorize_with_info(opt)` の `sparse_lu_options` は、`spmats` と `spimats`
+では VCP の疎 LU に渡ります。`spumar` と `spcmodumar` では分解が UMFPACK なので、
+効くのは `iterative_refinement` とその回数・許容値(ハンドルで解くときの
+反復改良)と `equilibration` の検査だけです(「`spumar` の詳細」の節)。
 
 `spimats` の `solve` の詳しい振る舞い(例外の種類、包含の意味)は
 「`spimats` の詳細」の節を参照してください。
@@ -1855,12 +1919,24 @@ k ≤ n − 2 のとき):
   返ることがあります。対称かどうかが分からないときは `auto_detect`(既定)の
   ままにしてください。
 
-`spumar`・`spcmodumar` の注意:
+`spumar`・`spcmodumar` の注意(ARPACK に委譲される場合):
 
-- `smallest_algebraic`(既定)や `largest_algebraic` は、固有値が密集している
-  側では ARPACK の収束が遅く、既定の `max_iter` では収束しないことがあります。
-  零に近い固有値がほしいときは、`smallest_magnitude` を指定するか、
-  `use_shift = true` にしてください(shift-invert になり、速く収束することがあります)。
+- 重複した固有値(同じ値の固有値が 2 個以上あるもの)は、その一部が返らない
+  ことがあります。このとき、返らなかった分の代わりに、求める側から数えて
+  次の固有値が入り、`converged` は `true`、`status` は `"converged"` の
+  ままです。返った固有対は、どれも残差の判定を満たす固有対ですが、
+  「求める側の k 個」としては 1 個入れ替わっています。ARPACK の結果からは、
+  これを検出できません。起きるかどうかは丸め誤差に左右され、同じ行列・同じ
+  オプションでも、実行の環境によって結果が変わることがあります。固有値を
+  漏れなく求めたことの保証が必要なときは、`spimats` を使ってください
+  (「`spimats` の固有値問題」)。
+- 固有値が密集している側では ARPACK の収束が遅く、既定の `max_iter`
+  (行列とベクトルの積の回数で 1000)では収束しないことがあります。この
+  ときは `converged = false` が返り、`eigenvalues` は空です(誤った値は
+  返りません)。`max_iter` か `spumar_options` の `ncv` を大きくしてください。
+  `smallest_algebraic`(既定)で零に近い固有値がほしいときは、
+  `smallest_magnitude` を指定するか、`use_shift = true` にする方法もあります
+  (shift-invert になり、少ない回数で収束することがあります)。
 
 `spimats` の注意(詳しくは「`spimats` の詳細」の節):
 
@@ -1923,7 +1999,7 @@ int main() {
 ```
 
 ```bash
-g++ -std=c++20 -I/path/to/libs example.cpp
+g++ -std=c++20 -ffp-contract=off -frounding-math -I/path/to/libs example.cpp
 ```
 
 (`/path/to/libs` は `vcp/` と `kv/` を置いたディレクトリです。)
@@ -1987,8 +2063,9 @@ g++ -std=c++20 -I/path/to/libs example.cpp
   なければなりません。一般化固有値問題 A x = λ B x では、B が正定値である
   ことの証明もできなければなりません(できないときは
   `vcp::verification_error`)。
-- 返る `eigenvalues` は区間で、求めた順位の固有値を含みます。固有ベクトルは
-  返しません。
+- 返る `eigenvalues` は区間で、それぞれが `index_lo`〜`index_hi` の番号の
+  固有値を含みます。それが求めた順位の固有値であるかどうかは
+  `rank_certified` で分かります。固有ベクトルは返しません。
 - `index_lo[j]`〜`index_hi[j]` は、`eigenvalues[j]` が含む固有値の番号
   (全部の固有値を小さい順に並べたときの番号。1 始まり)です。
 - `rank_certified` は、返した固有値が求めた順位(最小、最大、`shift` に最も
@@ -1997,11 +2074,28 @@ g++ -std=c++20 -I/path/to/libs example.cpp
 - 固有値を分離できないとき(区間の幅が広い行列、近接した固有値)は、返る
   個数が k より少なくなることがあります。このとき `converged` は `true` の
   ままです。`A.eigs` は個数が足りないと `vcp::state_error` を投げます。
+  k が重複した固有値の組を途中で切るときは、その組の全部を返すので、返る
+  個数が k より多くなることがあります。
 - k = 0 は `vcp::invalid_argument` です。k が n より大きいときは n 個を
   返します。
 - 成功したときの `status` は空の文字列、`used_method` は `spimats_veigs` です。
 - `eig_options` の欄は、内部の近似計算(`AP`)に渡ります。前処理 M も近似
   計算にだけ使われ、保証には関わりません。
+- 内部の近似計算(`AP`)が固有値を取りこぼしたときは、次のように振る舞います
+  (`AP = vcp::spumar` の ARPACK は、重複した固有値の一部を返さないことが
+  あります)。固有値の番号は、近似値の個数や並びからではなく、LDLᵀ 分解の
+  慣性から数え、その個数が近似値の個数と合うことを確かめてから返します。
+  合わないときは、近似計算への要求を増やして 1 回だけやり直します。
+  それでも合わなければ、`smallest_algebraic` / `largest_algebraic` では
+  保証できた分だけを返し(返る個数が k より少なくなります)、ほかの
+  `target` では `vcp::verification_error` を投げます。
+  取りこぼした固有値が、返す範囲の外側の離れた所にあるとき(たとえば
+  `smallest_magnitude` で、0 に最も近い固有値を近似計算が返さなかったとき)は、
+  個数が合って区間が返ることがあります。この区間は番号
+  `index_lo`〜`index_hi` の固有値を含みますが、求めた順位のものではなく、
+  `rank_certified` は 1 になりません。`spimats_options` の
+  `target_rank_check` を `require` にすると、このとき
+  `vcp::verification_error` を投げます。
 
 ### `spimats` の `is_spd`
 
@@ -2076,7 +2170,13 @@ int stage = A.last_verify_info.stage;
 ## `spumar` の詳細
 
 `vcp::spumar` は `spmats<double>` を継承し、疎 LU を UMFPACK に、疎固有値を
-ARPACK に委譲する policy です。
+ARPACK に委譲する policy です。添字の型は `std::int64_t` で、UMFPACK は
+64 ビットの添字の版(`umfpack_dl_*`)を呼びます。`vcp::spmats<double, int>` の
+行列を `vcp::spumar` に渡すことはできません(添字の型が違います)。
+
+ARPACK に渡す次元は `int` です。次元が `int` に収まらない行列の固有値は
+ARPACK に委譲せず、`spmats` の実装で計算します(理由は
+`last_delegate_info.note` に記録されます)。
 
 ```cpp
 #include <iostream>
@@ -2117,15 +2217,16 @@ int main() {
 
 ```bash
 sudo apt install libsuitesparse-dev libarpack2-dev
-g++ -std=c++20 -I/path/to/libs example.cpp -lumfpack -larpack
+g++ -std=c++20 -ffp-contract=off -frounding-math -I/path/to/libs example.cpp -lumfpack -larpack
 ```
 
 | 操作 | 委譲先 |
 | --- | --- |
 | `solve` / `solve_with_info` / `lss` / `lss_with_info`(短縮形を含む) | UMFPACK(`method` の指定によらない) |
 | `lu` / `lu_with_info` | UMFPACK |
+| `lu_factorize_with_info`(ハンドル) | 分解は UMFPACK。ハンドルで解くのは `spmats` の実装 |
 | `eigs` / `eigs_with_info`(標準・一般化) | ARPACK。委譲されない指定は「固有値問題」の節の「policy ごとの違い」の表 |
-| `lu_factorize_with_info`・LU 因子の消費(`lu_solve` など)・LDLᵀ 分解・慣性・Cholesky 分解・`is_spd`・近似逆行列・行列演算 | 委譲しない(`spmats` の実装) |
+| LU 因子の消費(`lu_solve` など)・LDLᵀ 分解・慣性・Cholesky 分解・`is_spd`・近似逆行列・行列演算 | 委譲しない(`spmats` の実装) |
 
 ### `spumar` の線形方程式と LU 分解
 
@@ -2143,6 +2244,25 @@ g++ -std=c++20 -I/path/to/libs example.cpp -lumfpack -larpack
   `ordering_used` には、指定した値がそのまま入ります。
 - `lu` / `lu_with_info` は、UMFPACK のスケーリングを切って分解するので、
   返った因子で `P A Q = L U` が成り立ちます。
+- `lu_factorize_with_info`(ハンドル)は、`lu_with_info` と同じ UMFPACK の
+  分解を 1 回行い、得た因子をハンドルに入れます。ハンドルの `solve` /
+  `solve_with_info` は、その因子を使って `spmats` の実装で解きます(UMFPACK の
+  求解は使いません)。引数の `sparse_lu_options` の扱いは次のとおりです。
+  - `method` / `ordering` / `pivoting` などは、`lu_with_info` と同じく適用
+    されません。
+  - `iterative_refinement = true`(既定)のときは、解くたびに `spmats` と同じ
+    反復改良が動きます。回数の上限と許容値の欄も効きます。
+  - `equilibration = true` のときは、例外を投げずに無効なハンドル
+    (`valid()` が `false`、`status()` が `invalid_input`)を返します。
+    `spmats` のハンドルは `equilibration` を受け付けるので、ここは policy で
+    振る舞いが違います。
+  - 特異な行列では、無効なハンドル(`status()` が `numerical_singularity`)を
+    返します。
+- `spumar` のハンドルの `info()` では、`success`・`status`・`n`・`nnz_L`・
+  `nnz_U` が意味を持ちます(`nnz_L`・`nnz_U` は UMFPACK の因子の非零の数で、
+  `lu_with_info` の結果と同じ値)。`method_used` には指定した値がそのまま
+  入ります(既定なら `auto_select`)。`growth_factor` など UMFPACK から
+  得られない欄は意味を持ちません。
 
 ### `spumar` のオプション
 
@@ -2188,7 +2308,8 @@ UMFPACK・ARPACK への委譲の仕組みは [kernels/sparse_external.md](kernel
 
 `vcp::spcmodumar` は `vcp::spumar` を継承し、さらに疎 Cholesky 分解
 (`chol` / `chol_with_info`)を CHOLMOD に委譲する policy です。`spumar` の
-委譲(UMFPACK・ARPACK)はそのまま引き継ぎます。
+委譲(UMFPACK・ARPACK)はそのまま引き継ぎます。添字の型は `std::int64_t` で、
+CHOLMOD は 64 ビットの添字の版(`cholmod_l_*`)を呼びます。
 
 ```cpp
 #include <iostream>
@@ -2211,7 +2332,7 @@ int main() {
     }
     A.finalize();
 
-    std::vector<int> p;
+    std::vector<vcp::spmatrix<double, vcp::spcmodumar>::index_type> p;
     A.chol(L, p);                       // CHOLMOD(失敗したら例外)
     std::cout << "nnz(L) = " << L.nnz() << "\n";
 
@@ -2225,7 +2346,7 @@ int main() {
 
 ```bash
 sudo apt install libsuitesparse-dev libarpack2-dev
-g++ -std=c++20 -I/path/to/libs example.cpp -lumfpack -larpack -lcholmod
+g++ -std=c++20 -ffp-contract=off -frounding-math -I/path/to/libs example.cpp -lumfpack -larpack -lcholmod
 ```
 
 リンクには `-lumfpack -larpack -lcholmod` が必要です(`spumar` を継承する

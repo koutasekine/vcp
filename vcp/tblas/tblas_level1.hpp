@@ -66,6 +66,10 @@ namespace vcp {
 // y := x
 template <typename T>
 inline void tcopy(const int n, const T* x, const int incx, T* y, const int incy) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::copy(n, x, incx, y, incy);
+		return;
+	}
 	if (n <= 0) {
 		return;
 	}
@@ -81,6 +85,10 @@ inline void tcopy(const int n, const T* x, const int incx, T* y, const int incy)
 // x <-> y
 template <typename T>
 inline void tswap(const int n, T* x, const int incx, T* y, const int incy) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::swap(n, x, incx, y, incy);
+		return;
+	}
 	if (n <= 0) {
 		return;
 	}
@@ -98,6 +106,9 @@ inline void tswap(const int n, T* x, const int incx, T* y, const int incy) {
 // |x_i| が最大となる 0-based index を返す (n<=0 または incx<=0 のとき -1)
 template <typename T>
 inline int itamax(const int n, const T* x, const int incx) {
+	if (tblas_detail::double_route<T>::on) {
+		return tblas_detail::double_route<T>::iamax(n, x, incx);
+	}
 	using std::abs;
 	if (n <= 0 || incx <= 0) {
 		return -1;
@@ -121,6 +132,10 @@ inline int itamax(const int n, const T* x, const int incx) {
 // x := alpha*x
 template <typename T>
 inline void tscal(const int n, const T& alpha, T* x, const int incx) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::scal(n, alpha, x, incx);
+		return;
+	}
 	if (n <= 0 || incx <= 0 || alpha == T(1)) {
 		return;
 	}
@@ -134,6 +149,10 @@ inline void tscal(const int n, const T& alpha, T* x, const int incx) {
 // y := alpha*x + y
 template <typename T>
 inline void taxpy(const int n, const T& alpha, const T* x, const int incx, T* y, const int incy) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::axpy(n, alpha, x, incx, y, incy);
+		return;
+	}
 	if (n <= 0 || alpha == T(0)) {
 		return;
 	}
@@ -149,6 +168,9 @@ inline void taxpy(const int n, const T& alpha, const T* x, const int incx, T* y,
 // return x^T y (逐次和)
 template <typename T>
 inline T tdot(const int n, const T* x, const int incx, const T* y, const int incy) {
+	if (tblas_detail::double_route<T>::on) {
+		return tblas_detail::double_route<T>::dot(n, x, incx, y, incy);
+	}
 	if (n <= 0) {
 		return T(0);
 	}
@@ -166,6 +188,9 @@ inline T tdot(const int n, const T* x, const int incx, const T* y, const int inc
 // return sum |x_i|
 template <typename T>
 inline T tasum(const int n, const T* x, const int incx) {
+	if (tblas_detail::double_route<T>::on) {
+		return tblas_detail::double_route<T>::asum(n, x, incx);
+	}
 	using std::abs;
 	if (n <= 0 || incx <= 0) {
 		return T(0);
@@ -182,6 +207,9 @@ inline T tasum(const int n, const T* x, const int incx) {
 // return ||x||_2 (overflow/underflow 回避の scale 付き，reference dnrm2 と同方式)
 template <typename T>
 inline T tnrm2(const int n, const T* x, const int incx) {
+	if (tblas_detail::double_route<T>::on) {
+		return tblas_detail::double_route<T>::nrm2(n, x, incx);
+	}
 	using std::abs;
 	using std::sqrt;
 	if (n <= 0 || incx <= 0) {
@@ -214,6 +242,10 @@ inline T tnrm2(const int n, const T* x, const int incx) {
 // 平面回転の適用: (x_i, y_i) := (c*x_i + s*y_i, c*y_i - s*x_i)
 template <typename T>
 inline void trot(const int n, T* x, const int incx, T* y, const int incy, const T& c, const T& s) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::rot(n, x, incx, y, incy, c, s);
+		return;
+	}
 	if (n <= 0) {
 		return;
 	}
@@ -231,6 +263,10 @@ inline void trot(const int n, T* x, const int incx, T* y, const int incy, const 
 // Givens 回転の生成 (reference drotg と同方式)
 template <typename T>
 inline void trotg(T* a, T* b, T* c, T* s) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::rotg(a, b, c, s);
+		return;
+	}
 	using std::abs;
 	using std::sqrt;
 	T roe = *b;
@@ -270,6 +306,10 @@ inline void trotg(T* a, T* b, T* c, T* s) {
 // param[0] (flag) は trotmg が生成する -2, -1, 0, 1 のいずれかを仮定する
 template <typename T>
 inline void trotm(const int n, T* x, const int incx, T* y, const int incy, const T* param) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::rotm(n, x, incx, y, incy, param);
+		return;
+	}
 	const T flag = param[0];
 	if (n <= 0 || flag == T(-2)) {
 		return;
@@ -321,6 +361,10 @@ inline void trotm(const int n, T* x, const int incx, T* y, const int incy, const
 // 構成する (reference の double 定数 5.9604645e-8 とは末位が僅かに異なる)
 template <typename T>
 inline void trotmg(T* d1, T* d2, T* x1, const T& y1, T* param) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::rotmg(d1, d2, x1, y1, param);
+		return;
+	}
 	using std::abs;
 	const T gam = T(4096);
 	const T gamsq = gam * gam;

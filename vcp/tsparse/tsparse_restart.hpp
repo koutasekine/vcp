@@ -18,7 +18,7 @@
 #include <vcp/tsparse/tsparse_scalar.hpp>
 #include <vcp/tsparse/tsparse_eigen_selection.hpp>
 #include <vcp/tsparse/tsparse_honest_termination.hpp>
-#include <vcp/spmatrix.hpp>
+#include <vcp/tsparse/tsparse_eigs_types.hpp>
 
 namespace vcp {
 namespace tsparse {

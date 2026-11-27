@@ -71,17 +71,8 @@
 namespace vlapack_dlapack_detail {
 
 // 現在の丸めモードを rdlapack の rounding_mode へ変換する
-// (FE_DOWNWARD -> -1, FE_UPWARD -> 1, それ以外 -> 0)
-inline int current_rounding_mode() {
-	const int mode = vblas_rmatmul_common_detail::get_rounding_mode();
-	if (mode == FE_DOWNWARD) {
-		return -1;
-	}
-	if (mode == FE_UPWARD) {
-		return 1;
-	}
-	return 0;
-}
+// (FE_DOWNWARD -> -1, FE_UPWARD -> 1, それ以外 -> 0)．実体は vblas/rdblas_common.hpp
+using vblas_rdblas_detail::current_rounding_mode;
 
 // ipiv: rdlapack (0-based) -> LAPACK (1-based)
 inline void ipiv_to_fortran(const int n, int* ipiv) {

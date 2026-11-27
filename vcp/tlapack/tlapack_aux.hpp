@@ -105,6 +105,10 @@ inline int ilatlc(const int m, const int n, const T* A, const int lda) {
 // 'L' 下三角のみ / その他 全体)
 template <typename T>
 inline void tlaset(const char uplo, const int m, const int n, const T& alpha, const T& beta, T* A, const int lda) {
+	if (tlapack_detail::double_route<T>::on) {
+		tlapack_detail::double_route<T>::laset(uplo, m, n, alpha, beta, A, lda);
+		return;
+	}
 	namespace detail = tlapack_detail;
 	if (detail::option_is(uplo, 'U')) {
 		for (int j = 0; j < n; j++) {
@@ -135,6 +139,10 @@ inline void tlaset(const char uplo, const int m, const int n, const T& alpha, co
 // B := A (uplo: 'U' 上三角 / 'L' 下三角 / その他 全体)
 template <typename T>
 inline void tlacpy(const char uplo, const int m, const int n, const T* A, const int lda, T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		tlapack_detail::double_route<T>::lacpy(uplo, m, n, A, lda, B, ldb);
+		return;
+	}
 	namespace detail = tlapack_detail;
 	if (detail::option_is(uplo, 'U')) {
 		for (int j = 0; j < n; j++) {
@@ -163,6 +171,10 @@ inline void tlacpy(const char uplo, const int m, const int n, const T* A, const 
 // 交換する (incx = 1: 昇順, incx = -1: 降順)．ipiv は 0-based．
 template <typename T>
 inline void tlaswp(const int n, T* A, const int lda, const int k1, const int k2, const int* ipiv, const int incx) {
+	if (tlapack_detail::double_route<T>::on) {
+		tlapack_detail::double_route<T>::laswp(n, A, lda, k1, k2, ipiv, incx);
+		return;
+	}
 	if (n <= 0) {
 		return;
 	}
@@ -197,6 +209,10 @@ inline void tlaswp(const int n, T* A, const int lda, const int k1, const int k2,
 // d を昇順 ('I') または降順 ('D') に sort (比較のみで丸め誤差なし)
 template <typename T>
 inline void tlasrt(const char id, const int n, T* d) {
+	if (tlapack_detail::double_route<T>::on) {
+		tlapack_detail::double_route<T>::lasrt(id, n, d);
+		return;
+	}
 	namespace detail = tlapack_detail;
 	if (n < 0) {
 		detail::tlapack_error("tlasrt: n < 0");
@@ -220,6 +236,10 @@ inline void tlasrt(const char id, const int n, T* d) {
 // 同方式) で実装する．scale^2*sumsq の不変量と呼び出し規約は同じ．
 template <typename T>
 inline void tlassq(const int n, const T* x, const int incx, T& scale, T& sumsq) {
+	if (tlapack_detail::double_route<T>::on) {
+		tlapack_detail::double_route<T>::lassq(n, x, incx, scale, sumsq);
+		return;
+	}
 	if (tlapack_detail::tisnan(scale) || tlapack_detail::tisnan(sumsq)) {
 		return;
 	}
@@ -257,6 +277,9 @@ inline void tlassq(const int n, const T* x, const int incx, T& scale, T& sumsq) 
 // sqrt(x^2 + y^2) (overflow 回避付き)
 template <typename T>
 inline T tlapy2(const T& x, const T& y) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::lapy2(x, y);
+	}
 	namespace detail = tlapack_detail;
 	if (tlapack_detail::tisnan(x)) {
 		return x;
@@ -277,6 +300,9 @@ inline T tlapy2(const T& x, const T& y) {
 // sqrt(x^2 + y^2 + z^2) (overflow 回避付き)
 template <typename T>
 inline T tlapy3(const T& x, const T& y, const T& z) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::lapy3(x, y, z);
+	}
 	namespace detail = tlapack_detail;
 	const T xabs = tlapack_detail::tabs(x);
 	const T yabs = tlapack_detail::tabs(y);
@@ -365,6 +391,10 @@ inline void tladiv(const T& a, const T& b, const T& c, const T& d, T& p, T& q) {
 // Givens 回転の生成: [c s; -s c]^T [f; g] = [r; 0]
 template <typename T>
 inline void tlartg(const T& f, const T& g, T& cs, T& sn, T& r) {
+	if (tlapack_detail::double_route<T>::on) {
+		tlapack_detail::double_route<T>::lartg(f, g, cs, sn, r);
+		return;
+	}
 	namespace detail = tlapack_detail;
 	const T safmin = tlamch<T>('S');
 	const T safmax = T(1) / tlamch<T>('S');
@@ -815,6 +845,10 @@ inline void tlanv2(T& a, T& b, T& c, T& d,
 template <typename T>
 inline void tlascl(const char type, const int kl, const int ku, const T& cfrom, const T& cto,
 	const int m, const int n, T* A, const int lda) {
+	if (tlapack_detail::double_route<T>::on) {
+		tlapack_detail::double_route<T>::lascl(type, kl, ku, cfrom, cto, m, n, A, lda);
+		return;
+	}
 	namespace detail = tlapack_detail;
 	int itype;
 	if (detail::option_is(type, 'G')) {
@@ -1095,6 +1129,9 @@ namespace vcp {
 // 一般行列の norm ('M' max|a_ij|, '1'/'O' 1-norm, 'I' inf-norm, 'F'/'E' Frobenius)
 template <typename T>
 inline T tlange(const char norm, const int m, const int n, const T* A, const int lda) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::lange(norm, m, n, A, lda);
+	}
 	namespace detail = tlapack_detail;
 	if (std::min(m, n) == 0) {
 		return T(0);
@@ -1145,6 +1182,9 @@ inline T tlange(const char norm, const int m, const int n, const T* A, const int
 // 対称行列の norm
 template <typename T>
 inline T tlansy(const char norm, const char uplo, const int n, const T* A, const int lda) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::lansy(norm, uplo, n, A, lda);
+	}
 	namespace detail = tlapack_detail;
 	if (n == 0) {
 		return T(0);
@@ -1222,6 +1262,9 @@ inline T tlansy(const char norm, const char uplo, const int n, const T* A, const
 // 対称三重対角行列の norm (d: 対角 n 個, e: 副対角 n-1 個)
 template <typename T>
 inline T tlanst(const char norm, const int n, const T* d, const T* e) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::lanst(norm, n, d, e);
+	}
 	namespace detail = tlapack_detail;
 	if (n <= 0) {
 		return T(0);
@@ -1265,6 +1308,9 @@ inline T tlanst(const char norm, const int n, const T* d, const T* e) {
 // 一般帯行列 (n x n, 帯幅 kl/ku, 帯格納) の norm
 template <typename T>
 inline T tlangb(const char norm, const int n, const int kl, const int ku, const T* AB, const int ldab) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::langb(norm, n, kl, ku, AB, ldab);
+	}
 	namespace detail = tlapack_detail;
 	if (n == 0) {
 		return T(0);
@@ -1317,6 +1363,9 @@ inline T tlangb(const char norm, const int n, const int kl, const int ku, const 
 // 対称帯行列 (帯幅 k, 帯格納) の norm
 template <typename T>
 inline T tlansb(const char norm, const char uplo, const int n, const int k, const T* AB, const int ldab) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::lansb(norm, uplo, n, k, AB, ldab);
+	}
 	namespace detail = tlapack_detail;
 	if (n == 0) {
 		return T(0);
@@ -1397,6 +1446,10 @@ inline T tlansb(const char norm, const char uplo, const int n, const int k, cons
 // alpha は beta に上書き，x は v(2:n) に上書きされる
 template <typename T>
 inline void tlarfg(const int n, T& alpha, T* x, const int incx, T& tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		tlapack_detail::double_route<T>::larfg(n, alpha, x, incx, tau);
+		return;
+	}
 	namespace detail = tlapack_detail;
 	if (n <= 1) {
 		tau = T(0);

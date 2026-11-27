@@ -17,8 +17,9 @@
 
 ## 共通の性質
 
-- **要素型**:`double` だけです。添字型は `int` です(UMFPACK・CHOLMOD の
-  int32 の API を使います)。
+- **要素型**:`double` だけです。添字型は `std::int64_t` です(UMFPACK・CHOLMOD の
+  64 ビットの添字の API、`umfpack_dl_*`・`cholmod_l_*` を使います)。ARPACK に
+  渡す次元は `int` で、`int` に収まらない次元の固有値は委譲しません。
 - **依存の切り離し**:外部ライブラリのヘッダを include するのは
   `spumar_base/spumar_umfpack.hpp`(`<suitesparse/umfpack.h>`)と
   `spcmodumar_base/spcmodumar_cholmod.hpp`(`<suitesparse/cholmod.h>`)だけ
@@ -41,7 +42,7 @@
 
 ### UMFPACK の包み方
 
-`spumar_umfpack.hpp` は、UMFPACK の di(int32・double)の API を包みます。
+`spumar_umfpack.hpp` は、UMFPACK の dl(64 ビットの添字・double)の API を包みます。
 記号分解と数値分解の handle を持つ RAII のクラスで、1 回分解して何度も
 解けるようにしています。`spumar_convert.hpp` は、`spmats` の CSC を
 そのまま UMFPACK に渡します(どちらも 0 始まりの CSC で、行の添字は昇順・
@@ -62,7 +63,7 @@
 
 ### LU 分解(因子を返す)
 
-`policy_lu_with_info_impl` は、UMFPACK の分解から `umfpack_di_get_numeric`
+`policy_lu_with_info_impl` は、UMFPACK の分解から `umfpack_dl_get_numeric`
 で因子を取り出し、P A Q = L U(p, q は new→old、L は対角の 1 も格納する
 単位下三角)の形にして返します。
 
@@ -132,7 +133,7 @@ Cholesky 分解を使います。
 1. **オプションの検査**:`pd_tol` が 0 でなければ `invalid_options`
    (CHOLMOD に対応する指定がないため)。`method` は `auto_select`(CHOLMOD の
    AUTO)と `simplicial_uplooking`(CHOLMOD の SIMPLICIAL)だけを受け付けます。
-2. **入力の検査**:CSC の形と、int32 に収まるか。
+2. **入力の検査**:CSC の形と、非零の数が添字の型に収まるか。
 3. **対称性の検査**:CHOLMOD に渡す前に、VCP 側で対称と言えるか確かめる
    (`check_symmetry`、`symmetry_tol`)。
 4. **空の行・列の検査**:あれば `not_positive_definite`(`structural_empty_at`

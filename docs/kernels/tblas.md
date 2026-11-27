@@ -3,7 +3,7 @@
 `tblas` は `vcp/vblas/rdblas` と同じ routine 一覧を template 化した header-only library
 です．本文書は要素型 `T` に要求する演算 (concept 相当) と実装方針を定めます．
 **全関数の引数仕様は このドキュメントの「関数リファレンス」節 を参照．**
-**丸めモードは一切意識しません** (rounding_mode 引数なし，`fesetround` /
+**丸めモードは基本的には意識しません** (rounding_mode 引数なし，`fesetround` /
 RoundingGuard を使わない)．丸めモード指定が必要な場合は `vcp/vblas/rdblas` を
 使ってください．
 
@@ -25,12 +25,12 @@ tgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 | file | 内容 |
 |---|---|
 | `tblas.hpp` | 汎用 template 実装の umbrella header |
-| `tblas_common.hpp` | 共通基盤 (`tblas_detail`: 引数 check / scale / 展開 copy / OpenMP shim) |
+| `tblas_common.hpp` | 共通基盤 (`tblas_detail`: 引数 check / scale / 展開 copy / OpenMP shim / `double` の行き先) |
 | `tblas_level1.hpp` | Level 1 (`tcopy` `tswap` `itamax` `tscal` `taxpy` `tdot` `tasum` `tnrm2` `trot` `trotg` `trotm` `trotmg`) |
 | `tblas_level2.hpp` | Level 2 (`tgemv` `tgbmv` `tsymv` `tsbmv` `tspmv` `ttrmv` `ttbmv` `ttpmv` `ttrsv` `ttbsv` `ttpsv` `tger` `tsyr` `tspr` `tsyr2` `tspr2`) |
 | `tblas_level3.hpp` | Level 3 (`tgemm` `tgemmtr` `tsymm` `tsyrk` `tsyr2k` `ttrmm` `ttrsm`) |
 | `tblas_double.hpp` | `T=double` の明示的特殊化．`dblas_dlapack.hpp` 経由で BLAS (`dcopy_` `dgemm_` など) を呼ぶ |
-| `tblas_dd.hpp` | `T=kv::dd` の Level 3 明示的特殊化．尾崎スキームにより `tgemm<double>` を用いて高精度な行列積系 routine を計算する |
+| `tblas_dd.hpp` | `T=kv::dd` の Level 3 明示的特殊化．尾崎スキームにより `tgemm<double>` を用いて行列積系 routine を計算する |
 
 ## 提供予定 routine (rdblas と同一集合，d → t に読み替え)
 
@@ -44,6 +44,21 @@ tgemm('N', 'N', m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 引数順は rdblas から末尾の `rounding_mode` を除いたもの (= reference BLAS と同順)．
 column-major / 0-based / `int` index，不正引数は `vcp::invalid_argument`，
 scalar 引数は `const T&` 渡し (mpfr 等の copy cost 回避) とします．
+
+## T=double の行き先 (3 つの層)
+
+`T=double` の呼び出しは，`tblas_double.hpp` を include するかどうかで行き先が変わります．
+
+| 層 | 条件 | 行き先 |
+|---|---|---|
+| 1 | `T` が double 以外 | `tblas.hpp` の汎用 template 実装 |
+| 2 | `T=double` で，`tblas_double.hpp` を include しない | VCP の double BLAS (`vcp/vblas/rdblas.hpp` の `vcp::rdgemm` など)．呼び出し時点の丸めモードを渡します．外部 BLAS のリンクは要りません |
+| 3 | `T=double` で，`tblas_double.hpp` を include する | `dgemm_` などを呼びます．その中身は，`USE_VCP_BLAS` を定義すれば VCP の double BLAS，定義しなければリンクした外部 BLAS です |
+
+層 2 と，層 3 で `USE_VCP_BLAS` を定義した場合は，同じ routine に行きます．
+層 2 の対象は，`tblas_double.hpp` が特殊化する routine の全部です．丸めモードを
+取らない routine (`tcopy` `tswap` `itamax`) は `vcp::dcopy` `vcp::dswap`
+`vcp::idamax` を呼びます．
 
 ## T=double の BLAS 委譲特殊化
 
@@ -104,7 +119,7 @@ include した翻訳単位で対象 routine を `kv::dd` 型として呼ぶと�
 `tblas_double.hpp` には直接依存しません．slice 同士の積は必ず
 `tgemm<double>` を呼ぶため，`tblas_double.hpp` が先に include されていれば
 double BLAS へ委譲された高速な `tgemm<double>` が使われ，include されていない
-場合でも汎用 `tblas` の `tgemm<double>` で動作します．
+場合は VCP の double BLAS (`vcp::rdgemm`) に行く `tgemm<double>` で動作します．
 
 高速な double BLAS を利用したい場合の include 順:
 
@@ -119,9 +134,8 @@ double BLAS へ委譲された高速な `tgemm<double>` が使われ，include �
 #include <vcp/tblas/tblas_dd.hpp>
 ```
 
-この場合も尾崎スキーム自体は使われますが，slice 積の `tgemm<double>` は
-汎用 template 実装になります．つまり精度改善の方式は同じで，double BLAS への
-委譲による速度向上だけが無くなります．
+この場合も尾崎スキーム自体は使われます．slice 積の `tgemm<double>` は
+VCP の double BLAS (`vcp::rdgemm`) に行きます．計算の方式は同じです．
 
 `tgemm<kv::dd>` は，`op(A)` を m×k，`op(B)` を k×n の連続領域へ pack した後，
 左因子を行方向，右因子を列方向に double slice 分解します．各 slice 積を
@@ -132,18 +146,18 @@ double BLAS へ委譲された高速な `tgemm<double>` が使われ，include �
 
 | routine | 尾崎スキームの適用方法 | 結果への影響 |
 |---|---|---|
-| `tgemm<kv::dd>` | `op(A)` と `op(B)` を double slice に分解し，slice 積を `tgemm<double>` で計算して `kv::dd` に蓄積する | 行列積の積和部分が通常の `kv::dd` 逐次積和より高精度化される．`alpha`/`beta` の合成は最後に `kv::dd` で行う |
-| `tsymm<kv::dd>` | 対称行列を full dense に展開して `tgemm<kv::dd>` に帰着する | 対称行列積部分が尾崎スキームの `tgemm<kv::dd>` の精度と速度特性を引き継ぐ |
-| `tsyrk<kv::dd>` | full の一時行列を `tgemm<kv::dd>` で計算し，指定された `uplo` 三角部分だけを出力へ反映する | rank-k 積部分が高精度化される．更新されない三角部分は参照・変更しない |
-| `tsyr2k<kv::dd>` | 2 つの積 `op(A)*op(B)^T` と `op(B)*op(A)^T` を `tgemm<kv::dd>` 経由で一時行列に加算し，`uplo` 三角部分だけを反映する | rank-2k 積部分が高精度化される．`beta*C` は指定三角部分にのみ適用される |
-| `ttrmm<kv::dd>` | 三角行列を 0 詰め full dense に展開して `tgemm<kv::dd>` に帰着し，結果で `B` を上書きする | 三角行列積部分が高精度化される．unit diag は exact `kv::dd(1)`，三角外は exact `kv::dd(0)` として扱う |
-| `tgemmtr<kv::dd>` | full の一時行列を `tgemm<kv::dd>` で計算し，指定された `uplo` 三角部分だけを出力へ反映する | 三角部分のみの GEMM 更新で，積和部分が高精度化される．更新対象外の三角部分は変更しない |
+| `tgemm<kv::dd>` | `op(A)` と `op(B)` を double slice に分解し，slice 積を `tgemm<double>` で計算して `kv::dd` に蓄積する | `alpha`/`beta` の合成は最後に `kv::dd` で行う |
+| `tsymm<kv::dd>` | 対称行列を full dense に展開して `tgemm<kv::dd>` に帰着する | 対称行列積部分は `tgemm<kv::dd>` と同じ方法で計算される |
+| `tsyrk<kv::dd>` | full の一時行列を `tgemm<kv::dd>` で計算し，指定された `uplo` 三角部分だけを出力へ反映する | 更新されない三角部分は参照・変更しない |
+| `tsyr2k<kv::dd>` | 2 つの積 `op(A)*op(B)^T` と `op(B)*op(A)^T` を `tgemm<kv::dd>` 経由で一時行列に加算し，`uplo` 三角部分だけを反映する | `beta*C` は指定三角部分にのみ適用される |
+| `ttrmm<kv::dd>` | 三角行列を 0 詰め full dense に展開して `tgemm<kv::dd>` に帰着し，結果で `B` を上書きする | unit diag は exact `kv::dd(1)`，三角外は exact `kv::dd(0)` として扱う |
+| `tgemmtr<kv::dd>` | full の一時行列を `tgemm<kv::dd>` で計算し，指定された `uplo` 三角部分だけを出力へ反映する | 更新対象外の三角部分は変更しない |
 
 この特殊化により，対象 routine の行列積部分は `tgemm<double>` の性能に依存します．
 したがって `tblas_double.hpp` が先に include されている場合は，`tgemm<double>` が
 MKL/OpenBLAS/reference BLAS などの double BLAS に委譲され，`kv::dd` 特殊化も
-同じ経路で高速化されます．一方，`tblas_double.hpp` が無い場合でも，汎用
-`tgemm<double>` を使って同じ尾崎スキームで計算されます．
+同じ経路で高速化されます．一方，`tblas_double.hpp` が無い場合は，VCP の double BLAS
+(`vcp::rdgemm`) に行く `tgemm<double>` を使って同じ尾崎スキームで計算されます．
 
 注意:
 
@@ -173,8 +187,7 @@ MKL/OpenBLAS/reference BLAS などの double BLAS に委譲され，`kv::dd` 特
 
 - 複合代入 `+=` `*=` 等は**要求しない** (二項演算 + 代入のみで実装する)．
 - `std::fma` 相当も**要求しない**．rdblas で `std::fma(a, b, c)` の箇所は
-  `a * b + c` に置き換える (double で結果が rdblas と bit 一致しない場合がある
-  ことを許容する)．
+  `a * b + c` に置き換える．
 - T と `double`/`int` の混合演算は**要求しない**．literal は必ず `T(...)` で包む．
 
 ### R2: 除算 `/` (T × T → T)
@@ -277,8 +290,7 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
 ## 実装の詳細 (rdblas との対応)
 
 - **Level 1 / Level 2**: rdblas の loop の忠実な移植．`std::fma(a, b, c)` は
-  `a * b + c` に展開し，literal は全て `T(int)` から構成する
-  (double で rdblas と bit 一致しない routine がある)．
+  `a * b + c` に展開し，literal は全て `T(int)` から構成する．
 - **Level 3**:
   - `tgemm` は reference dgemm と同じ列方向 algorithm (rmatmul のような
     SIMD / blocking はしない)．
@@ -294,12 +306,16 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
     尾崎スキームで行列積を計算する．
   - `tblas_double.hpp` が先に include されている翻訳単位では，slice 積の
     `tgemm<double>` が double BLAS 委譲版になり，`kv::dd` 特殊化も高速化される．
-  - `tblas_double.hpp` が include されていない翻訳単位でも，汎用
-    `tgemm<double>` により同じ API で動作する．
+  - `tblas_double.hpp` が include されていない翻訳単位でも，VCP の double BLAS
+    に行く `tgemm<double>` により同じ API で動作する．
 - **OpenMP**: 列方向に独立な loop のみ `if` 句付きで並列化する
   (`tgemv` `tsymv` `tger` `tsyr` `tsyr2` と Level 3 全 routine の主 loop，
   `ttrsm` right side は列間に依存があるため逐次)．閾値はスカラー演算回数で
   `TBLAS_OMP_THRESHOLD` (既定 2e4)，`-fopenmp` なしでも compile 可能．
+  `-DVCP_TBLAS_NOMP` (または `-DVCP_NOMP`) で止められる．`-DVCP_TBLAS_NOMP` は
+  `-DVCP_RDBLAS_NOMP` も定義する (特殊化ヘッダを include しない `double` の tblas は
+  rdblas を呼ぶため)．`double` の並列化は，rdblas または外部 BLAS の側で決まり，
+  `TBLAS_OMP_THRESHOLD` は効かない．
 - **引数規約**: reference BLAS と同順で rounding_mode なし，scalar は
   `const T&` 渡し，column-major / 0-based / `int` index，不正引数は
   `vcp::invalid_argument` (例外無効時は `abort`)．
@@ -308,7 +324,6 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
 
 以下の観点で検証する:
 
-- **T=double を rdblas と比較**: 全 routine・全 option 組合せ・inc 正負・alpha/beta 特殊値．
 - **kv::dd / kv::mpfr<106>**：double との一致と residual の高精度性．
   **kv::interval<double>**：dd 参照値の包含と residual の 0 包含．
 - **T=double 特殊化**:
@@ -323,8 +338,8 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
 # 関数リファレンス
 
 
-`vcp/tblas/tblas.hpp` が提供する全 37 routine の仕様．設計方針と要素型 T の要件
-(R1–R4) は このドキュメントの「設計方針」節 を参照．
+`vcp/tblas/tblas.hpp` が提供する全 35 routine の仕様．設計方針と要素型 T の要件
+(R1–R4) は このドキュメントの「設計上の注意」節 を参照．
 
 ## 共通仕様
 
@@ -341,12 +356,12 @@ abs(x);           // 修飾なし → 組み込み型は std::，user 型は ADL
   何もしない / 0 / -1 を返す BLAS 規約)．
 - **scalar 引数は `const T&` 渡し**，vector/行列は pointer 渡し．
 - **不正引数**は `vcp::invalid_argument` を投げる (例外無効時は `abort`)．
-- **丸めモードは扱わない**．丸めモード指定が必要なら `vcp/vblas/rdblas` を使う．
+- **丸めモードは基本的には扱わない**．丸めモード指定が必要なら `vcp/vblas/rdblas` を使う．
 - `std::fma` は使わない (`a*b + c` は乗算 1 丸め + 加算 1 丸め)．
 - BLAS 規約の quick return: `beta == T(0)` のとき出力は読まずに 0 埋め
   (NaN があっても伝播しない)，`beta == T(1)` のとき scaling を省略，
   `alpha == T(0)` のとき入力行列を読まない．
-- 演算量が `TBLAS_OMP_THRESHOLD` (既定 2e4) を超える独立 loop は OpenMP 並列．
+- 演算量が `TBLAS_OMP_THRESHOLD` (既定 2e4) を超える独立 loop は OpenMP 並列 (`double` を除く)．
 
 ### option 文字 (大文字小文字どちらも可)
 

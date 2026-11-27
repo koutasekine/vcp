@@ -32,8 +32,8 @@
 template <class T, class Index>
 bool sparse_lu_is_valid_csc_storage(
     const csc_storage<T, Index>& A,
-    Index nrow,
-    Index ncol)
+    typename std::common_type<Index>::type nrow,
+    typename std::common_type<Index>::type ncol)
 {
     if (nrow < Index(0) || ncol < Index(0)) return false;
 
@@ -137,8 +137,8 @@ template <class T, class Index>
 csc_storage<T, Index>
 sparse_lu_apply_column_permutation_csc(
     const csc_storage<T, Index>& A,
-    Index nrow,
-    Index ncol,
+    typename std::common_type<Index>::type nrow,
+    typename std::common_type<Index>::type ncol,
     const std::vector<Index>& col_perm)
 {
     (void)nrow;

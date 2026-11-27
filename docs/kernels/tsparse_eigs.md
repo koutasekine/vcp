@@ -9,6 +9,7 @@ A x = λ x と一般化固有値問題 A x = λ B x)の内部の解法を説明�
 | header | 内容 |
 | --- | --- |
 | `tsparse_eigs.hpp` | 列挙型(`eig_solver_method`、`eig_target`、`matrix_structure_hint` など)と定数 |
+| `tsparse_eigs_types.hpp` | オプションと結果の型(`eig_options`、`eig_result`、`linear_solve_options`、`linear_solve_result` など) |
 | `tsparse_thick_restart_lanczos.hpp` | thick-restart Lanczos 法(名前空間 `tsparse_experimental`) |
 | `tsparse_krylov_schur.hpp` | Krylov–Schur 法(名前空間 `tsparse_experimental`) |
 | `tsparse_real_schur.hpp`、`tsparse_dense_schur_driver.hpp` | 密行列の実 Schur 分解と、非対称な密行列の固有値計算 |

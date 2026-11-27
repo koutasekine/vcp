@@ -60,6 +60,9 @@ namespace vcp {
 // LU 分解 (部分 pivot 付き, unblocked)
 template <typename T>
 inline int tgetf2(const int m, const int n, T* A, const int lda, int* ipiv) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::getf2(m, n, A, lda, ipiv);
+	}
 	namespace detail = tlapack_detail;
 	if (m < 0 || n < 0 || lda < std::max(1, m)) {
 		detail::tlapack_error("tgetf2: invalid argument");
@@ -166,6 +169,9 @@ inline int tgetrf2(const int m, const int n, T* A, const int lda, int* ipiv) {
 // LU 分解 (部分 pivot 付き, blocked)
 template <typename T>
 inline int tgetrf(const int m, const int n, T* A, const int lda, int* ipiv) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::getrf(m, n, A, lda, ipiv);
+	}
 	namespace detail = tlapack_detail;
 	if (m < 0 || n < 0 || lda < std::max(1, m)) {
 		detail::tlapack_error("tgetrf: invalid argument");
@@ -206,6 +212,9 @@ inline int tgetrf(const int m, const int n, T* A, const int lda, int* ipiv) {
 template <typename T>
 inline int tgetrs(const char trans, const int n, const int nrhs, const T* A, const int lda,
 	const int* ipiv, T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::getrs(trans, n, nrhs, A, lda, ipiv, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	const bool notran = detail::option_is(trans, 'N');
 	if (!notran && !detail::option_is(trans, 'T') && !detail::option_is(trans, 'C')) {
@@ -234,6 +243,9 @@ inline int tgetrs(const char trans, const int n, const int nrhs, const T* A, con
 template <typename T>
 inline int tgesv(const int n, const int nrhs, T* A, const int lda, int* ipiv,
 	T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gesv(n, nrhs, A, lda, ipiv, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	if (n < 0 || nrhs < 0 || lda < std::max(1, n) || ldb < std::max(1, n)) {
 		detail::tlapack_error("tgesv: invalid argument");
@@ -248,6 +260,9 @@ inline int tgesv(const int n, const int nrhs, T* A, const int lda, int* ipiv,
 // 三角行列の逆行列 (unblocked)
 template <typename T>
 inline int ttrti2(const char uplo, const char diag, const int n, T* A, const int lda) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::trti2(uplo, diag, n, A, lda);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	const bool nounit = detail::option_is(diag, 'N');
@@ -298,6 +313,9 @@ inline int ttrti2(const char uplo, const char diag, const int n, T* A, const int
 // 三角行列の逆行列 (blocked)
 template <typename T>
 inline int ttrtri(const char uplo, const char diag, const int n, T* A, const int lda) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::trtri(uplo, diag, n, A, lda);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	const bool nounit = detail::option_is(diag, 'N');
@@ -353,6 +371,9 @@ inline int ttrtri(const char uplo, const char diag, const int n, T* A, const int
 template <typename T>
 inline int ttrtrs(const char uplo, const char trans, const char diag, const int n, const int nrhs,
 	const T* A, const int lda, T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::trtrs(uplo, trans, diag, n, nrhs, A, lda, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	const bool nounit = detail::option_is(diag, 'N');
 	if (!detail::option_is(uplo, 'U') && !detail::option_is(uplo, 'L')) {
@@ -384,6 +405,9 @@ inline int ttrtrs(const char uplo, const char trans, const char diag, const int 
 // U*U^T (uplo='U') または L^T*L (uplo='L') の三角部分計算 (unblocked)
 template <typename T>
 inline int tlauu2(const char uplo, const int n, T* A, const int lda) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::lauu2(uplo, n, A, lda);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -428,6 +452,9 @@ inline int tlauu2(const char uplo, const int n, T* A, const int lda) {
 // U*U^T または L^T*L の三角部分計算 (blocked)
 template <typename T>
 inline int tlauum(const char uplo, const int n, T* A, const int lda) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::lauum(uplo, n, A, lda);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -476,6 +503,9 @@ inline int tlauum(const char uplo, const int n, T* A, const int lda) {
 // 逆行列 (A は tgetrf の出力, ipiv 0-based)
 template <typename T>
 inline int tgetri(const int n, T* A, const int lda, const int* ipiv) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::getri(n, A, lda, ipiv);
+	}
 	namespace detail = tlapack_detail;
 	if (n < 0 || lda < std::max(1, n)) {
 		detail::tlapack_error("tgetri: invalid argument");

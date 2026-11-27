@@ -43,7 +43,7 @@
 #include <fstream>
 #include <string>
 
-#include <omp.h>
+#include "rdblas_omp.hpp"
 
 #if defined(KV_FASTROUND) && (defined(_WIN32) || defined(_WIN64) || defined(__i386__) || defined(__x86_64__))
 #include <emmintrin.h>
@@ -206,7 +206,7 @@ inline long long sysctl_value(const char* name) {
 }
 
 inline CpuInfo detect_cpu_info() {
-	CpuInfo info = {0, 0, 0, std::max(1, omp_get_num_procs()), std::max(1, omp_get_max_threads()), 1};
+	CpuInfo info = {0, 0, 0, std::max(1, vblas_omp_detail::num_procs()), std::max(1, vblas_omp_detail::max_threads()), 1};
 
 	// Linux: sysfs から cache 構成を読む
 	bool l2_shared_found = false;
@@ -281,7 +281,7 @@ inline const CpuInfo& cpu_info() {
 }
 
 inline int limited_threads(const int requested) {
-	return std::max(1, std::min(requested, std::max(1, omp_get_max_threads())));
+	return std::max(1, std::min(requested, std::max(1, vblas_omp_detail::max_threads())));
 }
 
 inline int default_thread_count(const CpuInfo& info, const int m, const int n, const int k) {
@@ -580,7 +580,9 @@ inline void pack_b_micro_parallel(
 	double* packed
 ) {
 	const int panels = ceil_div(nb, NR);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 	for (int jp = 0; jp < panels; jp++) {
 		const int jr = jp * NR;
 		const int cols = std::min(NR, nb - jr);

@@ -249,8 +249,8 @@ template <typename T, typename P, class SP>
 vcp::spmatrix<T, SP> block_reduce(const bfem::dirichlet_reduction<T, P, SP>& R, int nblocks,
                                   const vcp::spmatrix<T, SP>& A) {
     const int nf = R.full_size(), nr = R.reduced_size();
-    if (nblocks < 0 || static_cast<int>(A.rowsize()) != nblocks * nf
-        || static_cast<int>(A.columnsize()) != nblocks * nf)
+    if (nblocks < 0 || static_cast<long long>(A.rowsize()) != static_cast<long long>(nblocks) * nf
+        || static_cast<long long>(A.columnsize()) != static_cast<long long>(nblocks) * nf)
         vcp::throw_error<vcp::invalid_argument>("btfem::block_reduce: matrix size != (nblocks * full_size)^2");
     bfem::detail::coo_buffer<T> buf;
     detail::block_collector<T, P, SP> col = { &R, &buf, nf, nr };

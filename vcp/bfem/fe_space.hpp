@@ -210,16 +210,15 @@ private:
 template <typename T, class SP = vcp::spmats<T> >
 struct spm_adapter {
     typedef vcp::spmatrix<T, SP> spmatrix_t;
+    typedef typename spmatrix_t::index_type index_type;
 
-    static spmatrix_t build(int rows, int cols, const coo_buffer<T>& c) {
+    static spmatrix_t build(index_type rows, index_type cols, const coo_buffer<T>& c) {
         spmatrix_t A(rows, cols);
-        A.reserve(static_cast<int>(c.a.size()));
+        A.reserve(static_cast<index_type>(c.a.size()));
         for (std::size_t k = 0; k < c.a.size(); ++k)
             A.add(c.a[k].i, c.a[k].j, c.a[k].v);
         return A;                            // finalize is NOT called (X5)
     }
-
-    typedef typename spmatrix_t::index_type index_type;
 
     template <typename F>
     static void for_each_entry(const spmatrix_t& A, F f) {

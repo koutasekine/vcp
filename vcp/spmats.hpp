@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <limits>
 #include <type_traits>
@@ -55,7 +56,7 @@
 
 namespace vcp {
 
-	template <typename _T, typename _Index = int> class spmats {
+	template <typename _T, typename _Index = std::int64_t> class spmats {
 		// LSS-2 D-2: Index must be a signed integer type.  The sparse LU /
 		// CHOL / LDL layers use Index(-1) as a tree sentinel
 		// (tsparse_sparse_lu.hpp: "sentinel -1 used for roots") and every
@@ -1373,7 +1374,7 @@ namespace vcp {
 		// CSC; finalized CSR and unfinalized COO -> CSR).  Single gather
 		// pass: O(nnz of the touched outer lines + max(row, column) +
 		// output nnz).
-		void submat(spmats& B, const std::initializer_list<int>& list1, const std::initializer_list<int>& list2) const {
+		void submat(spmats& B, const std::initializer_list<index_type>& list1, const std::initializer_list<index_type>& list2) const {
 			submat_check_sizes_(list1, list2);
 			const submat_axis_ ra = submat_normalize_(list1, row, true);
 			const submat_axis_ ca = submat_normalize_(list2, column, false);
@@ -1532,7 +1533,7 @@ namespace vcp {
 		};
 
 		// Mirrors the leading combined size check of mats::submat.
-		static void submat_check_sizes_(const std::initializer_list<int>& list1, const std::initializer_list<int>& list2) {
+		static void submat_check_sizes_(const std::initializer_list<index_type>& list1, const std::initializer_list<index_type>& list2) {
 			if (list1.size() > 3 || list2.size() > 3) {
 				vcp::throw_error<vcp::index_error>(
 					"submat: invalid selector size: ", list1.size(), ", ", list2.size());
@@ -1542,8 +1543,8 @@ namespace vcp {
 		// Validation conditions, order and message text mirror mats::submat
 		// exactly (the row selector is validated before the column selector
 		// -- callers must keep that call order).
-		static submat_axis_ submat_normalize_(const std::initializer_list<int>& list, const index_type dim, const bool is_row) {
-			const std::vector<int> l = list;
+		static submat_axis_ submat_normalize_(const std::initializer_list<index_type>& list, const index_type dim, const bool is_row) {
+			const std::vector<index_type> l = list;
 			submat_axis_ a;
 			a.full = false;
 			if (l.size() == 0) {
@@ -1586,7 +1587,7 @@ namespace vcp {
 						"submat: invalid column range: ", l[0], ":", l[1], ":", l[2]);
 				}
 				index_type k = 0;
-				for (int i = l[0]; i <= l[2]; i += l[1]) {
+				for (index_type i = l[0]; i <= l[2]; i += l[1]) {
 					k++;
 				}
 				a.start = static_cast<index_type>(l[0]);

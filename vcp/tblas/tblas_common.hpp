@@ -48,6 +48,7 @@
 #include <atomic>
 #include <exception>
 #include <vcp/error.hpp>
+#include <vcp/vblas/rdblas.hpp>
 
 // --- tblas-layer OpenMP guard (SLU-K1F, mirrors spmats SS6.1 / ldbase) ---
 // VCP_NOMP             : global kill switch (implies VCP_TBLAS_NOMP)
@@ -274,6 +275,165 @@ inline void expand_triangular(const bool upper, const bool nounit, const int n, 
 		}
 	}
 }
+
+} // namespace tblas_detail
+
+// double without tblas_double.hpp / tlapack_double.hpp: the generic functions below hand a double call over to
+// VCP's own double routines (the same ones dblas.hpp / dlapack.hpp call), with the current rounding mode.
+// The explicit specializations of tblas_double.hpp / tlapack_double.hpp replace the whole function, so a
+// translation unit that includes them does not come here.
+namespace tblas_detail {
+
+// T other than double: no route (the members are never called)
+template <typename T>
+struct double_route {
+	enum { on = 0 };
+	template <typename... A> static void copy(const A&...) {}
+	template <typename... A> static void swap(const A&...) {}
+	template <typename... A> static int iamax(const A&...) { return 0; }
+	template <typename... A> static void scal(const A&...) {}
+	template <typename... A> static void axpy(const A&...) {}
+	template <typename... A> static T dot(const A&...) { return T(0); }
+	template <typename... A> static T asum(const A&...) { return T(0); }
+	template <typename... A> static T nrm2(const A&...) { return T(0); }
+	template <typename... A> static void rot(const A&...) {}
+	template <typename... A> static void rotg(const A&...) {}
+	template <typename... A> static void rotm(const A&...) {}
+	template <typename... A> static void rotmg(const A&...) {}
+	template <typename... A> static void gemv(const A&...) {}
+	template <typename... A> static void gbmv(const A&...) {}
+	template <typename... A> static void symv(const A&...) {}
+	template <typename... A> static void sbmv(const A&...) {}
+	template <typename... A> static void spmv(const A&...) {}
+	template <typename... A> static void trmv(const A&...) {}
+	template <typename... A> static void trsv(const A&...) {}
+	template <typename... A> static void tbmv(const A&...) {}
+	template <typename... A> static void tbsv(const A&...) {}
+	template <typename... A> static void tpmv(const A&...) {}
+	template <typename... A> static void tpsv(const A&...) {}
+	template <typename... A> static void ger(const A&...) {}
+	template <typename... A> static void syr(const A&...) {}
+	template <typename... A> static void spr(const A&...) {}
+	template <typename... A> static void syr2(const A&...) {}
+	template <typename... A> static void spr2(const A&...) {}
+	template <typename... A> static void gemm(const A&...) {}
+	template <typename... A> static void symm(const A&...) {}
+	template <typename... A> static void syrk(const A&...) {}
+	template <typename... A> static void syr2k(const A&...) {}
+	template <typename... A> static void trmm(const A&...) {}
+	template <typename... A> static void trsm(const A&...) {}
+	template <typename... A> static void gemmtr(const A&...) {}
+};
+
+template <>
+struct double_route<double> {
+	enum { on = 1 };
+	static void copy(const int n, const double* x, const int incx, double* y, const int incy) {
+		vcp::dcopy(n, x, incx, y, incy);
+	}
+	static void swap(const int n, double* x, const int incx, double* y, const int incy) {
+		vcp::dswap(n, x, incx, y, incy);
+	}
+	static int iamax(const int n, const double* x, const int incx) {
+		return vcp::idamax(n, x, incx);
+	}
+	static void scal(const int n, const double& alpha, double* x, const int incx) {
+		vcp::rdscal(n, alpha, x, incx, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void axpy(const int n, const double& alpha, const double* x, const int incx, double* y, const int incy) {
+		vcp::rdaxpy(n, alpha, x, incx, y, incy, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static double dot(const int n, const double* x, const int incx, const double* y, const int incy) {
+		return vcp::rddot(n, x, incx, y, incy, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static double asum(const int n, const double* x, const int incx) {
+		return vcp::rdasum(n, x, incx, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static double nrm2(const int n, const double* x, const int incx) {
+		return vcp::rdnrm2(n, x, incx, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void rot(const int n, double* x, const int incx, double* y, const int incy, const double& c, const double& s) {
+		vcp::rdrot(n, x, incx, y, incy, c, s, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void rotg(double* a, double* b, double* c, double* s) {
+		vcp::rdrotg(a, b, c, s, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void rotm(const int n, double* x, const int incx, double* y, const int incy, const double* param) {
+		vcp::rdrotm(n, x, incx, y, incy, param, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void rotmg(double* d1, double* d2, double* x1, const double& y1, double* param) {
+		vcp::rdrotmg(d1, d2, x1, y1, param, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void gemv(const char trans, const int m, const int n, const double& alpha, const double* A, const int lda, const double* x, const int incx, const double& beta, double* y, const int incy) {
+		vcp::rdgemv(trans, m, n, alpha, A, lda, x, incx, beta, y, incy, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void gbmv(const char trans, const int m, const int n, const int kl, const int ku, const double& alpha, const double* A, const int lda, const double* x, const int incx, const double& beta, double* y, const int incy) {
+		vcp::rdgbmv(trans, m, n, kl, ku, alpha, A, lda, x, incx, beta, y, incy, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void symv(const char uplo, const int n, const double& alpha, const double* A, const int lda, const double* x, const int incx, const double& beta, double* y, const int incy) {
+		vcp::rdsymv(uplo, n, alpha, A, lda, x, incx, beta, y, incy, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void sbmv(const char uplo, const int n, const int k, const double& alpha, const double* A, const int lda, const double* x, const int incx, const double& beta, double* y, const int incy) {
+		vcp::rdsbmv(uplo, n, k, alpha, A, lda, x, incx, beta, y, incy, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void spmv(const char uplo, const int n, const double& alpha, const double* AP, const double* x, const int incx, const double& beta, double* y, const int incy) {
+		vcp::rdspmv(uplo, n, alpha, AP, x, incx, beta, y, incy, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void trmv(const char uplo, const char trans, const char diag, const int n, const double* A, const int lda, double* x, const int incx) {
+		vcp::rdtrmv(uplo, trans, diag, n, A, lda, x, incx, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void trsv(const char uplo, const char trans, const char diag, const int n, const double* A, const int lda, double* x, const int incx) {
+		vcp::rdtrsv(uplo, trans, diag, n, A, lda, x, incx, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void tbmv(const char uplo, const char trans, const char diag, const int n, const int k, const double* A, const int lda, double* x, const int incx) {
+		vcp::rdtbmv(uplo, trans, diag, n, k, A, lda, x, incx, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void tbsv(const char uplo, const char trans, const char diag, const int n, const int k, const double* A, const int lda, double* x, const int incx) {
+		vcp::rdtbsv(uplo, trans, diag, n, k, A, lda, x, incx, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void tpmv(const char uplo, const char trans, const char diag, const int n, const double* AP, double* x, const int incx) {
+		vcp::rdtpmv(uplo, trans, diag, n, AP, x, incx, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void tpsv(const char uplo, const char trans, const char diag, const int n, const double* AP, double* x, const int incx) {
+		vcp::rdtpsv(uplo, trans, diag, n, AP, x, incx, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void ger(const int m, const int n, const double& alpha, const double* x, const int incx, const double* y, const int incy, double* A, const int lda) {
+		vcp::rdger(m, n, alpha, x, incx, y, incy, A, lda, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void syr(const char uplo, const int n, const double& alpha, const double* x, const int incx, double* A, const int lda) {
+		vcp::rdsyr(uplo, n, alpha, x, incx, A, lda, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void spr(const char uplo, const int n, const double& alpha, const double* x, const int incx, double* AP) {
+		vcp::rdspr(uplo, n, alpha, x, incx, AP, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void syr2(const char uplo, const int n, const double& alpha, const double* x, const int incx, const double* y, const int incy, double* A, const int lda) {
+		vcp::rdsyr2(uplo, n, alpha, x, incx, y, incy, A, lda, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void spr2(const char uplo, const int n, const double& alpha, const double* x, const int incx, const double* y, const int incy, double* AP) {
+		vcp::rdspr2(uplo, n, alpha, x, incx, y, incy, AP, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void gemm(const char transa, const char transb, const int m, const int n, const int k, const double& alpha, const double* A, const int lda, const double* B, const int ldb, const double& beta, double* C, const int ldc) {
+		vcp::rdgemm(transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void symm(const char side, const char uplo, const int m, const int n, const double& alpha, const double* A, const int lda, const double* B, const int ldb, const double& beta, double* C, const int ldc) {
+		vcp::rdsymm(side, uplo, m, n, alpha, A, lda, B, ldb, beta, C, ldc, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void syrk(const char uplo, const char trans, const int n, const int k, const double& alpha, const double* A, const int lda, const double& beta, double* C, const int ldc) {
+		vcp::rdsyrk(uplo, trans, n, k, alpha, A, lda, beta, C, ldc, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void syr2k(const char uplo, const char trans, const int n, const int k, const double& alpha, const double* A, const int lda, const double* B, const int ldb, const double& beta, double* C, const int ldc) {
+		vcp::rdsyr2k(uplo, trans, n, k, alpha, A, lda, B, ldb, beta, C, ldc, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void trmm(const char side, const char uplo, const char transa, const char diag, const int m, const int n, const double& alpha, const double* A, const int lda, double* B, const int ldb) {
+		vcp::rdtrmm(side, uplo, transa, diag, m, n, alpha, A, lda, B, ldb, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void trsm(const char side, const char uplo, const char transa, const char diag, const int m, const int n, const double& alpha, const double* A, const int lda, double* B, const int ldb) {
+		vcp::rdtrsm(side, uplo, transa, diag, m, n, alpha, A, lda, B, ldb, vblas_rdblas_detail::current_rounding_mode());
+	}
+	static void gemmtr(const char uplo, const char transa, const char transb, const int n, const int k, const double& alpha, const double* A, const int lda, const double* B, const int ldb, const double& beta, double* C, const int ldc) {
+		vcp::rdgemmtr(uplo, transa, transb, n, k, alpha, A, lda, B, ldb, beta, C, ldc, vblas_rdblas_detail::current_rounding_mode());
+	}
+};
 
 } // namespace tblas_detail
 

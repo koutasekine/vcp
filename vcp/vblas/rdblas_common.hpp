@@ -46,7 +46,7 @@
 #include <stdexcept>
 #include <vcp/error.hpp>
 
-#include <omp.h>
+#include "rdblas_omp.hpp"
 
 #include "rmatmul_common.hpp"
 
@@ -125,7 +125,9 @@ inline void scale_matrix(const int m, const int n, const double beta, double* C,
 	}
 	const int threads = threads_for_flops(static_cast<double>(m) * n);
 	if (beta == 0.0) {
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) num_threads(threads)
+#endif
 		for (int j = 0; j < n; j++) {
 			double* c = C + static_cast<std::size_t>(ldc) * j;
 			for (int i = 0; i < m; i++) {
@@ -134,10 +136,14 @@ inline void scale_matrix(const int m, const int n, const double beta, double* C,
 		}
 		return;
 	}
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(threads)
+#endif
 	{
 		RoundingGuard guard(fe_mode);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 		for (int j = 0; j < n; j++) {
 			double* c = C + static_cast<std::size_t>(ldc) * j;
 			for (int i = 0; i < m; i++) {
@@ -164,10 +170,14 @@ inline void apply_alpha_beta(
 		return;
 	}
 	const int threads = threads_for_flops(2.0 * m * n);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(threads)
+#endif
 	{
 		RoundingGuard guard(fe_mode);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 		for (int j = 0; j < n; j++) {
 			const double* t = T + static_cast<std::size_t>(m) * j;
 			double* c = C + static_cast<std::size_t>(ldc) * j;
@@ -200,7 +210,9 @@ inline void apply_alpha_beta(
 // dst(m x n 連続) := src(m x n, ld 付き)．FP 演算なしの copy．
 inline void pack_no_trans(const int m, const int n, const double* src, const int ld, double* dst) {
 	const int threads = threads_for_flops(static_cast<double>(m) * n);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) num_threads(threads)
+#endif
 	for (int j = 0; j < n; j++) {
 		const double* s = src + static_cast<std::size_t>(ld) * j;
 		double* d = dst + static_cast<std::size_t>(m) * j;
@@ -216,7 +228,9 @@ inline void pack_trans(const int m, const int n, const double* src, const int ld
 	const int jblocks = (n + TB - 1) / TB;
 	const int iblocks = (m + TB - 1) / TB;
 	const int threads = threads_for_flops(static_cast<double>(m) * n);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel for collapse(2) schedule(static) num_threads(threads)
+#endif
 	for (int jb = 0; jb < jblocks; jb++) {
 		for (int ib = 0; ib < iblocks; ib++) {
 			const int j0 = jb * TB;
@@ -232,6 +246,19 @@ inline void pack_trans(const int m, const int n, const double* src, const int ld
 			}
 		}
 	}
+}
+
+// 現在の丸めモードを rdblas / rdlapack の rounding_mode へ変換する
+// (FE_DOWNWARD -> -1, FE_UPWARD -> 1, それ以外 -> 0)
+inline int current_rounding_mode() {
+	const int mode = vblas_rmatmul_common_detail::get_rounding_mode();
+	if (mode == FE_DOWNWARD) {
+		return -1;
+	}
+	if (mode == FE_UPWARD) {
+		return 1;
+	}
+	return 0;
 }
 
 } // namespace vblas_rdblas_detail

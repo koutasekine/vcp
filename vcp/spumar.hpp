@@ -16,15 +16,18 @@
 // spumar.hpp — external-delegation sparse policy (UMFPACK + ARPACK),
 // design: sandbox/docs/design/spumar_design_v1.1.md.
 //
-//   class spumar : public spmats<double>
+//   template <typename _Index> class spumar_basic : public spmats<double, _Index>
+//   typedef spumar_basic<std::int64_t> spumar;
 //   usage: vcp::spmatrix<double, vcp::spumar>   (T = double ONLY, B-3)
 //
-// Overrides exactly the four virtual _impl replacement points of design
-// §1.1a (NVI discipline; the non-virtual outers are never overridden):
-//   1. policy_lss_with_info_impl                (UMFPACK, this file; SPU-0)
-//   2. policy_lu_with_info_impl                 (UMFPACK get_numeric; SPU-1)
-//   3. policy_eigs_with_info_impl               (ARPACK; SPU-2)
-//   4. policy_generalized_eigs_with_info_impl   (ARPACK mode 3; SPU-3)
+// Overrides six virtual _impl replacement points (design §1.1a; NVI
+// discipline; the non-virtual outers are never overridden):
+//   1.  policy_lss_with_info_impl               (UMFPACK, this file; SPU-0)
+//   1b. policy_lss_multi_with_info_impl         (UMFPACK, one factorization)
+//   2.  policy_lu_with_info_impl                (UMFPACK get_numeric; SPU-1)
+//   2b. policy_lu_factorize_with_info_impl      (handle; factors of #2)
+//   3.  policy_eigs_with_info_impl              (ARPACK; SPU-2)
+//   4.  policy_generalized_eigs_with_info_impl  (ARPACK mode 3; SPU-3)
 // Everything else (LDL, inertia, LU consumers, mul, strict shells) runs the
 // base spmats<double> implementation unchanged — in particular LDL / inertia
 // have NO external oracle in this configuration and use the (slower) own
@@ -49,6 +52,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -76,8 +80,9 @@ namespace spumar_detail {
 	}
 
 	// ||A||_F — base helper 13 mirror
-	inline double mat_frob_norm_(const vcp::spmats<double, int>& A) {
-		vcp::spmats<double, int> C = A.as_csr();
+	template <typename _Index>
+	inline double mat_frob_norm_(const vcp::spmats<double, _Index>& A) {
+		vcp::spmats<double, _Index> C = A.as_csr();
 		const std::vector<double>& val = C.values();
 		double s = 0.0;
 		for (std::size_t i = 0; i < val.size(); i++) s += val[i] * val[i];
@@ -85,7 +90,8 @@ namespace spumar_detail {
 	}
 
 	// real eigenpair: ||A v - lambda v||_2 — base helper 14 mirror
-	inline double pair_residual_abs_(const vcp::spmats<double, int>& A,
+	template <typename _Index>
+	inline double pair_residual_abs_(const vcp::spmats<double, _Index>& A,
 	                                 const double lambda, const std::vector<double>& v) {
 		std::vector<double> r = A.mul_vec(v);
 		for (std::size_t i = 0; i < r.size(); i++) r[i] -= lambda * v[i];
@@ -101,8 +107,9 @@ namespace spumar_detail {
 	}
 
 	// generalized pair: ||A v - lambda B v||_2 — base helper 24 mirror
-	inline double gen_pair_residual_abs_(const vcp::spmats<double, int>& A,
-	                                     const vcp::spmats<double, int>& B,
+	template <typename _Index>
+	inline double gen_pair_residual_abs_(const vcp::spmats<double, _Index>& A,
+	                                     const vcp::spmats<double, _Index>& B,
 	                                     const double lambda, const std::vector<double>& v) {
 		std::vector<double> r = A.mul_vec(v);
 		const std::vector<double> bv = B.mul_vec(v);
@@ -121,7 +128,8 @@ namespace spumar_detail {
 
 	// complex conjugate pair (u, v; lambda = re +- i*im), eig_result
 	// convention: || A [u v] - [u v] B ||_F with B = [[re, im], [-im, re]].
-	inline double pair_residual_abs_complex_(const vcp::spmats<double, int>& A,
+	template <typename _Index>
+	inline double pair_residual_abs_complex_(const vcp::spmats<double, _Index>& A,
 	                                         const double re, const double im,
 	                                         const std::vector<double>& u,
 	                                         const std::vector<double>& v) {
@@ -158,6 +166,14 @@ namespace vcp {
 
 		spumar_options() : ncv(0), umf_irstep(-1), umf_pivot_tol(-1.0) {}
 	};
+
+	// The process-wide default options.  One object for every index type of
+	// spumar_basic (the default is a property of the process, not of the
+	// index type).  NOT thread-safe (see the header comment).
+	inline spumar_options& spumar_default_options_ref_() {
+		static spumar_options o;
+		return o;
+	}
 
 	// -----------------------------------------------------------------------
 	// spumar_delegate_info (S-5): raw diagnostic cache of the LAST delegated
@@ -196,11 +212,21 @@ namespace vcp {
 	};
 
 	// -----------------------------------------------------------------------
-	// spumar
+	// spumar_basic<_Index>: the policy for the sparse index type _Index.
+	// Only _Index = std::int64_t is supported (UMFPACK dl,
+	// spumar_detail::umfpack_api<_Index>); any other index type stops at the
+	// static_assert below.  ARPACK takes n as int.  vcp::spumar is an alias
+	// (end of this file).
 	// -----------------------------------------------------------------------
-	class spumar : public spmats<double> {
+	template <typename _Index>
+	class spumar_basic : public spmats<double, _Index> {
+		static_assert(std::is_same<_Index, std::int64_t>::value,
+			"vcp::spumar supports only the index type std::int64_t (it calls the "
+			"64-bit UMFPACK interface umfpack_dl_*); use vcp::spumar, or "
+			"vcp::spmats<double, int> for a 32-bit index without UMFPACK");
 	public:
-		typedef spmats<double> base_type;
+		typedef spmats<double, _Index> base_type;
+		typedef typename base_type::index_type index_type;
 
 		// Per-object options (design §1.4).  When used through
 		// spmatrix<double, vcp::spumar>, the process-wide static default is
@@ -211,7 +237,7 @@ namespace vcp {
 		// written from const _impl overrides; not thread-safe).
 		mutable spumar_delegate_info last_delegate_info;
 
-		spumar() : base_type(), muar_opt(default_options_ref()) {}
+		spumar_basic() : base_type(), muar_opt(default_options_ref()) {}
 
 		// SPUM-FIX1 (design §2.1): spmatrix arithmetic and other
 		// result-returning APIs assign a base spmats<double> value through
@@ -221,7 +247,7 @@ namespace vcp {
 		// (spimats.hpp L238 と同一規律).  muar_opt / last_delegate_info are
 		// NOT touched (design R-1 / R-2, SPI-1 precedent); the implicit copy
 		// assignment operator=(const spumar&) remains implicitly defined.
-		spumar& operator=(const base_type& rhs) {
+		spumar_basic& operator=(const base_type& rhs) {
 			base_type::operator=(rhs);
 			return *this;
 		}
@@ -333,7 +359,7 @@ namespace vcp {
 			result.used_shift_invert = true;
 			result.used_subspace_dim = ncv_s;
 
-			const spmats<double, int> S = shifted_standard_(sigma);
+			const spmats<double, _Index> S = shifted_standard_(sigma);
 			const std::size_t inner_max = std::min(n, std::size_t(100));
 			const double inner_tol = opt.tol / 10.0;
 			bool failed = false;
@@ -371,7 +397,7 @@ namespace vcp {
 
 		template <class Prec>
 		eig_result<double> policy_generalized_eigs_with_info(
-			const spmats<double, int>& B,
+			const spmats<double, _Index>& B,
 			std::size_t k, const eig_options<double>& opt, const Prec& M) const
 		{
 			if (!this->is_finalized()) this->finalize();
@@ -406,7 +432,7 @@ namespace vcp {
 			result.used_generalized_operator = true;
 			result.used_subspace_dim = ncv_s;
 
-			const spmats<double, int> S = shifted_generalized_(B, sigma);
+			const spmats<double, _Index> S = shifted_generalized_(B, sigma);
 			const std::size_t inner_max = std::min(n, std::size_t(100));
 			const double inner_tol = opt.tol / 10.0;
 			bool failed = false;
@@ -432,7 +458,7 @@ namespace vcp {
 
 		template <class Prec>
 		std::vector<double> policy_generalized_eigs(
-			const spmats<double, int>& B,
+			const spmats<double, _Index>& B,
 			std::size_t k, const eig_options<double>& opt, const Prec& M) const
 		{
 			const eig_result<double> result = policy_generalized_eigs_with_info(B, k, opt, M);
@@ -510,7 +536,7 @@ namespace vcp {
 				return result;
 			}
 
-			spumar_detail::umfpack_lu lu;
+			spumar_detail::umfpack_lu_basic<_Index> lu;
 			if (muar_opt.umf_irstep >= 0) {
 				lu.control[UMFPACK_IRSTEP] = static_cast<double>(muar_opt.umf_irstep);
 			}
@@ -600,7 +626,7 @@ namespace vcp {
 				for (std::size_t c = 0; c < B.size(); c++) { out[c].x.clear(); out[c].solution.clear(); out[c].converged = true; }
 				return out;
 			}
-			spumar_detail::umfpack_lu lu;
+			spumar_detail::umfpack_lu_basic<_Index> lu;
 			if (muar_opt.umf_irstep >= 0) {
 				lu.control[UMFPACK_IRSTEP] = static_cast<double>(muar_opt.umf_irstep);
 			}
@@ -663,12 +689,12 @@ namespace vcp {
 		//     into CSC by a counting pass (ascending rows by construction);
 		//     exact zeros are dropped on both factors (§C storage rule).
 		// -------------------------------------------------------------------
-		virtual lu_extract_result<double, int> policy_lu_with_info_impl(
-			spmats<double, int>& L, spmats<double, int>& U,
-			std::vector<int>& p, std::vector<int>& q,
+		virtual lu_extract_result<double, _Index> policy_lu_with_info_impl(
+			spmats<double, _Index>& L, spmats<double, _Index>& U,
+			std::vector<_Index>& p, std::vector<_Index>& q,
 			const lu_extract_options<double>& opt) const override
 		{
-			lu_extract_result<double, int> out;
+			lu_extract_result<double, _Index> out;
 			out.method_used = opt.slu.method;     // request echoed (S-3)
 			out.ordering_used = opt.slu.ordering; // request record (S-3)
 
@@ -691,11 +717,11 @@ namespace vcp {
 				return out;
 			}
 
-			const int n = this->rowsize();
+			const _Index n = this->rowsize();
 			if (n == 0) {
-				std::vector<int> ptr(1, 0);
-				L.assign_csc(0, 0, ptr, std::vector<int>(), std::vector<double>());
-				U.assign_csc(0, 0, ptr, std::vector<int>(), std::vector<double>());
+				std::vector<_Index> ptr(1, 0);
+				L.assign_csc(0, 0, ptr, std::vector<_Index>(), std::vector<double>());
+				U.assign_csc(0, 0, ptr, std::vector<_Index>(), std::vector<double>());
 				out.nnz_L = 0;
 				out.nnz_U = 0;
 				out.status = sparse_lu_extract_status::success;
@@ -703,7 +729,7 @@ namespace vcp {
 			}
 
 			try {
-				spumar_detail::umfpack_lu lu;
+				spumar_detail::umfpack_lu_basic<_Index> lu;
 				lu.control[UMFPACK_SCALE] = UMFPACK_SCALE_NONE; // §C forced
 				if (muar_opt.umf_pivot_tol >= 0.0) {
 					lu.control[UMFPACK_PIVOT_TOLERANCE] = muar_opt.umf_pivot_tol;
@@ -724,8 +750,8 @@ namespace vcp {
 					return out;
 				}
 
-				int lnz = 0, unz = 0, n_row = 0, n_col = 0, nz_udiag = 0;
-				int status = umfpack_di_get_lunz(&lnz, &unz, &n_row, &n_col,
+				_Index lnz = 0, unz = 0, n_row = 0, n_col = 0, nz_udiag = 0;
+				int status = spumar_detail::umfpack_api<_Index>::get_lunz(&lnz, &unz, &n_row, &n_col,
 					&nz_udiag, lu.numeric_handle());
 				if (status != UMFPACK_OK || n_row != n || n_col != n) {
 					last_delegate_info.umfpack_solve_status = status;
@@ -738,17 +764,16 @@ namespace vcp {
 					return out;
 				}
 
-				std::vector<int> Lp(static_cast<std::size_t>(n) + 1),
+				std::vector<_Index> Lp(static_cast<std::size_t>(n) + 1),
 					Lj(static_cast<std::size_t>(lnz)),
 					Up(static_cast<std::size_t>(n) + 1),
 					Ui(static_cast<std::size_t>(unz)),
 					Pv(static_cast<std::size_t>(n)), Qv(static_cast<std::size_t>(n));
 				std::vector<double> Lx(static_cast<std::size_t>(lnz)),
 					Ux(static_cast<std::size_t>(unz));
-				status = umfpack_di_get_numeric(Lp.data(), Lj.data(), Lx.data(),
+				status = spumar_detail::umfpack_api<_Index>::get_numeric(Lp.data(), Lj.data(), Lx.data(),
 					Up.data(), Ui.data(), Ux.data(), Pv.data(), Qv.data(),
-					static_cast<double*>(0), static_cast<int*>(0),
-					static_cast<double*>(0), lu.numeric_handle());
+					lu.numeric_handle());
 				if (status != UMFPACK_OK) {
 					last_delegate_info.umfpack_solve_status = status;
 					out.status = sparse_lu_extract_status::internal_error;
@@ -759,28 +784,28 @@ namespace vcp {
 				//      exact zeros dropped (the unit diagonal is 1.0 and
 				//      survives by value). Ascending rows per column follow
 				//      from the ascending row sweep.
-				std::vector<int> Lc_ptr(static_cast<std::size_t>(n) + 1, 0);
-				for (int i = 0; i < n; i++) {
-					for (int k = Lp[static_cast<std::size_t>(i)];
+				std::vector<_Index> Lc_ptr(static_cast<std::size_t>(n) + 1, 0);
+				for (_Index i = 0; i < n; i++) {
+					for (_Index k = Lp[static_cast<std::size_t>(i)];
 					     k < Lp[static_cast<std::size_t>(i) + 1]; k++) {
 						if (Lx[static_cast<std::size_t>(k)] == 0.0) continue;
 						Lc_ptr[static_cast<std::size_t>(Lj[static_cast<std::size_t>(k)]) + 1]++;
 					}
 				}
-				for (int j = 0; j < n; j++) {
+				for (_Index j = 0; j < n; j++) {
 					Lc_ptr[static_cast<std::size_t>(j) + 1] += Lc_ptr[static_cast<std::size_t>(j)];
 				}
 				const std::size_t l_stored = static_cast<std::size_t>(Lc_ptr[static_cast<std::size_t>(n)]);
-				std::vector<int> Lc_row(l_stored);
+				std::vector<_Index> Lc_row(l_stored);
 				std::vector<double> Lc_val(l_stored);
 				{
-					std::vector<int> next(Lc_ptr.begin(), Lc_ptr.end() - 1);
-					for (int i = 0; i < n; i++) {
-						for (int k = Lp[static_cast<std::size_t>(i)];
+					std::vector<_Index> next(Lc_ptr.begin(), Lc_ptr.end() - 1);
+					for (_Index i = 0; i < n; i++) {
+						for (_Index k = Lp[static_cast<std::size_t>(i)];
 						     k < Lp[static_cast<std::size_t>(i) + 1]; k++) {
 							const double v = Lx[static_cast<std::size_t>(k)];
 							if (v == 0.0) continue;
-							const int j = Lj[static_cast<std::size_t>(k)];
+							const _Index j = Lj[static_cast<std::size_t>(k)];
 							const std::size_t dst = static_cast<std::size_t>(next[static_cast<std::size_t>(j)]++);
 							Lc_row[dst] = i;
 							Lc_val[dst] = v;
@@ -790,28 +815,28 @@ namespace vcp {
 
 				// ---- U: already CSC (column form, ascending rows); drop
 				//      exact zeros.
-				std::vector<int> Uc_ptr(static_cast<std::size_t>(n) + 1, 0);
-				std::vector<int> Uc_row;
+				std::vector<_Index> Uc_ptr(static_cast<std::size_t>(n) + 1, 0);
+				std::vector<_Index> Uc_row;
 				std::vector<double> Uc_val;
 				Uc_row.reserve(static_cast<std::size_t>(unz));
 				Uc_val.reserve(static_cast<std::size_t>(unz));
-				for (int j = 0; j < n; j++) {
-					for (int k = Up[static_cast<std::size_t>(j)];
+				for (_Index j = 0; j < n; j++) {
+					for (_Index k = Up[static_cast<std::size_t>(j)];
 					     k < Up[static_cast<std::size_t>(j) + 1]; k++) {
 						const double v = Ux[static_cast<std::size_t>(k)];
 						if (v == 0.0) continue;
 						Uc_row.push_back(Ui[static_cast<std::size_t>(k)]);
 						Uc_val.push_back(v);
 					}
-					Uc_ptr[static_cast<std::size_t>(j) + 1] = static_cast<int>(Uc_val.size());
+					Uc_ptr[static_cast<std::size_t>(j) + 1] = static_cast<_Index>(Uc_val.size());
 				}
 
 				// A numerically zero U diagonal entry would have been
 				// dropped above: re-verify the explicit diagonal survived
 				// (defense in depth on top of nz_udiag).
-				for (int j = 0; j < n; j++) {
-					const int b = Uc_ptr[static_cast<std::size_t>(j)];
-					const int e = Uc_ptr[static_cast<std::size_t>(j) + 1];
+				for (_Index j = 0; j < n; j++) {
+					const _Index b = Uc_ptr[static_cast<std::size_t>(j)];
+					const _Index e = Uc_ptr[static_cast<std::size_t>(j) + 1];
 					if (b >= e || Uc_row[static_cast<std::size_t>(e) - 1] != j) {
 						out.status = sparse_lu_extract_status::invalid_factorization;
 						return out;
@@ -822,18 +847,104 @@ namespace vcp {
 				U.assign_csc(n, n, Uc_ptr, Uc_row, Uc_val);
 				p.assign(Pv.begin(), Pv.end());
 				q.assign(Qv.begin(), Qv.end());
-				out.nnz_L = static_cast<int>(l_stored);
-				out.nnz_U = static_cast<int>(Uc_val.size());
+				out.nnz_L = static_cast<_Index>(l_stored);
+				out.nnz_U = static_cast<_Index>(Uc_val.size());
 				out.status = sparse_lu_extract_status::success;
 				return out;
 			} catch (const vcp::error&) {
 				throw; // misuse keeps its throwing contract (base parity)
 			} catch (const std::exception&) {
-				lu_extract_result<double, int> fresh;
+				lu_extract_result<double, _Index> fresh;
 				fresh.method_used = opt.slu.method;
 				fresh.ordering_used = opt.slu.ordering;
 				fresh.status = sparse_lu_extract_status::internal_error;
 				return fresh;
+			}
+		}
+
+		// -------------------------------------------------------------------
+		// Override #2b: LU factorization handle (lu_factorize_with_info).
+		// Called through the non-virtual outer policy_lu_factorize_with_info
+		// (finalize guarantee + squareness check).  The factorization is the
+		// ONE of override #2 (policy_lu_with_info_impl with the argument as
+		// lu_extract_options::slu): method / ordering / scaling / pivoting and
+		// last_delegate_info are exactly those of override #2.  The UMFPACK
+		// factors (P A Q = L U, p / q new->old) are stored in the handle as a
+		// baseline CSC factor; the handle solves with the base triangular
+		// solves (and the base iterative refinement when
+		// opt.iterative_refinement == true) -- UMFPACK's solve is not used and
+		// no UMFPACK object is kept.
+		//   - equilibration == true (unsupported_options) -> non-valid handle,
+		//     status() = invalid_input (no throw).
+		//   - invalid_factorization -> non-valid handle, status() =
+		//     numerical_singularity; any other failure status -> non-valid
+		//     handle, status() = internal_error.  n is recorded.
+		//   - vcp::error is rethrown; any other std::exception -> non-valid
+		//     handle, status() = internal_error.
+		//   - info(): method_used is the one of override #2 (request echoed);
+		//     fields UMFPACK does not provide (growth_factor etc.) carry no
+		//     meaning.
+		// -------------------------------------------------------------------
+		virtual lu_factor_handle<double, _Index> policy_lu_factorize_with_info_impl(
+			const sparse_lu_options<double>& opt) const override
+		{
+			const _Index n = this->rowsize();
+			try {
+				lu_extract_options<double> xopt;
+				xopt.slu = opt;
+				spmats<double, _Index> L, U;
+				std::vector<_Index> p, q;
+				const lu_extract_result<double, _Index> r =
+					policy_lu_with_info_impl(L, U, p, q, xopt);
+
+				lu_factor_handle<double, _Index> handle;
+				if (r.status != sparse_lu_extract_status::success) {
+					sparse_lu_status st = sparse_lu_status::internal_error;
+					if (r.status == sparse_lu_extract_status::unsupported_options) {
+						st = sparse_lu_status::invalid_input;
+					} else if (r.status == sparse_lu_extract_status::invalid_factorization) {
+						st = sparse_lu_status::numerical_singularity;
+					}
+					spmats_lu_factor_detail::handle_access::assign(
+						handle,
+						vcp::sparse_lu_make_failed_factor<double, _Index>(n, st, r.method_used),
+						spmats<double, _Index>(), opt, n, false);
+					return handle;
+				}
+
+				// L / U arrive in CSC form (assign_csc in override #2).
+				baseline_lu_storage<double, _Index> st;
+				st.L.col_ptr = L.outer_index();
+				st.L.row_ind = L.inner_index();
+				st.L.values = L.values();
+				st.U.col_ptr = U.outer_index();
+				st.U.row_ind = U.inner_index();
+				st.U.values = U.values();
+				st.row_perm = p;
+				st.col_perm = q;
+				st.inv_row_perm.assign(p.size(), 0);
+				st.inv_col_perm.assign(q.size(), 0);
+				for (std::size_t k = 0; k < p.size(); k++) {
+					st.inv_row_perm[static_cast<std::size_t>(p[k])] = static_cast<_Index>(k);
+				}
+				for (std::size_t k = 0; k < q.size(); k++) {
+					st.inv_col_perm[static_cast<std::size_t>(q[k])] = static_cast<_Index>(k);
+				}
+				spmats_lu_factor_detail::handle_access::assign(
+					handle,
+					vcp::sparse_lu_make_factor_from_baseline_storage<double, _Index>(n, st, r.method_used),
+					this->as_csr(), opt, n, true);
+				return handle;
+			} catch (const vcp::error&) {
+				throw; // misuse keeps its throwing contract (base parity)
+			} catch (const std::exception&) {
+				lu_factor_handle<double, _Index> handle;
+				spmats_lu_factor_detail::handle_access::assign(
+					handle,
+					vcp::sparse_lu_make_failed_factor<double, _Index>(
+						n, sparse_lu_status::internal_error, opt.method),
+					spmats<double, _Index>(), opt, n, false);
+				return handle;
 			}
 		}
 
@@ -882,7 +993,7 @@ namespace vcp {
 				last_delegate_info.clear();
 				last_delegate_info.backend = "spmats-base-fallback";
 				last_delegate_info.note = "eigs fallback to own implementation: " + fb;
-				return spmats<double>::policy_eigs_with_info_impl(k, opt);
+				return base_type::policy_eigs_with_info_impl(k, opt);
 			}
 
 			last_delegate_info.clear();
@@ -921,9 +1032,9 @@ namespace vcp {
 			//      (P-3); the solve itself is handed to the drive helper as a
 			//      Solve object (SPU-M1 M1-4; the lambda body of SPU-2 is kept) ----
 			std::size_t op_count = 0;
-			spumar_detail::umfpack_lu si_lu;
+			spumar_detail::umfpack_lu_basic<_Index> si_lu;
 			if (mode == 3) {
-				const spmats<double, int> S = shifted_standard_(sigma);
+				const spmats<double, _Index> S = shifted_standard_(sigma);
 				const int st = si_lu.factorize(S);
 				last_delegate_info.umfpack_symbolic_status = si_lu.symbolic_status();
 				last_delegate_info.umfpack_numeric_status = si_lu.numeric_status();
@@ -935,7 +1046,7 @@ namespace vcp {
 					last_delegate_info.backend = "spmats-base-fallback";
 					last_delegate_info.note = "eigs fallback to own implementation: " + fb
 						+ " (mode 3 with the implied sigma: factorization failed)";
-					return spmats<double>::policy_eigs_with_info_impl(k, opt);
+					return base_type::policy_eigs_with_info_impl(k, opt);
 				}
 				if (st != UMFPACK_OK) {
 					result.converged = false;
@@ -981,7 +1092,7 @@ namespace vcp {
 		// out of spumar's scope; documented).
 		// -------------------------------------------------------------------
 		virtual eig_result<double> policy_generalized_eigs_with_info_impl(
-			const spmats<double, int>& B,
+			const spmats<double, _Index>& B,
 			std::size_t k, const eig_options<double>& opt) const override
 		{
 			const std::size_t n = static_cast<std::size_t>(this->rowsize());
@@ -997,7 +1108,7 @@ namespace vcp {
 				last_delegate_info.clear();
 				last_delegate_info.backend = "spmats-base-fallback";
 				last_delegate_info.note = "generalized eigs fallback to own implementation: " + fb;
-				return spmats<double>::policy_generalized_eigs_with_info_impl(B, k, opt);
+				return base_type::policy_generalized_eigs_with_info_impl(B, k, opt);
 			}
 
 			last_delegate_info.clear();
@@ -1022,9 +1133,9 @@ namespace vcp {
 
 			// A - sigma B, factorized once (P-4); the solve is handed to the
 			// drive helper as a Solve object (SPU-M1 M1-4; SPU-3 lambda body kept).
-			spumar_detail::umfpack_lu si_lu;
+			spumar_detail::umfpack_lu_basic<_Index> si_lu;
 			{
-				const spmats<double, int> S = shifted_generalized_(B, sigma);
+				const spmats<double, _Index> S = shifted_generalized_(B, sigma);
 				const int st = si_lu.factorize(S);
 				last_delegate_info.umfpack_symbolic_status = si_lu.symbolic_status();
 				last_delegate_info.umfpack_numeric_status = si_lu.numeric_status();
@@ -1065,6 +1176,8 @@ namespace vcp {
 				fb = "dense_fallback_explicit requested";
 			} else if (n == 0 || k == 0 || this->rowsize() != this->columnsize()) {
 				fb = "degenerate/invalid sizes are the base's contract";
+			} else if (!spumar_detail::arpack_dimension_fits_(n)) {
+				fb = "n exceeds the int range of ARPACK";
 			} else if (k > n - 2) {
 				fb = "k > n-2 (outside ARPACK nev bounds)";
 			} else if (!opt.use_shift &&
@@ -1076,7 +1189,7 @@ namespace vcp {
 			return fb;
 		}
 		// routing of override #4 (delegable window)
-		std::string generalized_fallback_reason_(const spmats<double, int>& B, const std::size_t k,
+		std::string generalized_fallback_reason_(const spmats<double, _Index>& B, const std::size_t k,
 		                                         const eig_options<double>& opt) const
 		{
 			const std::size_t n = static_cast<std::size_t>(this->rowsize());
@@ -1086,6 +1199,8 @@ namespace vcp {
 			} else if (n == 0 || k == 0 || this->rowsize() != this->columnsize() ||
 			           B.rowsize() != this->rowsize() || B.rowsize() != B.columnsize()) {
 				fb = "degenerate/invalid sizes are the base's contract";
+			} else if (!spumar_detail::arpack_dimension_fits_(n)) {
+				fb = "n exceeds the int range of ARPACK";
 			} else if (k > n - 2) {
 				fb = "k > n-2 (outside ARPACK nev bounds)";
 			} else if (!opt.use_shift && opt.target != eig_target::smallest_magnitude) {
@@ -1147,7 +1262,7 @@ namespace vcp {
 			return standard_fallback_reason_(k, with_shift).empty();
 		}
 		// EIG-T1 T-3a: the generalized requests without shift that go to mode 2.
-		bool t3_generalized_mode2_route_(const spmats<double, int>& B, const std::size_t k,
+		bool t3_generalized_mode2_route_(const spmats<double, _Index>& B, const std::size_t k,
 		                                 const eig_options<double>& opt) const
 		{
 			if (opt.use_shift) return false;
@@ -1160,7 +1275,7 @@ namespace vcp {
 		// EIG-T1 T-3a: ARPACK mode 2, OP = B^{-1} A (bmat = 'G').  Symmetric:
 		// dsaupd (which = LM / LA / SA; x is overwritten with A*x, dsaupd.f
 		// remark 5).  Nonsymmetric A: dnaupd (which = LM / LR / SR).
-		eig_result<double> t3_generalized_mode2_(const spmats<double, int>& B,
+		eig_result<double> t3_generalized_mode2_(const spmats<double, _Index>& B,
 			const std::size_t k, const eig_options<double>& opt) const
 		{
 			const std::size_t n = static_cast<std::size_t>(this->rowsize());
@@ -1187,7 +1302,7 @@ namespace vcp {
 			result.used_generalized_operator = true;
 			result.used_subspace_dim = ncv_s;
 
-			spumar_detail::umfpack_lu b_lu;
+			spumar_detail::umfpack_lu_basic<_Index> b_lu;
 			{
 				const int st = b_lu.factorize(B);
 				last_delegate_info.umfpack_symbolic_status = b_lu.symbolic_status();
@@ -1206,8 +1321,8 @@ namespace vcp {
 			umfpack_solve_ solve = { &b_lu };
 
 			std::size_t solve_count = 0, mul_count = 0;
-			const spmats<double, int>* Ap = this;
-			const spmats<double, int>* Bp = &B;
+			const spmats<double, _Index>* Ap = this;
+			const spmats<double, _Index>* Bp = &B;
 			const std::size_t nn = n;
 			const umfpack_solve_* sp = &solve;
 			spumar_detail::arpack_op2_fn op2 =
@@ -1243,25 +1358,25 @@ namespace vcp {
 				solve_count, mul_count);
 		}
 		// S = A - sigma I (construction of override #3, verbatim)
-		spmats<double, int> shifted_standard_(const double sigma) const
+		spmats<double, _Index> shifted_standard_(const double sigma) const
 		{
 			const std::size_t n = static_cast<std::size_t>(this->rowsize());
-			spmats<double, int> S(*this);
-			for (int i = 0; i < static_cast<int>(n); i++) S.add(i, i, -sigma);
+			spmats<double, _Index> S(*this);
+			for (_Index i = 0; i < static_cast<_Index>(n); i++) S.add(i, i, -sigma);
 			S.finalize();
 			return S;
 		}
 		// S = A - sigma B (construction of override #4, verbatim)
-		spmats<double, int> shifted_generalized_(const spmats<double, int>& B, const double sigma) const
+		spmats<double, _Index> shifted_generalized_(const spmats<double, _Index>& B, const double sigma) const
 		{
-			spmats<double, int> S(*this);
+			spmats<double, _Index> S(*this);
 			if (sigma != 0.0) {
-				spmats<double, int> Bc = B.as_csr();
-				const std::vector<int>& outer = Bc.outer_index();
-				const std::vector<int>& inner = Bc.inner_index();
+				spmats<double, _Index> Bc = B.as_csr();
+				const std::vector<_Index>& outer = Bc.outer_index();
+				const std::vector<_Index>& inner = Bc.inner_index();
 				const std::vector<double>& val = Bc.values();
-				for (int i = 0; i < Bc.rowsize(); i++) {
-					for (int p = outer[static_cast<std::size_t>(i)];
+				for (_Index i = 0; i < Bc.rowsize(); i++) {
+					for (_Index p = outer[static_cast<std::size_t>(i)];
 					     p < outer[static_cast<std::size_t>(i) + 1]; p++) {
 						S.add(i, inner[static_cast<std::size_t>(p)],
 							-sigma * val[static_cast<std::size_t>(p)]);
@@ -1276,7 +1391,7 @@ namespace vcp {
 		//   bool operator()(const std::vector<double>& rhs, std::vector<double>& sol) const   (true = solved)
 		// M-less: the UMFPACK factor of S; the status is not inspected (as in SPU-2 / SPU-3).
 		struct umfpack_solve_ {
-			spumar_detail::umfpack_lu* lu;
+			spumar_detail::umfpack_lu_basic<_Index>* lu;
 			bool operator()(const std::vector<double>& rhs, std::vector<double>& sol) const {
 				lu->solve(rhs, sol);
 				return true;
@@ -1290,7 +1405,7 @@ namespace vcp {
 		// GMRES iterate is still returned (ARPACK cannot be stopped inside OP).
 		template <class Prec>
 		struct gmres_prec_solve_ {
-			const spmats<double, int>* S;
+			const spmats<double, _Index>* S;
 			const Prec* M;
 			std::size_t inner_max;
 			double tol;
@@ -1300,7 +1415,7 @@ namespace vcp {
 			std::string* reason;
 
 			struct AV {
-				const spmats<double, int>* S;
+				const spmats<double, _Index>* S;
 				void operator()(const std::vector<double>& u, std::vector<double>& v) const { v = S->mul_vec(u); }
 			};
 			struct PV {
@@ -1346,7 +1461,7 @@ namespace vcp {
 			const int ncv, const int max_iter, const Solve& solve, std::size_t& op_count) const
 		{
 			const std::size_t n = static_cast<std::size_t>(this->rowsize());
-			const spmats<double, int>* self = this;
+			const spmats<double, _Index>* self = this;
 			spumar_detail::arpack_op_fn opx;
 			if (mode == 1) {
 				opx = [self, &op_count](const double* x, double* y, const double*) {
@@ -1384,12 +1499,12 @@ namespace vcp {
 		// OP / B bodies are the SPU-3 lambdas unchanged.
 		template <class Solve>
 		spumar_detail::arpack_outcome arpack_generalized_core_(
-			const spmats<double, int>& B, const std::size_t k, const eig_options<double>& opt,
+			const spmats<double, _Index>& B, const std::size_t k, const eig_options<double>& opt,
 			const bool symmetric, const double sigma, const int ncv, const int max_iter,
 			const Solve& solve, std::size_t& solve_count, std::size_t& bmul_count) const
 		{
 			const std::size_t n = static_cast<std::size_t>(this->rowsize());
-			const spmats<double, int>* Bp = &B;
+			const spmats<double, _Index>* Bp = &B;
 			const std::size_t nn = n;
 			const Solve* sp = &solve;
 			spumar_detail::arpack_op_fn opx =
@@ -1457,7 +1572,7 @@ namespace vcp {
 		eig_result<double> assemble_arpack_generalized_result_(
 			eig_result<double>& result,
 			const spumar_detail::arpack_outcome& oc,
-			const spmats<double, int>& B,
+			const spmats<double, _Index>& B,
 			const std::size_t k,
 			const eig_options<double>& opt,
 			const std::size_t solve_count,
@@ -1562,10 +1677,10 @@ namespace vcp {
 		eig_result<double> assemble_arpack_result_(
 			eig_result<double>& result,
 			const spumar_detail::arpack_outcome& oc,
-			const spmats<double, int>& A,
+			const spmats<double, _Index>& A,
 			const std::size_t k,
 			const eig_options<double>& opt,
-			const bool symmetric,
+			const bool /* symmetric */,
 			const int mode,
 			const std::size_t op_count) const
 		{
@@ -1734,7 +1849,7 @@ namespace vcp {
 		// complex-window refusal path)
 		void fill_real_pairs_diagnostics_(
 			eig_result<double>& result,
-			const spmats<double, int>& A,
+			const spmats<double, _Index>& A,
 			const std::vector<double>& vals,
 			const std::vector<std::vector<double> >& vecs,
 			const eig_options<double>& opt) const
@@ -1759,10 +1874,12 @@ namespace vcp {
 		}
 
 		static spumar_options& default_options_ref() {
-			static spumar_options o;
-			return o;
+			return spumar_default_options_ref_();
 		}
 	};
+
+	// vcp::spumar: the std::int64_t index version (UMFPACK dl).
+	typedef spumar_basic<std::int64_t> spumar;
 
 } // namespace vcp
 

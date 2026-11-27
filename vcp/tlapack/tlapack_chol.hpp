@@ -57,6 +57,9 @@ namespace vcp {
 // Cholesky 分解 (unblocked)
 template <typename T>
 inline int tpotf2(const char uplo, const int n, T* A, const int lda) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::potf2(uplo, n, A, lda);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -150,6 +153,9 @@ inline int tpotrf2(const char uplo, const int n, T* A, const int lda) {
 // Cholesky 分解 (blocked)
 template <typename T>
 inline int tpotrf(const char uplo, const int n, T* A, const int lda) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::potrf(uplo, n, A, lda);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -205,6 +211,9 @@ inline int tpotrf(const char uplo, const int n, T* A, const int lda) {
 template <typename T>
 inline int tpotrs(const char uplo, const int n, const int nrhs, const T* A, const int lda,
 	T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::potrs(uplo, n, nrhs, A, lda, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -231,6 +240,9 @@ inline int tpotrs(const char uplo, const int n, const int nrhs, const T* A, cons
 template <typename T>
 inline int tposv(const char uplo, const int n, const int nrhs, T* A, const int lda,
 	T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::posv(uplo, n, nrhs, A, lda, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	if (!detail::option_is(uplo, 'U') && !detail::option_is(uplo, 'L')) {
 		detail::tlapack_error("tposv: invalid uplo");
@@ -248,6 +260,9 @@ inline int tposv(const char uplo, const int n, const int nrhs, T* A, const int l
 // 対称正定値行列の逆行列 (A は tpotrf の出力)
 template <typename T>
 inline int tpotri(const char uplo, const int n, T* A, const int lda) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::potri(uplo, n, A, lda);
+	}
 	namespace detail = tlapack_detail;
 	if (!detail::option_is(uplo, 'U') && !detail::option_is(uplo, 'L')) {
 		detail::tlapack_error("tpotri: invalid uplo");

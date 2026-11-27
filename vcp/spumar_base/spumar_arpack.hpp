@@ -23,6 +23,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -50,6 +51,13 @@ void dneupd_(int* rvec, char* howmny, int* select, double* dr, double* di,
 
 namespace vcp {
 namespace spumar_detail {
+
+	// ARPACK takes the dimension n as int.  A dimension that does not fit is
+	// not delegated: the caller routes the request to the base
+	// implementation, the same way as the other non-delegable requests.
+	inline bool arpack_dimension_fits_(const std::size_t n) {
+		return n <= static_cast<std::size_t>(std::numeric_limits<int>::max());
+	}
 
 	// OP callback: y = OP * x.  bx_hint is non-null ONLY in generalized
 	// mode 3 with ido == 1, where ARPACK has already placed B*x at

@@ -79,6 +79,10 @@ inline void tgemm(
 	const T* B, const int ldb,
 	const T& beta, T* C, const int ldc
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::gemm(transa, transb, m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool ta = !det::option_is(transa, 'N');
 	const bool tb = !det::option_is(transb, 'N');
@@ -198,6 +202,10 @@ inline void tsymm(
 	const T* B, const int ldb,
 	const T& beta, T* C, const int ldc
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::symm(side, uplo, m, n, alpha, A, lda, B, ldb, beta, C, ldc);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool lside = det::option_is(side, 'L');
 	const bool upper = det::option_is(uplo, 'U');
@@ -239,6 +247,10 @@ inline void tsyrk(
 	const T& alpha, const T* A, const int lda,
 	const T& beta, T* C, const int ldc
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::syrk(uplo, trans, n, k, alpha, A, lda, beta, C, ldc);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	const bool ntrans = det::option_is(trans, 'N');
@@ -313,6 +325,10 @@ inline void tsyr2k(
 	const T* B, const int ldb,
 	const T& beta, T* C, const int ldc
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::syr2k(uplo, trans, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	const bool ntrans = det::option_is(trans, 'N');
@@ -397,6 +413,10 @@ inline void ttrmm(
 	const T& alpha, const T* A, const int lda,
 	T* B, const int ldb
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::trmm(side, uplo, transa, diag, m, n, alpha, A, lda, B, ldb);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool lside = det::option_is(side, 'L');
 	const bool upper = det::option_is(uplo, 'U');
@@ -479,6 +499,10 @@ inline void ttrsm(
 	const T& alpha, const T* A, const int lda,
 	T* B, const int ldb
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::trsm(side, uplo, transa, diag, m, n, alpha, A, lda, B, ldb);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool lside = det::option_is(side, 'L');
 	const bool upper = det::option_is(uplo, 'U');
@@ -639,6 +663,10 @@ inline void tgemmtr(
 	const T* B, const int ldb,
 	const T& beta, T* C, const int ldc
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::gemmtr(uplo, transa, transb, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	if (!upper && !det::option_is(uplo, 'L')) {

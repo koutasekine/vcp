@@ -451,20 +451,22 @@ namespace vcp {
 					}
 				}
 
-				// R = Y(AX- BX*Lambda);
-				C.mul_m_im(Y, R);
+				// S = Y*B*X;
+				this->mul_m_im(Y, S);
+				// (*this) = A*X - B*X*Lambda;
+				(*this) = std::move(C);
 				C.clear();
+
+				// R = Y(AX- BX*Lambda);
+				this->mul_m_im(Y, R);
+				this->clear();
+				Y.clear();
 
 				e.ones(thisrow, 1);
 				R.norminf(Rinf);
 				R.abs();
 				R.mul_im_m(e, Re);
 				R.clear();
-
-				// S = Y*B*X;
-				this->mul_m_im(Y, S);
-				this->clear();
-				Y.clear();
 
 				for (int i = 0; i < thisrow; i++) {
 					S.v[i + thisrow*i] -= one;

@@ -59,6 +59,9 @@ namespace vcp {
 // QR 分解 (unblocked)
 template <typename T>
 inline int tgeqr2(const int m, const int n, T* A, const int lda, T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::geqr2(m, n, A, lda, tau);
+	}
 	namespace detail = tlapack_detail;
 	if (m < 0 || n < 0 || lda < std::max(1, m)) {
 		detail::tlapack_error("tgeqr2: invalid argument");
@@ -77,6 +80,9 @@ inline int tgeqr2(const int m, const int n, T* A, const int lda, T* tau) {
 // QR 分解 (blocked)
 template <typename T>
 inline int tgeqrf(const int m, const int n, T* A, const int lda, T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::geqrf(m, n, A, lda, tau);
+	}
 	namespace detail = tlapack_detail;
 	if (m < 0 || n < 0 || lda < std::max(1, m)) {
 		detail::tlapack_error("tgeqrf: invalid argument");
@@ -142,6 +148,9 @@ inline int torg2r(const int m, const int n, const int k, T* A, const int lda, co
 // QR の Q の生成 (blocked)
 template <typename T>
 inline int torgqr(const int m, const int n, const int k, T* A, const int lda, const T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::orgqr(m, n, k, A, lda, tau);
+	}
 	namespace detail = tlapack_detail;
 	if (m < 0 || n < 0 || n > m || k < 0 || k > n || lda < std::max(1, m)) {
 		detail::tlapack_error("torgqr: invalid argument");
@@ -221,6 +230,9 @@ inline int torm2r(const char side, const char trans, const int m, const int n, c
 template <typename T>
 inline int tormqr(const char side, const char trans, const int m, const int n, const int k,
 	const T* A, const int lda, const T* tau, T* C, const int ldc) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::ormqr(side, trans, m, n, k, A, lda, tau, C, ldc);
+	}
 	namespace detail = tlapack_detail;
 	const bool left = detail::option_is(side, 'L');
 	const bool notran = detail::option_is(trans, 'N');
@@ -258,6 +270,9 @@ inline int tormqr(const char side, const char trans, const int m, const int n, c
 // LQ 分解 (unblocked)
 template <typename T>
 inline int tgelq2(const int m, const int n, T* A, const int lda, T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gelq2(m, n, A, lda, tau);
+	}
 	namespace detail = tlapack_detail;
 	if (m < 0 || n < 0 || lda < std::max(1, m)) {
 		detail::tlapack_error("tgelq2: invalid argument");
@@ -276,6 +291,9 @@ inline int tgelq2(const int m, const int n, T* A, const int lda, T* tau) {
 // LQ 分解 (blocked)
 template <typename T>
 inline int tgelqf(const int m, const int n, T* A, const int lda, T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gelqf(m, n, A, lda, tau);
+	}
 	namespace detail = tlapack_detail;
 	if (m < 0 || n < 0 || lda < std::max(1, m)) {
 		detail::tlapack_error("tgelqf: invalid argument");
@@ -345,6 +363,9 @@ inline int torgl2(const int m, const int n, const int k, T* A, const int lda, co
 // LQ の Q の生成 (blocked)
 template <typename T>
 inline int torglq(const int m, const int n, const int k, T* A, const int lda, const T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::orglq(m, n, k, A, lda, tau);
+	}
 	namespace detail = tlapack_detail;
 	if (m < 0 || n < m || k < 0 || k > m || lda < std::max(1, m)) {
 		detail::tlapack_error("torglq: invalid argument");
@@ -424,6 +445,9 @@ inline int torml2(const char side, const char trans, const int m, const int n, c
 template <typename T>
 inline int tormlq(const char side, const char trans, const int m, const int n, const int k,
 	const T* A, const int lda, const T* tau, T* C, const int ldc) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::ormlq(side, trans, m, n, k, A, lda, tau, C, ldc);
+	}
 	namespace detail = tlapack_detail;
 	const bool left = detail::option_is(side, 'L');
 	const bool notran = detail::option_is(trans, 'N');
@@ -491,6 +515,9 @@ inline int torg2l(const int m, const int n, const int k, T* A, const int lda, co
 // QL の Q の生成 (blocked)
 template <typename T>
 inline int torgql(const int m, const int n, const int k, T* A, const int lda, const T* tau) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::orgql(m, n, k, A, lda, tau);
+	}
 	namespace detail = tlapack_detail;
 	if (m < 0 || n < 0 || n > m || k < 0 || k > n || lda < std::max(1, m)) {
 		detail::tlapack_error("torgql: invalid argument");
@@ -564,6 +591,9 @@ inline int torm2l(const char side, const char trans, const int m, const int n, c
 template <typename T>
 inline int tormql(const char side, const char trans, const int m, const int n, const int k,
 	const T* A, const int lda, const T* tau, T* C, const int ldc) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::ormql(side, trans, m, n, k, A, lda, tau, C, ldc);
+	}
 	namespace detail = tlapack_detail;
 	const bool left = detail::option_is(side, 'L');
 	const bool notran = detail::option_is(trans, 'N');
@@ -599,6 +629,9 @@ inline int tormql(const char side, const char trans, const int m, const int n, c
 template <typename T>
 inline int tgels(const char trans, const int m, const int n, const int nrhs,
 	T* A, const int lda, T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gels(trans, m, n, nrhs, A, lda, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	const bool tpsd = !detail::option_is(trans, 'N');
 	if (tpsd && !detail::option_is(trans, 'T')) {

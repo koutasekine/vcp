@@ -3,7 +3,7 @@
 `tlapack` は `vcp/vlapack/rdlapack` (reference LAPACK 3.12.1 由来) と同じ routine
 一覧を template 化した header-only library です．本文書は要素型 `T` に要求する
 演算 (concept 相当) と実装の要点を定めます．BLAS 部分は `vcp/tblas/` を
-呼び出し，**丸めモードは一切意識しません** (rounding_mode 引数なし)．
+呼び出し，**丸めモードは基本的には意識しません** (rounding_mode 引数なし)．
 **全関数の引数仕様は このドキュメントの「関数リファレンス」節 を参照．**
 
 ```cpp
@@ -52,6 +52,24 @@ int info3 = tgesv(n, nrhs, A, lda, ipiv, B, ldb);
 INFO は返り値，引数 error は `vcp::invalid_argument`，WORK/LWORK なし，
 ipiv / ilo / ihi の 0-based / 1-based 規約も rdlapack と同一)．
 scalar は tblas と同様 `const T&` 渡しとします．
+
+## T=double の行き先 (3 つの層)
+
+`T=double` の呼び出しは，`tlapack_double.hpp` を include するかどうかで行き先が変わります．
+
+| 層 | 条件 | 行き先 |
+|---|---|---|
+| 1 | `T` が double 以外 | `tlapack.hpp` の汎用 template 実装 |
+| 2 | `T=double` で，`tlapack_double.hpp` を include しない | VCP の double LAPACK (`vcp/vlapack/rdlapack.hpp` の `vcp::rdgetrf` など)．呼び出し時点の丸めモードを渡します．外部 LAPACK/BLAS のリンクは要りません |
+| 3 | `T=double` で，`tlapack_double.hpp` を include する | `dgetrf_` などを呼びます．その中身は，`USE_VCP_LAPACK` を定義すれば VCP の double LAPACK，定義しなければリンクした外部 LAPACK です |
+
+層 2 と，層 3 で `USE_VCP_LAPACK` を定義した場合は，同じ routine に行きます．
+層 2 の対象は，`tlapack_double.hpp` が `USE_VCP_LAPACK` の有無に関係なく特殊化する
+routine です．`#ifndef USE_VCP_LAPACK` の場合だけ特殊化する補助 routine
+(`tgetrf2` `tpotrf2` `tlarf` `tlarft` `tlarfb` `tlahqr` など) は，層 2 でも汎用
+template 実装のままで，その中の tblas の呼び出しが tblas の層 2 に行きます．
+`tsyev<double>` `tsygv<double>` は，層 2 でも，固有 vector つきのときに
+分割統治 (`vcp::rdsyevd` `vcp::rdsygvd`) を選びます．
 
 ## T=double の LAPACK/BLAS 委譲特殊化
 
@@ -423,7 +441,7 @@ reference LAPACK 3.12.1 の同名 routine (`t` → `d`) に準ずる．
   | `tsytf2` / `tsytrf` / `tsytrs` / `tsysv` の `ipiv` | **1-based 符号付き** (LAPACK と同じ，負値は 2×2 block) |
   | `tgebal` / `tgebak` / `tgehrd` / `torghr` / `thseqr` / `tlahqr` の `ilo` / `ihi` | **1-based** |
   | 返り値 INFO 中の位置・個数 | **1-based** (LAPACK と同じ) |
-- **丸めモードは扱わない**．丸めモード指定が必要なら `vcp/vlapack/rdlapack` を使う．
+- **丸めモードは基本的には扱わない**．丸めモード指定が必要なら `vcp/vlapack/rdlapack` を使う．
 - option 文字は大文字小文字どちらも可．
 - scalar 引数は `const T&`，出力 scalar は `T&` 渡し．
 - `namespace tlapack_detail` 内の関数 (`tabs` `tsqrt` `tisnan` `f_sign` `pow2i`
@@ -438,7 +456,6 @@ reference LAPACK 3.12.1 の同名 routine (`t` → `d`) に準ずる．
 - `tgesvd` は基本経路 (直接二重対角化) のみ (m≫n / n≫m 用の QR/LQ 前処理なし)．
 - `f_sign(a, b)` は b = -0.0 を正と扱う (Householder の符号選択にのみ影響し，
   結果は同値な分解になる)．
-- fma を使わないため，double で rdlapack / reference と bit 単位では一致しない．
 
 ---
 

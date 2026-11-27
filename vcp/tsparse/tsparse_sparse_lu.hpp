@@ -28,11 +28,6 @@
 // They MUST be included before namespace vcp opens to avoid double-namespace nesting.
 #include <vcp/tblas/tblas.hpp>
 #include <vcp/tlapack/tlapack.hpp>
-// SLU-K1: blocked GEMM kernels for the opt-in supernode_panel path (options
-// field panel_gemm_kernel below).  Pure template header in namespace vcp;
-// same include discipline as tblas/tlapack above (before namespace vcp opens).
-// Non-specialized scalar types forward verbatim to vcp::tgemm inside it.
-#include <vcp/tblas/tblas_blocked.hpp>
 
 namespace vcp {
 
@@ -51,8 +46,7 @@ enum class sparse_lu_method {
     //   those option sets with not_implemented; auto keeps solving them).
     // supernodal is NEVER selected by auto_select.
     // Escape hatches (SLU-D1 D-2): (i) method = baseline_gp restores the
-    // pre-D1 default path; (ii) panel_gemm_kernel = reference restores the
-    // pre-K1 GEMM kernel; (iii) heavy scalar types (e.g. mpfr, a few
+    // pre-D1 default path; (ii) heavy scalar types (e.g. mpfr, a few
     // percent slower on supernode_panel, accepted by D-3) should use (i).
     // Extension point: once supernode_panel implements
     // equilibration, widening the promotion is just removing the condition
@@ -232,20 +226,6 @@ inline const char* sparse_lu_status_to_string(sparse_lu_status s) {
 }
 
 // ===========================================================================
-// SLU-K1: GEMM kernel selector for the opt-in method=supernode_panel path
-// (design SLU-K1 D-2).  reference = the pre-K1 vcp::tgemm<T> call (byte-
-// identical escape hatch, T-1 gate); blocked = vcp::tblas_blocked::gemm<T>
-// (double is blocked; non-specialized scalars forward verbatim to the
-// reference inside tblas_blocked, so the selector is byte-neutral for them).
-// Read ONLY by the supernode_panel numeric; every other path ignores it.
-// ===========================================================================
-
-enum class sparse_lu_panel_gemm_kernel {
-    reference,
-    blocked
-};
-
-// ===========================================================================
 // sparse_lu_options<T>
 // ===========================================================================
 
@@ -324,11 +304,6 @@ struct sparse_lu_options {
     // by the supernode_panel numeric; every other path ignores it.
     std::size_t supernode_panel_maxsup;
 
-    // SLU-K1 (appended LAST): GEMM kernel of the opt-in supernode_panel
-    // panel update (design D-2).  Default blocked; reference restores the
-    // pre-K1 byte-exact behavior.  Read ONLY by the supernode_panel numeric.
-    sparse_lu_panel_gemm_kernel panel_gemm_kernel;
-
     // ORD-1 (appended LAST; additive): parameters of ordering =
     // nested_dissection_ml, read ONLY on that ordering.  A negative value
     // means "use the library default" (sparse_order_ndml_params, the single
@@ -364,7 +339,6 @@ struct sparse_lu_options {
           supernodal_inplace_frontal(false),
           supernodal_native_check_residual(false),
           supernode_panel_maxsup(64),
-          panel_gemm_kernel(sparse_lu_panel_gemm_kernel::blocked),
           ndml_coarsen_stop(-1), ndml_fm_passes(-1),
           ndml_balance_pct(-1), ndml_leaf_size(-1) {}
 };
@@ -1643,6 +1617,23 @@ sparse_lu_make_baseline_factor_for_testing(
     Index n,
     const baseline_lu_storage<T, Index>& storage);
 
+// Forward declarations for the external-factor entry points (defined in
+// detail include): a factor object from L / U / permutations computed
+// outside this library, and its failed (non-valid) companion.
+template <class T, class Index>
+sparse_lu_factorization<T, Index>
+sparse_lu_make_factor_from_baseline_storage(
+    Index n,
+    const baseline_lu_storage<T, Index>& storage,
+    sparse_lu_method method_used);
+
+template <class T, class Index>
+sparse_lu_factorization<T, Index>
+sparse_lu_make_failed_factor(
+    Index n,
+    sparse_lu_status status,
+    sparse_lu_method method_used);
+
 // SLU-8R.5: forward declarations for §18.2 solve free functions.
 // Defined in vcp/tsparse/detail/tsparse_sparse_lu_supernodal_solve_impl.hpp (included below).
 template <class T, class Index>
@@ -2347,6 +2338,21 @@ private:
     sparse_lu_make_baseline_factor_for_testing(
         Idx2 n,
         const baseline_lu_storage<T2, Idx2>& storage);
+
+    // External-factor entry points (all instantiations are friends)
+    template <class T2, class Idx2>
+    friend sparse_lu_factorization<T2, Idx2>
+    sparse_lu_make_factor_from_baseline_storage(
+        Idx2 n,
+        const baseline_lu_storage<T2, Idx2>& storage,
+        sparse_lu_method method_used);
+
+    template <class T2, class Idx2>
+    friend sparse_lu_factorization<T2, Idx2>
+    sparse_lu_make_failed_factor(
+        Idx2 n,
+        sparse_lu_status status,
+        sparse_lu_method method_used);
 
     // SLU-9: supernode-aware solve helper needs access to private storage
     template <class T2, class Idx2>

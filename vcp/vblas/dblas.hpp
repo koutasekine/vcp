@@ -66,17 +66,8 @@
 namespace vblas_dblas_detail {
 
 // 現在の丸めモードを rdblas の rounding_mode へ変換する
-// (FE_DOWNWARD -> -1, FE_UPWARD -> 1, それ以外 -> 0)
-inline int current_rounding_mode() {
-	const int mode = vblas_rmatmul_common_detail::get_rounding_mode();
-	if (mode == FE_DOWNWARD) {
-		return -1;
-	}
-	if (mode == FE_UPWARD) {
-		return 1;
-	}
-	return 0;
-}
+// (FE_DOWNWARD -> -1, FE_UPWARD -> 1, それ以外 -> 0)．実体は rdblas_common.hpp
+using vblas_rdblas_detail::current_rounding_mode;
 
 } // namespace vblas_dblas_detail
 

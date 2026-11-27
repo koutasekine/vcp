@@ -491,7 +491,7 @@ namespace vcp {
 			//    max(tol, tol * n * 10) — the pre-existing qr_eig_dense convention)
 			R residual_limit = tol;
 			{
-				const R tol_n = tol * R(static_cast<int>(m) * 10);
+				const R tol_n = tol * R(static_cast<double>(m) * 10.0);
 				if (tol_n > residual_limit) residual_limit = tol_n;
 			}
 
@@ -713,7 +713,7 @@ namespace vcp {
 			//    lifted keeps converged = false; honest reason)
 			R residual_limit = tol;
 			{
-				const R tol_n = tol * R(static_cast<int>(m) * 10);
+				const R tol_n = tol * R(static_cast<double>(m) * 10.0);
 				if (tol_n > residual_limit) residual_limit = tol_n;
 			}
 			const bool residuals_pass = !(max_res > residual_limit) && vectors_ok;

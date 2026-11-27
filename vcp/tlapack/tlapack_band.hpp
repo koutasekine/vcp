@@ -61,6 +61,9 @@ namespace vcp {
 template <typename T>
 inline int tgbtf2(const int m, const int n, const int kl, const int ku,
 	T* AB, const int ldab, int* ipiv) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gbtf2(m, n, kl, ku, AB, ldab, ipiv);
+	}
 	namespace detail = tlapack_detail;
 	const int kv = ku + kl;
 	if (m < 0 || n < 0 || kl < 0 || ku < 0 || ldab < kl + kv + 1) {
@@ -114,6 +117,9 @@ inline int tgbtf2(const int m, const int n, const int kl, const int ku,
 template <typename T>
 inline int tgbtrf(const int m, const int n, const int kl, const int ku,
 	T* AB, const int ldab, int* ipiv) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gbtrf(m, n, kl, ku, AB, ldab, ipiv);
+	}
 	namespace detail = tlapack_detail;
 	const int kv = ku + kl;
 	if (m < 0 || n < 0 || kl < 0 || ku < 0 || ldab < kl + kv + 1) {
@@ -280,6 +286,9 @@ inline int tgbtrf(const int m, const int n, const int kl, const int ku,
 template <typename T>
 inline int tgbtrs(const char trans, const int n, const int kl, const int ku, const int nrhs,
 	const T* AB, const int ldab, const int* ipiv, T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gbtrs(trans, n, kl, ku, nrhs, AB, ldab, ipiv, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	const bool notran = detail::option_is(trans, 'N');
 	if (!notran && !detail::option_is(trans, 'T') && !detail::option_is(trans, 'C')) {
@@ -333,6 +342,9 @@ inline int tgbtrs(const char trans, const int n, const int kl, const int ku, con
 template <typename T>
 inline int tgbsv(const int n, const int kl, const int ku, const int nrhs,
 	T* AB, const int ldab, int* ipiv, T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::gbsv(n, kl, ku, nrhs, AB, ldab, ipiv, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	if (n < 0 || kl < 0 || ku < 0 || nrhs < 0 || ldab < 2 * kl + ku + 1 || ldb < std::max(1, n)) {
 		detail::tlapack_error("tgbsv: invalid argument");
@@ -347,6 +359,9 @@ inline int tgbsv(const int n, const int kl, const int ku, const int nrhs,
 // 対称正定値帯行列の Cholesky 分解 (unblocked)
 template <typename T>
 inline int tpbtf2(const char uplo, const int n, const int kd, T* AB, const int ldab) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::pbtf2(uplo, n, kd, AB, ldab);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -396,6 +411,9 @@ inline int tpbtf2(const char uplo, const int n, const int kd, T* AB, const int l
 // 対称正定値帯行列の Cholesky 分解 (blocked)
 template <typename T>
 inline int tpbtrf(const char uplo, const int n, const int kd, T* AB, const int ldab) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::pbtrf(uplo, n, kd, AB, ldab);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -500,6 +518,9 @@ inline int tpbtrf(const char uplo, const int n, const int kd, T* AB, const int l
 template <typename T>
 inline int tpbtrs(const char uplo, const int n, const int kd, const int nrhs,
 	const T* AB, const int ldab, T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::pbtrs(uplo, n, kd, nrhs, AB, ldab, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	const bool upper = detail::option_is(uplo, 'U');
 	if (!upper && !detail::option_is(uplo, 'L')) {
@@ -529,6 +550,9 @@ inline int tpbtrs(const char uplo, const int n, const int kd, const int nrhs,
 template <typename T>
 inline int tpbsv(const char uplo, const int n, const int kd, const int nrhs,
 	T* AB, const int ldab, T* B, const int ldb) {
+	if (tlapack_detail::double_route<T>::on) {
+		return tlapack_detail::double_route<T>::pbsv(uplo, n, kd, nrhs, AB, ldab, B, ldb);
+	}
 	namespace detail = tlapack_detail;
 	if (!detail::option_is(uplo, 'U') && !detail::option_is(uplo, 'L')) {
 		detail::tlapack_error("tpbsv: invalid uplo");

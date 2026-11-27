@@ -183,6 +183,12 @@ vcp::tsparse_spgemm::csr_csr_multiply(rows, inner_dim, cols,
 policy の層だけを止めると、kernel の並列版は呼ばれません。kernel の層だけを
 止めると、policy の層が並列版を呼んでも、並列版の中は逐次に動きます。
 
+疎 LU と LDLᵀ の分解は、中で密行列の BLAS(tblas)を使います。その並列化は、
+`VCP_SPARSE_NOMP`・`VCP_SPMATS_NOMP` では止まりません。VCP の実装(tblas、`double` では
+rdblas)は `VCP_TBLAS_NOMP`・`VCP_RDBLAS_NOMP`(または `VCP_NOMP`)で止まります。
+外部の BLAS(MKL・OpenBLAS など)に渡した計算の並列化は、VCP のマクロでは止まらず、
+その BLAS の設定(スレッド数の環境変数など)に従います。
+
 並列版を使う閾値 `VCP_SPMATS_OMP_THRESHOLD` の既定値は 4096 です。
 コンパイル時に定義して変えられます。
 
@@ -214,7 +220,7 @@ policy の層だけを止めると、kernel の並列版は呼ばれません。
 - copy・代入、`T(0)`、`T(1)` などの `int` からの構築
 - 四則演算と単項 `-`
 - 比較演算
-- ADL で探索される `abs`、`log`、`sqrt`、`exp`(`using std::abs; abs(x);` の形)
+- ADL で探索される `abs`、`log`、`sqrt`、`exp`、`acos`、`cos`、`pow(x, n)`(n は `int`)(`using std::abs; abs(x);` の形)
 
 `float`、`double`、`long double`、`kv::dd`、`kv::mpfr<N>` で使えます。
 
@@ -232,4 +238,4 @@ policy の層だけを止めると、kernel の並列版は呼ばれません。
 
 添字型 `Index` は整数型です。疎 LU・LDLᵀ・Cholesky 分解は符号付きの添字型
 だけを受け付けます(`static_assert` で検査します)。`spmats` の既定は
-`int` です。
+`std::int64_t` です。

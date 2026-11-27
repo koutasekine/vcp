@@ -61,7 +61,7 @@
 #include <vcp/tsparse/tsparse_eigensolvers.hpp>
 #include <vcp/tsparse/tsparse_lanczos.hpp>
 #include <vcp/tsparse/tsparse_projected_eigensolver.hpp>
-#include <vcp/spmatrix.hpp>
+#include <vcp/tsparse/tsparse_eigs_types.hpp>
 
 namespace vcp {
 namespace tsparse_experimental {

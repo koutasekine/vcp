@@ -68,7 +68,7 @@
 #include <cstddef>
 #include <vector>
 
-#include <omp.h>
+#include "rdblas_omp.hpp"
 
 #include "rdblas_common.hpp"
 #include "rmatmul.hpp"
@@ -143,10 +143,14 @@ inline void scale_triangle(const bool upper, const int n, const double beta, dou
 		return;
 	}
 	const int threads = threads_for_flops(0.5 * n * n);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(threads)
+#endif
 	{
 		RoundingGuard guard(fe_mode);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 		for (int j = 0; j < n; j++) {
 			double* c = C + static_cast<std::size_t>(ldc) * j;
 			const int i0 = upper ? 0 : j;
@@ -177,11 +181,15 @@ inline void update_band_triangle(
 	const int fe_mode
 ) {
 	const int threads = threads_for_flops(2.0 * ib * ncols);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(threads)
+#endif
 	{
 		RoundingGuard guard(fe_mode);
 		if (!upper) {
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 			for (int j = 0; j < ncols; j++) {
 				const int r0 = j <= i0 ? 0 : j - i0;
 				double* col = C + i0 + static_cast<std::size_t>(ldc) * j;
@@ -214,7 +222,9 @@ inline void update_band_triangle(
 			}
 		}
 		else {
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 			for (int r = 0; r < ib; r++) {
 				double* col = C + static_cast<std::size_t>(ldc) * (i0 + r);
 				const double* t1 = T1 + r;
@@ -252,7 +262,9 @@ inline void update_band_triangle(
 // 対称行列 (uplo の三角のみ格納) を full dense (n x n 連続) に展開する (copy のみ)
 inline void expand_symmetric(const bool upper, const int n, const double* A, const int lda, double* dst) {
 	const int threads = threads_for_flops(static_cast<double>(n) * n);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) num_threads(threads)
+#endif
 	for (int j = 0; j < n; j++) {
 		double* d = dst + static_cast<std::size_t>(n) * j;
 		if (upper) {
@@ -593,10 +605,14 @@ inline void trsm_left_leaf(
 ) {
 	const int fe = fe_rounding(rounding_mode);
 	const int threads = threads_for_flops(static_cast<double>(m) * m * n);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(threads)
+#endif
 	{
 		RoundingGuard guard(fe);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 		for (int j = 0; j < n; j++) {
 			double* b = B + static_cast<std::size_t>(ldb) * j;
 			if (alpha != 1.0) {
@@ -679,11 +695,13 @@ inline void trsm_right_leaf(
 ) {
 	const int fe = fe_rounding(rounding_mode);
 	const int threads = threads_for_flops(static_cast<double>(m) * n * n);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(threads)
+#endif
 	{
 		RoundingGuard guard(fe);
-		const int nth = omp_get_num_threads();
-		const int tid = omp_get_thread_num();
+		const int nth = vblas_omp_detail::region_threads();
+		const int tid = vblas_omp_detail::region_thread_id();
 		const int chunk = (m + nth - 1) / nth;
 		const int r0 = std::min(m, tid * chunk);
 		const int r1 = std::min(m, r0 + chunk);
@@ -944,10 +962,14 @@ inline void gemmtr_diag_update(
 	const int fe_mode
 ) {
 	const int threads = threads_for_flops(static_cast<double>(nb) * nb);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(threads)
+#endif
 	{
 		RoundingGuard guard(fe_mode);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 		for (int j = 0; j < nb; j++) {
 			const double* t = T + static_cast<std::size_t>(nb) * j;
 			double* c = C + static_cast<std::size_t>(ldc) * j;

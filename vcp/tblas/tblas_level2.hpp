@@ -70,6 +70,10 @@ inline void tgemv(
 	const T* x, const int incx,
 	const T& beta, T* y, const int incy
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::gemv(trans, m, n, alpha, A, lda, x, incx, beta, y, incy);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool ntrans = det::option_is(trans, 'N');
 	if (!ntrans && !det::option_is(trans, 'T') && !det::option_is(trans, 'C')) {
@@ -173,6 +177,10 @@ inline void tgbmv(
 	const T* x, const int incx,
 	const T& beta, T* y, const int incy
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::gbmv(trans, m, n, kl, ku, alpha, A, lda, x, incx, beta, y, incy);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool ntrans = det::option_is(trans, 'N');
 	if (!ntrans && !det::option_is(trans, 'T') && !det::option_is(trans, 'C')) {
@@ -223,6 +231,10 @@ inline void tsymv(
 	const T* x, const int incx,
 	const T& beta, T* y, const int incy
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::symv(uplo, n, alpha, A, lda, x, incx, beta, y, incy);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	if (!upper && !det::option_is(uplo, 'L')) {
@@ -295,6 +307,10 @@ inline void tsbmv(
 	const T* x, const int incx,
 	const T& beta, T* y, const int incy
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::sbmv(uplo, n, k, alpha, A, lda, x, incx, beta, y, incy);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	if (!upper && !det::option_is(uplo, 'L')) {
@@ -343,6 +359,10 @@ inline void tspmv(
 	const T* x, const int incx,
 	const T& beta, T* y, const int incy
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::spmv(uplo, n, alpha, AP, x, incx, beta, y, incy);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	if (!upper && !det::option_is(uplo, 'L')) {
@@ -390,6 +410,10 @@ inline void ttrmv(
 	const char uplo, const char trans, const char diag, const int n,
 	const T* A, const int lda, T* x, const int incx
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::trmv(uplo, trans, diag, n, A, lda, x, incx);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	const bool ntrans = det::option_is(trans, 'N');
@@ -476,6 +500,10 @@ inline void ttrsv(
 	const char uplo, const char trans, const char diag, const int n,
 	const T* A, const int lda, T* x, const int incx
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::trsv(uplo, trans, diag, n, A, lda, x, incx);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	const bool ntrans = det::option_is(trans, 'N');
@@ -562,6 +590,10 @@ inline void ttbmv(
 	const char uplo, const char trans, const char diag, const int n, const int k,
 	const T* A, const int lda, T* x, const int incx
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::tbmv(uplo, trans, diag, n, k, A, lda, x, incx);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	const bool ntrans = det::option_is(trans, 'N');
@@ -642,6 +674,10 @@ inline void ttbsv(
 	const char uplo, const char trans, const char diag, const int n, const int k,
 	const T* A, const int lda, T* x, const int incx
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::tbsv(uplo, trans, diag, n, k, A, lda, x, incx);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	const bool ntrans = det::option_is(trans, 'N');
@@ -722,6 +758,10 @@ inline void ttpmv(
 	const char uplo, const char trans, const char diag, const int n,
 	const T* AP, T* x, const int incx
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::tpmv(uplo, trans, diag, n, AP, x, incx);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	const bool ntrans = det::option_is(trans, 'N');
@@ -802,6 +842,10 @@ inline void ttpsv(
 	const char uplo, const char trans, const char diag, const int n,
 	const T* AP, T* x, const int incx
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::tpsv(uplo, trans, diag, n, AP, x, incx);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	const bool ntrans = det::option_is(trans, 'N');
@@ -883,6 +927,10 @@ inline void tger(
 	const T& alpha, const T* x, const int incx,
 	const T* y, const int incy, T* A, const int lda
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::ger(m, n, alpha, x, incx, y, incy, A, lda);
+		return;
+	}
 	namespace det = tblas_detail;
 	if (m < 0 || n < 0 || lda < std::max(1, m) || incx == 0 || incy == 0) {
 		det::tblas_error("tger: invalid argument");
@@ -932,6 +980,10 @@ inline void tsyr(
 	const T& alpha, const T* x, const int incx,
 	T* A, const int lda
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::syr(uplo, n, alpha, x, incx, A, lda);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	if (!upper && !det::option_is(uplo, 'L')) {
@@ -984,6 +1036,10 @@ inline void tspr(
 	const T& alpha, const T* x, const int incx,
 	T* AP
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::spr(uplo, n, alpha, x, incx, AP);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	if (!upper && !det::option_is(uplo, 'L')) {
@@ -1023,6 +1079,10 @@ inline void tsyr2(
 	const T& alpha, const T* x, const int incx,
 	const T* y, const int incy, T* A, const int lda
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::syr2(uplo, n, alpha, x, incx, y, incy, A, lda);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	if (!upper && !det::option_is(uplo, 'L')) {
@@ -1079,6 +1139,10 @@ inline void tspr2(
 	const T& alpha, const T* x, const int incx,
 	const T* y, const int incy, T* AP
 ) {
+	if (tblas_detail::double_route<T>::on) {
+		tblas_detail::double_route<T>::spr2(uplo, n, alpha, x, incx, y, incy, AP);
+		return;
+	}
 	namespace det = tblas_detail;
 	const bool upper = det::option_is(uplo, 'U');
 	if (!upper && !det::option_is(uplo, 'L')) {

@@ -60,13 +60,20 @@
 namespace vcp {
 
 	// -----------------------------------------------------------------------
-	// spcmodumar
+	// spcmodumar_basic<_Index>: only _Index = std::int64_t is supported
+	// (cholmod_l_*, CHOLMOD_LONG; spcmodumar_detail::cholmod_api<_Index>);
+	// any other index type stops at the static_assert below.
+	// vcp::spcmodumar is an alias (below).
 	// -----------------------------------------------------------------------
-	class spcmodumar : public spumar {
+	template <typename _Index>
+	class spcmodumar_basic : public spumar_basic<_Index> {
+		static_assert(std::is_same<_Index, std::int64_t>::value,
+			"vcp::spcmodumar supports only the index type std::int64_t (it calls "
+			"the 64-bit CHOLMOD interface cholmod_l_*); use vcp::spcmodumar");
 	public:
-		typedef spumar base_type;
+		typedef spumar_basic<_Index> base_type;
 
-		spcmodumar() : base_type() {}
+		spcmodumar_basic() : base_type() {}
 
 		// SPUM-FIX1 (design §2.2 案 A): the implicitly generated copy
 		// assignment operator=(const spcmodumar&) hides the base's
@@ -80,16 +87,19 @@ namespace vcp {
 		// through the non-virtual outer policy_chol_with_info, which owns the
 		// finalize guarantee and the squareness entry check; *this arrives
 		// finalized and square.  Signature transcribed from the base
-		// declaration (spmats.hpp; T = double, Index = int).
+		// declaration (spmats.hpp; T = double, Index = _Index).
 		//
 		// The delegation pipeline (design SS2, fixed order) is implemented in
 		// SPCM-1; runtime failure is a status, never an exception (P3).
 		// -------------------------------------------------------------------
-		virtual chol_result<double, int> policy_chol_with_info_impl(
-			spmats<double, int>& L,
-			std::vector<int>& perm,
+		virtual chol_result<double, _Index> policy_chol_with_info_impl(
+			spmats<double, _Index>& L,
+			std::vector<_Index>& perm,
 			const chol_options<double>& opt) const override;
 	};
+
+	// vcp::spcmodumar: the std::int64_t index version (cholmod_l_*).
+	typedef spcmodumar_basic<std::int64_t> spcmodumar;
 
 	// ---------------------------------------------------------------------
 	// SPCM-1 body: the fixed delegation pipeline of design SS2 lives in
@@ -100,12 +110,13 @@ namespace vcp {
 	// net and maps to internal_error (runtime failure is a status, never a
 	// throw; SS2-8).
 	// ---------------------------------------------------------------------
-	inline chol_result<double, int> spcmodumar::policy_chol_with_info_impl(
-		spmats<double, int>& L,
-		std::vector<int>& perm,
+	template <typename _Index>
+	inline chol_result<double, _Index> spcmodumar_basic<_Index>::policy_chol_with_info_impl(
+		spmats<double, _Index>& L,
+		std::vector<_Index>& perm,
 		const chol_options<double>& opt) const
 	{
-		const spmats<double, int>& A = *this;   // subject is *this (WFIX-2 parity)
+		const spmats<double, _Index>& A = *this;   // subject is *this (WFIX-2 parity)
 		try {
 			return spcmodumar_detail::cholmod_chol_delegate_(A, L, perm, opt);
 		} catch (const vcp::error&) {
@@ -115,7 +126,7 @@ namespace vcp {
 			// P3 final protection net
 			L.resize(0, 0);
 			perm.clear();
-			chol_result<double, int> out;
+			chol_result<double, _Index> out;
 			out.status = sparse_chol_status::internal_error;
 			return out;
 		}

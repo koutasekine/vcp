@@ -42,7 +42,7 @@
 #include <vector>
 
 #include <immintrin.h>
-#include <omp.h>
+#include "rdblas_omp.hpp"
 
 #include "rmatmul_common.hpp"
 
@@ -367,7 +367,9 @@ inline void compute_packed_ic_column_tile(
 
 inline void zero_output(const int m, const int k, double* CU, const int threads) {
 	const long long size = static_cast<long long>(m) * k;
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel for schedule(static) num_threads(threads)
+#endif
 	for (long long i = 0; i < size; i++) {
 		CU[i] = 0.0;
 	}
@@ -375,12 +377,16 @@ inline void zero_output(const int m, const int k, double* CU, const int threads)
 
 template<int ROUNDING>
 inline void rmatmul_direct_avx512(const int m, const int n, const int k, const double* A, const double* B, double* CU, const Blocking& blocking) {
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(blocking.threads)
+#endif
 	{
 		// embedded rounding のため丸めモードは変更しないが，
 		// 各 thread で実行前の丸めモードを保存し実行後に復元することを保証する
 		const int previous_rounding = get_rounding_mode();
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for collapse(2) schedule(static)
+#endif
 		for (int jr = 0; jr < k; jr += NR) {
 			for (int ir = 0; ir < m; ir += MR) {
 				const int nr = std::min(NR, k - jr);
@@ -412,9 +418,11 @@ inline void rmatmul_blocked_m_only_avx512(const int m, const int n, const int k,
 	const std::size_t packed_a_stride = (static_cast<std::size_t>(max_mb_padded) * max_pb + 7) / 8 * 8;
 	std::unique_ptr<double[]> packed_a_all(new double[packed_a_stride * static_cast<std::size_t>(blocking.threads)]);
 
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(blocking.threads)
+#endif
 	{
-		double* const packed_a = packed_a_all.get() + packed_a_stride * static_cast<std::size_t>(omp_get_thread_num());
+		double* const packed_a = packed_a_all.get() + packed_a_stride * static_cast<std::size_t>(vblas_omp_detail::region_thread_id());
 		std::fill(packed_a, packed_a + packed_a_stride, 0.0);
 		const int previous_rounding = get_rounding_mode();
 
@@ -425,13 +433,17 @@ inline void rmatmul_blocked_m_only_avx512(const int m, const int n, const int k,
 			for (int jcg = 0; jcg < k; jcg += blocking.nc_group) {
 				const int ng = std::min(blocking.nc_group, k - jcg);
 
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp single
+#endif
 				{
 					packed_b.resize(static_cast<std::size_t>(pb) * round_up_to(ng, NR));
 				}
 				pack_b_micro_parallel(n, pb, ng, B + pc + static_cast<std::size_t>(n) * jcg, packed_b.data());
 
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 				for (int ic = 0; ic < m; ic += blocking.mc) {
 					compute_packed_ic_block<ROUNDING>(m, pb, ng, ic, pc, jcg, blocking, A, packed_b.data(), packed_a, CU, init_zero);
 				}
@@ -453,9 +465,11 @@ inline void rmatmul_blocked_2d_avx512(const int m, const int n, const int k, con
 	const std::size_t packed_a_stride = (static_cast<std::size_t>(max_mb_padded) * max_pb + 7) / 8 * 8;
 	std::unique_ptr<double[]> packed_a_all(new double[packed_a_stride * static_cast<std::size_t>(blocking.threads)]);
 
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(blocking.threads)
+#endif
 	{
-		double* const packed_a = packed_a_all.get() + packed_a_stride * static_cast<std::size_t>(omp_get_thread_num());
+		double* const packed_a = packed_a_all.get() + packed_a_stride * static_cast<std::size_t>(vblas_omp_detail::region_thread_id());
 		std::fill(packed_a, packed_a + packed_a_stride, 0.0);
 		const int previous_rounding = get_rounding_mode();
 
@@ -466,13 +480,17 @@ inline void rmatmul_blocked_2d_avx512(const int m, const int n, const int k, con
 			for (int jcg = 0; jcg < k; jcg += blocking.nc_group) {
 				const int ng = std::min(blocking.nc_group, k - jcg);
 
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp single
+#endif
 				{
 					packed_b.resize(static_cast<std::size_t>(pb) * round_up_to(ng, NR));
 				}
 				pack_b_micro_parallel(n, pb, ng, B + pc + static_cast<std::size_t>(n) * jcg, packed_b.data());
 
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for collapse(2) schedule(static)
+#endif
 				for (int jc_offset = 0; jc_offset < ng; jc_offset += blocking.column_tile) {
 					for (int ic = 0; ic < m; ic += blocking.mc) {
 						const int nb = std::min(blocking.column_tile, ng - jc_offset);

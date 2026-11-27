@@ -61,7 +61,7 @@ vcp::spmats<T, Index>
 | 線形方程式(反復法) | `spmats_lss.hpp` の Jacobi・Gauss–Seidel・CG・BiCGSTAB・GMRES | 指定した方法によらず UMFPACK | 継承(UMFPACK) | 上と同じ |
 | LU 分解(因子を返す) | `spmats_lu_extract_impl.hpp` → `sparse_lu_factorize_with_info` と `sparse_lu_extract_factors` | UMFPACK | 継承(UMFPACK) | 継承(区間型の要素で計算。精度保証なし) |
 | LU 因子による解・逆行列の行 | `spmats_lu_extract_impl.hpp`(三角行列の解法) | 継承 | 継承 | 継承 |
-| LU 分解の handle | `spmats_lss.hpp` → `sparse_lu_factorize_with_info` | 継承 | 継承 | 継承 |
+| LU 分解の handle | `spmats_lss.hpp` → `sparse_lu_factorize_with_info` | 分解は UMFPACK(因子を handle に入れる)。handle で解くのは継承 | 継承(`spumar` と同じ) | 継承 |
 | LDLᵀ 分解・慣性 | `spmats_ldl_impl.hpp` → `sparse_ldl_factorize_with_info` | 継承 | 継承 | 継承 |
 | shift 付き LDLᵀ の handle | `spmats_ldl_shift.hpp` → `sparse_ldl_symbolic_analyze` と `sparse_ldl_factorize_numeric_with_info` | 継承 | 継承 | 継承 |
 | Cholesky 分解 | `spmats_chol_impl.hpp` → `sparse_chol_factorize_with_info` | 継承 | CHOLMOD(`spcmodumar_base/spcmodumar_cholmod.hpp`) | 継承 |

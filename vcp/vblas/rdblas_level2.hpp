@@ -56,7 +56,7 @@
 #include <cmath>
 #include <cstddef>
 
-#include <omp.h>
+#include "rdblas_omp.hpp"
 
 #include "rdblas_common.hpp"
 
@@ -130,11 +130,13 @@ inline void rdgemv(
 
 	if (ntrans) {
 		// y_i (行方向) で並列化し，各 thread が全列 j を走査する
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(threads)
+#endif
 		{
 			det::RoundingGuard guard(fe);
-			const int nth = omp_get_num_threads();
-			const int tid = omp_get_thread_num();
+			const int nth = vblas_omp_detail::region_threads();
+			const int tid = vblas_omp_detail::region_thread_id();
 			const int chunk = (m + nth - 1) / nth;
 			const int i0 = std::min(m, tid * chunk);
 			const int i1 = std::min(m, i0 + chunk);
@@ -158,10 +160,14 @@ inline void rdgemv(
 		}
 	}
 	else {
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(threads)
+#endif
 		{
 			det::RoundingGuard guard(fe);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 			for (int j = 0; j < n; j++) {
 				const double* a = A + static_cast<std::size_t>(lda) * j;
 				double temp = 0.0;
@@ -262,10 +268,14 @@ inline void rdsymv(
 	const int threads = det::threads_for_flops(2.0 * n * n);
 
 	// 出力行 i ごとの dot 形式 (行ごとに独立なので並列化できる)
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(threads)
+#endif
 	{
 		det::RoundingGuard guard(fe);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 		for (int i = 0; i < n; i++) {
 			double temp = 0.0;
 			if (upper) {
@@ -914,10 +924,14 @@ inline void rdger(
 	const int kx = det::vec_start(m, incx);
 	const int ky = det::vec_start(n, incy);
 	const int threads = det::threads_for_flops(2.0 * m * n);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(threads)
+#endif
 	{
 		det::RoundingGuard guard(fe);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 		for (int j = 0; j < n; j++) {
 			const double temp = alpha * y[ky + j * incy];
 			if (temp == 0.0) {
@@ -959,10 +973,14 @@ inline void rdsyr(
 	const int fe = det::fe_rounding(rounding_mode);
 	const int kx = det::vec_start(n, incx);
 	const int threads = det::threads_for_flops(1.0 * n * n);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(threads)
+#endif
 	{
 		det::RoundingGuard guard(fe);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 		for (int j = 0; j < n; j++) {
 			const double temp = alpha * x[kx + j * incx];
 			if (temp == 0.0) {
@@ -1045,10 +1063,14 @@ inline void rdsyr2(
 	const int kx = det::vec_start(n, incx);
 	const int ky = det::vec_start(n, incy);
 	const int threads = det::threads_for_flops(2.0 * n * n);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp parallel num_threads(threads)
+#endif
 	{
 		det::RoundingGuard guard(fe);
+#if VCP_RDBLAS_USE_OPENMP
 #pragma omp for schedule(static)
+#endif
 		for (int j = 0; j < n; j++) {
 			const double temp1 = alpha * y[ky + j * incy];
 			const double temp2 = alpha * x[kx + j * incx];
